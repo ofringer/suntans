@@ -6,8 +6,15 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.33 2003-12-08 20:01:06 fringer Exp $
+ * $Id: phys.c,v 1.34 2003-12-08 20:02:16 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.33  2003/12/08 20:01:06  fringer
+ * Added OpenBoundaryFluxes for BC type 2, which forces the open boundary
+ * with velocity and damps out fluctuations.  Also set q=0 at open boundaries
+ * so this required changes to operatorq and corrector, as well as
+ * hydrow, which adds the explicit part of the pressure gradient to
+ * the velocities at the open boundary.
+ *
  * Revision 1.32  2003/12/03 04:05:52  fringer
  * Moved the volume correction for the horizontal velocity to
  * the Corrector function so that the post-pressure velocity field
@@ -2503,7 +2510,7 @@ static void HydroW(REAL **qc, gridT *grid, physT *phys, propT *prop)
     j = grid->edgep[jptr]; 
 
     for(k=grid->etop[j];k<grid->Nke[j];k++)
-      phys->u[j][k]-=2.0*prop->theta*prop->dt/grid->dg[j]*
+      phys->u[j][k]-=2.0*(1-prop->theta)*prop->dt/grid->dg[j]*
 	qc[grid->grad[2*j]][k];
   }
 }
