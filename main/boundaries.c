@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.7 2004-07-27 20:31:13 fringer Exp $
+ * $Id: boundaries.c,v 1.8 2004-09-27 01:28:15 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.7  2004/07/27 20:31:13  fringer
+ * Added SetBoundaryScalars function, which allows the specification of
+ * the salinity or temperature on the boundaries.
+ *
  * Revision 1.6  2004/06/23 06:20:36  fringer
  * This is the form of boundaries.c used to force the Monterey Bay run
  * over the Spring-Neap cycle.
@@ -44,158 +48,55 @@
  *
  */
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop) {
-
-  int forced, ib, j, jptr, k, nf, nf0, ne, nc1, nc2, numneighs, neigh, nb;
-  REAL z, uf, vf, cmax, *uboundary = phys->c, *c = phys->b, *phin = phys->a, xc, yc, width,
-    **u = phys->uc, **v = phys->vc, **uold = phys->uold, **vold = phys->vold, flux, area;
+  int j, jptr, ib, k, forced;
+  REAL *uboundary = phys->a, **u = phys->uc, **v = phys->vc, **uold = phys->uold, **vold = phys->vold;
+  REAL z, c0, c1, C0, C1, dt=prop->dt, u0, u0new, uc0, vc0, uc0old, vc0old, ub0;
 
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
 
     ib = grid->grad[2*j];
 
-    // For Three-mile slough
-    /*
-    if(grid->yv[ib]>1500) //for threemile
-      if(cos(prop->omega*prop->rtime)>0) {
-	forced=0;
-	for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	  uboundary[k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
-      } else {
-	forced=1;
-	for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	  uboundary[k] = -prop->amp*cos(prop->omega*prop->rtime);
-      }
-    else 
-      if(cos(prop->omega*prop->rtime)<0) {
-	forced=0;
-	for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	  uboundary[k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
-      } else {
-	forced=1;
-	for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	  uboundary[k] = prop->amp*cos(prop->omega*prop->rtime);
-      }
-    */
-
-    // For Huntington Beach
-    /*
-    for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      uboundary[k] = prop->amp*cos(prop->omega*prop->rtime);
-    forced=1;
-    */
-
     // For Monterey
-    if(1) {//grid->xv[ib]<1000) {
-      for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	if(k==grid->etop[j])
-	  z=-grid->dzz[ib][k]/2;
-	else
-	  z-=grid->dzz[ib][k];
-	//uboundary[k]=prop->amp*cos(prop->omega*prop->rtime)*cos(PI*z/grid->dv[ib]);
-	uboundary[k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
-      }
+    if(grid->xv[ib]<1000) {
+      ub0=0.002445*cos(prop->omega*prop->rtime)+.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
+      //ub0=-2.9377*sqrt(GRAV/grid->dv[ib])*(cos(prop->omega*prop->rtime)+0.00182/.002445*cos(2*PI/(24*3600)*prop->rtime+.656));
       forced=1;
     } else 
       forced=0;
-
-    // For river plume
-    if(grid->n1[j]>0) {
-      if(grid->yv[ib]>166500 && grid->yv[ib]<170000) {
-	for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	  if(k==grid->etop[j])
-	    z=-grid->dzz[ib][k]/2;
-	  else
-	    z-=grid->dzz[ib][k];
-
-	  if(z>-15)
-	    uboundary[k]=prop->amp;
-	  else 
-	    uboundary[k]=0;
-	}
-      } else 
-	for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	  uboundary[k]=0;
-      forced=1;
-    } else {
-      for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	uboundary[k]=-phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
-      forced=0;
-    }
-
-    for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      c[k] = 0;
-      phin[k] = 0;
-    }
-    numneighs=0;
     
-    for(nf0=0;nf0<NFACES;nf0++) {
-      neigh = grid->neigh[ib*NFACES+nf0];
-      
-      if(neigh!=-1) {
-	for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	  c[k]+=(grid->n1[j]*(u[neigh][k]-uold[neigh][k])+
-		 grid->n2[j]*(v[neigh][k]-vold[neigh][k]))/prop->dt;
-
-	for(nf=0;nf<NFACES;nf++) {
-	  ne=grid->face[neigh*NFACES+nf];
-	  nc1 = grid->grad[2*ne];
-	  nc2 = grid->grad[2*ne+1];
-	  if(nc1==-1) nc1=nc2;
-	  if(nc2==-1) nc2=nc1;
-	  
-	  for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	      uf = u[nc1][k]*grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]+
-		u[nc2][k]*(1-grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]);
-	      vf = v[nc1][k]*grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]+
-		v[nc2][k]*(1-grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]);
-
-	      phin[k]+=(uf*grid->n1[j]+vf*grid->n2[j])*
-		(grid->n1[ne]*grid->n1[j]+grid->n2[ne]*grid->n2[j])*
-		grid->normal[neigh*NFACES+nf]*grid->df[ne]/grid->Ac[neigh];
-	  }
-        }
-	numneighs++;
-      }
-    }
-
-    for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      phin[k]/=numneighs;
-      c[k]/=numneighs;
-    }
+    c0 = sqrt(GRAV*grid->dv[ib]);
+    c1 = 1.94;//0.5533; <- for openbc NH/pi
     
-    cmax=sqrt(GRAV*(grid->dv[ib]+phys->h[ib]));
+    // First compute u0, uc0, vc0, uc0old, vcd0ld;
+    u0=uc0=vc0=uc0old=vc0old=0;
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
-
-      if(phin[k]==0)
-	c[k]=0;
-      else 
-	c[k]/=phin[k];
-      
-      if(c[k]<0)
-      	c[k]=0;
-      
-      if(c[k]>cmax)
-      	c[k]=cmax;
-
-      // Set to 0 for now...
-      c[k]=0;
+      u0+=ub[j][k]*grid->dzz[ib][k];
+      uc0+=u[ib][k]*grid->dzz[ib][k];
+      vc0+=v[ib][k]*grid->dzz[ib][k];
+      uc0old+=uold[ib][k]*grid->dzz[ib][k];
+      vc0old+=vold[ib][k]*grid->dzz[ib][k];
     }
+    u0/=(grid->dv[ib]+phys->h[ib]);
+    uc0/=(grid->dv[ib]+phys->h[ib]);
+    vc0/=(grid->dv[ib]+phys->h[ib]);
+    uc0old/=(grid->dv[ib]+phys->h[ib]);
+    vc0old/=(grid->dv[ib]+phys->h[ib]);
 
-    if(forced) 
-      for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	ub[j][k]=uboundary[k];
-    else {
-      for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	ub[j][k]=(1-prop->dt*(1-prop->theta)/prop->timescale)*ub[j][k]+prop->dt*uboundary[k]/prop->timescale
-	  +2.0*prop->dt*c[k]*(u[ib][k]*grid->n1[j]+v[ib][k]*grid->n2[j]-ub[j][k])/
-    	  grid->dg[j];
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-	ub[j][k]/=(1+prop->theta*prop->dt/prop->timescale);
-    }
+    // Set the Courant numbers
+    C0=0*2.0*c0*dt/grid->dg[j];
+    C1=2.0*c1*dt/grid->dg[j];
 
-    //    for(k=grid->etop[j];k<grid->Nke[j];k++) 
-    //      ub[j][k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
+    // Now update u0 with c0 to get u0new
+    u0new=ub0;((1-C0/2-forced*dt/2/prop->timescale)*u0+0.5*C0*(3.0*(grid->n1[j]*uc0+grid->n2[j]*vc0)-
+						   (grid->n1[j]*uc0old+grid->n2[j]*vc0old))
+	   -forced*ub0/prop->timescale)/(1+C0/2+dt/2/prop->timescale);
+
+    // Now update u1 with c1 but internal waves are only radiated and not forced
+    for(k=grid->etop[j];k<grid->Nke[j];k++) 
+      ub[j][k]=u0new+((1-C1/2)*(ub[j][k]-u0)+0.5*C1*(3.0*(grid->n1[j]*(u[ib][k]-uc0)+grid->n2[j]*(v[ib][k]-vc0))-
+						     (grid->n1[j]*(uold[ib][k]-uc0old)+grid->n2[j]*(vold[ib][k]-vc0old))))
+	/(1+C1/2);
   }
 }
 
