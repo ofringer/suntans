@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.1 2002-11-03 00:17:18 fringer Exp $
+ * $Id: grid.c,v 1.2 2002-11-03 00:51:42 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:17:18  fringer
+ * Initial revision
+ *
  *
  */
 #include "grid.h"
@@ -59,6 +62,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   gridT *maingrid;
 
   ReadFileNames(myproc);
+
   // Every processor will know about data read in from
   // triangle as well as the depth.
   if(myproc==0 && VERBOSE>0) printf("Initializing Main Grid...\n");
@@ -556,32 +560,13 @@ void ReadMainGrid(gridT *grid)
  * Usage: ReadFileNames(myproc);
  * -----------------------------
  * Reads the names of the files containing the grid data
- * from the file defined by GRIDDATAFILELIST in main.h
+ * from the file defined by GRIDDATAFILELIST in suntans.h
  * 
  */
 void ReadFileNames(int myproc)
 {
   char str[BUFFERLENGTH];
-  FILE *ifile = fopen(GRIDDATAFILELIST,"r");
 
-  getline(ifile,str,"");
-  getchunk(str,POINTSFILE);
-  getline(ifile,str,"");
-  getchunk(str,EDGEFILE);
-  getline(ifile,str,"");
-  getchunk(str,CELLSFILE);
-  getline(ifile,str,"");
-  getchunk(str,INPUTDEPTHFILE);
-  getline(ifile,str,"");
-  getchunk(str,CELLCENTEREDFILE);
-  getline(ifile,str,"");
-  getchunk(str,EDGECENTEREDFILE);
-  getline(ifile,str,"");
-  getchunk(str,VERTSPACEFILE);
-  getline(ifile,str,"");
-  getchunk(str,TOPOLOGYFILE);
-  /*
-   */
   MPI_GetString(POINTSFILE,DATAFILE,"points","OpenFiles",myproc);
   MPI_GetString(EDGEFILE,DATAFILE,"edges","OpenFiles",myproc);
   MPI_GetString(CELLSFILE,DATAFILE,"cells","OpenFiles",myproc);
