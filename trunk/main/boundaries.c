@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.10 2004-11-20 22:28:40 fringer Exp $
+ * $Id: boundaries.c,v 1.11 2005-04-01 22:17:47 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.10  2004/11/20 22:28:40  fringer
+ * Changed the GetBoundaryVelocity function so that the default is to
+ * force the M2/K1 barotropic tides at x=0 (the Monterey Bay test case).
+ *
  * Revision 1.9  2004/09/30 21:01:14  fringer
  * Added the GetBoundaryVelococity function, which separates code input
  * by the user from the open boundary implementation.  This function
@@ -56,6 +60,7 @@
 
 // Local functions
 static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp);
+static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag);
 
 /*
  * Function: GetBoundaryVelocity
@@ -76,10 +81,9 @@ static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, R
   } else 
     *forced=0;
 
-  /*
   // New 3MS boundary forcing (cleaner) 9/27/2004 OBF/DAF
   *forced=1; // always
-  
+  /*
   if(y>1500) // Northern boundary
     if(cos(omega*t)>0) {
       *ub = -h*sqrt(GRAV/d);
@@ -95,6 +99,7 @@ static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, R
   // end 3MS new forcing
   */
   *forced = 1;
+
 }
 
 /*
@@ -152,33 +157,91 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
     // Now update u1 with c1 but internal waves are only radiated and not forced
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       ub[j][k]=u0new+((1-C1/2)*(ub[j][k]-u0)+0.5*C1*(3.0*(grid->n1[j]*(u[ib][k]-uc0)+grid->n2[j]*(v[ib][k]-vc0))-
-					       (grid->n1[j]*(uold[ib][k]-uc0old)+grid->n2[j]*(vold[ib][k]-vc0old))))
-	/(1+C1/2);
+						     (grid->n1[j]*(uold[ib][k]-uc0old)+grid->n2[j]*(vold[ib][k]-vc0old))))/(1+C1/2);
   }
 }
 
 /*
- * Function: SetBoundaryScalars
- * Usage: SetBoundaryScalars(boundary_s,grid,phys,prop,"salt");
- * ------------------------------------------------------------
+ * Function: BoundaryScalars
+ * Usage: BoundaryScalars(boundary_s,boundary_T,grid,phys,prop);
+ * -------------------------------------------------------------
  * This will set the values of the scalars at the open boundaries.
  * 
  */
-void SetBoundaryScalars(REAL **boundary_scal, gridT *grid, physT *phys, propT *prop, char *type) {
+void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
   int jptr, j, ib, k;
+  REAL z;
 
-  if(!strcmp(type,"salt")) {
-    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
       j=grid->edgep[jptr];
       ib=grid->grad[2*j];
 
-      for(k=grid->ctop[ib];k<grid->Nk[ib];k++)
-	boundary_scal[jptr-grid->edgedist[2]][k]=-0.4;
+      z=0;
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+	z-=grid->dzz[ib][k];
+	phys->boundary_s[jptr-grid->edgedist[2]][k]=phys->s[ib][k];
+	if(z>-10)
+	  phys->boundary_T[jptr-grid->edgedist[2]][k]=0;
+	else
+	  phys->boundary_T[jptr-grid->edgedist[2]][k]=1;
+	z-=grid->dzz[ib][k];
+      }
+  }
+}
+
+/*
+ * Function: BoundaryVelocities
+ * Usage: BoundaryVelocities(grid,phys,prop);
+ * ------------------------------------------
+ * This will set the values of u,v,w, and h at the boundaries.
+ * 
+ */
+void BoundaryVelocities(gridT *grid, physT *phys, propT *prop) {
+  int jptr, j, ib, k, boundary_index;
+  REAL z, amp=prop->amp, rtime=prop->rtime, omega=prop->omega, boundary_flag;
+
+  /* For three-mile slough */
+  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+    boundary_index = jptr-grid->edgedist[2];
+    j=grid->edgep[jptr];
+    ib=grid->grad[2*j];
+
+    if(cos(omega*rtime)>=0) { // Ebb (northward)
+      if(grid->yv[ib]>1500) 
+	boundary_flag=open;
+      else
+	boundary_flag=specified;
+    } else {
+      if(grid->yv[ib]>1500) 
+	boundary_flag=specified;
+      else
+	boundary_flag=open;
     }
-  } else if(!strcmp(type,"temperature")) {
-    // Set the temperature here!
-  } else if(WARNING)
-    printf("Warning! Invalid boundary scalar specification in SetBoundaryScalars.\n");  
+
+    phys->boundary_flag[boundary_index]=boundary_flag;
+
+    SetUVWH(grid,phys,prop,ib,j,boundary_index,boundary_flag);
+  }
+}
+
+static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag) {
+  int k;
+
+  if(boundary_flag==open) {
+    phys->boundary_h[boundary_index]=phys->h[ib];
+    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+      phys->boundary_u[boundary_index][k]=phys->uc[ib][k];
+      phys->boundary_v[boundary_index][k]=phys->vc[ib][k];
+      phys->boundary_w[boundary_index][k]=0.5*(phys->w[ib][k]+phys->w[ib][k+1]);
+    }
+  } else {
+    phys->boundary_h[boundary_index]=prop->amp*fabs(cos(prop->omega*prop->rtime));
+    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+      phys->boundary_u[boundary_index][k]=phys->u[j][k]*grid->n1[j];
+      phys->boundary_v[boundary_index][k]=phys->u[j][k]*grid->n2[j];
+      phys->boundary_w[boundary_index][k]=0.5*(phys->w[ib][k]+phys->w[ib][k+1]);
+    }
+  }
 }
 	
       
