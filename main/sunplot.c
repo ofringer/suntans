@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.3 2003-03-31 20:23:21 fringer Exp $
+ * $Id: sunplot.c,v 1.4 2003-03-31 20:41:05 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2003/03/31 20:23:21  fringer
+ * Cleaning up...
+ *
  * Revision 1.2  2003/03/31 19:57:36  fringer
  * Added log and id lines.
  *
@@ -31,6 +34,11 @@
 #define BUFFER 256
 #define CMAPFILE "jet.cmap"
 
+typedef enum {
+  false, true
+} bool;
+
+void InitializeGraphics(void);
 void mydraw(char plottype, int procnum);
 void ReadGrid(int proc);
 void ReadScalar(float *scal, int k, int Nk, int np, char *filename);
@@ -41,9 +49,13 @@ void Fill(XPoint *vertices, int N, int cindex, int edges);
 void CAxis(float *caxis, float *data, int Nc);
 void ReadColorMap(char *str);
 void UnSurf(float *xc, float *yc, int *cells, float *data, int N);
+void SetDataLimits(void);
+void SetAxesPosition(void);
 
-/*Linux users will need to add -ldl to the Makefile to compile 
- *this example.
+/*
+ * Linux users will need to add -ldl to the Makefile to compile 
+ * this example.
+ *
  */
 Display *dis;
 Window win;
@@ -57,40 +69,26 @@ Colormap colormap;
 int plottype='s',Np, Nc, n=1, nsteps=21, k=1, Nkmax=20;
 int *cells;
 float caxis[2], cmap[64][3], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4];
-int axisType, oldaxisType, edgelines, white, black, procnum=0;
+int axisType, oldaxisType, white, black, procnum=0;
+bool edgelines;
 char str[BUFFER];
 
 int main() {
-  int i, ind, redraw;
-  float val;
+  bool redraw;
 
+  InitializeGraphics();
   ReadColorMap(CMAPFILE);
-
-  dis = XOpenDisplay(NULL);
-  win = XCreateSimpleWindow(dis, RootWindow(dis, 0), 
-			    1, 1, WIDTH, HEIGHT, 0, BlackPixel (dis, 0), BlackPixel(dis, 0));
-  screen = ScreenOfDisplay(dis,0);
-  pix = XCreatePixmap(dis,win,WIDTH,HEIGHT,DefaultDepthOfScreen(screen));
-
-  XMapWindow(dis, win);
-
-  colormap = DefaultColormap(dis, 0);
-  gc = XCreateGC(dis, win, 0, 0);
-  black = BlackPixel(dis,0);
-  white = WhitePixel(dis,0);
 
   XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask);
 
   k=Nkmax/2;
   
   axisType='i';
-  edgelines=1;
+  edgelines=false;
   ReadGrid(procnum);
-  //  mydraw(plottype,procnum);
-  //  XCopyArea(dis,pix,win,gc,0,0,WIDTH,HEIGHT,0,0);
 
-  while (1)  {
-    redraw=0;
+  while(true) {
+    redraw=false;
     XNextEvent(dis, &report);
     switch  (report.type) {
     case Expose:   
@@ -98,46 +96,50 @@ int main() {
       mydraw(plottype,procnum);
       XCopyArea(dis,pix,win,gc,0,0,WIDTH,HEIGHT,0,0);
       break;
+      /*    case ButtonPress:
+      printf("Pressed button!\n");
+      break;
+      */
     case KeyPress:
       switch(XLookupKeysym(&report.xkey, 0)) {
       case XK_q:
 	exit(0);
 	break;
       case XK_k: case XK_Up:
-	if(k<Nkmax) { redraw = 1; k++; }
-	  else { redraw = 0; printf("At k=Nkmax!\n"); }
+	if(k<Nkmax) { redraw = true; k++; }
+	  else { redraw = false; printf("At k=Nkmax!\n"); }
 	break;
       case XK_j: case XK_Down:
-	if(k>1) { redraw = 1; k--; }
-	else { redraw = 0 ; printf("At k=1!\n"); }
+	if(k>1) { redraw = true; k--; }
+	else { redraw = false ; printf("At k=1!\n"); }
 	break;
       case XK_p : case XK_Left:
-	if(n>1) { redraw = 1; n--; }
-	else { redraw = 0 ; printf("At n=1!\n"); }
+	if(n>1) { redraw = true; n--; }
+	else { redraw = false ; printf("At n=1!\n"); }
 	break;
       case XK_n: case XK_Right:
-	if(n<nsteps) { redraw = 1; n++; }
-	else { redraw = 0 ; printf("At n=nsteps!\n"); }
+	if(n<nsteps) { redraw = true; n++; }
+	else { redraw = false ; printf("At n=nsteps!\n"); }
 	break;
       case XK_s:
 	if(plottype!='s') {
 	  plottype='s';
 	  printf("Salinity selected...\n");
-	  redraw=1;
+	  redraw=true;
 	}
 	break;
       case XK_h:
 	if(plottype!='h') {
 	  plottype='h';
 	  printf("Free-surface selected...\n");
-	  redraw=1;
+	  redraw=true;
 	}
 	break;
       case XK_d:
 	if(plottype!='d') {
 	  plottype='d';
 	  printf("Depth selected...\n");
-	  redraw=1;
+	  redraw=true;
 	}
 	break;
       case XK_a:
@@ -148,7 +150,7 @@ int main() {
 	  printf("Changing plottype to normal\n");
 	  axisType='n';
 	}
-	redraw=1;
+	redraw=true;
 	break;
       case XK_e:
 	if(edgelines==0) {
@@ -158,7 +160,7 @@ int main() {
 	  printf("Removing edge lines\n");
 	  edgelines=0;
 	}
-	redraw=1;
+	redraw=true;
 	break;
       default:
 	if(isdigit(XLookupKeysym(&report.xkey, 0))) {
@@ -167,7 +169,7 @@ int main() {
 	  if(procnum!=atoi(str))
 	    procnum=atoi(str);
 	    ReadGrid(procnum);
-	    redraw=1;
+	    redraw=true;
 	  }
 	break;
       }
@@ -183,24 +185,23 @@ int main() {
 
 void ReadGrid(int proc) {
   int i, ind;
-  char str1[256];
   FILE *tfile,*dfile,*ifile = fopen("jet.cmap","r"), 
     *pfile = fopen("/home/fringer/research/SUNTANS/data/points.dat","r");
-  sprintf(str1,"/home/fringer/research/SUNTANS/data/cells.dat.%d",proc);
-  tfile = fopen(str1,"r");
-  sprintf(str1,"/home/fringer/research/SUNTANS/data/celldata.dat.%d",proc);
-  dfile = fopen(str1,"r");
+  sprintf(str,"/home/fringer/research/SUNTANS/data/cells.dat.%d",proc);
+  tfile = fopen(str,"r");
+  sprintf(str,"/home/fringer/research/SUNTANS/data/celldata.dat.%d",proc);
+  dfile = fopen(str,"r");
 
   Np=0;
-  while(fgets(str1,256,pfile)) Np++;
+  while(fgets(str,256,pfile)) Np++;
   fclose(pfile);
   pfile = fopen("/home/fringer/research/SUNTANS/data/points.dat","r"),
 
   Nc=0;
-  while(fgets(str1,256,tfile)) Nc++;
+  while(fgets(str,256,tfile)) Nc++;
   fclose(tfile);
-  sprintf(str1,"/home/fringer/research/SUNTANS/data/cells.dat.%d",proc);
-  tfile = fopen(str1,"r"),
+  sprintf(str,"/home/fringer/research/SUNTANS/data/cells.dat.%d",proc);
+  tfile = fopen(str,"r"),
 
   xc = (float *)malloc(Np*sizeof(float));
   yc = (float *)malloc(Np*sizeof(float));
@@ -227,8 +228,8 @@ void ReadGrid(int proc) {
   fclose(dfile);
 }
 
-void ReadScalar(float *scal, int k, int Nk, int np, char *filename) {
-  int i, kp, currptr;
+void ReadScalar(float *scal, int kp, int Nk, int np, char *filename) {
+  int i, currptr;
   FILE *sfile = fopen(filename,"r");
   double *dum = (double *)malloc(Nc*sizeof(double));
   float dummy;
@@ -237,39 +238,10 @@ void ReadScalar(float *scal, int k, int Nk, int np, char *filename) {
     scal[i]=EMPTY;
 
   if(Nk==1) {
-    /*
-    for(np=1;np<n;np++)
-      for(i=0;i<Nc;i++)
-	fscanf(sfile,"%f\n",&dummy);
-    */
     fseek(sfile,(np-1)*Nc*sizeof(float),SEEK_SET);
-    /*
-  for(i=0;i<Nc;i++) 
-    fscanf(sfile,"%f\n",&scal[i]);
-    */
     fread(dum,sizeof(double),Nc,sfile);
   } else {
-    /*
-    for(np=1;np<n;np++)
-      for(i=0;i<Nc;i++)
-	for(kp=0;kp<Nk;kp++)
-	  fscanf(sfile,"%f\n",&dummy);
-    */
-    //    printf("np = %d\n",np);
-    currptr=fseek(sfile,(np-1)*Nc*Nk*sizeof(double),SEEK_CUR);
-    //    printf("Current pointer = %d\n",ftell(sfile));
-    /*
-    for(i=0;i<Nc;i++) {
-      for(kp=0;kp<k;kp++)
-	fscanf(sfile,"%f\n",&dummy);
-      fscanf(sfile,"%f\n",&scal[i]);
-      for(kp=k+1;kp<Nk;kp++)
-	fscanf(sfile,"%f\n",&dummy);
-    }
-    */
-    //    printf("Nk = %d, Nc= %d, k=%d\n",Nk,Nc,k);
-    currptr=fseek(sfile,Nc*(k-1)*sizeof(double),SEEK_CUR);
-    //    printf("Current pointer = %d\n",ftell(sfile));
+    currptr=fseek(sfile,(Nc*(kp-1)+(np-1)*Nc*Nk)*sizeof(double),SEEK_CUR);
     fread(dum,sizeof(double),Nc,sfile);
     for(i=0;i<Nc;i++)
       scal[i]=dum[i];
@@ -281,53 +253,43 @@ void mydraw(char plottype, int procnum)
 {
   int x1, y1, x2, y2, N=3, mode=1, x, y, width, height, font_height, Nx, Ny, kp, np;
   XPoint *vertices = (XPoint *)malloc(4*sizeof(XPoint));
-  char  str1[256];
+  char  str[256];
   XFontStruct *font_info;
   int i, ind, j;
   FILE *sfile, *hfile;
   float val, dx, dy, xp, yp, xmax, xmin, ymax, ymin, zmax, zmin,
-    xp1, yp1, *salt;
+    xp1, yp1, *scal;
 
-  sprintf(str1,"/home/fringer/research/SUNTANS/data/s.dat.%d",procnum);
-  sfile = fopen(str1,"r");
-  sprintf(str1,"/home/fringer/research/SUNTANS/data/h.dat.%d",procnum);
-  hfile = fopen(str1,"r");
+  sprintf(str,"/home/fringer/research/SUNTANS/data/s.dat.%d",procnum);
+  sfile = fopen(str,"r");
+  sprintf(str,"/home/fringer/research/SUNTANS/data/h.dat.%d",procnum);
+  hfile = fopen(str,"r");
 
-  salt = (float *)malloc(Nc*sizeof(float));
+  scal = (float *)malloc(Nc*sizeof(float));
 
   switch(plottype) {
   case 's':
-    ReadScalar(salt,k,Nkmax,n,"/home/fringer/research/SUNTANS/data/s.dat.0");
+    ReadScalar(scal,k,Nkmax,n,"/home/fringer/research/SUNTANS/data/s.dat.0");
     break;
   case 'h':
-    ReadScalar(salt,k,1,n,"/home/fringer/research/SUNTANS/data/fs.dat.0");
+    ReadScalar(scal,k,1,n,"/home/fringer/research/SUNTANS/data/fs.dat.0");
     break;
   case 'd':
     for(i=0;i<Nc;i++)
-      salt[i]=depth[i];
+      scal[i]=depth[i];
     break;
   }
 
-  dataLimits[0] = Min(xc,Np);
-  dataLimits[1] = Max(xc,Np);
-  dataLimits[2] = Min(yc,Np);
-  dataLimits[3] = Max(yc,Np);
+  SetDataLimits();
+  SetAxesPosition();
 
-  axesPosition[0] = 0.1;
-  axesPosition[1] = 0.1;
-  axesPosition[2] = 0.8;
-  axesPosition[3] = 0.8;
+  CAxis(caxis,scal,Nc);
 
-  if(axisType=='i')
-    AxisImage(axesPosition,dataLimits);
+  UnSurf(xc,yc,cells,scal,Nc);
 
-  CAxis(caxis,salt,Nc);
-
-  UnSurf(xc,yc,cells,salt,Nc);
-
-  sprintf(str1,"Time step: %d, K-level: %d",n,k); 
+  sprintf(str,"Time step: %d, K-level: %d",n,k); 
   XSetForeground(dis,gc,white);
-  XDrawString(dis,pix,gc,WIDTH/4,HEIGHT-10,str1,strlen(str1));
+  XDrawString(dis,pix,gc,WIDTH/4,HEIGHT-10,str,strlen(str));
 
   XFlush(dis);
 }
@@ -435,4 +397,36 @@ void UnSurf(float *xc, float *yc, int *cells, float *data, int N) {
     Fill(vertices,3,ind,edgelines);
   }
   
+}
+
+void InitializeGraphics(void) {
+  dis = XOpenDisplay(NULL);
+  win = XCreateSimpleWindow(dis, RootWindow(dis, 0), 
+			    1, 1, WIDTH, HEIGHT, 0, BlackPixel (dis, 0), BlackPixel(dis, 0));
+  screen = ScreenOfDisplay(dis,0);
+  pix = XCreatePixmap(dis,win,WIDTH,HEIGHT,DefaultDepthOfScreen(screen));
+
+  XMapWindow(dis, win);
+
+  colormap = DefaultColormap(dis, 0);
+  gc = XCreateGC(dis, win, 0, 0);
+  black = BlackPixel(dis,0);
+  white = WhitePixel(dis,0);
+}
+
+void SetDataLimits(void) {
+  dataLimits[0] = Min(xc,Np);
+  dataLimits[1] = Max(xc,Np);
+  dataLimits[2] = Min(yc,Np);
+  dataLimits[3] = Max(yc,Np);
+}
+
+void SetAxesPosition(void) {
+  axesPosition[0] = 0.1;
+  axesPosition[1] = 0.1;
+  axesPosition[2] = 0.8;
+  axesPosition[3] = 0.8;
+
+  if(axisType=='i')
+    AxisImage(axesPosition,dataLimits);
 }
