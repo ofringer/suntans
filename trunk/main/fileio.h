@@ -3,8 +3,11 @@
  * --------------
  * Header file for fileio.c.
  *
- * $Id: fileio.h,v 1.1 2002-11-03 00:20:27 fringer Exp $
+ * $Id: fileio.h,v 1.2 2003-05-01 00:33:15 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:20:27  fringer
+ * Initial revision
+ *
  *
  */
 #ifndef _fileio_h
@@ -13,6 +16,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/*
+ * Function: MyFOpen
+ * Usage: fid = MyFOpen(string,"r","GetValue");
+ * --------------------------------------------
+ * Exits if the requested file does not exist.
+ * The third string is useful for determining which
+ * function the function was called from.
+ *
+ */
+FILE *MyFOpen(char *file, char *perms, char *caller);
 
 /*
  * Function: getfile
