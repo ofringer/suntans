@@ -6,8 +6,14 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.27 2004-01-27 05:28:11 fringer Exp $
+ * $Id: grid.c,v 1.28 2004-03-18 17:18:03 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.27  2004/01/27 05:28:11  fringer
+ * Working version for Monterey Bay case.  For the vwgt, the number of grid
+ * cells in the vertical is used as the weighting function rather than the
+ * depth since the spacing in the vertical is not constant anymore.  See
+ * GetDZ in initialize.c
+ *
  * Revision 1.26  2003/12/02 23:34:41  fringer
  * Fixed VertGrid so that it works with variable vertical grid spacing.
  *
@@ -133,6 +139,8 @@
 #include "util.h"
 #include "initialization.h"
 #include "memory.h"
+#include "triangulate.h"
+#include "report.h"
 
 #define VTXDISTMAX 100
 
@@ -162,6 +170,7 @@ static void FreeGrid(gridT *grid, int numprocs);
 static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs);
 static void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int Nc, int Ne);
 static void CreateNormalArray(int *grad, int *face, int *normal, int Nc);
+
 void CorrectVoronoi(gridT *grid);
 
 /************************************************************************/
@@ -232,7 +241,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
 
 void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 {
-  int j, n, numflag=0, wgtflag=0, options[5], edgecut;
+  int j, numflag=0, wgtflag=0, options[5], edgecut;
   int myproc, numprocs, proc;
   MPI_Status status;
   GraphType graph;
@@ -313,8 +322,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
 			MPI_Comm comm)
 {
-  int n, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *num_send, *num_recv;
+  int n, neigh, neighproc, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
 
@@ -370,8 +378,7 @@ void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc,
 void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
 			 MPI_Comm comm)
 {
-  int n, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *num_send, *num_recv;
+  int n, neigh, neighproc, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status *status = (MPI_Status *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvCellData2D");
   MPI_Request *request = (MPI_Request *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvCellData2D");
@@ -429,8 +436,7 @@ void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc,
 void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
 			MPI_Comm comm)
 {
-  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
 
@@ -501,8 +507,7 @@ void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc,
 void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
 			MPI_Comm comm)
 {
-  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status *status = (MPI_Status *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvCellData3D");
   MPI_Request *request = (MPI_Request *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvCellData3D");
@@ -574,8 +579,7 @@ void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc,
 void SendRecvWData(REAL **celldata, gridT *grid, int myproc, 
 		   MPI_Comm comm)
 {
-  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
 
@@ -646,8 +650,7 @@ void SendRecvWData(REAL **celldata, gridT *grid, int myproc,
 void ISendRecvWData(REAL **celldata, gridT *grid, int myproc, 
 		   MPI_Comm comm)
 {
-  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status *status = (MPI_Status *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvCellData2D");
   MPI_Request *request = (MPI_Request *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvCellData2D");
@@ -719,8 +722,7 @@ void ISendRecvWData(REAL **celldata, gridT *grid, int myproc,
 void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
 			MPI_Comm comm)
 {
-  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
 
@@ -792,8 +794,7 @@ void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
 void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
 			MPI_Comm comm)
 {
-  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status *status = (MPI_Status *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvEdgeData3D");
   MPI_Request *request = (MPI_Request *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvEdgeData3D");
@@ -857,8 +858,7 @@ void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
 
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm)
 {
-  int n, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend;
+  int n, neigh, neighproc, noncontig, flag;
   int **recv, **send;
   MPI_Status status;
 
@@ -937,8 +937,7 @@ void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Co
 
 void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm)
 {
-  int j,n, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend;
+  int n, neigh, neighproc, noncontig, flag;
   int **recv, **send;
   MPI_Status status;
 
@@ -1098,9 +1097,9 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc)
  */
 void ReadMainGrid(gridT *grid, int myproc)
 {
-  int j, n, nei, nf, numprocs;
+  int j, n, nei, nf;
   char str[BUFFERLENGTH];
-  FILE *ifile, *fid;
+  FILE *ifile;
 
   ifile = MPI_FOpen(POINTSFILE,"r","ReadMainGrid",myproc);
   for(n=0;n<grid->Np;n++) {
@@ -1146,8 +1145,6 @@ void ReadMainGrid(gridT *grid, int myproc)
  */
 void ReadFileNames(int myproc)
 {
-  char str[BUFFERLENGTH];
-
   MPI_GetFile(POINTSFILE,DATAFILE,"points","OpenFiles",myproc);
   MPI_GetFile(EDGEFILE,DATAFILE,"edges","OpenFiles",myproc);
   MPI_GetFile(CELLSFILE,DATAFILE,"cells","OpenFiles",myproc);
@@ -1318,7 +1315,7 @@ static void CreateNormalArray(int *grad, int *face, int *normal, int Nc)
 
 void Connectivity(gridT *grid, int myproc)
 {
-  int j, n, nf, ng, ne, neigh, nc, nc1, nc2, Nge, pcnt, *faceind;
+  int n, nf, ng, ne;
 
   /* Create the face array, which contains indexes to the edges of
      each cell */
@@ -1364,7 +1361,7 @@ void Connectivity(gridT *grid, int myproc)
  */
 int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
 {
-  int j, nf, nei, ipart[NFACES], n1, mp;
+  int nf, nei;
 
   if(mgptr >= maingrid->Nc || mgptr < 0) {
     printf("Error in IsBoundaryCell: index out of bounds!\n");
@@ -1395,7 +1392,7 @@ int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
  */
 static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 {
-  int j, jptr, n, nf, neigh, Np=maingrid->Np, Nc=grid->Nc, Ne=grid->Ne;
+  int j, n, nf, neigh, Np=maingrid->Np, Nc=grid->Nc, Ne=grid->Ne;
   char str[BUFFERLENGTH];
   FILE *ofile;
 
@@ -1559,7 +1556,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
  */
 void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm) 
 {
-  int neigh, j, jptr, n, nf, Nkmax;
+  int neigh, n, nf, Nkmax;
   char str[BUFFERLENGTH];
   FILE *ifile;
 
@@ -1823,8 +1820,8 @@ static void FreeGrid(gridT *grid, int numprocs)
 
 static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 {
-  int i, j, k, n, ne, myproc, numprocs, status, vertgridcorrect, stairstep;
-  REAL dz0, dmin, dmax, dmaxtest, z, dzsmall;
+  int i, j, k, ne, myproc, numprocs, vertgridcorrect, stairstep;
+  REAL dz0, dmin, dmax, dmaxtest, dzsmall;
 
   MPI_Comm_size(comm,&numprocs);
   MPI_Comm_rank(comm,&myproc);
@@ -1977,8 +1974,8 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
  */
 static void GetGraph(GraphType *graph, gridT *grid, MPI_Comm comm)
 {
-  int i, j, k, l, numprocs, myproc;
-  int nvtxs, nedges, penum, snedges, snvtxs;
+  int i, k, l, numprocs, myproc;
+  int nvtxs, penum, snvtxs;
   idxtype *gxadj, *gadjncy, *gvwgt;  
   idxtype *vtxdist, *sxadj, *ssize, *svwgt;
   MPI_Status status;
@@ -2114,12 +2111,11 @@ static void ResortBoundaries(gridT *localgrid, int myproc)
 
 static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Comm comm)
 {
-  int i, n, nf, ne, neigh, neighproc, nc, j, k, mark, bctype, count, found;
+  int i, n, nf, ne, neigh, neighproc, j, k, mark;
   int **cell_send, **cell_recv, **edge_send, **edge_recv;
   int *num_cells_send, *num_cells_recv,
     *num_edges_send, *num_edges_recv;
   int *cellp, *edgep, *celldist, *edgedist, *lcptr, *leptr;
-  int kcellsend, kcellrecv, kedgesend, kedgerecv;
   unsigned short *flagged;
   MPI_Status status;
 
@@ -2484,7 +2480,7 @@ static void ReOrder(gridT *grid)
 
 static void EdgeMarkers(gridT *maingrid, gridT **localgrid, int myproc)
 {
-  int j, n, ne, nc1, nc2, ne1, ne2, nf, nc, neigh, np1, np2, flag;
+  int n, ne, nf;
 
   for(n=0;n<(*localgrid)->Nc;n++) 
     if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==3) 
@@ -2613,7 +2609,7 @@ int IsEdgeNeighborProc(int ne, gridT *maingrid, gridT *localgrid,
  */
 void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs)
 {
-  int nf, j, k, proc, neigh1, neigh2, loc;
+  int nf, j, proc, neigh1, neigh2, loc;
 
   (*maingrid)->numneighs=(int *)SunMalloc(numprocs*sizeof(int),"Topology");
   (*maingrid)->neighs=(int **)SunMalloc(numprocs*sizeof(int *),"Topology");
@@ -2675,7 +2671,7 @@ void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs)
  */
 static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
 {
-  int i, j, k, n, nc, nc1, nc2, nf, ne, ng, flag, mgptr, *lcptr, *leptr, bctype, iface;
+  int i, j, k, n, nc, nf, ne, ng, flag, mgptr, *lcptr, *leptr, bctype, iface;
   unsigned short *flagged = 
     (unsigned short *)SunMalloc(maingrid->Ne*sizeof(unsigned short),"TransferData");
 
@@ -2806,8 +2802,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
 static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 {
   int n, nf, k, j, Nc=(*grid)->Nc, Ne=(*grid)->Ne;
-  REAL xt[NFACES], yt[NFACES], xc, yc, den, R0, l0;
-  FILE *ofile;
+  REAL xt[NFACES], yt[NFACES], xc, yc, den, R0;
   
   (*grid)->Ac = (REAL *)SunMalloc(Nc*sizeof(REAL),"Geometry");
   (*grid)->df = (REAL *)SunMalloc(Ne*sizeof(REAL),"Geometry");
@@ -2950,8 +2945,8 @@ REAL GetCircumcircleRadius(REAL *xt, REAL *yt, int Nf)
   
 REAL GetArea(REAL *xt, REAL *yt, int Nf)
 {
-  int i;
-  REAL n,b,r1,r2,h,l,a1,xt2[NFACES],yt2[NFACES],area;
+  REAL b,r1,r2,h,l,xt2[NFACES],yt2[NFACES],area;
+
   if(Nf==3) {
     b=sqrt(pow(xt[1]-xt[0],2)+
 	   pow(yt[1]-yt[0],2));
@@ -2975,6 +2970,7 @@ REAL GetArea(REAL *xt, REAL *yt, int Nf)
       area+=GetArea(xt2,yt2,3);
       return area;
     }
+  return 0;
 }
 
 static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
