@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.17 2003-09-16 23:51:58 fringer Exp $
+ * $Id: grid.c,v 1.18 2003-09-16 23:54:13 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.17  2003/09/16 23:51:58  fringer
+ * Added routines to compute def, which is the distance from the circumcircle to each face of a cell.  This requires that dg=2*dg on edges that are non-computational edges.
+ *
  * Revision 1.16  2003/06/10 03:23:23  fringer
  * Changed MPI_GetString to MPI_GetFile
  *
@@ -2764,7 +2767,7 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 			      pow((*grid)->n2[n],2));
 	(*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
 	(*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
-	(*grid)->dg[n] = 2.0*grid->dg[n];
+	(*grid)->dg[n] = 2.0*(*grid)->dg[n];
       } else {
         (*grid)->n1[n] = (*grid)->xv[(*grid)->grad[2*n]]-xc;
         (*grid)->n2[n] = (*grid)->yv[(*grid)->grad[2*n]]-yc;
@@ -2772,7 +2775,7 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 			      pow((*grid)->n2[n],2));
 	(*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
 	(*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
-	(*grid)->dg[n] = 2.0*grid->dg[n];
+	(*grid)->dg[n] = 2.0*(*grid)->dg[n];
       }
     }
   }
