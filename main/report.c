@@ -7,8 +7,11 @@
  * This file contains functions that print out data into
  * files as well as printing for debugging.
  *
- * $Id: report.c,v 1.5 2004-05-29 20:25:02 fringer Exp $
+ * $Id: report.c,v 1.6 2004-06-26 01:05:54 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2004/05/29 20:25:02  fringer
+ * Revision before converting to CVS.
+ *
  * Revision 1.4  2003/04/26 14:18:20  fringer
  * Added TRIANGLE option, which allows the user to select -t, which triangulates
  * a point set specified by the file PSLGFILE.
@@ -70,8 +73,10 @@ void ParseFlags(int argc, char *argv[], int myproc)
 	      done=1;
 	else if(argv[i][1]=='-') {
 	  j=js=2;
-	  while(argv[i][j]!='=')
-	    str[j-js]=argv[i][j++];
+	  while(argv[i][j]!='=') {
+	    str[j-js]=argv[i][j];
+	    j++;
+	  }
 	  str[j-js]='\0';
 	  j++;
 	  js=j;
