@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.69 2004-07-27 20:33:40 fringer Exp $
+ * $Id: phys.c,v 1.70 2004-08-22 18:14:06 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.69  2004/07/27 20:33:40  fringer
+ * Updated UpdateScalars which now allows for the specification of the
+ * scalar quantities at the boundaries using the SetBoundaryScalars
+ * function defined in boundaries.c.
+ *
  * Revision 1.68  2004/06/30 23:48:55  fringer
  * Added lines to specify kappa_tv in EddyViscosity() since kappa_tv was
  * not being specified (presumably was initialized to zero upon malloc).
@@ -679,7 +684,7 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc) {
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
 {
   int i, j, k, Nc=grid->Nc;
-  REAL z;
+  REAL z, *stmp;
 
   prop->nstart=0;
 
@@ -708,16 +713,50 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   // Initialize the temperature, salinity, and background salinity
   // distributions.  Since z is not stored, need to use dz[k] to get
   // z[k].
-  for(i=0;i<Nc;i++) {
-    z = 0;
-    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      z-=grid->dz[k]/2;
-      phys->T[i][k]=ReturnTemperature(grid->xv[i],grid->yv[i],z,grid->dv[i]);
-      phys->s[i][k]=ReturnSalinity(grid->xv[i],grid->yv[i],z);
-      phys->s0[i][k]=ReturnSalinity(grid->xv[i],grid->yv[i],z);
-      z-=grid->dz[k]/2;
+  if(prop->readSalinity) {
+    stmp = (REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
+    fread(stmp,sizeof(REAL),grid->Nkmax,prop->InitSalinityFID);
+    fclose(prop->InitSalinityFID);
+
+    for(i=0;i<Nc;i++) 
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	phys->s[i][k]=stmp[k];
+	phys->s0[i][k]=stmp[k];
+      }
+    SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
+  } else {
+    for(i=0;i<Nc;i++) {
+      z = 0;
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	z-=grid->dz[k]/2;
+	phys->s[i][k]=ReturnSalinity(grid->xv[i],grid->yv[i],z);
+	phys->s0[i][k]=ReturnSalinity(grid->xv[i],grid->yv[i],z);
+	z-=grid->dz[k]/2;
+      }
     }
   }
+
+  if(prop->readTemperature) {
+    stmp = (REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
+    fread(stmp,sizeof(REAL),grid->Nkmax,prop->InitTemperatureFID);
+    fclose(prop->InitTemperatureFID);    
+
+    for(i=0;i<Nc;i++) 
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+	phys->T[i][k]=stmp[k];
+
+    SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
+  } else {
+    for(i=0;i<Nc;i++) {
+      z = 0;
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	z-=grid->dz[k]/2;
+	phys->T[i][k]=ReturnTemperature(grid->xv[i],grid->yv[i],z,grid->dv[i]);
+	z-=grid->dz[k]/2;
+      }
+    }
+  }
+  
 
   // Initialize the velocity field 
   for(j=0;j<grid->Ne;j++) {
@@ -2805,13 +2844,14 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
 
   // Add on boundary fluxes, using stmp2 as the temporary storage
   // variable
+
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
     
     for(k=grid->ctop[i];k<grid->Nk[i];k++)
       phys->stmp2[i][k]=0;
   }
-
+  /*
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
     
@@ -2826,6 +2866,7 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
 	phys->stmp2[ib][k]+=dt/grid->Ac[ib]*phys->utmp[j][k]*grid->df[j]*boundary_scal[jptr-grid->edgedist[2]][k];
     }
   }
+  */
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -3557,6 +3598,8 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->Coriolis_f = MPI_GetValue(DATAFILE,"Coriolis_f","ReadProperties",myproc);
   (*prop)->sponge_distance = MPI_GetValue(DATAFILE,"sponge_distance","ReadProperties",myproc);
   (*prop)->sponge_decay = MPI_GetValue(DATAFILE,"sponge_decay","ReadProperties",myproc);
+  (*prop)->readSalinity = MPI_GetValue(DATAFILE,"readSalinity","ReadProperties",myproc);
+  (*prop)->readTemperature = MPI_GetValue(DATAFILE,"readTemperature","ReadProperties",myproc);
 }
 
 /* 
@@ -3569,6 +3612,15 @@ void ReadProperties(propT **prop, int myproc)
 void OpenFiles(propT *prop, int myproc)
 {
   char str[BUFFERLENGTH], filename[BUFFERLENGTH];
+
+  if(prop->readSalinity) {
+    MPI_GetFile(filename,DATAFILE,"InitSalinityFile","OpenFiles",myproc);
+    prop->InitSalinityFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
+  }
+  if(prop->readTemperature) {
+    MPI_GetFile(filename,DATAFILE,"InitTemperatureFile","OpenFiles",myproc);
+    prop->InitTemperatureFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
+  }
 
   MPI_GetFile(filename,DATAFILE,"FreeSurfaceFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
