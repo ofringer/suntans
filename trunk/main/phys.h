@@ -1,8 +1,11 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.7 2004-05-29 20:25:02 fringer Exp $
+ * $Id: phys.h,v 1.8 2004-07-27 20:37:05 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.7  2004/05/29 20:25:02  fringer
+ * Revision before converting to CVS.
+ *
  * Revision 1.6  2003/05/12 00:19:03  fringer
  * Added kriging_cov and nonlinear to the prop structure, and changed
  * utmp2 to ut since it stores the tangential velocity field (and other
@@ -48,7 +51,9 @@ typedef struct _physT {
   REAL **wf;
   REAL **q;
   REAL **s;
+  REAL **boundary_s;
   REAL **T;
+  REAL **boundary_T;
   REAL **s0;
   REAL *h;
 
