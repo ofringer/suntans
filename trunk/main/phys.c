@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.6 2002-11-30 13:44:26 fringer Exp $
+ * $Id: phys.c,v 1.7 2002-12-01 10:39:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.6  2002/11/30 13:44:26  fringer
+ * Working version for the simplified Shelf bathymetry.
+ *
  * Revision 1.5  2002/11/05 01:31:17  fringer
  * Added baroclinic term
  *
@@ -90,6 +93,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->wtmp = (REAL **)malloc(Nc*sizeof(REAL *));
   (*phys)->q = (REAL **)malloc(Nc*sizeof(REAL *));
   (*phys)->s = (REAL **)malloc(Nc*sizeof(REAL *));
+  (*phys)->s0 = (REAL **)malloc(Nc*sizeof(REAL *));
   (*phys)->stmp = (REAL **)malloc(Nc*sizeof(REAL *));
   (*phys)->nu_tv = (REAL **)malloc(Nc*sizeof(REAL *));
   (*phys)->tau_T = (REAL *)malloc(Ne*sizeof(REAL));
@@ -102,6 +106,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     (*phys)->wtmp[i] = (REAL *)malloc((grid->Nk[i]+1)*sizeof(REAL));
     (*phys)->q[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
     (*phys)->s[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
+    (*phys)->s0[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
     (*phys)->stmp[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
     (*phys)->nu_tv[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
   }
@@ -132,6 +137,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
     free(phys->wtmp[i]);
     free(phys->q[i]);
     free(phys->s[i]);
+    free(phys->s0[i]);
     free(phys->stmp[i]);
     free(phys->nu_tv[i]);
   }
@@ -143,6 +149,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   free(phys->wf);
   free(phys->q);
   free(phys->s);
+  free(phys->s0);
   free(phys->stmp);
   free(phys->nu_tv);
   free(phys->tau_T);
@@ -217,6 +224,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
       phys->w[i][k]=0;
       phys->q[i][k]=0;
       phys->s[i][k]=0;
+      phys->s0[i][k]=0;
     }
   }
 
@@ -227,6 +235,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
       //      phys->s[i][k]=-1.07*0*(z+1500+0*cos(PI*(grid->xv[i]-10000)/10000))/1500;
       //      phys->s[i][k]=-7.333e-3*(.5*(z+1500)/1500);
       phys->s[i][k]=-0.0147*(z/3000+.5);
+      phys->s0[i][k]=-0.0147*(z/3000+.5);
       z-=grid->dzz[i][k]/2;
       //      if(grid->xv[i]>70000) phys->s[i][k]=.01;
       //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
@@ -1388,8 +1397,8 @@ static void WtoVerticalFace(gridT *grid, physT *phys)
 static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
 			  MPI_Comm comm)
 {
-  int i, iptr, j, k, Nc=grid->Nc, Ne=grid->Ne;
-  REAL mass, volume, volh, height, Ep;
+  int i, nc1, nc2, jflux, iptr, j, k, k0, Nc=grid->Nc, Ne=grid->Ne;
+  REAL mass, volume, volh, height, Ep, u_barotropic, r_baro;
 
   if(myproc==0) phys->mass=0;
   if(myproc==0) phys->volume=0;
@@ -1399,6 +1408,58 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
   volume=0;
   volh=0;
   Ep=0;
+
+  phys->Eflux1 = 0;
+  phys->Eflux2 = 0;
+  phys->Eflux3 = 0;
+  phys->Eflux4 = 0;
+
+  jflux = 25;
+  u_barotropic = 0;
+  nc1 = grid->grad[2*jflux];
+  nc2 = grid->grad[2*jflux+1];
+
+  for(k=grid->etop[jflux];k<grid->Nke[jflux];k++)
+    u_barotropic+=0.5*phys->u[jflux][k]*(grid->dzz[nc1][k]+
+					 grid->dzz[nc2][k]);
+  u_barotropic/=(0.5*(grid->dv[nc1]+grid->dv[nc2]));
+
+  for(k=grid->etop[jflux];k<grid->Nke[jflux];k++) {
+    r_baro = 0;
+    for(k0=grid->etop[jflux];k0<k;k0++)
+      r_baro+=0.5*GRAV*prop->beta*((phys->s[nc1][k0]-phys->s0[nc1][k0])*grid->dzz[nc1][k0]+
+				   (phys->s[nc2][k0]-phys->s0[nc2][k0])*grid->dzz[nc2][k0]);
+    phys->Eflux1+=0.5*r_baro*(phys->u[jflux][k]-u_barotropic)*(grid->dzz[nc1][k]+
+							    grid->dzz[nc2][k]);
+    phys->Eflux3+=0.5*r_baro*phys->u[jflux][k]*(grid->dzz[nc1][k]+
+						grid->dzz[nc2][k]);
+  }
+  phys->Eflux1*=grid->df[jflux];
+  phys->Eflux3*=grid->df[jflux];
+
+  jflux = 225;
+  u_barotropic = 0;
+  nc1 = grid->grad[2*jflux];
+  nc2 = grid->grad[2*jflux+1];
+
+  for(k=grid->etop[jflux];k<grid->Nke[jflux];k++)
+    u_barotropic+=0.5*phys->u[jflux][k]*(grid->dzz[nc1][k]+
+					 grid->dzz[nc2][k]);
+  u_barotropic/=(0.5*(grid->dv[nc1]+grid->dv[nc2]));
+
+  for(k=grid->etop[jflux];k<grid->Nke[jflux];k++) {
+    r_baro = 0;
+    for(k0=grid->etop[jflux];k0<k;k0++)
+      r_baro+=0.5*GRAV*prop->beta*((phys->s[nc1][k0]-phys->s0[nc1][k0])*grid->dzz[nc1][k0]+
+				   (phys->s[nc2][k0]-phys->s0[nc2][k0])*grid->dzz[nc2][k0]);
+    phys->Eflux2+=0.5*r_baro*(phys->u[jflux][k]-u_barotropic)*(grid->dzz[nc1][k]+
+							    grid->dzz[nc2][k]);
+    phys->Eflux4+=0.5*r_baro*phys->u[jflux][k]*(grid->dzz[nc1][k]+
+						grid->dzz[nc2][k]);
+  }
+  phys->Eflux2*=grid->df[jflux];
+  phys->Eflux4*=grid->df[jflux];
+
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
     height = 0;
@@ -1535,8 +1596,8 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
   if(!(prop->n%prop->ntconserve)) {
     ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
     if(myproc==0)
-      fprintf(prop->ConserveFID,"%e %e %e %e\n",prop->rtime,phys->mass,phys->volume,
-	      phys->Ep-phys->Ep0);
+      fprintf(prop->ConserveFID,"%e %e %e %e %e %e %e %e\n",prop->rtime,phys->mass,phys->volume,
+	      phys->Ep-phys->Ep0,phys->Eflux1,phys->Eflux2,phys->Eflux3,phys->Eflux4);
   }
 
   if(!(prop->n%prop->ntout) || prop->n==1) {
@@ -1566,7 +1627,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     
     for(i=0;i<grid->Nc;i++) {
       for(k=0;k<grid->Nk[i];k++)
-	fprintf(prop->SalinityFID,"%e\n",phys->s[i][k]);
+	fprintf(prop->SalinityFID,"%e\n",phys->s[i][k]-phys->s0[i][k]);
       for(k=grid->Nk[i];k<grid->Nkmax;k++)
 	fprintf(prop->SalinityFID,"0.0\n");
     }

@@ -1,8 +1,11 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.3 2002-11-05 01:31:17 fringer Exp $
+ * $Id: phys.h,v 1.4 2002-12-01 10:42:46 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2002/11/05 01:31:17  fringer
+ * Added baroclinic term
+ *
  * Revision 1.2  2002/11/03 20:36:33  fringer
  * Added parameters to check for mass and volume conservation
  *
@@ -29,6 +32,7 @@ typedef struct _physT {
   REAL **wf;
   REAL **q;
   REAL **s;
+  REAL **s0;
   REAL *h;
 
   REAL **nu_tv;
@@ -43,6 +47,10 @@ typedef struct _physT {
   REAL volume0;
   REAL Ep;
   REAL Ep0;
+  REAL Eflux1;
+  REAL Eflux2;
+  REAL Eflux3;
+  REAL Eflux4;
   REAL smin;
   REAL smax;
 
@@ -71,7 +79,7 @@ typedef struct _physT {
  *
  */
 typedef struct _propT {
-  REAL dt, rtime, amp, omega, flux, theta, thetaAB, 
+  REAL dt, Cmax, rtime, amp, omega, flux, theta, thetaAB, 
     thetaFS, nu, tau_T, CdT, CdB, relax, epsilon, dzsmall, beta;
   int ntout, ntprog, nsteps, n, ntconserve, maxiters, volcheck, masscheck;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
