@@ -1,8 +1,11 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.9 2004-05-29 20:25:02 fringer Exp $
+ * $Id: grid.h,v 1.10 2004-11-20 22:19:24 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.9  2004/05/29 20:25:02  fringer
+ * Revision before converting to CVS.
+ *
  * Revision 1.8  2003/12/02 02:32:07  fringer
  * Removed ability to transfer first or all in send/recv routines.
  *
@@ -91,6 +94,18 @@ typedef struct _gridT {
   int *num_edges_send;
   int *num_edges_recv;
 
+  int maxtosend, maxtorecv;
+  MPI_Status *status;
+  MPI_Request *request;
+  REAL **recv;
+  REAL **send;
+  int *total_cells_send;
+  int *total_cells_recv;
+  int *total_cells_sendW;
+  int *total_cells_recvW;
+  int *total_edges_send;
+  int *total_edges_recv;
+
   int *mnptr;
   int *eptr;
   int *part;
@@ -162,5 +177,7 @@ void Connectivity(gridT *grid, int myproc);
 void ReadFileNames(int myproc);
 int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc);
 void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
+void AllocateTransferArrays(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
+void FreeTransferArrays(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 
 #endif
