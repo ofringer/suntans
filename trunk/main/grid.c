@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.19 2003-10-27 17:21:41 fringer Exp $
+ * $Id: grid.c,v 1.20 2003-12-02 01:48:32 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.19  2003/10/27 17:21:41  fringer
+ * Added SendRecvEdgeData3D which sends/receives edge (U-velocity) data
+ * as well as SendRecvWData which sends/receives w data
+ *
  * Revision 1.18  2003/09/16 23:54:13  fringer
  * Did not compile for previous update.  Now okay.
  *
@@ -202,7 +206,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm,first);
 
   OutputData(maingrid,*localgrid,myproc,numprocs);
-  FreeGrid(maingrid,numprocs);
+  //  FreeGrid(maingrid,numprocs);
 }
 
 void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
