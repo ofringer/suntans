@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.57 2004-05-20 02:10:10 fringer Exp $
+ * $Id: phys.c,v 1.58 2004-05-20 02:32:10 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.57  2004/05/20 02:10:10  fringer
+ * Changed horizontal diffusion of horizontal momentum so that
+ * it updates from a per-edge basis rather than a per-cell basis,
+ * which is more efficient.
+ *
  * Revision 1.56  2004/05/19 23:43:55  fringer
  * Added horizontal diffusion of vertical momentum as well as CdW to
  * add sidewall drag.
@@ -804,7 +809,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
 	ComputeQSource(phys->stmp,grid,phys,prop,myproc,numprocs);
 	//	GuessQ(phys->stmp2,phys->w,phys->uold,grid,phys,prop,myproc,numprocs,comm);
-	CGSolveQ(phys->stmp2,phys->stmp,phys->uold,grid,phys,prop,myproc,numprocs,comm);
+	CGSolveQ(phys->stmp2,phys->stmp,phys->stmp3,grid,phys,prop,myproc,numprocs,comm);
 	Corrector(phys->stmp2,grid,phys,prop,myproc,numprocs,comm);
       }
 
@@ -812,7 +817,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       ISendRecvWData(phys->w,grid,myproc,comm);
 
       if(prop->beta) {
-	UpdateScalars(grid,phys,prop,phys->stmp3,phys->s,phys->Cn_R,prop->thetaS);
+	UpdateScalars(grid,phys,prop,phys->s,phys->s,phys->Cn_R,prop->thetaS);
 	ISendRecvCellData3D(phys->s,grid,myproc,comm);
       }
       if(prop->gamma) {
