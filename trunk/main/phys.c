@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.24 2003-10-28 04:08:07 fringer Exp $
+ * $Id: phys.c,v 1.25 2003-10-29 18:11:11 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.24  2003/10/28 04:08:07  fringer
+ * Implemented theta method for scalar advection UpdataUImp.
+ * Used to be theta=1.  Theta value is given by prop->thetaS.
+ *
  * Revision 1.23  2003/10/27 21:44:02  fringer
  * Made explicit part of advection of scalar 2nd order with AB2.
  * Added Cn_U,Cn_R,and Cn_T to store the time n-1 terms for the AB2.
@@ -598,12 +602,14 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 
       // This is where we adjust the boundary fluxes to employ IBM.
       //      AdjustBoundaryFluxes(phys->u,phys->uc,phys->vc,grid);
-      for(ip=0;ip<nprofs;ip++)
-	for(k=0;k<grid->Nkmax;k++)
+      /*
+      for(ip=0;ip<nprofs;ip++) {
+	for(k=0;k<grid->Nkmax;k+=4)
 	  fprintf(fid,"%e %e %e %e %e\n",
 		  phys->h[is[ip]],phys->s[is[ip]][k]-phys->s0[is[ip]][k],
 		  phys->uc[is[ip]][k],phys->vc[is[ip]][k],phys->w[is[ip]][k]);
-
+      }
+      */
       SendRecvCellData3D(phys->s,grid,myproc,comm,first);
       SendRecvCellData3D(phys->T,grid,myproc,comm,first);
       SendRecvEdgeData3D(phys->u,grid,myproc,comm);
@@ -673,7 +679,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+
-	  (1.0-0*prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	  (1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
 	   prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
@@ -1270,8 +1276,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
     i = grid->cellp[iptr];
     for(nf=0;nf<NFACES;nf++) {
       ne = grid->face[i*NFACES+nf];
-      if(grid->grad[2*ne]==-1 ||
-	 grid->grad[2*ne+1]==-1 && grid->n1[ne]!=0)
+      if(grid->mark[ne]==3) {
 	for(k=grid->etop[ne];k<grid->Nke[ne];k++) {
 	  phys->u[ne][k] = 0;
 	  sum=0;
@@ -1279,8 +1284,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
 	    sum+=phys->u[grid->face[i*NFACES+nf1]][k]*grid->df[grid->face[i*NFACES+nf1]]*grid->normal[i*NFACES+nf1];
 	  phys->u[ne][k]=-sum/grid->df[ne]/grid->normal[i*NFACES+nf];
 	}
-      //      phys->u[ne][k] = //phys->uc[i][k];
-      //	(phys->h[i]+15)*sqrt(GRAV/(grid->dv[i]+phys->h[i]))*grid->n1[ne];
+      }
     }
   }
 }
