@@ -1,8 +1,11 @@
 /*
  * Header file for util.c
  *
- * $Id: util.h,v 1.4 2004-06-15 18:36:33 fringer Exp $
+ * $Id: util.h,v 1.5 2004-09-22 06:31:59 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2004/06/15 18:36:33  fringer
+ * Changed definition of Max to static.
+ *
  * Revision 1.3  2004/05/29 20:25:02  fringer
  *  Revision before converting to CVS.
  *
@@ -32,5 +35,6 @@ int IsNan(REAL x);
 REAL UpWind(REAL u, REAL dz1, REAL dz2);
 void Copy(REAL **from, REAL **to, gridT *grid);
 static REAL Max(REAL x1, REAL x2);
+REAL Min(REAL x, REAL y);
 
 #endif
