@@ -5,8 +5,11 @@
 # Stanford University
 # fringer@stanford.edu
 #
-# $Id: Makefile,v 1.7 2004-06-10 08:20:51 fringer Exp $
+# $Id: Makefile,v 1.8 2004-06-10 08:29:11 fringer Exp $
 # $Log: not supported by cvs2svn $
+# Revision 1.7  2004/06/10 08:20:51  fringer
+# Removed lapack and added MPIHOME to specify mpi main directory.
+#
 # Revision 1.6  2004/05/29 20:27:21  fringer
 #  Revision before converting to CVS.
 #
@@ -90,4 +93,4 @@ clean:
 	rm -f *.o ;\
 
 superclean: 
-	rm -f *~ \#*\# $(EXEC) $(PEXEC)
+	rm -f *~ \#*\# PI* $(EXEC) $(PEXEC)
