@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.43 2004-04-06 00:18:30 fringer Exp $
+ * $Id: phys.c,v 1.44 2004-04-14 13:31:22 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.43  2004/04/06 00:18:30  fringer
+ * Added computation of flux at boundary faces (of type 2) in
+ * nonlinear advection of momentum.
+ *
  * Revision 1.42  2004/03/16 17:59:39  fringer
  * Set ut to 0 in the beginning of advecthorizontal velocity since
  * this was causing horizontal advection errors.
@@ -257,8 +261,9 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop,
 static REAL InnerProduct(REAL *x, REAL *y, gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 static REAL InnerProduct3(REAL **x, REAL **y, gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 static void OperatorH(REAL *x, REAL *y, gridT *grid, physT *phys, propT *prop);
-static void OperatorQC(REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
-static void OperatorQ(REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
+static void OperatorQC(REAL **coef, REAL **fcoef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
+static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid, physT *phys, propT *prop);
+static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
 static void HydroW(REAL **w, gridT *grid, physT *phys, propT *prop);
 static void WtoVerticalFace(gridT *grid, physT *phys);
 static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn, REAL theta);
@@ -281,7 +286,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 
 void AllocatePhysicalVariables(gridT *grid, physT **phys)
 {
-  int flag=0, i, j, Nc=grid->Nc, Ne=grid->Ne;
+  int flag=0, i, j, Nc=grid->Nc, Ne=grid->Ne, nf;
 
   *phys = (physT *)SunMalloc(sizeof(physT),"AllocatePhysicalVariables");
 
@@ -323,6 +328,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->wtmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_W = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->qtmp = (REAL **)SunMalloc(NFACES*Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s0 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -345,6 +351,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     (*phys)->wtmp[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_W[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    for(nf=0;nf<NFACES;nf++)
+      (*phys)->qtmp[i*NFACES+nf] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s0[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -367,7 +375,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
 
 void FreePhysicalVariables(gridT *grid, physT *phys)
 {
-  int i, j, Nc=grid->Nc, Ne=grid->Ne;
+  int i, j, Nc=grid->Nc, Ne=grid->Ne, nf;
   
   for(j=0;j<Ne;j++) {
     free(phys->u[j]);
@@ -387,6 +395,8 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
     free(phys->wtmp[i]);
     free(phys->Cn_W[i]);
     free(phys->q[i]);
+    for(nf=0;nf<NFACES;nf++)
+      free(phys->qtmp[i*NFACES+nf]);
     free(phys->s[i]);
     free(phys->T[i]);
     free(phys->s0[i]);
@@ -406,6 +416,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   free(phys->Cn_W);
   free(phys->wf);
   free(phys->q);
+  free(phys->qtmp);
   free(phys->s);
   free(phys->T);
   free(phys->s0);
@@ -1390,9 +1401,12 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
 
   niters = prop->qmaxiters;
 
+  // Create coefficients for OperatorQ
+  QCoefficients(phys->wtmp,phys->qtmp,c,grid,phys,prop);
+
   // Initialization for CG
-  if(prop->qprecond) OperatorQC(x,z,c,grid,phys,prop);
-  else OperatorQ(x,z,c,grid,phys,prop);
+  if(prop->qprecond) OperatorQC(phys->wtmp,phys->qtmp,x,z,c,grid,phys,prop);
+  else OperatorQ(phys->wtmp,x,z,c,grid,phys,prop);
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
     
@@ -1406,8 +1420,8 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
   for(n=0;n<niters && eps0!=0 && !IsNan(eps0);n++) {
 
     ISendRecvCellData3D(p,grid,myproc,comm);
-    if(prop->qprecond) OperatorQC(p,z,c,grid,phys,prop);
-    else OperatorQ(p,z,c,grid,phys,prop);
+    if(prop->qprecond) OperatorQC(phys->wtmp,phys->qtmp,p,z,c,grid,phys,prop);
+    else OperatorQ(phys->wtmp,p,z,c,grid,phys,prop);
 
     mu = 1/eps;
     nu = eps/InnerProduct3(p,z,grid,myproc,numprocs,comm);
@@ -1969,7 +1983,7 @@ static void OperatorH(REAL *x, REAL *y, gridT *grid, physT *phys, propT *prop) {
   }
 }
 
-static void OperatorQC(REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop) {
+static void OperatorQC(REAL **coef, REAL **fcoef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop) {
 
   int i, iptr, k, ne, nf, nc, kmin, kmax;
   REAL *a = phys->a;
@@ -1985,35 +1999,25 @@ static void OperatorQC(REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, p
 
 	    ne = grid->face[i*NFACES+nf];
 
-	    if(grid->Nk[nc]<grid->Nk[i])
-	      kmax = grid->Nk[nc];
-	    else
-	      kmax = grid->Nk[i];
-
 	    if(grid->ctop[nc]>grid->ctop[i])
 	      kmin = grid->ctop[nc];
 	    else
 	      kmin = grid->ctop[i];
 	    
-	    for(k=kmin;k<kmax;k++) 
-	      y[i][k]+=x[nc][k]*grid->dzz[i][k]*phys->D[ne]/(c[i][k]*c[nc][k]);
+	    for(k=kmin;k<grid->Nke[ne];k++) 
+	      y[i][k]+=x[nc][k]*fcoef[i*NFACES+nf][k];
 	  }
 
-      a[grid->ctop[i]]=grid->Ac[i]/grid->dzz[i][grid->ctop[i]];
-      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
-	a[k] = 2*grid->Ac[i]/(grid->dzz[i][k]+grid->dzz[i][k-1]);
-
       for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++)
-	y[i][k]+=a[k]*x[i][k-1]/(c[i][k]*c[i][k-1])
-	  +a[k+1]*x[i][k+1]/(c[i][k]*c[i][k+1]);
+	y[i][k]+=coef[i][k]*x[i][k-1]+coef[i][k+1]*x[i][k+1];
 
       // Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
       k=grid->ctop[i];
-      y[i][k]+=a[k+1]*x[i][k+1]/(c[i][k]*c[i][k+1]);
+      y[i][k]+=coef[i][k+1]*x[i][k+1];
 
       // Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
       k=grid->Nk[i]-1;
-      y[i][k]+=a[k]*x[i][k-1]/(c[i][k]*c[i][k-1]);
+      y[i][k]+=coef[i][k]*x[i][k-1];
   }
   /*
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
@@ -2029,10 +2033,45 @@ static void OperatorQC(REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, p
   */
 }
 
-static void OperatorQ(REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop) {
+static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid, physT *phys, propT *prop) {
+
+  int i, iptr, k, kmin, nf, nc, ne;
+
+  if(prop->qprecond) 
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+      
+      coef[i][grid->ctop[i]]=grid->Ac[i]/grid->dzz[i][grid->ctop[i]]/c[i][grid->ctop[i]];
+      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
+	coef[i][k] = 2*grid->Ac[i]/(grid->dzz[i][k]+grid->dzz[i][k-1])/(c[i][k]*c[i][k-1]);
+
+      for(nf=0;nf<NFACES;nf++) 
+	if((nc=grid->neigh[i*NFACES+nf])!=-1) {
+
+	    ne = grid->face[i*NFACES+nf];
+
+	    if(grid->ctop[nc]>grid->ctop[i])
+	      kmin = grid->ctop[nc];
+	    else
+	      kmin = grid->ctop[i];
+	    
+	    for(k=kmin;k<grid->Nke[ne];k++) 
+	      fcoef[i*NFACES+nf][k]=grid->dzz[i][k]*phys->D[ne]/(c[i][k]*c[nc][k]);
+	}
+    }
+  else
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+      
+      coef[i][grid->ctop[i]]=grid->Ac[i]/grid->dzz[i][grid->ctop[i]];
+      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
+	coef[i][k] = 2*grid->Ac[i]/(grid->dzz[i][k]+grid->dzz[i][k-1]);
+  }
+}
+
+static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop) {
 
   int i, iptr, k, ne, nf, nc, kmin, kmax;
-  REAL *a = phys->a;
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
@@ -2045,35 +2084,25 @@ static void OperatorQ(REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, pr
 	  
 	    ne = grid->face[i*NFACES+nf];
 
-	    if(grid->Nk[nc]<grid->Nk[i])
-	      kmax = grid->Nk[nc];
-	    else
-	      kmax = grid->Nk[i];
-
 	    if(grid->ctop[nc]>grid->ctop[i])
 	      kmin = grid->ctop[nc];
 	    else
 	      kmin = grid->ctop[i];
 
-	    for(k=kmin;k<kmax;k++) 
-	      y[i][k]+=(x[grid->grad[2*ne]][k]-x[grid->grad[2*ne+1]][k])*
-		grid->dzz[i][k]*grid->normal[i*NFACES+nf]*phys->D[ne];
+	    for(k=kmin;k<grid->Nke[ne];k++) 
+	      y[i][k]+=(x[nc][k]-x[i][k])*grid->dzz[i][k]*phys->D[ne];
 	  }
 
-      a[grid->ctop[i]]=grid->Ac[i]/grid->dzz[i][grid->ctop[i]];
-      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
-	a[k] = 2*grid->Ac[i]/(grid->dzz[i][k]+grid->dzz[i][k-1]);
-
       for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++)
-	y[i][k]+=a[k]*x[i][k-1]-(a[k]+a[k+1])*x[i][k]+a[k+1]*x[i][k+1];
+	y[i][k]+=coef[i][k]*x[i][k-1]-(coef[i][k]+coef[i][k+1])*x[i][k]+coef[i][k+1]*x[i][k+1];
 
       // Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
       k=grid->ctop[i];
-      y[i][k]+=(-2*a[k]-a[k+1])*x[i][k]+a[k+1]*x[i][k+1];
+      y[i][k]+=(-2*coef[i][k]-coef[i][k+1])*x[i][k]+coef[i][k+1]*x[i][k+1];
 
       // Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
       k=grid->Nk[i]-1;
-      y[i][k]+=a[k]*x[i][k-1]-a[k]*x[i][k];
+      y[i][k]+=coef[i][k]*x[i][k-1]-coef[i][k]*x[i][k];
   }
   /*
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
