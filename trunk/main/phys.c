@@ -6,8 +6,21 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.47 2004-04-22 04:54:32 fringer Exp $
+ * $Id: phys.c,v 1.48 2004-04-24 00:36:50 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.47  2004/04/22 04:54:32  fringer
+ * Added wtmp2 and stmp3 to store velocity and salinity at time step
+ * n in order to implement theta method for buoyancy term in
+ * momentum equation.  Added StoreVariables to store u,w, and s at
+ * time step n, and also added updatescalars before advecthorizontal
+ * velocity to compute the scalar qty at step n+1 with an explicit
+ * update (theta=0 in updatescalars).  Also added the scalold term
+ * in the updatescalars function to use the old scalar value in
+ * updatescalars.
+ *
+ * Also changed the explicit terms in updatescalars to use the
+ * values at time step n instead of step n+1.
+ *
  * Revision 1.46  2004/04/22 04:15:27  fringer
  * Works for wetting/drying and Eulerian advection:
  * 1) Horizontal advection computed only for edges k>=etop[j]+1
@@ -801,8 +814,13 @@ static void StoreVariables(gridT *grid, physT *phys) {
  */
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs, MPI_Comm comm) {
-  int i, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin;
+  int i, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin, wetdry_offset;
   REAL *a, *b, *c, fab, sum;
+
+  if(prop->wetdry)
+    wetdry_offset=1;
+  else
+    wetdry_offset=0;
 
   a = phys->a;
   b = phys->b;
@@ -847,10 +865,10 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+0*phys->u[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
-	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-	    prop->sponge_decay)*phys->u[j][k];
+	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
+	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
+	  //	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	  //	    prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
       }
@@ -1128,9 +1146,9 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	if(nc2==-1) nc2=nc1;
 
 	if(grid->ctop[nc1]>grid->ctop[nc2])
-	  k0=grid->ctop[nc1]+1;
+	  k0=grid->ctop[nc1]+wetdry_offset;
 	else
-	  k0=grid->ctop[nc2]+1;
+	  k0=grid->ctop[nc2]+wetdry_offset;
 
 	for(k=k0;k<grid->Nk[nc1];k++) 
 	  phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
@@ -1172,8 +1190,13 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
   
 static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs) {
-  int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin;
+  int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin, wetdry_offset;
   REAL fab, sum;
+
+  if(prop->wetdry)
+    wetdry_offset=1;
+  else
+    wetdry_offset=0;
 
   if(prop->n==1) {
     fab=1;
@@ -1286,13 +1309,15 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr]; 
       
-      for(k=grid->ctop[i]+2;k<grid->Nk[i];k++) 
+      for(k=grid->ctop[i]+1+wetdry_offset;k<grid->Nk[i];k++) 
 	phys->Cn_W[i][k]-=prop->dt*(grid->dzz[i][k-1]*phys->stmp[i][k-1]+grid->dzz[i][k]*phys->stmp[i][k])/
 	  (grid->dzz[i][k-1]+grid->dzz[i][k]);
       
       // Top flux advection consists only of top cell
-      //      k=grid->ctop[i];
-      //      phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
+      if(!prop->wetdry) {
+	k=grid->ctop[i];
+	phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
+      }
     }
   }
 
@@ -3123,6 +3148,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->masscheck = MPI_GetValue(DATAFILE,"masscheck","ReadProperties",myproc);
   (*prop)->nonlinear = MPI_GetValue(DATAFILE,"nonlinear","ReadProperties",myproc);
   (*prop)->newcells = MPI_GetValue(DATAFILE,"newcells","ReadProperties",myproc);
+  (*prop)->wetdry = MPI_GetValue(DATAFILE,"wetdry","ReadProperties",myproc);
   (*prop)->Coriolis_f = MPI_GetValue(DATAFILE,"Coriolis_f","ReadProperties",myproc);
   (*prop)->sponge_distance = MPI_GetValue(DATAFILE,"sponge_distance","ReadProperties",myproc);
   (*prop)->sponge_decay = MPI_GetValue(DATAFILE,"sponge_decay","ReadProperties",myproc);
