@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.10 2003-04-29 16:39:18 fringer Exp $
+ * $Id: grid.c,v 1.11 2003-05-01 00:30:40 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.10  2003/04/29 16:39:18  fringer
+ * Added MPI_FOPen in place of fopen.
+ *
  * Revision 1.9  2003/04/29 00:15:06  fringer
  * Changed VERBOSE lines to include if(myproc==0) so that they only
  * print from 1st processor.
@@ -67,14 +70,12 @@ static int GetNumEdges(gridT *grid);
 static void Geometry(gridT *maingrid, gridT **grid, int myproc);
 static REAL GetArea(REAL *xt, REAL *yt, int Nf);
 static void EdgeMarkers(gridT *maingrid, gridT **localgrid, int myproc);
-static void ReOrder0(gridT *maingrid, gridT **localgrid, int myproc);
 static void ReOrder(gridT *grid);
 static int IsCellNeighborProc(int nc, gridT *maingrid, gridT *localgrid, 
 			      int myproc, int neighproc);
 static int IsEdgeNeighborProc(int ne, gridT *maingrid, gridT *localgrid, 
 			      int myproc, int neighproc);
 static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Comm comm);
-static void MakePointers0(gridT *maingrid, gridT **localgrid, int myproc);
 static void ResortBoundaries(gridT *localgrid, int myproc);
 static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 static void FreeGrid(gridT *grid, int numprocs);
@@ -143,7 +144,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
 
   //CheckCommunicateCells(maingrid,*localgrid,myproc,comm);
   //  CheckCommunicateEdges(maingrid,*localgrid,myproc,comm);
-  //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm);
+  //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm,first);
 
   OutputData(maingrid,*localgrid,myproc);
   FreeGrid(maingrid,numprocs);
@@ -207,7 +208,6 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   VertGrid(maingrid,localgrid,comm);
 
   if(myproc==0 && VERBOSE>2) printf("Reordering...\n");
-  //  ReOrder0(maingrid,localgrid,myproc);
   //  ReOrder(*localgrid);
 
   if(myproc==0 && VERBOSE>2) printf("Making pointers...\n");
@@ -305,38 +305,58 @@ static void CreateNearestPointers(gridT *maingrid, gridT *localgrid, int myproc)
   free(found);
 }
 
-void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, MPI_Comm comm)
+/*
+ * Function: SendRecvCellData2D
+ * Usage: SendRecvCellData2D(grid->h,grid,myproc,comm,first);
+ * ----------------------------------------------------------
+ * This function will transfer the cell data back and forth between
+ * processors.  If type==first, then only the bordering cells are
+ * transferred.  If type==all, then all of them are transferred.  The
+ * first type is used when communicating data for the free-surface iteration,
+ * since only the bordering cells are needed.
+ *
+ */
+void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
+			MPI_Comm comm, transferType type)
 {
   int n, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend;
+  int senstart, senend, recstart, recend, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
 
+  if(type==first) {
+    num_send=grid->num_cells_send_first;
+    num_recv=grid->num_cells_recv_first;
+  } else {
+    num_send=grid->num_cells_send;
+    num_recv=grid->num_cells_recv;
+  }
+    
   recv = (REAL **)malloc(grid->Nneighs*sizeof(REAL *));
   send = (REAL **)malloc(grid->Nneighs*sizeof(REAL *));
 
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
     neighproc = grid->myneighs[neigh];
 
-    send[neigh] = (REAL *)malloc(grid->num_cells_send[neigh]*sizeof(REAL));
-    recv[neigh] = (REAL *)malloc(grid->num_cells_recv[neigh]*sizeof(REAL));
+    send[neigh] = (REAL *)malloc(num_send[neigh]*sizeof(REAL));
+    recv[neigh] = (REAL *)malloc(num_recv[neigh]*sizeof(REAL));
 
-    for(n=0;n<grid->num_cells_send[neigh];n++)
+    for(n=0;n<num_send[neigh];n++)
       send[neigh][n]=celldata[grid->cell_send[neigh][n]];
 
-    MPI_Send((void *)(send[neigh]),grid->num_cells_send[neigh],
+    MPI_Send((void *)(send[neigh]),num_send[neigh],
 	     MPI_DOUBLE,neighproc,1,comm); 
   }
 
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
     neighproc = grid->myneighs[neigh];
-    MPI_Recv((void *)(recv[neigh]),grid->num_cells_recv[neigh],
+    MPI_Recv((void *)(recv[neigh]),num_recv[neigh],
 	     MPI_DOUBLE,neighproc,1,comm,&status);
   }
   MPI_Barrier(comm);
 
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    for(n=0;n<grid->num_cells_recv[neigh];n++)
+    for(n=0;n<num_recv[neigh];n++)
       celldata[grid->cell_recv[neigh][n]]=recv[neigh][n];
   }
 
@@ -348,12 +368,32 @@ void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, MPI_Comm comm)
   free(recv);
 }
 
-void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, MPI_Comm comm)
+/*
+ * Function: SendRecvCellData3D
+ * Usage: SendRecvCellData3D(grid->s,grid,myproc,comm,first);
+ * ----------------------------------------------------------
+ * This function will transfer the 3D cell data back and forth between
+ * processors.  If type==first, then only the bordering cells are
+ * transferred.  If type==all, then all of them are transferred.  The
+ * first type is used when communicating data for the free-surface iteration,
+ * since only the bordering cells are needed.
+ *
+ */
+void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
+			MPI_Comm comm, transferType type)
 {
   int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend, *Nsend, *Nrecv;
+  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
+
+  if(type==first) {
+    num_send=grid->num_cells_send_first;
+    num_recv=grid->num_cells_recv_first;
+  } else {
+    num_send=grid->num_cells_send;
+    num_recv=grid->num_cells_recv;
+  }
 
   recv = (REAL **)malloc(grid->Nneighs*sizeof(REAL *));
   send = (REAL **)malloc(grid->Nneighs*sizeof(REAL *));
@@ -365,16 +405,16 @@ void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, MPI_Comm comm)
 
     Nsend[neigh] = 0;
     Nrecv[neigh] = 0;
-    for(n=0;n<grid->num_cells_send[neigh];n++) 
+    for(n=0;n<num_send[neigh];n++) 
       Nsend[neigh]+=grid->Nk[grid->cell_send[neigh][n]];
-    for(n=0;n<grid->num_cells_recv[neigh];n++) 
+    for(n=0;n<num_recv[neigh];n++) 
       Nrecv[neigh]+=grid->Nk[grid->cell_recv[neigh][n]];
 
     send[neigh] = (REAL *)malloc(Nsend[neigh]*sizeof(REAL));
     recv[neigh] = (REAL *)malloc(Nrecv[neigh]*sizeof(REAL));
 
     nstart=0;
-    for(n=0;n<grid->num_cells_send[neigh];n++) {
+    for(n=0;n<num_send[neigh];n++) {
       for(k=0;k<grid->Nk[grid->cell_send[neigh][n]];k++) 
 	send[neigh][nstart+k]=celldata[grid->cell_send[neigh][n]][k];
       nstart+=grid->Nk[grid->cell_send[neigh][n]];
@@ -391,7 +431,7 @@ void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, MPI_Comm comm)
 
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
     nstart=0;
-    for(n=0;n<grid->num_cells_recv[neigh];n++) {
+    for(n=0;n<num_recv[neigh];n++) {
       for(k=0;k<grid->Nk[grid->cell_recv[neigh][n]];k++) 
 	celldata[grid->cell_recv[neigh][n]][k]=recv[neigh][nstart+k];
       nstart+=grid->Nk[grid->cell_recv[neigh][n]];
@@ -406,43 +446,6 @@ void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, MPI_Comm comm)
   free(recv);
   free(Nsend);
   free(Nrecv);
-}
-
-void SendRecvCellData0(REAL *celldata, gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm)
-{
-  int n, neigh, neighproc, receivesize, sendsize, noncontig, flag;
-  int senstart, senend, recstart, recend;
-  REAL **recv, **send;
-  MPI_Status status;
-
-  recv = (REAL **)malloc(maingrid->numneighs[myproc]*sizeof(REAL *));
-  send = (REAL **)malloc(maingrid->numneighs[myproc]*sizeof(REAL *));
-
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    neighproc = maingrid->neighs[myproc][neigh];
-
-    send[neigh] = (REAL *)malloc(localgrid->num_cells_send[neigh]*sizeof(REAL));
-    recv[neigh] = (REAL *)malloc(localgrid->num_cells_recv[neigh]*sizeof(REAL));
-
-    for(n=0;n<localgrid->num_cells_send[neigh];n++)
-      send[neigh][n]=celldata[localgrid->cell_send[neigh][n]];
-
-    MPI_Send((void *)(send[neigh]),localgrid->num_cells_send[neigh],MPI_DOUBLE,neighproc,1,comm); 
-    MPI_Recv((void *)(recv[neigh]),localgrid->num_cells_recv[neigh],MPI_DOUBLE,neighproc,1,comm,&status);
-  }
-  MPI_Barrier(comm);
-
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    for(n=0;n<localgrid->num_cells_recv[neigh];n++)
-      celldata[localgrid->cell_recv[neigh][n]]=recv[neigh][n];
-  }
-
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    free(send[neigh]);
-    free(recv[neigh]);
-  }
-  free(send);
-  free(recv);
 }
 
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm)
@@ -1440,7 +1443,7 @@ static void ResortBoundaries(gridT *localgrid, int myproc)
 
 static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Comm comm)
 {
-  int i, n, nf, ne, neigh, neighproc, nc, j, k, mark, bctype, count;
+  int i, n, nf, ne, neigh, neighproc, nc, j, k, mark, bctype, count, found;
   int **cell_send, **cell_recv, **edge_send, **edge_recv;
   int *num_cells_send, *num_cells_recv, *num_cells_send_first, *num_cells_recv_first,
     *num_edges_send, *num_edges_recv;
@@ -1526,12 +1529,17 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     num_cells_send[neigh]=0;
     num_cells_recv[neigh]=0;
+    num_cells_send_first[neigh]=0;
+    num_cells_recv_first[neigh]=0;
     num_edges_send[neigh]=0;
     num_edges_recv[neigh]=0;
   }
 
   // Set up the pointers for receiving first and place the global
-  // indices in the recv pointer array.  
+  // indices in the recv pointer array.  Place the cells that border
+  // the local processor first followed by the others.  This will be
+  // useful when transferring data for free-surface and nonhydrostatic
+  // pressure iterations, since these are the only ones that are needed.
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     neighproc=(*localgrid)->myneighs[neigh];
     for(n=0;n<(*localgrid)->Nc;n++) 
@@ -1539,22 +1547,53 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
 	num_cells_recv[neigh]++;
     cell_recv[neigh]=(int *)malloc(num_cells_recv[neigh]*sizeof(int));
 
+    // First retrieve the neighbors that border the local processor
     k=0;
     for(n=0;n<(*localgrid)->Nc;n++) 
-      if(maingrid->part[(*localgrid)->mnptr[n]]==neighproc)
-	cell_recv[neigh][k++]=(*localgrid)->mnptr[n];
+      if(maingrid->part[(*localgrid)->mnptr[n]]==neighproc) {
+	for(nf=0;nf<NFACES;nf++) {
+	  ne=(*localgrid)->neigh[n*NFACES+nf];
+	  if(ne!=-1)
+	    if(maingrid->part[(*localgrid)->mnptr[ne]]==myproc) {
+	      num_cells_recv_first[neigh]++;
+	      cell_recv[neigh][k++]=(*localgrid)->mnptr[n];
+	      break;
+	    }
+	}
+      }
+
+    // Now do the rest
+    for(n=0;n<(*localgrid)->Nc;n++) 
+      if(maingrid->part[(*localgrid)->mnptr[n]]==neighproc) {
+	found=0;
+	for(nf=0;nf<NFACES;nf++) {
+	  ne=(*localgrid)->neigh[n*NFACES+nf];
+	  if(ne!=-1)
+	    if(maingrid->part[(*localgrid)->mnptr[ne]]==myproc) 
+	      found=1;
+	}
+	if(!found)
+	  cell_recv[neigh][k++]=(*localgrid)->mnptr[n];
+      }
   }
+  if(VERBOSE>2) 
+    for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++)
+      printf("Proc: %d, neighbor %d, receiving %d, (%d first)\n",
+	     myproc,(*localgrid)->myneighs[neigh],
+	     num_cells_recv[neigh],num_cells_recv_first[neigh]);
 
   // Send out the number of cells that are being received and then
   // the actual global indices being sent.
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     neighproc=(*localgrid)->myneighs[neigh];
     MPI_Send(&(num_cells_recv[neigh]),1,MPI_INT,neighproc,1,comm); 
+    MPI_Send(&(num_cells_recv_first[neigh]),1,MPI_INT,neighproc,1,comm); 
   }
 
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     neighproc=(*localgrid)->myneighs[neigh];
     MPI_Recv(&(num_cells_send[neigh]),1,MPI_INT,neighproc,1,comm,&status);
+    MPI_Recv(&(num_cells_send_first[neigh]),1,MPI_INT,neighproc,1,comm,&status);
   }
 
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
@@ -1576,7 +1615,8 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
       cell_recv[neigh][j]=lcptr[cell_recv[neigh][j]];
   }
 
-  // Now do the edges
+  // Now do the edges.  The edges that correspond to the cells that
+  // are sent are added to the edge-send/recv arrays.
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     neighproc=(*localgrid)->myneighs[neigh];
     for(j=0;j<(*localgrid)->Ne;j++)
@@ -1670,212 +1710,13 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
   (*localgrid)->edge_recv=edge_recv;
   (*localgrid)->num_cells_send=num_cells_send;
   (*localgrid)->num_cells_recv=num_cells_recv;
+  (*localgrid)->num_cells_send_first=num_cells_send_first;
+  (*localgrid)->num_cells_recv_first=num_cells_recv_first;
   (*localgrid)->num_edges_send=num_edges_send;
   (*localgrid)->num_edges_recv=num_edges_recv;
 
   free(lcptr);
   free(leptr);
-}
-
-static void MakePointers0(gridT *maingrid, gridT **localgrid, int myproc)
-{
-  int n, nf, ne, neigh, neighproc, nc, j, k, mark, bctype, count;
-  int **cell_send, **cell_recv, **edge_send, **edge_recv;
-  int *num_cells_send, *num_cells_recv, *num_edges_send, *num_edges_recv;
-  int *cellp, *edgep, *celldist, *edgedist;
-  int kcellsend, kcellrecv, kedgesend, kedgerecv;
-
-  cellp = (int *)malloc((*localgrid)->Nc*sizeof(int));
-  edgep = (int *)malloc((*localgrid)->Ne*sizeof(int));
-  celldist = (int *)malloc((MAXBCTYPES-1)*sizeof(int));
-  edgedist = (int *)malloc((MAXMARKS-1)*sizeof(int));
-
-  k=0;
-  celldist[0]=0;
-  // Put computational cells first
-  for(n=0;n<(*localgrid)->Nc;n++)
-    if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==0 ||
-       IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==2)
-	cellp[k++]=n;
-  celldist[1]=k;
-  // Followed by boundary cells
-  for(n=0;n<(*localgrid)->Nc;n++)
-    if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==1)
-      cellp[k++]=n;
-  celldist[2]=k;
-
-  k=0;
-  edgedist[0]=0;
-  // Put computational edges first
-  for(n=0;n<(*localgrid)->Ne;n++)
-    if((*localgrid)->mark[n]==0 || (*localgrid)->mark[n]==5)
-      edgep[k++]=n;
-  edgedist[1]=k;
-  // Followed by boundary cells
-  for(mark=1;mark<MAXMARKS-2;mark++) {
-    for(n=0;n<(*localgrid)->Ne;n++)
-      if((*localgrid)->mark[n]==mark)
-	edgep[k++]=n;
-    edgedist[mark+1]=k;
-  }
-
-  (*localgrid)->cellp=cellp;
-  (*localgrid)->edgep=edgep;
-  (*localgrid)->celldist=celldist;
-  (*localgrid)->edgedist=edgedist;
-
-  /*
-  for(bctype=0;bctype<MAXBCTYPES-2;bctype++) {
-    printf("Cells of type %d: ",bctype);
-    for(j=celldist[bctype];j<celldist[bctype+1];j++)
-      printf("%d ",cellp[j]);
-    printf("\n");
-  }
-  for(mark=0;mark<MAXMARKS-2;mark++) {
-    printf("Edges of type %d: ",mark);
-    for(j=edgedist[mark];j<edgedist[mark+1];j++)
-      printf("%d ",edgep[j]);
-    printf("\n");
-  }
-  */
-
-  cell_send = (int **)malloc((*localgrid)->Nneighs*sizeof(int *));
-  cell_recv = (int **)malloc((*localgrid)->Nneighs*sizeof(int *));
-  edge_send = (int **)malloc((*localgrid)->Nneighs*sizeof(int *));
-  edge_recv = (int **)malloc((*localgrid)->Nneighs*sizeof(int *));
-  num_cells_send = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
-  num_cells_recv = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
-  num_edges_send = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
-  num_edges_recv = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
-
-  for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
-    num_cells_send[neigh]=0;
-    num_cells_recv[neigh]=0;
-    num_edges_send[neigh]=0;
-    num_edges_recv[neigh]=0;
-  }
-    
-  for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
-    neighproc=(*localgrid)->myneighs[neigh];
-    for(n=0;n<(*localgrid)->Nc;n++) {
-      if(IsCellNeighborProc(n,maingrid,(*localgrid),myproc,neighproc)) {
-	if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==2) 
-	  num_cells_send[neigh]++;
-	if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==3)
-	  num_cells_recv[neigh]++;
-      }
-    }
-    for(n=0;n<(*localgrid)->Ne;n++)
-      if((*localgrid)->mark[n]==5) 
-	for(j=0;j<2;j++) {
-	  nc = (*localgrid)->grad[2*n+j];
-	  if(maingrid->part[(*localgrid)->mnptr[nc]]==neighproc) {
-	    for(nf=0;nf<NFACES;nf++) {
-	      ne = (*localgrid)->face[nc*NFACES+nf];
-	      if(n != ne && ((*localgrid)->mark[ne]<1 || (*localgrid)->mark[ne]>4))
-		num_edges_recv[neigh]++;
-	    }
-	    if(j==0)
-	      nc=(*localgrid)->grad[2*n+1];
-	    else
-	      nc=(*localgrid)->grad[2*n];
-	    for(nf=0;nf<NFACES;nf++) {
-	      ne = (*localgrid)->face[nc*NFACES+nf];
-	      if(n != ne && ((*localgrid)->mark[ne]<1 || (*localgrid)->mark[ne]>4))
-		num_edges_send[neigh]++;
-	    }
-	  }
-	}
-  }
-
-  for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
-    cell_send[neigh] = (int *)malloc(num_cells_send[neigh]*sizeof(int));
-    cell_recv[neigh] = (int *)malloc(num_cells_recv[neigh]*sizeof(int));
-    edge_send[neigh] = (int *)malloc(num_edges_send[neigh]*sizeof(int));
-    edge_recv[neigh] = (int *)malloc(num_edges_recv[neigh]*sizeof(int));
-  }
-
-  for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
-    kcellsend=0;
-    kcellrecv=0;
-    neighproc=(*localgrid)->myneighs[neigh];
-    for(n=0;n<(*localgrid)->Nc;n++) {
-      if(IsCellNeighborProc(n,maingrid,(*localgrid),myproc,neighproc)) {
-	if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==2)
-	  cell_send[neigh][kcellsend++]=n;
-	if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==3)
-	  cell_recv[neigh][kcellrecv++]=n;
-      }
-    }
-    kedgesend=0;
-    kedgerecv=0;
-    for(n=0;n<(*localgrid)->Ne;n++)
-      if((*localgrid)->mark[n]==5) 
-	for(j=0;j<2;j++) {
-	  nc = (*localgrid)->grad[2*n+j];
-	  if(maingrid->part[(*localgrid)->mnptr[nc]]==neighproc) {
-	    for(nf=0;nf<NFACES;nf++) {
-	      ne = (*localgrid)->face[nc*NFACES+nf];
-	      if(n != ne && ((*localgrid)->mark[ne]<1 || (*localgrid)->mark[ne]>4) &&
-		 IsMember(ne,edge_recv[neigh],kedgerecv)==-1)
-		edge_recv[neigh][kedgerecv++]=ne;
-	    }
-	    if(j==0)
-	      nc=(*localgrid)->grad[2*n+1];
-	    else
-	      nc=(*localgrid)->grad[2*n];
-	    for(nf=0;nf<NFACES;nf++) {
-	      ne = (*localgrid)->face[nc*NFACES+nf];
-	      if(n != ne && ((*localgrid)->mark[ne]<1 || (*localgrid)->mark[ne]>4) &&
-		 IsMember(ne,edge_send[neigh],kedgesend)==-1)
-		edge_send[neigh][kedgesend++]=ne;
-	    }
-	  }
-	}
-    num_edges_send[neigh]=kedgesend;
-    num_edges_recv[neigh]=kedgerecv;
-    edge_send[neigh]=ReSize(edge_send[neigh],num_edges_send[neigh]);
-    edge_recv[neigh]=ReSize(edge_recv[neigh],num_edges_recv[neigh]);
-  }
-
-  /*
-  for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
-    printf("%d <-> %d, Cells to Send: %d, Receive: %d\n",
-	   myproc,(*localgrid)->myneighs[neigh],
-	   num_cells_send[neigh],num_cells_recv[neigh]);
-    printf("%d <-> %d, Edges to Send: %d, Receive: %d\n",
-	   myproc,(*localgrid)->myneighs[neigh],
-	   num_edges_send[neigh],num_edges_recv[neigh]);
-  }
-
-  for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
-    printf("%d -> %d (Cells): ",myproc,(*localgrid)->myneighs[neigh]);
-    for(n=0;n<num_cells_send[neigh];n++)
-      printf("%d ",cell_send[neigh][n]);
-    printf("\n");
-    printf("%d <- %d (Cells) ",myproc,(*localgrid)->myneighs[neigh]);
-    for(n=0;n<num_cells_recv[neigh];n++)
-      printf("%d ",cell_recv[neigh][n]);
-    printf("\n");
-    printf("%d -> %d (Edges): ",myproc,(*localgrid)->myneighs[neigh]);
-    for(n=0;n<num_edges_send[neigh];n++)
-      printf("%d ",edge_send[neigh][n]);
-    printf("\n");
-    printf("%d <- %d (Edges): ",myproc,(*localgrid)->myneighs[neigh]);
-    for(n=0;n<num_edges_recv[neigh];n++)
-      printf("%d ",edge_recv[neigh][n]);
-    printf("\n");
-  }
-  */
-
-  (*localgrid)->cell_send=cell_send;
-  (*localgrid)->cell_recv=cell_recv;
-  (*localgrid)->edge_send=edge_send;
-  (*localgrid)->edge_recv=edge_recv;
-  (*localgrid)->num_cells_send=num_cells_send;
-  (*localgrid)->num_cells_recv=num_cells_recv;
-  (*localgrid)->num_edges_send=num_edges_send;
-  (*localgrid)->num_edges_recv=num_edges_recv;
 }
 
 static void ReOrder(gridT *grid) 
@@ -1990,127 +1831,6 @@ static void ReOrder(gridT *grid)
   free(corder);
   free(corderp);
   free(eorder);
-  free(eorderp);
-  free(tmp);
-}
-
-static void ReOrder0(gridT *maingrid, gridT **localgrid, int myproc)
-{
-  int *eorder, *eorderp, *corder, *corderp, *eflag, *cflag, *bctypeind, *marktypeind;
-  int neigh, neighproc, j, k, n, nf, bctype, marktype, Nc=(*localgrid)->Nc, Ne=(*localgrid)->Ne;
-  int nstart, nend, Nc_comp, Ne_comp;
-  REAL *tmp, temp;
-
-  corder=(int *)malloc(Nc*sizeof(int));
-  eorder=(int *)malloc(Ne*sizeof(int));
-  corderp=(int *)malloc(Nc*sizeof(int));
-  eorderp=(int *)malloc(Ne*sizeof(int));
-  tmp = (REAL *)malloc(2*(NFACES-1)*Ne*sizeof(REAL));
-
-  // Place all of the computational cells before the boundary cells
-  k=0;
-  for(n=0;n<Nc;n++)
-    corder[n]=0;
-  for(n=0;n<Nc;n++) 
-    if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)<MAXBCTYPES-1) 
-      corder[k++]=n;
-  (*localgrid)->Nc_comp = k;
-  for(n=0;n<Nc;n++) 
-    if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==MAXBCTYPES-1) 
-      corder[k++]=n;
-
-  for(n=0;n<Nc;n++) 
-    corderp[corder[n]]=n;
-
-  // Place all of the computational edges before the boundary edges
-  k=0;
-  for(n=0;n<Ne;n++)
-    eorder[n]=0;
-  for(n=0;n<Ne;n++)
-    if((*localgrid)->mark[n]==0 || (*localgrid)->mark[n]==5)
-      eorder[k++]=n;
-  (*localgrid)->Ne_comp = k;
-  for(n=0;n<Ne;n++)
-    if((*localgrid)->mark[n]!=0 && (*localgrid)->mark[n]!=5)
-      eorder[k++]=n;
-
-  /*  Sort(&(eorder[(*localgrid)->Ne_comp]),
-       &((*localgrid)->eptr[(*localgrid)->Ne_comp]),
-       (*localgrid)->Ne-(*localgrid)->Ne_comp);*/
-  //  Sort(&eorder,&((*localgrid)->eptr[0]),Ne);
-
-  for(n=0;n<Ne;n++)
-    eorderp[eorder[n]]=n;
-
-  // Reorder the data corresponding to cells with the corder array
-  ReOrderRealArray((*localgrid)->Ac,corder,tmp,(*localgrid)->Nc,1);
-  ReOrderRealArray((*localgrid)->xv,corder,tmp,(*localgrid)->Nc,1);
-  ReOrderRealArray((*localgrid)->yv,corder,tmp,(*localgrid)->Nc,1);
-  ReOrderRealArray((*localgrid)->dv,corder,tmp,(*localgrid)->Nc,1);
-  ReOrderIntArray((*localgrid)->cells,corder,(int *)tmp,(*localgrid)->Nc,NFACES);
-  ReOrderIntArray((*localgrid)->face,corder,(int *)tmp,(*localgrid)->Nc,NFACES);
-  ReOrderIntArray((*localgrid)->normal,corder,(int *)tmp,(*localgrid)->Nc,NFACES);
-  ReOrderIntArray((*localgrid)->neigh,corder,(int *)tmp,(*localgrid)->Nc,NFACES);
-  ReOrderIntArray((*localgrid)->vwgt,corder,(int *)tmp,(*localgrid)->Nc,1);
-  ReOrderIntArray((*localgrid)->mnptr,corder,(int *)tmp,(*localgrid)->Nc,1);
-  ReOrderIntArray((*localgrid)->Nk,corder,(int *)tmp,(*localgrid)->Nc,1);
-
-  // Reorder the data corresponding to edges with the eorder array
-  ReOrderRealArray((*localgrid)->df,eorder,tmp,(*localgrid)->Ne,1);
-  ReOrderRealArray((*localgrid)->dg,eorder,tmp,(*localgrid)->Ne,1);
-  ReOrderRealArray((*localgrid)->n1,eorder,tmp,(*localgrid)->Ne,1);
-  ReOrderRealArray((*localgrid)->n2,eorder,tmp,(*localgrid)->Ne,1);
-  ReOrderRealArray((*localgrid)->xi,eorder,tmp,(*localgrid)->Ne,2*(NFACES-1));
-  ReOrderIntArray((*localgrid)->grad,eorder,(int *)tmp,(*localgrid)->Ne,2);
-  ReOrderIntArray((*localgrid)->eneigh,eorder,(int *)tmp,(*localgrid)->Ne,2*(NFACES-1));
-  ReOrderIntArray((*localgrid)->edges,eorder,(int *)tmp,(*localgrid)->Ne,NUMEDGECOLUMNS);
-  ReOrderIntArray((*localgrid)->mark,eorder,(int *)tmp,(*localgrid)->Ne,1);
-  ReOrderIntArray((*localgrid)->eptr,eorder,(int *)tmp,(*localgrid)->Ne,1);
-  ReOrderIntArray((*localgrid)->Nke,eorder,(int *)tmp,(*localgrid)->Ne,1);
-
-  // Now adjust the pointers to point to the new locations
-  // Face and eneigh arrays point to edges
-  for(n=0;n<Nc;n++) 
-    for(nf=0;nf<NFACES;nf++) 
-      tmp[n*NFACES+nf]=(*localgrid)->face[n*NFACES+nf];
-  for(n=0;n<Nc;n++) 
-    for(nf=0;nf<NFACES;nf++) 
-      (*localgrid)->face[n*NFACES+nf]=eorderp[(int)(tmp[n*NFACES+nf])];
-
-  for(n=0;n<Ne;n++)
-    for(nf=0;nf<2*(NFACES-1);nf++)
-      tmp[n*2*(NFACES-1)+nf]=(*localgrid)->eneigh[n*2*(NFACES-1)+nf];
-  for(n=0;n<Ne;n++)
-    for(nf=0;nf<2*(NFACES-1);nf++)
-      if((int)(tmp[n*2*(NFACES-1)+nf])!=-1)
-	(*localgrid)->eneigh[n*2*(NFACES-1)+nf]=eorderp[(int)(tmp[n*2*(NFACES-1)+nf])];
-      else
-	(*localgrid)->eneigh[n*2*(NFACES-1)+nf]=-1;
-
-  // Grad and neigh arrays point to cells
-  for(n=0;n<Ne;n++)
-    for(nf=0;nf<2;nf++)
-      tmp[2*n+nf]=(*localgrid)->grad[2*n+nf];
-  for(n=0;n<Ne;n++)
-    for(nf=0;nf<2;nf++)
-      if((int)(tmp[2*n+nf])!=-1)
-	(*localgrid)->grad[2*n+nf]=corderp[(int)(tmp[2*n+nf])];
-      else
-	(*localgrid)->grad[2*n+nf]=-1;
-
-  for(n=0;n<Nc;n++)
-    for(nf=0;nf<NFACES;nf++)
-      tmp[n*NFACES+nf]=(*localgrid)->neigh[n*NFACES+nf];
-  for(n=0;n<Nc;n++)
-    for(nf=0;nf<NFACES;nf++)
-      if((int)(tmp[n*NFACES+nf])!=-1)
-	(*localgrid)->neigh[n*NFACES+nf]=corderp[(int)(tmp[n*NFACES+nf])];
-      else
-  	(*localgrid)->neigh[n*NFACES+nf]=-1;
-
-  free(corder);
-  free(eorder);
-  free(corderp);
   free(eorderp);
   free(tmp);
 }
