@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.55 2004-05-19 22:46:24 fringer Exp $
+ * $Id: phys.c,v 1.56 2004-05-19 23:43:55 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.55  2004/05/19 22:46:24  fringer
+ * Added vertical diffusion of vertical momentum.
+ *
  * Revision 1.54  2004/05/19 20:15:39  fringer
  * Put the old velocities back into the explicit advection terms for scalar.
  *
@@ -1390,6 +1393,27 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
     }
     if(fabs(sum)>1e-5 && WARNING) printf("Warning, not W-momentum conservative!\n");
     
+    // Add horizontal diffusion to stmp
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr];
+
+      nc1 = grid->grad[2*j];
+      nc2 = grid->grad[2*j+1];
+      if(grid->ctop[nc1]>grid->ctop[nc2])
+	kmin = grid->ctop[nc1];
+      else
+	kmin = grid->ctop[nc2];
+
+      for(k=kmin;k<grid->Nke[j];k++) {
+	phys->stmp[nc1][k]-=prop->nu_H*(phys->w[nc2][k]-phys->w[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
+	phys->stmp[nc2][k]-=prop->nu_H*(phys->w[nc1][k]-phys->w[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
+      }
+      for(k=grid->Nke[j]+1;k<grid->Nk[nc1];k++) 
+	phys->stmp[nc1][k]+=prop->CdW*fabs(phys->w[nc1][k])*phys->w[nc1][k]*grid->df[j]/grid->Ac[nc1];
+      for(k=grid->Nke[j]+1;k<grid->Nk[nc2];k++) 
+	phys->stmp[nc2][k]+=prop->CdW*fabs(phys->w[nc2][k])*phys->w[nc2][k]*grid->df[j]/grid->Ac[nc2];
+    }
+
     //Now use the cell-centered advection terms to update the advection at the faces
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr]; 
@@ -1445,7 +1469,7 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
       b[grid->ctop[i]]+=a[grid->ctop[i]];
 
       TriSolve(&(a[grid->ctop[i]]),&(c[grid->ctop[i]]),&(b[grid->ctop[i]]),
-	       &(phys->wtmp[i][grid->ctop[i]]),&(phys->w[i][grid->ctop[i]]),grid->Nkc[i]-grid->ctop[i]);
+	       &(phys->wtmp[i][grid->ctop[i]]),&(phys->w[i][grid->ctop[i]]),grid->Nk[i]-grid->ctop[i]);
     } else {
       for(k=grid->ctop[i];k<grid->Nk[i];k++)
 	phys->w[i][k]=phys->wtmp[i][k];
@@ -3252,6 +3276,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->tau_T = MPI_GetValue(DATAFILE,"tau_T","ReadProperties",myproc);
   (*prop)->CdT = MPI_GetValue(DATAFILE,"CdT","ReadProperties",myproc);
   (*prop)->CdB = MPI_GetValue(DATAFILE,"CdB","ReadProperties",myproc);
+  (*prop)->CdW = MPI_GetValue(DATAFILE,"CdW","ReadProperties",myproc);
   (*prop)->dt = MPI_GetValue(DATAFILE,"dt","ReadProperties",myproc);
   (*prop)->Cmax = MPI_GetValue(DATAFILE,"Cmax","ReadProperties",myproc);
   (*prop)->nsteps = (int)MPI_GetValue(DATAFILE,"nsteps","ReadProperties",myproc);
