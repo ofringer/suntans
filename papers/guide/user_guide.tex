@@ -1,0 +1,543 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% SUNTANS user guide.
+%
+% Oliver Fringer
+% Stanford University
+% 10 June 2004
+%
+% $Id: user_guide.tex,v 1.1 2004-06-14 05:43:58 fringer Exp $
+% $Log: not supported by cvs2svn $
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[12pt,oneside]{article}
+%\usepackage{amsfonts,graphics,/usr/share/texmf/tex/latex/misc/authordate1-4}
+\usepackage{amsfonts,graphics}
+
+\newif\ifpdf\ifx\pdfoutput\undefined\pdffalse\else\pdfoutput=1\pdftrue\fi
+\newcommand{\pdfgraphics}{\ifpdf\DeclareGraphicsExtensions{.pdf,.jpg}\else\fi}
+
+\textheight 9.0in
+\textwidth 6.5in
+\oddsidemargin 0.0in
+
+\include{newcommands}
+
+\begin{document}
+\pdfgraphics
+
+\title{Suntans User Guide\\
+{\large Stanford Unstructured Nonhydrostatic 
+Terrain-following Adaptive Navier-Stokes Simulator}}
+\author{O. B. Fringer\\
+\small
+Environmental Fluid Mechanics Laboratory,  \\
+Stanford University\\
+Stanford, CA 94305-4020
+\normalsize}
+\date{10 June 2004}
+
+\maketitle
+
+\tableofcontents
+
+\section{Downloading and installing Suntans}
+
+In order to use Suntans, you must also install the message-passing
+interface (MPI), the parallel graph partitioning libraries (ParMetis~\cite{PARMETIS[1998]}),
+the grid generation package Triangle~\cite{TRIANGLE[1996]}.  Instructions for 
+downloading and installing these packages are available from the individual websites
+for each package:
+\begin{tabbing}
+MPI\hspace{0.5in}\=  \verb+http://www-unix.mcs.anl.gov/mpi/mpich/+\\
+ParMetis \> \verb+http://www-users.cs.umn.edu/~karypis/metis/parmetis/+\\
+Triangle \> \verb+http://www-2.cs.cmu.edu/~quake/triangle.html+
+\end{tabbing}
+Note that you must compile the triangle libraries as object files by making them
+with \verb+make trilibrary+.
+
+To obtain a copy of Suntans, download the latest version from the suntans
+web page at \verb+http://suntans.stanford.edu/downloads+.  Follow the following
+steps to install the software.  {\bf Note: Do not continue beyond this point unless
+you have installed the required packages mentioned in the previous paragraph!
+Suntans will not compile unless you do so, even if you do not intend to run it in
+parallel.}
+\begin{enumerate}
+\item First unpack the gzipped tar archive with
+\begin{verbatim}
+tar xzvf suntans-X.X.tgz
+\end{verbatim}
+where \verb+X.X+ is the latest version of Suntans.  
+\item In the suntans-X.X directory, edit the Makefile so that the directories containing the appropriate packages
+are correctly specified as follows:
+\begin{itemize}
+\item \verb+MPIHOME+ should contain the base directory of the mpich distribution.
+For example, 
+\verb+MPIHOME=/usr/local/mpich-1.2.5.2+
+\item \verb+SUNTANSHOME+ should contain the location of this distribution of Suntans.
+\item \verb+PARMETISHOME+ should contain the base directory of the ParMetis distribution.
+\item \verb+TRIANGLEHOME+ should contain the base directory of the Triangle libraries.
+\item \verb+BACKUP+ should point to a directory in which you would like to store backup
+copies of the Suntans distribution.
+\end{itemize}
+\item Once these locations are properly specified, compile the Suntans executable with
+\begin{verbatim}
+make
+\end{verbatim}
+This will create the main executable \verb+sun+.
+\item Compile the Suntans graphical user interface with
+\begin{verbatim}
+make sunplot
+\end{verbatim}
+This will create the gui executable \verb+sunplot+.  Note:  This GUI requires the
+existence of the \verb+Xlib+ libraries and it is assumed that these are located
+in \verb+/usr/X11R6+.  Make sure the \verb+XINC+ and \verb+XLIBDIR+ variables
+are specified correctly in the \verb+Makefile+ if \verb+sunplot+ does not compile.
+\item In order to remove the object files, use
+\begin{verbatim}
+make clean
+\end{verbatim}
+\item To clean up the directory even further (remove \verb+*~, #*#, PI*, sun, sunplot+),
+use
+\begin{verbatim}
+make superclean
+\end{verbatim}
+\end{enumerate}
+
+\section{Running Suntans}
+
+To execute a single processor job, suntans is executed by running the main executable \verb+sun+ with
+\begin{verbatim}
+mpirun sun -t -g -s 
+\end{verbatim}
+This assumes that the input and output data required to run Suntans is in the same directory
+as the executable \verb+sun+.  This is in general not a good idea because Suntans creates a host
+of input and output files that will clutter up the local directory.  It is best to create a new
+directory and specify that directory as the working data directory on the command line.  For
+example, if the working directory is in the local \verb+data+ directory, then Suntans would be
+run with
+\begin{verbatim}
+mpirun sun -t -g -s --datadir=./data
+\end{verbatim}
+To run Suntans on multiple processors, use the \verb+-np+ flag with \verb+mpirun+. For example,
+to run Suntans on 64 processors, use
+\begin{verbatim}
+mpirun -np 64 sun -t -g -s --datadir=./data
+\end{verbatim}
+The following is a list of flags that determine the behavior of the \verb+sun+ executable upon
+running:
+\begin{itemize}
+\item{\verb+-t+} Create a triangulation from a planar straight line graph.  For details see
+Section \ref{sec:grids}.
+\item{\verb+-g+} Partition the triangulation among the given number of processors and
+compute grid geometry and cell and processor connectivity.  For details see Section \ref{sec:grids}.
+\item{\verb+-s+} Run the Suntans solver.
+\item{\verb+-v[vvv]+} Output information about the progress of the run.  The more \verb+v+s, the
+more verbose the output (maximum 4).
+\item{\verb+-w+} Print out warnings that may lead to crashes or erroneous results to the screen
+(independent of \verb+-v+).
+\item{\verb+-r+} Restart Suntans from a previous run.  For details see Section \ref{sec:restart}.
+\end{itemize}
+A typical Suntans run with, for example, 4 processors, will proceed as follows:
+\begin{enumerate}
+\item Create the triangulation and grid information and place it into the \verb+data+ directory
+with
+\begin{verbatim}
+mpirun -np 4 sun -t -g --datadir=./data
+\end{verbatim}
+This stores the grid information in files (see Section \ref{sec:grids}) for later reading later.
+Since this process may take some time it is a good idea to run this once for large grids and
+read in the grid data from a file.  
+\item Read the grid data from the files and run the solver and output information about the
+run with
+\begin{verbatim}
+mpirun -np 4 sun -s -vv --datadir=./data
+\end{verbatim}
+\item Once this run is finished it is possible to restart the run (for details see Section \ref{sec:restart})
+with the data in \verb+data+ using
+\begin{verbatim}
+mpirun -np 4 sun -s -r -vv --datadir=./data
+\end{verbatim}
+\end{enumerate}
+
+Note that the reason behind being able to specify the data directory at the command line is that
+it enables the executable to be run from the same directory but to use data from different directories
+that may contain different parameters.  For example, if the \verb+data1+ directory and \verb+data2+ 
+directory contain different grid data (from previous calls to Suntans with the \verb+-t+ and \verb+-g+ flags),
+then Suntans can be run either with
+\begin{verbatim}
+mpirun -np 4 sun -s --datadir=./data1
+\end{verbatim}
+or with
+\begin{verbatim}
+mpirun -np 4 sun -s --datadir=./data2
+\end{verbatim}
+
+\section{The main Suntans input file} \label{sec:suntans.dat}
+
+The main Suntans input file is called \verb+suntans.dat+  and contains three
+columns.  The first column contains the name of the variable used in
+the program while the second column contains its value, and the information
+after that value is ignored.  Lines beginning
+with \verb #  are ignored, while {\bf empty lines will cause the program to 
+crash}.  The Suntans executable looks for this file in the directory specified
+by \verb+--datadir=+.  If this is not specified, then it looks for it in the
+same directory as the \verb+sun+ executable.
+A listing of the parameters in the \verb+suntans.dat+ file is given in
+Appendix \ref{app:params}.
+
+\section{Creating or Reading in Triangular Grids} \label{sec:grids}
+
+\subsection{Using the triangle libraries}
+
+Triangular grids can be created from a simple planar straight line
+graph which is specified as the \verb+pslg+ file in \verb+suntans.dat+.
+The format of this file is similar to the format of the planar straight
+line graph file for use in triangle.  The planar straight line graph
+file is a listing of points and edges which make up a closed contour.
+These edges will comprise the boundaries of the triangulation that are
+created by the triangle libraries.  The simplest PSLG file is one which
+specifies a box with sides of length 1.  This requires four points and
+four edges, as shown in the following file \verb+box.dat+:
+\begin{verbatim}
+# Number of points
+4
+# List of points (x,y,marker)
+0.0 0.0 0
+0.0 1.0 1
+1.0 1.0 2
+1.0 0.0 3
+# Number of segments
+4
+# List of segments and boundary markers (point #, point #, marker)
+0 1 1
+1 2 1
+2 3 1
+3 0 1
+# Number of holes
+0
+# Minimum area
+.005
+\end{verbatim}
+The minimum area causes the triangle program to continue to add triangles
+until the minimum area of one of the triangles satisfies this area.  
+Setting the \verb+pslg+ variable to \verb+box.dat+ in \verb+suntans.dat+
+and running Suntans with
+\begin{verbatim}
+mpirun sun -t -g --datadir=./data
+\end{verbatim}
+This creates a triangulation composed of 256 right triangles within a square
+with sides of length 1.  The three columns after the number of points
+specification correspond to the x,y coordinates of each point, along
+with a marker for each point.  Following the number of segments specification,
+the first two columns specify the indices of the points that make up
+the end points of each segment in C-style numbering, such that the indices
+go from 0 to one less than the number of points.  The third column in the
+segment list specifies the marker for each segment.  This is how the boundary
+conditions are specified, and is discussed in more detail in Section \ref{sec:initial}.
+The number of holes is currently not used.
+
+Degenerate triangulations may arise when neighboring triangles are close to having
+right angles.  In this case the distance between the Voronoi points may be close
+to zero and hence may severely limit the time step.  This is remedied by setting
+the \verb+CorrectVoronoi+ variable to 1 in \verb+suntans.dat+.  If this
+parameter is set, then the Voronoi points are corrected when the distance
+between Voronoi points is less than \verb+VoronoiRatio+ times the distance between
+the cell centroids.  For example, for two neighboring right triangles, the Voronoi
+points will be coincident and hence the distance between the Voronoi points of these
+neighboring triangles will be zero.  If \verb+VoronoiRatio+ is set to \verb+0.5+, 
+then the Voronoi points are adjusted so that the distance between them is half the
+distance between the cell centroids.  If \verb+VoronoiRatio+ is set to \verb+1+,
+then the Voronoi points correspond to the cell centroids.
+
+\subsection{Reading Triangular Grids from a File}
+
+Use of the \verb+-t+ flag creates three files specified in \verb+suntans.dat+: 
+\verb+points+, \verb+cells+, and \verb+edges+.  By default, these are specified
+to be
+\begin{verbatim}
+points    points.dat
+edges     edges.dat
+cells     cells.dat
+\end{verbatim}
+The \verb+points+ file contains a listing of the x-y coordinates of the Delaunay points
+in the full triangulation before being subdivided among different processors. 
+This file contains three columns although the last column is never used.  The
+total number of lines in this file is $N_p$, the number of triangle vertics in the triangulation.
+The \verb+edges+ file contains $N_e$ rows each of which defines an
+edge in the triangulation, and five columns in the following format:
+\begin{verbatim}
+Point1 Point2 Marker Voronoi1 Voronoi2
+\end{verbatim}
+\verb+Point1+ and \verb+Point2+ contain indices to points in the \verb+points+ file
+and make up the end points of the Delaunay edges.  Because Suntans uses C-style
+indexing, then $0\le$\verb+Point1,Point2+$<N_p$.  \verb+Marker+ specifies the type
+of edge.  If \verb+Marker=0+, then it is a computational edge, otherwise, it is
+a boundary edge, and the boundary condition is specified in Section \ref{sec:initial}.
+The last two entries, \verb+Voronoi1+ and \verb+Voronoi2+, are the indices to the Voronoi
+points which make up the end points of the Voronoi edge which intersects this Delaunay edge.
+As such, we must have $0\le$\verb+Voronoi1,Voronoi2+$<N_c$.
+These Voronoi points correspond to triangles defined in the file \verb+cells+.  Voronoi points
+which are ghost points are indicated by a $-1$.
+The \verb+cells+ file contains $N_c$ rows each of which corresponds to a
+triangle in the triangulation, and 8 columns in the following format:
+\begin{verbatim}
+VoronoiX VoronoiY Point1 Point2 Point3 Neighbor1 Neighbor2 Neighbor3
+\end{verbatim}
+The \verb+VoronoiX+ and \verb+VoronoiY+ points correspond to the x-y coordinates
+of the Voronoi points of each triangle and \verb+Point1+, \verb+Point2+, and \verb+Point3+
+correspond to indices to points in the \verb+points+ file which make up the
+vertices of the triangle.  These indices must satisfy \\
+$0\le$\verb+Point1,Point2,Point3+$<N_p$. \\
+\verb+Neighbor1+, \verb+Neighbor2+, and
+\verb+Neighbor3+ correspond to indices to neighboring triangles.  Neighboring
+triangles which correspond to ghost points are represented by a $-1$.  For neighbors
+not lying outside boundaries, we must have \\
+$0\le$\verb+Neigh1,Neigh2,Neigh3+$<N_c$.\\
+Because Suntans determines the number of triangle vertices $N_p$, edges $N_e$, and cells $N_c$
+by the number of rows in the \verb+points+, \verb+cells+, and \verb+edges+ files, respectively,
+it is important not to have extra carriage returns at the end of these files.
+
+These three files are generated each time the \verb+-t+ flag is used with Suntans.  If
+the \verb+-t+ flag is not used, then when called with $\verb+-g+$, Suntans reads these
+three files and computes grid geometry and, if desired, partitions it among several processors.
+The \verb+-g+ flag outputs the following data files, which are specified in \verb+suntans.dat+.
+One file associated with each of these descriptors is created for each processor in a partitioned
+grid.  For example, if the file name specified after \verb+cells+ in \verb+suntans.dat+ is given
+by \verb+cells.dat+, then when called with 2 processors, the \verb+-g+ flag would output two files
+names \verb+cells.dat.0+ and \verb+cells.dat.1+, each corresponding to the \verb+cells+ file of
+each processor.
+\begin{itemize}
+\item \verb+cells+ Same as the output when using \verb+-t+, except on a per-processor basis.
+The indices to the triangle vertices still correspond to indices in the global \verb+points+ file, which is
+not distributed among the processors.  All other indices are local to the specific processor.
+\item \verb+edges+ Same as the output when using \verb+-t+, except on a per-processor basis.
+The indices to the end points of the edges still correspond to indices in the global \verb+points+ file, which is
+not distributed among the processors.  All other indices are local to the specific processor.
+\item \verb+celldata+ 
+\item \verb+edgedata+
+\item \verb+topology+
+\item \verb+vertspace+
+\end{itemize}
+
+\section{Specifying initial and boundary conditions} \label{sec:initial}
+
+\section{Using the Sunplot GUI}
+
+\section{Restarting Runs} \label{sec:restart}
+
+\appendix
+
+\section{Parameter listing} \label{app:params}
+
+\bibliographystyle{plain}
+\bibliography{/home/fringer/latex/bibliography}
+
+\end{document}
+
+\section{Specifying initial and boundary conditions} \label{sec:initial}
+
+\section{Using the Sunplot GUI}
+
+\section{Restarting Runs} \label{sec:restart}
+
+To restart, create a new directory and move the store.dat files into
+start.dat files in that directory, and create links to the following files:
+\begin{itemize}
+\item suntans.dat
+\item celldata.dat.np
+\item edgedata.dat.np
+\item topology.dat.np
+\item vertspace.dat
+\end{itemize}
+
+\section{Input/Output Files}
+
+\subsection{Grid}
+
+\subsubsection{Inputs}
+
+\begin{itemize}
+\item PSLGFILE[BUFFERLENGTH], 
+\item File designator: {\bf depth}
+\begin{itemize}
+\item Array name: \verb+INPUTDEPTHFILE+
+\item Default file name: \verb+depth.dat+
+\item Format: \verb+xd yd d+
+\item Description: Contains values for depths to be interpolated onto the Voronoi points.
+The number of rows is dependent upon the number of data points.  For example, if a 
+$100\times 100$ set of bathymetry is available, it must be written to this file
+in $10 000$ rows for use in the interpolation.
+\item Size: See above.
+\item Type: ASCII
+\end{itemize}
+\end{itemize}
+
+\subsubsection{Inputs and Outputs}
+
+\begin{itemize}
+\item File designator: {\bf points}
+\begin{itemize}
+\item Array name: \verb+POINTSFILE+ 
+\item Default file name: \verb+points.dat+
+\item Format: \verb+xp[Np] yp[Np]+ 
+\item Description: Stores the Voronoi points for the entire domain
+\item Size: $N_p$ rows.
+\item Type: ASCII
+\end{itemize}
+\item File designator: {\bf edges}
+\begin{itemize}
+\item Array name: \verb+EDGEFILE+ 
+\item Default file name: \verb+edges.dat.Np+
+\item Format: \verb+edgep1 edgep2 edgemarker+
+\item Description: Indices to points in the \verb+points+ file and marker type.  Without the trailing
+processor number, \verb+edges.dat+ contains all the edge pointers for the entire triangulation.  With
+the trailing processor number, the format is of the form \verb+edgep1 edgep2 mark grad1 grad2+
+\item Size: $N_e$ rows ($N_e$ is total for entire grid without trailing processor number,
+$N_e$ is total for particular processor with the trailing processor number).
+\item Type: ASCII
+\end{itemize}
+\item File designator: {\bf cells}
+\begin{itemize}
+\item Array name: \verb+CELLSFILE+ 
+\item Default file name: \verb+cells.dat.Np+
+\item Format: \verb+xv yv cellp1 cellp2 cellp3 neigh1 neigh2 neigh3+
+\item Description: \verb+xv+ and \verb+yv+ are the voronoi points, \verb+cellp1,2,3+ are the indices to points
+in the \verb+points+ file, and \verb+neigh1,2,3+ are the indices to cell neighbors.
+\item Size: $N_c$ rows
+\item Type: ASCII
+\end{itemize}
+\end{itemize}
+
+\subsection{Physical Data}
+
+\appendix
+
+\section{Parameter listing} \label{app:params}
+
+\subsection{General variables for the sun executable}
+
+\begin{tabular}{p{1.25in}p{5in}}
+\verb+Nkmax+ & The number of vertical grid cells.\\
+\verb+stairstep+ & Type of vertical grid to use.  1: stair-stepping, 0: partial-stepping\\
+\verb+rstretch+ & Stretching factor for vertical grid (1<=rstretch<1.1)\\
+\verb+CorrectVoronoi+ &  Whether or not to correct Voronoi points\\
+\verb+VoronoiRatio+ &  Adjust the voronoi points by this amount if 1 then = centroid.\\
+\verb+vertgridcorrect+ &  Correct vertical grid if Nkmax is too small\\
+\verb+IntDepth+ &  1 if interpdepth, 0 otherwise\\
+\verb+dzsmall+ &  Smallest grid spacing ratio before correction\\
+\verb+scaledepth+ &  Scale the depth by scalefactor\\
+\verb+scaledepthfactor+ &  Depth scaling factor (to test deep grids with explicit methods)\\
+\verb+thetaramptime+ &  Timescale over which theta is ramped from 1 to theta (fs theta only)\\
+\verb+theta+ &  0: fully explicit, 1: fully implicit\\
+\verb+thetaS+ &  For scalar advection\\
+\verb+thetaB+ &  For scalar advection\\
+\verb+beta+ &  Coefficient of expansivity of salt.\\
+\verb+kappa+ &  Vertical mass diffusivity\\
+\verb+kappa+ &  Horizontal mass diffusivity\\
+\verb+gamma+ &  Coefficient of expansivity of temperature.\\
+\verb+kappa+ &  Vertical thermal diffusivity\\
+\verb+kappa+ &  thermal diffusivity\\
+\verb+nu+ &  Vertical laminar viscosity of water (m$^2$ s$^{-1}$)\\
+\verb+nu+ &  Horizontal laminar viscosity of water (m$^2$ s$^-1$)\\
+\verb+tau+ &  Wind shear stress\\
+\verb+CdT+ &  Drag coefficient at surface\\
+\verb+CdB+ &  Drag coefficient at bottom\\
+\verb+CdW+ &  Drag coefficient at sidewalls\\
+\verb+dt+ &  Time step\\
+\verb+Cmax+ &  Maximum permissible Courant number\\
+\verb+nsteps+ &  Number of steps (3000 per M2 tide)\\
+\verb+ntout+ &  How often to output data\\
+\verb+ntprog+ &  How often to report progress (in \%)\\
+\verb+ntconserve+ &  How often to output conserved data\\
+\verb+nonhydrostatic+ &  0 = hydrostatic, 1 = nonhydrostatic\\
+\verb+cgsolver+ &  0 = GS, 1 = CG\\
+\verb+maxiters+ &  Maximum number of CG iterations\\
+\verb+qmaxiters+ &  Maximum number of CG iterations for nonhydrostatic pressure\\
+\verb+qprecond+ &  1 = preconditioned, 0 = not preconditioned\\
+\verb+epsilon+ &  Tolerance for CG convergence\\
+\verb+qepsilon+ &  Tolerance for CG convergence for nonhydrostatic pressure\\
+\verb+relax+ &  Relaxation parameter for GS solver.	\\
+\verb+amp+ &  amplitude\\
+\verb+omega+ &  frequency\\
+\verb+flux+ &  flux\\
+\verb+timescale+ &  timescale for open boundary condition\\
+\verb+volcheck+ &  Check for volume conservation\\
+\verb+masscheck+ &  Check for mass conservation\\
+\verb+nonlinear+ &  1 if nonlinear advection for horizontal velocity, 0 for u$^{n+1}=u^n$\\
+\verb+newcells+ &  1 if adjust momentum in surface cells as the volume changes, 0 otherwise\\
+\verb+wetdry+ &  1 if wetting and drying, 0 otherwise\\
+\verb+Coriolis+ &  Coriolis frequency f=2*Omega*sin(phi)\\
+\verb+sponge+ &  Decay distance scale for sponge layer\\
+\verb+sponge+ &  Decay time scale for sponge layer
+\end{tabular}
+
+\subsection{General variables for sunplot}
+
+\begin{tabular}{p{1.5in}p{5in}}
+\verb+caxisminU+ &  minimum caxis value for horizontal U velocity\\
+\verb+caxismaxU+ &  maximum caxis value for horizontal U velocity\\
+\verb+caxisminV+ &  minimum caxis value for horizontal V velocity\\
+\verb+caxismaxV+ &  maximum caxis value for horizontal V velocity\\
+\verb+caxisminW+ &  minimum caxis value for horizontal W velocity\\
+\verb+caxismaxW+ &  maximum caxis value for horizontal W velocity\\
+\verb+caxisminS+ &  minimum caxis value for horizontal Salinity\\
+\verb+caxismaxS+ &  maximum caxis value for horizontal Salinity\\
+\verb+caxisminDefault+ &  default min\\
+\verb+caxismaxDefault+ &  default max
+\end{tabular}
+
+\subsection{Grid input/output files}
+
+\begin{tabular}{p{1in}p{5in}}
+\verb+pslg+ &  Planar straight line graph (input)\\
+\verb+points+ &  Vertices file (input)\\
+\verb+edges+ &  Edge file (input)\\
+\verb+cells+ &  Cell centered file (input)\\
+\verb+depth+ &  Depth file for interpolation (if INTERPDEPTH=1) (input)\\
+\verb+celldata+ &  Cell-centered output (output)\\
+\verb+edgedata+ &  Edge-centered output (output)\\
+\verb+vertspace+ &  Vertical grid spacing (output)\\
+\verb+topology+ &  Grid topology data\\
+\end{tabular}
+
+\subsection{Output Data Files}
+
+\begin{tabular}{p{.5in}p{6in}}
+\verb+FreeSurfaceFile+   	& \\
+\verb+HorizontalVelocityFile+ 	& \\
+\verb+VerticalVelocityFile+ 	& \\
+\verb+SalinityFile+ 		& \\
+\verb+BGSalinityFile+ 		& \\
+\verb+TemperatureFile+		& \\
+\verb+PressureFile+		& \\
+\verb+VerticalGridFile+ 	& \\
+\verb+ConserveFile+		& \\
+\verb+ProgressFile+	        & \\
+\verb+StoreFile+		& \\
+\verb+StartFile+		&
+\end{tabular}
+
+\bibliographystyle{plain}
+\bibliography{/home/fringer/latex/bibliography}
+
+\end{document}
+
+
+
+
+celldata & \verb+CELLCENTEREDFILE+ & celldata.dat.Np
+& xv yv Ac dv Nk face1 face2 face3 neigh1 neigh2 neigh3 normal1 normal2 normal3 def1 def2 def3 (ffffiiiiiiiiiifff) & $N_c \times 17$ ASCII\\
+edgedata & \verb+EDGECENTEREDFILE+ & edgedata.dat.Np
+& df dg n1 n2 xe ye Nke Nkc grad2n grad2np1 grad2n grad2np1 mark (ffffffiiiiiii) & $N_e \times 13$ & ASCII\\
+vertspace & \verb+VERTSPACEFILE+ & vertspace.dat.Np
+& dz (f) & $N_{kmax}\times 1$ & ASCII\\
+topology & \verb+TOPOLOGYFILE+ & topology.dat.Np
+& \verb+numprocs+ \verb+Nneighs+ \verb+myneighs[Nneighs]+
+\verb+num_cells_send[Nneighs]+ \verb+num_cells_recv[Nneighs]+
+\verb+num_edges_send[Nneighs]+ \verb+num_edges_recv[Nneighs]+
+\verb+cell_send[Nneighs][num_cells_send[Nneighs]]+ \verb+cell_recv[Nneighs][num_cells_recv[Nneighs]]+
+\verb+edge_send[Nneighs][num_edges_send[Nneighs]]+ \verb+edge_recv[Nneighs][num_edges_recv[Nneighs]]+
+\verb+celldist[MAXBCTYPES]+ \verb+edgedist[MAXMARKS]+ \verb+cellp[Nc]+ \verb+edgep[Ne]+
+& - & ASCII \\
+\end{tabular}
