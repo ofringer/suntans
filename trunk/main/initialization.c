@@ -3,8 +3,12 @@
  * Description:  This file contains the functions that are used
  * to initialize the depth, free-surface, and salinity.
  *
- * $Id: initialization.c,v 1.11 2004-09-15 02:00:57 fringer Exp $
+ * $Id: initialization.c,v 1.12 2004-09-27 00:52:48 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.11  2004/09/15 02:00:57  fringer
+ * Cleaned up this file so that it only contains initialization for
+ * an idealized shelf break.
+ *
  * Revision 1.10  2004/07/22 20:24:52  fringer
  * Added initial sech^2 solitary waves of depsression to simulate transbasin
  * solitary waves.
@@ -22,7 +26,7 @@
  * Revision 1.6  2004/06/14 07:56:41  fringer
  * Changes made during debugging.
  *
- * Revision 1.5  2004/06/01 04:31:29  fringer
+ * Revision 1.5  2004/06/01 04:31:29  fringer 
  * Initialization for entrainment problem:
  * D = 2 m when x>4 & x<7, 1 m otherwise
  * s -> -.005*tanh((x-3)/.01), +.01 for s<-1
@@ -69,12 +73,19 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
       if(VERBOSE>2) printf("Minimum vertical grid spacing is %.2f\n",dz[0]);
       for(k=1;k<Nkmax;k++) 
 	dz[k]=r*dz[k-1];
+    } else if(r>-1.1 && r<-1) {    
+      r=fabs(r);
+      dz[Nkmax-1] = depth*(r-1)/(pow(r,Nkmax)-1);
+      if(VERBOSE>2) printf("Minimum vertical grid spacing is %.2f\n",dz[Nkmax-1]);
+      for(k=Nkmax-2;k>=0;k--) 
+	dz[k]=r*dz[k+1];
     } else {
       printf("Error in GetDZ when trying to create vertical grid:\n");
-      printf("Stretching parameter rstretch must  be in the range (1,1.1).\n");
+      printf("Absolute value of stretching parameter rstretch must  be in the range (1,1.1).\n");
       exit(1);
     }
   } else {
+    r=fabs(r);
     if(r!=1)
       dz0 = depth*(r-1)/(pow(r,Nkmax)-1);
     else
@@ -99,15 +110,16 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
  *
  */
 REAL ReturnDepth(REAL x, REAL y) {
-  REAL length, xmid, shelfdepth;
+  REAL length, xmid, shelfdepth, depth;
 
-  length = 20000;
-  xmid = 75000;
+  length = 10000;
+  xmid = 65000;
   shelfdepth = 500;
+  depth = 3000;
   if(x<=xmid-length/2)
-    return 3000;
+    return depth;
   else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
-    return 3000-(3000-shelfdepth)*(x-xmid+length/2)/length;
+    return depth-(depth-shelfdepth)*(x-xmid+length/2)/length;
   else
     return shelfdepth;
 }
@@ -149,7 +161,7 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
  *
  */
 REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
-  if(z<-depth+100)
+  if(x<500)
     return 1;
   return 0;
 }
