@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.21 2003-10-25 02:04:08 fringer Exp $
+ * $Id: phys.c,v 1.22 2003-10-27 17:22:58 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.21  2003/10/25 02:04:08  fringer
+ * Removed Kriging terms and added baroclinic and cariolis terms to AB vector
+ * Cn[][][].
+ *
  * Revision 1.20  2003/10/25 00:55:09  fringer
  * Added Eulerian scheme with AB for horizontal advection.
  * Before removal of Kriging terms.
@@ -361,7 +365,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
     for(k=0;k<grid->Nke[j];k++)
       phys->wf[j][k]=0;
   }
+  ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
 
+  /*
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
     nc1 = grid->grad[2*j];
@@ -377,6 +383,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
       z-=0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
     }
   }
+  */
 
   /*
    * Determine minimum and maximum scalar values.
@@ -575,9 +582,6 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
       UpdateScalarsImp(grid,phys,prop);
       UpdateUImp(grid,phys,prop,phys->T);
 
-      SendRecvCellData3D(phys->s,grid,myproc,comm,first);
-      SendRecvCellData3D(phys->T,grid,myproc,comm,first);
-
       // We need w on the vertical faces as well as the tangential
       // components of velocity on the faces in order to compute the
       // tracebacks and interpolation for the advection of the horizontal velocity
@@ -595,6 +599,10 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 		  phys->h[is[ip]],phys->s[is[ip]][k]-phys->s0[is[ip]][k],
 		  phys->uc[is[ip]][k],phys->vc[is[ip]][k],phys->w[is[ip]][k]);
       */
+      SendRecvCellData3D(phys->s,grid,myproc,comm,first);
+      SendRecvCellData3D(phys->T,grid,myproc,comm,first);
+      SendRecvEdgeData3D(phys->u,grid,myproc,comm);
+      SendRecvWData(phys->w,grid,myproc,comm,all);
     }
 
     Progress(prop,myproc);
@@ -655,8 +663,14 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
     for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
       j = grid->edgep[jptr]; 
       
+      nc1 = grid->grad[2*j];
+      nc2 = grid->grad[2*j+1];
+
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=phys->u[j][k]+(1-fab)*phys->Cn[0][j][k];
+	phys->utmp[j][k]=(1-fab)*phys->Cn[0][j][k]+
+	  (1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	   prop->sponge_decay)*phys->u[j][k];
+
 	phys->Cn[0][j][k]=0;
       }
     }
@@ -698,8 +712,9 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
     }
 
     // First compute the cell-centered source terms and put them into stmp
-    for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
-      i = grid->cellp[iptr];
+    //    for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
+    //      i = grid->cellp[iptr];
+    for(i=0;i<grid->Nc;i++) {
 
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
 	phys->stmp[i][k]=0;
@@ -734,17 +749,18 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       if(nc1!=-1)
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	  phys->Cn[0][j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
-	    *prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
+      	    *prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
 
       if(nc2!=-1)
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	  phys->Cn[0][j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]*
-	    prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
+      	    prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
     }
 
     // Now do vertical advection
-    for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
-      i = grid->cellp[iptr];
+    //    for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
+    //      i = grid->cellp[iptr];
+    for(i=0;i<grid->Nc;i++) {
 
       for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++) {
 	phys->stmp[i][k]=0;
@@ -1174,7 +1190,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   // htmp since the boundary values for h will be used in the cg solver.
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
-    phys->h[i] = prop->amp*sin(prop->omega*prop->rtime);
+    phys->h[i] = -0.6+prop->amp*sin(prop->omega*prop->rtime);
   }
 
   // Now we have the required components for the CG solver for the free-surface:
