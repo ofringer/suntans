@@ -6,8 +6,16 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.56 2004-05-19 23:43:55 fringer Exp $
+ * $Id: phys.c,v 1.57 2004-05-20 02:10:10 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.56  2004/05/19 23:43:55  fringer
+ * Added horizontal diffusion of vertical momentum as well as CdW to
+ * add sidewall drag.
+ *
+ * Fixed a bug in TriSolve when used in advectverticalvelocity so
+ * that it uses grid->Nk[i]-grid->ctop[i] points instead of
+ * grid->Nkc[i]-grid->ctop[i] points.
+ *
  * Revision 1.55  2004/05/19 22:46:24  fringer
  * Added vertical diffusion of vertical momentum.
  *
@@ -1019,8 +1027,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				phys->uc[nc2][k]*grid->dzz[nc2][k]);
 	}
       
-      // Now compute the cell-centered source terms and put them into stmp and also
-      // add on diffusion of u.
+      // Now compute the cell-centered source terms and put them into stmp
       for(i=0;i<grid->Nc;i++) {
 	
 	for(k=0;k<grid->Nk[i];k++) 
@@ -1029,28 +1036,11 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	for(nf=0;nf<NFACES;nf++) {
 	  
 	  ne = grid->face[i*NFACES+nf];
-	  nc = grid->neigh[i*NFACES+nf];
 
 	  for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
 	    phys->stmp[i][k]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	      (grid->Ac[i]*grid->dzz[i][k]);
 	  
-	  if(nc!=-1) {
-	    if(grid->Nk[nc]<grid->Nk[i])
-	      kmax = grid->Nk[nc];
-	    else
-	      kmax = grid->Nk[i];
-	    
-	    if(grid->ctop[nc]>grid->ctop[i])
-	      kmin = grid->ctop[nc];
-	    else
-	      kmin = grid->ctop[i];
-	    for(k=kmin;k<kmax;k++)
-	      phys->stmp[i][k]-=prop->nu_H*(phys->uc[nc][k]-phys->uc[i][k])*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
-	    for(k=kmax;k<grid->Nkc[ne];k++)
-	      phys->stmp[i][k]+=2*prop->nu_H*phys->uc[i][k]*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
-	  }
-
 	  // Top cell is filled with momentum from neighboring cells
 	  for(k=grid->etop[ne];k<=grid->ctop[i];k++) 
 	    phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
@@ -1109,8 +1099,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				phys->vc[nc2][k]*grid->dzz[nc2][k]);
 	}
 
-      // Now compute the cell-centered source terms and put them into stmp and also
-      // add on diffusion of v.
+      // Now compute the cell-centered source terms and put them into stmp.
       for(i=0;i<grid->Nc;i++) {
 	
 	for(k=0;k<grid->Nk[i];k++) 
@@ -1119,29 +1108,11 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	for(nf=0;nf<NFACES;nf++) {
 	  
 	  ne = grid->face[i*NFACES+nf];
-	  nc = grid->neigh[i*NFACES+nf];
-
-	  if(grid->Nk[nc]<grid->Nk[i])
-	    kmax = grid->Nk[nc];
-	  else
-	    kmax = grid->Nk[i];
-
-	  if(grid->ctop[nc]>grid->ctop[i])
-	    kmin = grid->ctop[nc];
-	  else
-	    kmin = grid->ctop[i];
 	  
 	  for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
 	    phys->stmp2[i][k]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	      (grid->Ac[i]*grid->dzz[i][k]);
 	  
-	  if(nc!=-1) {
-	    for(k=kmin;k<kmax;k++)
-	      phys->stmp2[i][k]-=prop->nu_H*(phys->vc[nc][k]-phys->vc[i][k])*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
-	    for(k=kmax;k<grid->Nkc[ne];k++)
-	      phys->stmp2[i][k]+=2*prop->nu_H*phys->vc[i][k]*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
-	  }
-
 	  // Top cell is filled with momentum from neighboring cells
 	  for(k=grid->etop[ne];k<=grid->ctop[i];k++) 
 	    phys->stmp2[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
@@ -1196,6 +1167,40 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	  phys->stmp2[i][grid->Nk[i]-1]+=b[grid->Nk[i]-1]/grid->dzz[i][grid->Nk[i]-1];
 	}
       }
+
+      // Now add on horizontal diffusion to stmp and stmp2
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	j = grid->edgep[jptr];
+
+	nc1 = grid->grad[2*j];
+	nc2 = grid->grad[2*j+1];
+	if(grid->ctop[nc1]>grid->ctop[nc2])
+	  kmin = grid->ctop[nc1];
+	else
+	  kmin = grid->ctop[nc2];
+
+	for(k=kmin;k<grid->Nke[j];k++) {
+	  a[k]=prop->nu_H*(phys->uc[nc2][k]-phys->uc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
+	  b[k]=prop->nu_H*(phys->vc[nc2][k]-phys->vc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
+	  phys->stmp[nc1][k]-=a[k];
+	  phys->stmp[nc2][k]+=a[k];
+	  phys->stmp2[nc1][k]-=b[k];
+	  phys->stmp2[nc2][k]+=b[k];
+	  //	  phys->stmp[nc1][k]-=prop->nu_H*(phys->uc[nc2][k]-phys->uc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
+	  //	  phys->stmp[nc2][k]-=prop->nu_H*(phys->uc[nc1][k]-phys->uc[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
+	  //	  phys->stmp2[nc1][k]-=prop->nu_H*(phys->vc[nc2][k]-phys->vc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
+	  //	  phys->stmp2[nc2][k]-=prop->nu_H*(phys->vc[nc1][k]-phys->vc[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
+	}
+	for(k=grid->Nke[j]+1;k<grid->Nk[nc1];k++) {
+	  phys->stmp[nc1][k]+=prop->CdW*fabs(phys->uc[nc1][k])*phys->uc[nc1][k]*grid->df[j]/grid->Ac[nc1];
+	  phys->stmp2[nc1][k]+=prop->CdW*fabs(phys->vc[nc1][k])*phys->vc[nc1][k]*grid->df[j]/grid->Ac[nc1];
+	}
+	for(k=grid->Nke[j]+1;k<grid->Nk[nc2];k++) {
+	  phys->stmp[nc2][k]+=prop->CdW*fabs(phys->uc[nc2][k])*phys->vc[nc2][k]*grid->df[j]/grid->Ac[nc2];
+	  phys->stmp2[nc2][k]+=prop->CdW*fabs(phys->vc[nc2][k])*phys->vc[nc2][k]*grid->df[j]/grid->Ac[nc2];
+	}
+      }
+
       // Check to make sure integrated fluxes are 0 for conservation
       sum=0;
       for(i=0;i<grid->Nc;i++) {
