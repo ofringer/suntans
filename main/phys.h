@@ -1,8 +1,13 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.6 2003-05-12 00:19:03 fringer Exp $
+ * $Id: phys.h,v 1.7 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.6  2003/05/12 00:19:03  fringer
+ * Added kriging_cov and nonlinear to the prop structure, and changed
+ * utmp2 to ut since it stores the tangential velocity field (and other
+ * temporary data as well).
+ *
  * Revision 1.5  2003/04/29 00:19:56  fringer
  * Added BGSalinityFID
  *
@@ -34,15 +39,21 @@
  */
 typedef struct _physT {
   REAL **u;
+  REAL **uc;
+  REAL **vc;
+  REAL **uold;
+  REAL **vold;
   REAL *D;
   REAL **w;
   REAL **wf;
   REAL **q;
   REAL **s;
+  REAL **T;
   REAL **s0;
   REAL *h;
 
   REAL **nu_tv;
+  REAL **kappa_tv;
   REAL *tau_T;
   REAL *tau_B;
   REAL *CdT;
@@ -64,9 +75,18 @@ typedef struct _physT {
   REAL *htmp;
   REAL *hold;
   REAL **stmp;
+  REAL **stmp2;
+  REAL **stmp3;
   REAL **utmp;
+  REAL **utmp2;
   REAL **ut;
+  REAL **Cn_R;
+  REAL **Cn_T;
+  REAL **Cn_U;
+  REAL **Cn_W;
   REAL **wtmp;
+  REAL **wtmp2;
+  REAL **qtmp;
 
   REAL *ap;
   REAL *am;
@@ -86,12 +106,13 @@ typedef struct _physT {
  *
  */
 typedef struct _propT {
-  REAL dt, Cmax, rtime, amp, omega, flux, theta, thetaAB, 
-    thetaFS, nu, tau_T, CdT, CdB, relax, epsilon, dzsmall, beta;
-  int ntout, ntprog, nsteps, n, ntconserve, maxiters, volcheck, masscheck,
-    kriging_cov, nonlinear;
+  REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
+    thetaS, thetaB, nu, nu_H, tau_T, CdT, CdB, CdW, relax, epsilon, qepsilon, dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f;
+  int ntout, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, qprecond, volcheck, masscheck,
+    nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
-    *SalinityFID, *BGSalinityFID, *VerticalGridFID, *ConserveFID;
+    *SalinityFID, *BGSalinityFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
+    *StoreFID, *StartFID;
 
 } propT;
 
@@ -99,10 +120,13 @@ typedef struct _propT {
  * Public function declarations.
  *
  */
-void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm);
+void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
 void AllocatePhysicalVariables(gridT *grid, physT **phys);
 void FreePhysicalVariables(gridT *grid, physT *phys);
-void InitializePhysicalVariables(gridT *grid, physT *phys);
+void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop);
 void InitializeVerticalGrid(gridT **grid);
+void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc);
+void OpenFiles(propT *prop, int myproc);
+void ReadProperties(propT **prop, int myproc);
 
 #endif

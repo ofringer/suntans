@@ -7,8 +7,11 @@
  * is set to 1, then memory statistics will be printed as memory
  * is allocated and freed.
  *
- * $Id: memory.c,v 1.2 2003-06-10 02:22:36 fringer Exp $
+ * $Id: memory.c,v 1.3 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2003/06/10 02:22:36  fringer
+ * Updated to print out memory stats if VerboseMemory==1.
+ *
  * Revision 1.1  2003/04/29 00:10:32  fringer
  * Initial revision
  *

@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains mpi-based functions.
  *
- * $Id: mympi.c,v 1.3 2003-06-10 03:21:03 fringer Exp $
+ * $Id: mympi.c,v 1.4 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2003/06/10 03:21:03  fringer
+ * Added MPI_GetFile which extracts either the full pathname or the
+ * relative path from suntans.dat and uses the DATADIR global character
+ * array as the directory.
+ *
  * Revision 1.2  2003/04/29 16:37:23  fringer
  * Added MPI_FOPen as well as MPI_GetSize so that mpi exits cleanly when
  * files are not found.
@@ -118,9 +123,9 @@ FILE *MPI_FOpen(char *file, char *perms, char *caller, int myproc) {
   char str[BUFFERLENGTH];
   FILE *fid = fopen(file,perms);
 
-  if(errno && errno!=EAGAIN) {
+  if(errno && errno!=EAGAIN && errno!=34 && errno!=4) {
     if(myproc==0) {
-      sprintf(str,"Error in Function %s while trying to open %s",caller,file);
+      sprintf(str,"Error in Function %s while trying to open %s (ERRNO=%d)",caller,file,errno);
       perror(str);
     }
     MPI_Finalize();

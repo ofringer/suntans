@@ -7,8 +7,12 @@
  * This file contains functions that print out data into
  * files as well as printing for debugging.
  *
- * $Id: report.c,v 1.4 2003-04-26 14:18:20 fringer Exp $
+ * $Id: report.c,v 1.5 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2003/04/26 14:18:20  fringer
+ * Added TRIANGLE option, which allows the user to select -t, which triangulates
+ * a point set specified by the file PSLGFILE.
+ *
  * Revision 1.3  2003/04/23 03:23:54  fringer
  * Added option to change a variable and override what's in the input file.
  * For example, --nsteps=2, but coding for this is much more difficult than I
@@ -24,10 +28,13 @@
  *
  */
 #include "report.h"
+#include <errno.h>
+#include <sys/stat.h>
 
 void ParseFlags(int argc, char *argv[], int myproc)
 {
   int i, j, js, done=0, status;
+  struct stat filestat;
   char str[BUFFERLENGTH], val[BUFFERLENGTH];
   TRIANGULATE=0;
   GRID=0;
@@ -35,6 +42,10 @@ void ParseFlags(int argc, char *argv[], int myproc)
   VERBOSE=0;
   WARNING=0;
   ASCII=0;
+  RESTART=0;
+
+  sprintf(DATADIR,".");
+  sprintf(DATAFILE,"%s/%s",DATADIR,DEFAULTDATAFILE);
 
   if(argc>1) {
     for(i=1;i<argc;i++) {
@@ -49,6 +60,8 @@ void ParseFlags(int argc, char *argv[], int myproc)
 	  WARNING=1;
 	else if(argv[i][1]=='a' && strlen(argv[i])==2)
 	  ASCII=1;
+	else if(argv[i][1]=='r' && strlen(argv[i])==2)
+	  RESTART=1;
 	else if(argv[i][1]=='v') 
 	  for(j=1;j<strlen(argv[i]);j++)
 	    if(argv[i][j]=='v')
@@ -65,18 +78,31 @@ void ParseFlags(int argc, char *argv[], int myproc)
 	  for(j=js;j<strlen(argv[i]);j++)
 	    val[j-js]=argv[i][j];
 	  val[j-js]='\0';
-	  GetValue(DATAFILE,str,&status);
-	  if(!status) {
-	    printf("Error in GetValue (called from %s) while reading %s.\n",
-		   "ParseFlags",DATAFILE);
-	    printf("Variable %s does not exist!\n",str);
-	    done=1;
+
+	  if(!strcmp(str,"datadir")) {
+	    sprintf(DATADIR,"%s",val);
+	    sprintf(DATAFILE,"%s/%s",DATADIR,DEFAULTDATAFILE);
+	  } else {
+	    GetValue(DATAFILE,str,&status);
+	    if(!status) {
+	      printf("Error in GetValue (called from %s) while reading %s.\n",
+		     "ParseFlags",DATAFILE);
+	      printf("Variable %s does not exist!\n",str);
+	      done=1;
+	    }
 	  }
 	} else
 	  done=1;
       } else
 	done=1;
     }
+  }
+
+  if(stat(DATAFILE,&filestat)==-1) {
+    sprintf(str,"Error opening data file %s on processor %d",DATAFILE,myproc);
+    perror(str);
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
   }
 
   if(done) {
