@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.8 2003-04-08 23:32:46 fringer Exp $
+ * $Id: phys.c,v 1.9 2003-04-21 20:26:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2003/04/08 23:32:46  fringer
+ * Added binary output functionality so far for fs,u,v,w.  Use the -a option to enforce ASCII output.
+ *
  * Revision 1.7  2002/12/01 10:39:39  fringer
  * Added initial density vector s0 as well as Flux terms to compute internal
  * wave energy fluxes at specified faces.
@@ -201,9 +204,20 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
 	hfmax=hf;
     }
     //phys->h[i]=-grid->dv[i]+hfmax;
-    phys->h[i]=cos(PI*grid->xv[i]/100000);
+    phys->h[i]=0.0*cos(PI*grid->xv[i]/10);
 
+    /*
+    if(grid->xv[i]>5)
+      phys->h[i]=0;
+    else
+      phys->h[i]=-grid->dv[i];
+    */
     //    phys->h[i] = 0;
+    //    phys->h[i]=exp(-pow((grid->xv[i]-5),2)
+    //    		   -pow((grid->yv[i]-5),2));
+    //    phys->h[i]=exp(-pow((grid->xv[i]-50000)/10000,2)
+    //		   -pow((grid->yv[i]-50000)/10000,2));
+
     //      phys->h[i]=-grid->dv[i];
     //    phys->h[i]=-2.5+2.5*cos(PI*grid->xv[i]/15);
     //    if(grid->xv[i]>500)
@@ -237,10 +251,15 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
       z-=grid->dzz[i][k]/2;
       //      phys->s[i][k]=-1.07*0*(z+1500+0*cos(PI*(grid->xv[i]-10000)/10000))/1500;
       //      phys->s[i][k]=-7.333e-3*(.5*(z+1500)/1500);
-      phys->s[i][k]=-0.0147*(z/3000+.5);
-      phys->s0[i][k]=-0.0147*(z/3000+.5);
-      z-=grid->dzz[i][k]/2;
+      //phys->s[i][k]=-0.0147*(z/3000+.5);
+      //phys->s0[i][k]=-0.0147*(z/3000+.5);
       //      if(grid->xv[i]>70000) phys->s[i][k]=.01;
+      //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
+
+      if(grid->xv[i]>5) phys->s[i][k]=0.01;
+      //      phys->s[i][k]=-(1-tanh((grid->xv[i]-5)/.25));
+      //phys->s[i][k]=-tanh((z+0.5*grid->dv[i]-.1*cos(PI*grid->xv[i]/10))/.01);
+      phys->s[i][k]=-tanh((z+0.5+.3*exp(-pow(grid->xv[i]/2,2)))/.01);
       //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
       //      	phys->s[i][k]=0;
       //      r=sqrt(pow(grid->xv[i]-11.25,2)+pow(grid->yv[i]-7.5,2));
@@ -249,6 +268,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
       //      else
       //	phys->s[i][k]=0;
       //      phys->s[i][k]=1-tanh((grid->xv[i]-7.5)/2);
+      z-=grid->dzz[i][k]/2;
     }
   }
 
@@ -1417,7 +1437,8 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
   phys->Eflux3 = 0;
   phys->Eflux4 = 0;
 
-  jflux = 25;
+  //  jflux = 25;
+  jflux = 0;
   u_barotropic = 0;
   nc1 = grid->grad[2*jflux];
   nc2 = grid->grad[2*jflux+1];
@@ -1440,7 +1461,8 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
   phys->Eflux1*=grid->df[jflux];
   phys->Eflux3*=grid->df[jflux];
 
-  jflux = 225;
+  //  jflux = 225;
+  jflux = 0;
   u_barotropic = 0;
   nc1 = grid->grad[2*jflux];
   nc2 = grid->grad[2*jflux+1];
@@ -1475,7 +1497,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
       mass+=phys->s[i][k]*grid->Ac[i]*grid->dzz[i][k];
     }
     Ep/=volume;
-
+  
     /*
     printf("d+h=%f, sum=%f, dv=%f, h=%f, Nkdz=%f, dz0=%f\n",
 	   (grid->dv[i]+phys->h[i]),height,grid->dv[i],phys->h[i],grid->Nk[i]*grid->dz[0],
@@ -1594,7 +1616,7 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
 static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, j, k, nwritten;
+  int i, j, k, ne, eneigh, nwritten;
   REAL *tmp = (REAL *)malloc(grid->Ne*sizeof(REAL));
   if(tmp==NULL)
     printf("Out of memory in OutPutData!\n");
@@ -1623,11 +1645,28 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       }
     }
 
+    // utmp will store the tangential component of velocity on each face
+    for(j=0;j<grid->Ne;j++) {
+      for(k=0;k<grid->Nke[j];k++) 
+	phys->utmp[j][k]=0;
+      for(ne=0;ne<2*(NFACES-1);ne++) {
+	eneigh=grid->eneigh[2*(NFACES-1)*j+ne];
+	if(eneigh!=-1)
+	  for(k=0;k<grid->Nke[j];k++)
+	    phys->utmp[j][k] += grid->xi[2*(NFACES-1)*j+ne]*
+	      phys->u[grid->eneigh[2*(NFACES-1)*j+ne]][k];
+      }
+      if(grid->grad[2*j]!=-1 && grid->grad[2*j+1]!=-1)
+	for(k=0;k<grid->Nke[j];k++)
+	  phys->utmp[j][k]*=0.5;
+    }
+
     if(ASCII) 
       for(j=0;j<grid->Ne;j++) {
 	for(k=0;k<grid->Nke[j];k++) 
-	  fprintf(prop->HorizontalVelocityFID,"%e %e %e\n",phys->u[j][k]*grid->n1[j],
-		  phys->u[j][k]*grid->n2[j],
+	  fprintf(prop->HorizontalVelocityFID,"%e %e %e\n",
+		  phys->u[j][k]*grid->n1[j]-phys->utmp[j][k]*grid->n2[j],
+		  phys->u[j][k]*grid->n2[j]+phys->utmp[j][k]*grid->n1[j],
 		  phys->wf[j][k]);
 	for(k=grid->Nke[j];k<grid->Nkmax;k++)
 	  fprintf(prop->HorizontalVelocityFID,"0.0 0.0 0.0\n");
@@ -1635,8 +1674,8 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     else 
       for(k=0;k<grid->Nkmax;k++) {
 	for(j=0;j<grid->Ne;j++) {
-	  if(k<grid->Nke[j])
-	    tmp[j]=phys->u[j][k]*grid->n1[j];
+	  if(k<grid->Nke[j]) 
+	    tmp[j]=phys->u[j][k]*grid->n1[j]-phys->utmp[j][k]*grid->n2[j];
 	  else
 	    tmp[j]=0;
 	}
@@ -1647,7 +1686,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	}
 	for(j=0;j<grid->Ne;j++) {
 	  if(k<grid->Nke[j])
-	    tmp[j]=phys->u[j][k]*grid->n2[j];
+	    tmp[j]=phys->u[j][k]*grid->n2[j]+phys->utmp[j][k]*grid->n1[j];
 	  else
 	    tmp[j]=0;
 	}
@@ -1677,12 +1716,12 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	  fprintf(prop->VerticalVelocityFID,"0.0\n");
       }
     else {
-      for(k=0;k<grid->Nkmax;k++) {
+      for(k=0;k<grid->Nkmax+1;k++) {
 	for(i=0;i<grid->Nc;i++) {
-	  if(k<grid->Nk[i])
+	  if(k<grid->Nk[i]+1)
 	    phys->htmp[i]=phys->w[i][k];
 	  else
-	    phys->htmp[i]=0;
+	    phys->htmp[i]=EMPTY;
 	}
 	nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->VerticalVelocityFID);
 	if(nwritten!=grid->Nc) {
@@ -1706,7 +1745,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	  if(k<grid->Nk[i])
 	    phys->htmp[i]=phys->s[i][k]-phys->s0[i][k];
 	  else
-	    phys->htmp[i]=0;
+	    phys->htmp[i]=EMPTY;
 	}
 	nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->SalinityFID);
 	if(nwritten!=grid->Nc) {
