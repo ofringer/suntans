@@ -6,8 +6,14 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.29 2003-05-25 19:43:23 fringer Exp $
+ * $Id: sunplot.c,v 1.30 2003-06-10 04:17:57 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.29  2003/05/25 19:43:23  fringer
+ * Added Caxis button which allows toggling between fixed color axes and
+ * unfixed color axes.  When fixed, the minimum and maximum values in
+ * the color bar are fixed.  Otherwise, they are the minimum and maximum
+ * values of the current data being plotted.
+ *
  * Revision 1.28  2003/05/25 16:10:43  fringer
  * Added colorbar which is drawn in the cmappix pixel map and copied to the
  * cmapwin window.
@@ -137,6 +143,8 @@
 #include "math.h"
 #include "suntans.h"
 #include "fileio.h"
+#include <sys/stat.h>
+#include <sys/errno.h>
 
 #define AXESSLICETOP 0.1
 #define SMALLHEIGHT .001
@@ -287,6 +295,7 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
 void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs);
 void ReadGrid(int proc);
 void ReadScalar(float *scal, int k, int Nk, int np, char *filename);
+void GetFile(char *string, char *datadir, char *datafile, char *name, int proc);
 void ReadVelocity(float *u, float *v, int kp, int Nk, int np , char *filename);
 float Min(float *x, int N);
 float Max(float *x, int N);
@@ -2350,9 +2359,13 @@ void SetUpButtons(void) {
 void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions)
 {
   int i, j, js, done=0, status;
+  struct stat filestat;
   char str[BUFFERLENGTH], val[BUFFERLENGTH];
   *numprocs=1;
   *dimensions=three_d;
+
+  sprintf(DATADIR,".");
+  sprintf(DATAFILE,"%s/%s",DATADIR,DEFAULTDATAFILE);
 
   if(N>1) 
     for(i=1;i<N;i++) {
@@ -2361,11 +2374,24 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions)
 	  *numprocs = (int)atof(argv[++i]);
 	else if(!strcmp(argv[i],"-2d"))
 	  *dimensions=two_d;
-	else
+	else if(argv[i][1]=='-') {
+	  if(!strncmp(argv[i],"--datadir=",strlen("--datadir="))) {
+	    js=strlen("--datadir=");
+	    for(j=js;j<strlen(argv[i]);j++)
+	      DATADIR[j-js]=argv[i][j];
+	    sprintf(DATAFILE,"%s/%s",DATADIR,DEFAULTDATAFILE);
+	  }
+	} else
 	  done=1;
       } else
 	done=1;
     }
+
+  if(stat(DATAFILE,&filestat)==-1) {
+    sprintf(str,"Error opening data file %s",DATAFILE);
+    perror(str);
+    exit(EXIT_FAILURE);
+  }
 
   if(done) {
     Usage(argv[0]);
@@ -2474,6 +2500,24 @@ void FreeData(dataT *data, int numprocs) {
     free(data->yc);
 }
 
+void GetFile(char *string, char *datadir, char *datafile, char *name, int proc) {
+  int status;
+  char str[BUFFERLENGTH];
+  
+  GetString(str,datafile,name,&status);
+  if(proc==-1) {
+    if(str[0]=='/')
+      strcpy(string,str);
+    else
+      sprintf(string,"%s/%s",datadir,str);
+  } else {
+    if(str[0]=='/')
+      sprintf(string,"%s.%d",str,proc);
+    else
+      sprintf(string,"%s/%s.%d",datadir,str,proc);
+  }
+}
+
 void ReadData(dataT *data, int nstep, int numprocs) {
   int i, j, ik, proc, status, ind, ind0, nf, count, nsteps, ntout;
   float xind, vel;
@@ -2481,11 +2525,10 @@ void ReadData(dataT *data, int nstep, int numprocs) {
   char string[BUFFERLENGTH];
   FILE *fid;
 
-  GetString(POINTSFILE,DATAFILE,"points",&status);
-  GetString(EDGEFILE,DATAFILE,"edges",&status);
-  GetString(CELLSFILE,DATAFILE,"cells",&status);
-  GetString(CELLCENTEREDFILE,DATAFILE,"celldata",&status);
-
+  GetFile(POINTSFILE,DATADIR,DATAFILE,"points",-1);
+  GetFile(EDGEFILE,DATADIR,DATAFILE,"edges",-1);
+  GetFile(CELLSFILE,DATADIR,DATAFILE,"cells",-1);
+  GetFile(CELLCENTEREDFILE,DATADIR,DATAFILE,"celldata",-1);
 
   if(nstep==-1) {
     data->Np=getsize(POINTSFILE);
@@ -2654,7 +2697,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	fclose(fid);
       }
       
-      sprintf(string,"/home/fringer/research/SUNTANS/data/s.dat.%d",proc);
+      GetFile(string,DATADIR,DATAFILE,"BGSalinityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
       for(i=0;i<data->Nkmax;i++) {
@@ -2669,7 +2712,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      sprintf(string,"/home/fringer/research/SUNTANS/data/u.dat.%d",proc);
+      GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       fseek(fid,3*(nstep-1)*data->Ne[proc]*data->Nkmax*sizeof(double),0);
       for(i=0;i<data->Nkmax;i++) {
@@ -2696,7 +2739,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      sprintf(string,"/home/fringer/research/SUNTANS/data/w.dat.%d",proc);
+      GetFile(string,DATADIR,DATAFILE,"VerticalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       for(i=0;i<data->Nkmax;i++) {
 	for(j=0;j<data->Nc[proc];j++) 
@@ -2716,7 +2759,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      sprintf(string,"/home/fringer/research/SUNTANS/data/fs.dat.%d",proc);
+      GetFile(string,DATADIR,DATAFILE,"FreeSurfaceFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       fseek(fid,(nstep-1)*data->Nc[proc]*sizeof(double),0);
       fread(dummy,sizeof(double),data->Nc[proc],fid);      
