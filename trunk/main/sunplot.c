@@ -6,8 +6,13 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.27 2003-05-14 11:53:18 fringer Exp $
+ * $Id: sunplot.c,v 1.28 2003-05-25 16:10:43 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.27  2003/05/14 11:53:18  fringer
+ * Fixed so that the -2d option works.  Needed to make sure
+ * fromprofile=false in the while() loop except for the first time
+ * it entered if the dims variable is 2d.
+ *
  * Revision 1.26  2003/05/14 11:41:07  fringer
  * Need to keep the && fromprofile && test after all so that zooming
  * functions work!  But to fix the "Cannot plot this slice!" problem,
@@ -129,7 +134,7 @@
 #include "suntans.h"
 #include "fileio.h"
 
-#define AXESSLICETOP 1
+#define AXESSLICETOP 0.1
 #define SMALLHEIGHT .001
 #define VERSION "0.0.0"
 #define WIDTH 500
@@ -148,6 +153,10 @@
 #define WINHEIGHT .7
 #define WINWIDTHPIXELS 950
 #define WINHEIGHTPIXELS 840
+#define AXESLEFT 0.25
+#define AXESBOTTOM 0.05
+#define AXESWIDTH 0.625
+#define AXESHEIGHT 0.9
 #define BUTTONHEIGHT 20
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
@@ -290,6 +299,7 @@ void Text(Window window, float x, float y, int boxwidth, int boxheight,
 	  char *str, int fontsize, int color, 
 	  hjustifyT hjustify, vjustifyT vjustify);
 void DrawControls(dataT *data, int procnum, int numprocs);
+void DrawColorBar(dataT *data, int procnum, int numprocs, plottypeT plottype);
 Window NewButton(Window parent, char *name, int x, int y, 
 		 int buttonwidth, int buttonheight, bool motion, int bordercolor);
 void DrawButton(Window button, char *str, int bcolor);
@@ -321,12 +331,12 @@ void Usage(char *str);
  */
 Display *dis;
 myButtonT controlButtons[NUMBUTTONS];
-Window win, axeswin, messagewin, controlswin;
+Window win, axeswin, messagewin, controlswin, cmapwin;
 XEvent report;
 GC gc, fontgc;
 XColor color;
 Screen *screen;
-Pixmap pix, zpix, controlspix;
+Pixmap pix, zpix, controlspix, cmappix;
 Colormap colormap;
 KeySym lookup;
 XWindowAttributes windowAttributes;
@@ -338,7 +348,7 @@ int width=WIDTH, height=HEIGHT, newwidth, newheight,
 //int *cells, *edges;
 //float caxis[2], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4], buttonAxesPosition[4],
 //  zoomratio, *xv, *yv, vlengthfactor=1.0;
-float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4],
+float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4], cmapAxesPosition[4],
   zoomratio, vlengthfactor=1.0;
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
 bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, goprocs,
@@ -446,6 +456,9 @@ int main(int argc, char *argv[]) {
       XCopyArea(dis,controlspix,controlswin,gc,0,0,
 		buttonAxesPosition[2]*width,
 		buttonAxesPosition[3]*height,0,0);
+      XCopyArea(dis,cmappix,cmapwin,gc,0,0,
+		cmapAxesPosition[2]*width,
+		cmapAxesPosition[3]*height,0,0);
       if(zooming)
 	DrawZoomBox();
       else {
@@ -1015,6 +1028,9 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   XCopyArea(dis,controlspix,controlswin,gc,0,0,
 	    buttonAxesPosition[2]*width,
 	    buttonAxesPosition[3]*height,0,0);
+  XCopyArea(dis,cmappix,cmapwin,gc,0,0,
+	    cmapAxesPosition[2]*width,
+	    cmapAxesPosition[3]*height,0,0);
 }
 
 void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc, int procloc)
@@ -1061,6 +1077,7 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
       DrawEdgeLines(data->xc,data->yc,data->cells[procnum],plottype,data->Nc[procnum]);
   }
   DrawControls(data,procnum,numprocs);
+  DrawColorBar(data,procnum,numprocs,plottype);
 }
 
 void QuadSurf(float *h, float *D, 
@@ -1227,7 +1244,6 @@ void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv,
       DrawArrow(xp,yp,ue,ve,pix,ic);
     }
   }
-  
 }
 
 void Quiver(float *x, float *z, float *D, float *H, 
@@ -1604,15 +1620,20 @@ void InitializeGraphics(void) {
 		       GCFont | GCLineWidth | GCFillStyle, &fontvalues);
   }
 
-  axesPosition[0] = 0.25;
-  axesPosition[1] = 0.05;
-  axesPosition[2] = 0.7;
-  axesPosition[3] = 0.9;
+  axesPosition[0] = AXESLEFT;
+  axesPosition[1] = AXESBOTTOM;
+  axesPosition[2] = AXESWIDTH;
+  axesPosition[3] = AXESHEIGHT;
 
   buttonAxesPosition[0]=.1*axesPosition[0];
   buttonAxesPosition[1]=axesPosition[1];
   buttonAxesPosition[2]=.8*axesPosition[0];
   buttonAxesPosition[3]=axesPosition[3];
+
+  cmapAxesPosition[0]=1.1*axesPosition[0]+axesPosition[2];
+  cmapAxesPosition[1]=axesPosition[1]+.2*axesPosition[3];
+  cmapAxesPosition[2]=.2*axesPosition[2];
+  cmapAxesPosition[3]=.6*axesPosition[3];
 }
 
 void SetDataLimits(dataT *data) {
@@ -1696,10 +1717,10 @@ void SetDataLimits(dataT *data) {
 }
 
 void SetAxesPosition(void) {
-  axesPosition[0] = 0.25;
-  axesPosition[1] = 0.05;
-  axesPosition[2] = 0.7;
-  axesPosition[3] = 0.9;
+  axesPosition[0] = AXESLEFT;
+  axesPosition[1] = AXESBOTTOM;
+  axesPosition[2] = AXESWIDTH;
+  axesPosition[3] = AXESHEIGHT;
 
   if(axisType=='i') 
     AxisImage(axesPosition,dataLimits);
@@ -1787,6 +1808,15 @@ void RedrawWindows(void) {
   controlspix = XCreatePixmap(dis,controlswin,buttonAxesPosition[2]*width,
 			      buttonAxesPosition[3]*height,DefaultDepthOfScreen(screen));
 
+  XMoveResizeWindow(dis,cmapwin,
+		    cmapAxesPosition[0]*width,
+		    cmapAxesPosition[1]*height,
+		    cmapAxesPosition[2]*width,
+		    cmapAxesPosition[3]*height);
+  XFreePixmap(dis,cmappix);
+  cmappix = XCreatePixmap(dis,cmapwin,cmapAxesPosition[2]*width,
+			  cmapAxesPosition[3]*height,DefaultDepthOfScreen(screen));
+
   XMoveResizeWindow(dis,axeswin,
 		      axesPosition[0]*width,
 		      axesPosition[1]*height,
@@ -1799,37 +1829,12 @@ void RedrawWindows(void) {
 		    axesPosition[2]*width,
 		    buttonAxesPosition[1]*height);
 
-  /*
-  XMoveResizeWindow(dis,prevwin,
-		    (0*buttonAxesPosition[0]+.05*buttonAxesPosition[2])*width,
-		    (0*buttonAxesPosition[1]+.12*buttonAxesPosition[2])*height,
-		    buttonAxesPosition[2]*.4*width,
-		    BUTTONHEIGHT);
-  */
   for(buttonnum=0;buttonnum<NUMBUTTONS;buttonnum++)
     XMoveResizeWindow(dis,controlButtons[buttonnum].butwin,
 		      controlButtons[buttonnum].l*buttonAxesPosition[2]*width,
 		      controlButtons[buttonnum].b*buttonAxesPosition[2]*height,
 		      controlButtons[buttonnum].w*buttonAxesPosition[2]*width,
 		      controlButtons[buttonnum].h);
-  /*
-  XMoveResizeWindow(dis,nextwin,
-		    (0*buttonAxesPosition[0]+.55*buttonAxesPosition[2])*width,
-		    (0*buttonAxesPosition[1]+.12*buttonAxesPosition[2])*height,
-		    buttonAxesPosition[2]*.4*width,
-		    BUTTONHEIGHT);
-
-  XMoveResizeWindow(dis,kdownwin,
-		    (0*buttonAxesPosition[0]+.05*buttonAxesPosition[2])*width,
-		    (0*buttonAxesPosition[1]+.37*buttonAxesPosition[2])*height,
-		    buttonAxesPosition[2]*.4*width,
-		    BUTTONHEIGHT);
-  XMoveResizeWindow(dis,kupwin,
-		    (0*buttonAxesPosition[0]+.55*buttonAxesPosition[2])*width,
-		    (0*buttonAxesPosition[1]+.37*buttonAxesPosition[2])*height,
-		    buttonAxesPosition[2]*.4*width,
-		    BUTTONHEIGHT);
-  */
 }
   
 void MapWindows(void) {
@@ -1845,6 +1850,17 @@ void MapWindows(void) {
 			      buttonAxesPosition[3]*height,
 			      DefaultDepthOfScreen(screen));
   XMapWindow(dis,controlswin);
+
+  cmapwin = NewButton(win,"cmap",
+		      cmapAxesPosition[0]*width,
+		      cmapAxesPosition[1]*height,
+		      cmapAxesPosition[2]*width,
+		      cmapAxesPosition[3]*height,false,black);
+  cmappix = XCreatePixmap(dis,cmapwin,
+			  cmapAxesPosition[2]*width,
+			  cmapAxesPosition[3]*height,
+			  DefaultDepthOfScreen(screen));
+  XMapWindow(dis,cmapwin);
 
   axeswin = NewButton(win,"axes",
 		      axesPosition[0]*width,
@@ -1923,6 +1939,78 @@ void DrawControls(dataT *data, int procnum, int numprocs) {
     sprintf(str,"Image");
   DrawHeader(controlButtons[axisimagewin].butwin,controlButtons[axisimagewin].butwin,str);
 }
+
+void DrawColorBar(dataT *data, int procnum, int numprocs, plottypeT plottype) {
+  int n, h, font_width, font_height, headsep=5, offset=0, spc=5;
+  char str[BUFFERLENGTH];
+  XPoint *vertices = (XPoint *)malloc(5*sizeof(XPoint));
+
+  font_height=fontStruct->ascent+fontStruct->descent;
+
+  XSetForeground(dis,gc,black);
+  XFillRectangle(dis,cmappix,gc,
+		 0,0,
+		 cmapAxesPosition[2]*width,
+		 cmapAxesPosition[3]*height);
+
+  if(plottype!=noplottype) {
+    h = 1+(int)(cmapAxesPosition[3]*(float)height/(float)(NUMCOLORS-2-2*offset));
+    for(n=0;n<NUMCOLORS-2;n++) {
+      XSetForeground(dis,gc,colors[n]);
+      XFillRectangle(dis,cmappix,gc,0,cmapAxesPosition[3]*height-n*h,
+		     cmapAxesPosition[2]*width/8,h);
+    }
+    XSetForeground(dis,fontgc,white);  
+    sprintf(str,"%.2e",caxis[0]);
+    font_width=XTextWidth(fontStruct,str,strlen(str));
+    XDrawString(dis,cmappix,
+		fontgc,cmapAxesPosition[2]*width/8,cmapAxesPosition[3]*height,str,strlen(str));  
+    sprintf(str,"%.2e",caxis[1]);
+    font_width=XTextWidth(fontStruct,str,strlen(str));
+    XDrawString(dis,cmappix,
+		fontgc,cmapAxesPosition[2]*width/8,font_height,str,strlen(str));  
+    
+    switch(plottype) {
+    case u_velocity: 
+      sprintf(str,"U");
+      break;
+    case v_velocity: 
+      sprintf(str,"V");
+      break;
+    case w_velocity: 
+      sprintf(str,"W");
+      break;
+    case freesurface: 
+      sprintf(str,"h");
+      break;
+    case depth:
+      sprintf(str,"d");
+      break;
+    case h_d: 
+      sprintf(str,"h+d");
+      break;
+    case salinity: 
+      sprintf(str,"s");
+      break;
+    case saldiff: 
+      sprintf(str,"s-s0");
+      break;
+    case salinity0: 
+      sprintf(str,"s0");
+      break;
+    default:
+      sprintf(str,"");
+      break;
+    }
+    font_width=XTextWidth(fontStruct,str,strlen(str));
+    XDrawString(dis,cmappix,
+		fontgc,cmapAxesPosition[2]*width/8+spc,
+		cmapAxesPosition[3]*height/2,str,strlen(str));  
+    
+  }
+  free(vertices);
+}
+
 
 Window NewButton(Window parent, char *name, int x, int y, 
 		 int buttonwidth, int buttonheight, bool motion, int bordercolor) {
@@ -2398,7 +2486,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->timestep=-1;
 
     data->Nkmax=(int)GetValue(DATAFILE,"Nkmax",&status);
-    data->nsteps=(int)GetValue(DATAFILE,"nsteps",&status)/
+    data->nsteps=1+(int)GetValue(DATAFILE,"nsteps",&status)/
       (int)GetValue(DATAFILE,"ntout",&status);
     data->numprocs=numprocs;
 
@@ -2703,6 +2791,7 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
       printf("Error!  Too many points in slice.  Increase NSLICEMAX\n");
       exit(0);
     }
+
   } 
 
   if(data->Nslice>=NSLICEMIN) {
