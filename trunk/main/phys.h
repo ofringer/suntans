@@ -1,8 +1,11 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.5 2003-04-29 00:19:56 fringer Exp $
+ * $Id: phys.h,v 1.6 2003-05-12 00:19:03 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2003/04/29 00:19:56  fringer
+ * Added BGSalinityFID
+ *
  * Revision 1.4  2002/12/01 10:42:46  fringer
  * Added initial density vector s0 as well as Flux terms to compute internal
  * wave energy fluxes at specified faces.
@@ -62,7 +65,7 @@ typedef struct _physT {
   REAL *hold;
   REAL **stmp;
   REAL **utmp;
-  REAL **utmp2;
+  REAL **ut;
   REAL **wtmp;
 
   REAL *ap;
@@ -85,7 +88,8 @@ typedef struct _physT {
 typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, theta, thetaAB, 
     thetaFS, nu, tau_T, CdT, CdB, relax, epsilon, dzsmall, beta;
-  int ntout, ntprog, nsteps, n, ntconserve, maxiters, volcheck, masscheck;
+  int ntout, ntprog, nsteps, n, ntconserve, maxiters, volcheck, masscheck,
+    kriging_cov, nonlinear;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
     *SalinityFID, *BGSalinityFID, *VerticalGridFID, *ConserveFID;
 
