@@ -8,8 +8,12 @@
 % Stanford University
 % 1 Jun 04
 %
-% $Id: sunmovie.m,v 1.1 2004-06-01 01:56:50 fringer Exp $
+% $Id: sunmovie.m,v 1.2 2004-06-01 04:24:56 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.1  2004/06/01 01:56:50  fringer
+% This m-file takes a directory containining 2-d suntans (x-z) data
+% and plots the output as a surface plot, then creates a movie.
+%
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 datadir = '/home/data/suntans_data';
@@ -19,7 +23,7 @@ datadir = '/home/data/suntans_data';
 PLOT=1;
 
 % Show the free-surface profile
-FS=0;
+FS=1;
 
 EMPTY=999999;         % Empty cells are defined by this
 dbl=8;                % Size of double precision in bytes
@@ -86,7 +90,7 @@ figure(1);
 clf;
 axis(ax);
 axis image;
-daspect([1 3*dmax/L 1]);
+daspect([1 5*dmax/L 1]);
 axis off;
 hold on;
 
@@ -144,5 +148,5 @@ for n=1:nsteps,
   shading flat;
   
   pause(0);
-%  printmovie(n,'/tmp/movies/movie',1,50)
+  printmovie(n,'/tmp/movies/movie',1,50)
 end
