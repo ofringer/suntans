@@ -6,8 +6,12 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.17 2003-04-22 02:45:59 fringer Exp $
+ * $Id: sunplot.c,v 1.18 2003-04-26 14:17:48 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.17  2003/04/22 02:45:59  fringer
+ * Changed next/prevproc buttons so that they loop around to the first/last
+ * processor rather than printing an "at first proc" error.
+ *
  * Revision 1.16  2003/04/21 20:28:48  fringer
  * Fixed up comments.
  *
@@ -71,6 +75,7 @@
 #include "suntans.h"
 #include "fileio.h"
 
+#define AXESSLICETOP 0.1
 #define SMALLHEIGHT .001
 #define VERSION "0.0.0"
 #define WIDTH 500
@@ -82,10 +87,13 @@
 #define NUMCOLORS 66
 //#define DEFAULT_FONT "-adobe-helvetica-medium-o-normal--20-140-100-100-p-98-iso8859-9"
 #define DEFAULT_FONT "9x15"
+#define WINSCALE 0
 #define WINLEFT .2
 #define WINTOP .2
 #define WINWIDTH .6
 #define WINHEIGHT .7
+#define WINWIDTHPIXELS 950
+#define WINHEIGHTPIXELS 840
 #define BUTTONHEIGHT 20
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
@@ -223,7 +231,7 @@ void DrawButton(Window button, char *str, int bcolor);
 void MapWindows(void);
 void RedrawWindows(void);
 void DrawZoomBox(void);
-void DrawSliceLine(void);
+void DrawSliceLine(int where);
 void DrawHeader(Window leftwin,Window rightwin,char *str);
 void SetUpButtons(void);
 void DrawVoronoiPoints(float *xv, float *yv, int Nc);
@@ -346,7 +354,7 @@ int main(int argc, char *argv[]) {
       if(zooming)
 	DrawZoomBox();
       else {
-	DrawSliceLine();
+	DrawSliceLine(0);
 	vertprofile=true;
       }
       break;
@@ -1086,41 +1094,71 @@ void QuadSurf(float *h, float *D,
 				    (dataLimits[3]-dataLimits[2]));
       yp2 = axesPosition[3]*height*(1-(z[j]-dataLimits[2])/
 				    (dataLimits[3]-dataLimits[2]));
-      if(j==0 && h[i]>=0) {
-	yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
-				      (dataLimits[3]-dataLimits[2]));
-      }
 
-      points[0].y = yp1;
-      points[1].y = yp1;
-      points[2].y = yp2;
-      points[3].y = yp2;
-      points[4].y = yp1;
+      if(((z[j]<=h[i] && z[j+1]<=h[i]) || (z[j]>=h[i] && z[j+1]<=h[i])) &&
+	 ((z[j]>=-D[i] && z[j+1]>=-D[i]) || (z[j]>=-D[i] && z[j+1]<=-D[i]))) {
+	if(z[j]>=h[i] && z[j+1]<=h[i])
+	  yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
+					(dataLimits[3]-dataLimits[2]));
+	if(z[j]>=-D[i] && z[j+1]<=-D[i])
+	  yp1 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
+					(dataLimits[3]-dataLimits[2]));
+	
+	points[0].y = yp1;
+	points[1].y = yp1;
+	points[2].y = yp2;
+	points[3].y = yp2;
+	points[4].y = yp1;
+	
+	dataval = data[i][j];
+	ind = (dataval-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
+	
+	if(dataval==EMPTY || (plottype=='D' && dataval==0))
+	  ind = NUMCOLORS-1;
+	
+	if(plottype!=noplottype) {
+	  XSetForeground(dis,gc,colors[ind]);
+	  XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
+	}
 
-      dataval = data[i][j];
-      ind = (dataval-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
-
-      if(dataval==EMPTY || (plottype=='D' && dataval==0) || 0.5*(z[j]+z[j+1])<-D[i])
-	ind = NUMCOLORS-1;
-
-      if(plottype!=noplottype) {
-	XSetForeground(dis,gc,colors[ind]);
-	XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
-      } 
-
-      if(edgelines && dataval!=EMPTY && 0.5*(z[j]+z[j+1])>-D[i]) {
-	if(plottype==noplottype)
-	  XSetForeground(dis,gc,white);
-	else
-	  XSetForeground(dis,gc,black);
-	XDrawLines(dis,pix,gc,points,5,0);
+	if(edgelines && dataval!=EMPTY) {
+	  if(plottype==noplottype)
+	    XSetForeground(dis,gc,white);
+	  else
+	    XSetForeground(dis,gc,black);
+	  XDrawLines(dis,pix,gc,points,5,0);
+	}
       }
     }
-    if(h[i]<0) {
+    yp2 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
+				  (dataLimits[3]-dataLimits[2]));    
+    if(i>0)
+      yp1 = axesPosition[3]*height*(1-(-D[i-1]-dataLimits[2])/
+				    (dataLimits[3]-dataLimits[2]));    
+    else
+      yp1 = yp2;
+
+    XSetForeground(dis,gc,white);
+    XDrawLine(dis,pix,gc,points[0].x,yp1,points[0].x,yp2);
+    XDrawLine(dis,pix,gc,points[0].x,yp2,points[1].x,yp2);
+    
+    yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
+				  (dataLimits[3]-dataLimits[2]));    
+    if(i>0)
+      yp1 = axesPosition[3]*height*(1-(h[i-1]-dataLimits[2])/
+				    (dataLimits[3]-dataLimits[2]));    
+    else 
+      yp1 = yp2;
+
+    XSetForeground(dis,gc,white);
+    XDrawLine(dis,pix,gc,points[0].x,yp1,points[0].x,yp2);
+    XDrawLine(dis,pix,gc,points[0].x,yp2,points[1].x,yp2);
+  }
+  /*
+    for(i=0;i<Nc;i++) {
       yp2 = axesPosition[3]*height*(1-(0-dataLimits[2])/
 				    (dataLimits[3]-dataLimits[2]));
-      yp1 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
-				    (dataLimits[3]-dataLimits[2]));
+
       if(yp1!=yp2) {
 	points[0].y = yp1;
 	points[1].y = yp1;
@@ -1136,7 +1174,7 @@ void QuadSurf(float *h, float *D,
 	XDrawLine(dis,pix,gc,points[0].x,yp1,points[1].x,yp1);
       }
     }
-  }
+    */
 }
 
 void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv, 
@@ -1504,11 +1542,17 @@ void InitializeGraphics(void) {
 
   width=XDisplayWidth(dis,screen_number);
   height=XDisplayHeight(dis,screen_number);
-  
-  win = XCreateSimpleWindow(dis, RootWindow(dis, 0), 
-			    WINLEFT*width,WINTOP*height,
-			    WINWIDTH*width,WINHEIGHT*height, 
-			    0,black,black);
+
+  if(WINSCALE) 
+    win = XCreateSimpleWindow(dis, RootWindow(dis, 0), 
+			      WINLEFT*width,WINTOP*height,
+			      WINWIDTH*width,WINHEIGHT*height, 
+			      0,black,black);
+  else
+    win = XCreateSimpleWindow(dis, RootWindow(dis, 0), 
+			      0,0,
+			      WINWIDTHPIXELS,WINHEIGHTPIXELS,
+			      0,black,black);
   width = WINWIDTH*width;
   height = WINHEIGHT*height;
 
@@ -1567,7 +1611,7 @@ void SetDataLimits(dataT *data) {
     dataLimits[0] = 0;
     dataLimits[1] = Max(data->sliceX,data->Nslice);
     dataLimits[2] = -data->dmax;
-    dataLimits[3] = data->dmax;
+    dataLimits[3] = AXESSLICETOP*data->dmax;
     setdatalimitsslice=true;
   } else {
     switch(zoom) {
@@ -1831,6 +1875,7 @@ void DrawControls(dataT *data, int procnum, int numprocs) {
       bcolor=red;
     else
       bcolor=white;
+    bcolor=white;
     DrawButton(controlButtons[buttonnum].butwin,controlButtons[buttonnum].string,bcolor);
   }
 
@@ -1852,6 +1897,12 @@ void DrawControls(dataT *data, int procnum, int numprocs) {
 
   sprintf(str,"kskip: %d",kskip);
   DrawHeader(controlButtons[kskip_minus_win].butwin,controlButtons[kskip_plus_win].butwin,str);
+
+  if(axisType=='n')
+    sprintf(str,"Normal");
+  else
+    sprintf(str,"Image");
+  DrawHeader(controlButtons[axisimagewin].butwin,controlButtons[axisimagewin].butwin,str);
 }
 
 Window NewButton(Window parent, char *name, int x, int y, 
@@ -1946,9 +1997,14 @@ void DrawZoomBox(void) {
 		 x1,y1,boxwidth,boxheight);
 }
 
-void DrawSliceLine(void) {
-  XSetForeground(dis,gc,white);
-  XDrawLine(dis,axeswin,gc,xstart,ystart,xend,yend);
+void DrawSliceLine(int where) {
+  if(where==0) {
+    XSetForeground(dis,gc,white);
+    XDrawLine(dis,axeswin,gc,xstart,ystart,xend,yend);
+  } else {
+    XSetForeground(dis,gc,white);
+    XDrawLine(dis,pix,gc,xstart,ystart,xend,yend);
+  }
 }
 
 void SetUpButtons(void) {
@@ -2133,7 +2189,7 @@ void SetUpButtons(void) {
   controlButtons[kskip_plus_win].w=0.2;
   controlButtons[kskip_plus_win].h=(float)BUTTONHEIGHT;
 
-  controlButtons[axisimagewin].string="Axis";
+  controlButtons[axisimagewin].string="Aspect";
   controlButtons[axisimagewin].mapstring="axisimagewin";
   controlButtons[axisimagewin].l=0.05;
   controlButtons[axisimagewin].b=controlButtons[nextwin].b+10*dist;
