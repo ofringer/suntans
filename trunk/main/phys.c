@@ -6,8 +6,21 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.65 2004-06-09 03:22:29 fringer Exp $
+ * $Id: phys.c,v 1.66 2004-06-24 03:57:41 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.65  2004/06/09 03:22:29  fringer
+ * Cleaned up by removing commented code and changed function names as follows:
+ * AdvectHorizontalVelocity->HorizontaSource
+ * AdvectVerticalVelocity->WPredictor
+ * BarotropicPredictor->Predictor
+ * HydroW->Continuity
+ *
+ * Removed the following functions:
+ * ComputeNormalVelocity
+ * ComputeTangentialVelocity
+ *
+ * Added comments to function headers.
+ *
  * Revision 1.64  2004/06/08 18:38:09  fringer
  * Added if statement that removes sponge layer when sponge_distance==0.
  *
@@ -3000,8 +3013,8 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
       volume+=grid->Ac[i]*grid->dzz[i][k];
       mass+=phys->s[i][k]*grid->Ac[i]*grid->dzz[i][k];
     }
-    Ep/=volume;
   }
+  Ep/=volume;
 
   // Comment out the volh reduce if that integral is desired.  The
   // volume integral is used since the volh integral is useful
