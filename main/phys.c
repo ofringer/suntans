@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.42 2004-03-16 17:59:39 fringer Exp $
+ * $Id: phys.c,v 1.43 2004-04-06 00:18:30 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.42  2004/03/16 17:59:39  fringer
+ * Set ut to 0 in the beginning of advecthorizontal velocity since
+ * this was causing horizontal advection errors.
+ *
  * Revision 1.41  2004/03/13 02:48:52  fringer
  * Added ability to switch between upwind and central in advection
  * scheme (nonlinear: 1, upwind ; 2, central).  Also fixed some advection
@@ -790,8 +794,8 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+0*phys->u[j][k]
 	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
-	+(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-	  prop->sponge_decay)*phys->u[j][k];
+	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	    prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
       }
@@ -836,6 +840,14 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 
     // Compute Eulerian advection of momentum (nonlinear!=0)
     if(prop->nonlinear) {
+
+      // U-fluxes at boundary cells
+      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+	j = grid->edgep[jptr];
+	
+	for(k=grid->etop[j];k<grid->Nke[j];k++)
+	  phys->ut[j][k]=phys->u[j][k]*grid->dzz[grid->grad[2*j]][k]*grid->n1[j];
+      }
 
       // Compute the u-component fluxes at the faces
       if(prop->nonlinear==1)  // Upwind
@@ -900,6 +912,14 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	    phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	      (grid->Ac[i]*grid->dzz[i][grid->ctop[i]]);
 	}
+      }
+
+      // V-fluxes at boundary cells
+      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+	j = grid->edgep[jptr];
+	
+	for(k=grid->etop[j];k<grid->Nke[j];k++)
+	  phys->ut[j][k]=phys->u[j][k]*grid->dzz[grid->grad[2*j]][k]*grid->n2[j];
       }
       
       // Compute the v-component fluxes at the faces
@@ -2664,6 +2684,7 @@ static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
       }
       uc[n][k]/=grid->Ac[n];
       vc[n][k]/=grid->Ac[n];
+      ne = grid->face[n*NFACES+1];
     }
   }
 }
