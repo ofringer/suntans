@@ -6,8 +6,14 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.10 2003-04-22 02:42:32 fringer Exp $
+ * $Id: phys.c,v 1.11 2003-04-26 14:16:22 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.10  2003/04/22 02:42:32  fringer
+ * Changed makepointers() in grid.c so that the ghost points include
+ * extra points for the ELM interpolation.  Only the number of neihbors is
+ * specified.  This may not guarantee that there are at least 3 neighbors for
+ * each cell.
+ *
  * Revision 1.9  2003/04/21 20:26:08  fringer
  * Working version before addition of ghost cells for kriging.
  *
@@ -42,6 +48,7 @@
 #include "phys.h"
 #include "grid.h"
 #include "util.h"
+#include "initialization.h"
 
 /*
  * Private Function declarations.
@@ -216,8 +223,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
       phys->h[i]=-grid->dv[i];
     */
     //    phys->h[i] = 0;
-    phys->h[i]=.5*exp(-pow((grid->xv[i]-5),2)
-		   -pow((grid->yv[i]-5),2));
+    //        phys->h[i]=0.5*exp(-pow((grid->xv[i]-5),2)
+    //			     -pow((grid->yv[i]-5),2));
+    phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i]);
     //    phys->h[i]=exp(-pow((grid->xv[i]-50000)/10000,2)
     //		   -pow((grid->yv[i]-50000)/10000,2));
 
@@ -253,16 +261,17 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       z-=grid->dzz[i][k]/2;
       //      phys->s[i][k]=-1.07*0*(z+1500+0*cos(PI*(grid->xv[i]-10000)/10000))/1500;
-      //      phys->s[i][k]=-7.333e-3*(.5*(z+1500)/1500);
-      //phys->s[i][k]=-0.0147*(z/3000+.5);
-      //phys->s0[i][k]=-0.0147*(z/3000+.5);
+      //phys->s[i][k]=-7.333e-3*(.5*(z+1500)/1500);
+      //phys->s0[i][k]=-7.333e-3*(.5*(z+1500)/1500);
+      phys->s[i][k]=-0.0147*(z/3000+.5);
+      phys->s0[i][k]=-0.0147*(z/3000+.5);
       //      if(grid->xv[i]>70000) phys->s[i][k]=.01;
       //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
 
-      if(grid->xv[i]>5) phys->s[i][k]=0.01;
+      //if(grid->xv[i]>5) phys->s[i][k]=0.01;
       //      phys->s[i][k]=-(1-tanh((grid->xv[i]-5)/.25));
       //phys->s[i][k]=-tanh((z+0.5*grid->dv[i]-.1*cos(PI*grid->xv[i]/10))/.01);
-      phys->s[i][k]=-tanh((z+0.5+.3*exp(-pow(grid->xv[i]/2,2)))/.01);
+      //phys->s[i][k]=-0*tanh((z+0.5+.3*exp(-pow(grid->xv[i]/2,2)))/.01);
       //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
       //      	phys->s[i][k]=0;
       //      r=sqrt(pow(grid->xv[i]-11.25,2)+pow(grid->yv[i]-7.5,2));
@@ -834,16 +843,13 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   }
 						
   // Set the flux values at boundary cells if specified
-  /*
+
   for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
 
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       phys->u[j][k]=prop->flux*cos(prop->omega*prop->rtime);
   }
-  */
-
-
 }
 
 static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
