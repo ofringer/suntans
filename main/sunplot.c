@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.4 2003-03-31 20:41:05 fringer Exp $
+ * $Id: sunplot.c,v 1.5 2003-04-01 16:18:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2003/03/31 20:41:05  fringer
+ * Still cleaning up...
+ *
  * Revision 1.3  2003/03/31 20:23:21  fringer
  * Cleaning up...
  *
@@ -33,13 +36,29 @@
 #define INFTY 1e20
 #define BUFFER 256
 #define CMAPFILE "jet.cmap"
+#define NUMCOLORS 64
+//#define DEFAULT_FONT "-adobe-helvetica-medium-o-normal--20-140-100-100-p-98-iso8859-9"
+#define DEFAULT_FONT "9x15"
+#define WINLEFT .2
+#define WINTOP .2
+#define WINWIDTH .6
+#define WINHEIGHT .7
+#define BUTTONHEIGHT 20
 
 typedef enum {
   false, true
 } bool;
 
+typedef enum {
+  left, center, right
+} hjustifyT;
+
+typedef enum {
+  bottom, middle, top
+} vjustifyT;
+
 void InitializeGraphics(void);
-void mydraw(char plottype, int procnum);
+void MyDraw(char plottype, int procnum);
 void ReadGrid(int proc);
 void ReadScalar(float *scal, int k, int Nk, int np, char *filename);
 float Min(float *x, int N);
@@ -51,6 +70,14 @@ void ReadColorMap(char *str);
 void UnSurf(float *xc, float *yc, int *cells, float *data, int N);
 void SetDataLimits(void);
 void SetAxesPosition(void);
+void Clf(void);
+void Cla(void);
+void Text(float x, float y, char *str, int fontsize, int color, 
+	  hjustifyT hjustify, vjustifyT vjustify);
+void DrawControls(void);
+Window NewButton(char *name, int x, int y, int buttonwidth, int buttonheight);
+void DrawButton(Window button, char *str);
+
 
 /*
  * Linux users will need to add -ldl to the Makefile to compile 
@@ -58,18 +85,22 @@ void SetAxesPosition(void);
  *
  */
 Display *dis;
-Window win;
+Window win, prevwin, nextwin, kupwin, kdownwin;
 XEvent report;
-GC gc;
+GC gc, fontgc;
 XColor color;
 Screen *screen;
 Pixmap pix;
 Colormap colormap;
+KeySym lookup;
+XWindowAttributes windowAttributes;
+XFontStruct *fontStruct;
 
-int plottype='s',Np, Nc, n=1, nsteps=21, k=1, Nkmax=20;
+int width=WIDTH, height=HEIGHT, newwidth, newheight, 
+  plottype='s',Np, Nc, n=1, nsteps=21, k=1, Nkmax=20, keysym;
 int *cells;
-float caxis[2], cmap[64][3], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4];
-int axisType, oldaxisType, white, black, procnum=0;
+float caxis[2], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4], buttonAxesPosition[4];
+int axisType, oldaxisType, white, black, procnum=0, colors[NUMCOLORS];
 bool edgelines;
 char str[BUFFER];
 
@@ -77,9 +108,10 @@ int main() {
   bool redraw;
 
   InitializeGraphics();
+
   ReadColorMap(CMAPFILE);
 
-  XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask);
+  XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask);
 
   k=Nkmax/2;
   
@@ -87,21 +119,35 @@ int main() {
   edgelines=false;
   ReadGrid(procnum);
 
+  MyDraw(plottype,procnum);
+  XCopyArea(dis,pix,win,gc,0,0,width,height,0,0);
+
+  XMaskEvent(dis, ExposureMask, &report);
   while(true) {
     redraw=false;
     XNextEvent(dis, &report);
     switch  (report.type) {
+    case ButtonRelease:
+      printf("Button release!\n");
+      if ( report.xany.window == prevwin )
+	printf("Previous\n");
+      break;
     case Expose:   
-      printf("Exposed...\n");
-      mydraw(plottype,procnum);
-      XCopyArea(dis,pix,win,gc,0,0,WIDTH,HEIGHT,0,0);
+      XGetWindowAttributes(dis,win,&windowAttributes);
+      newwidth=windowAttributes.width;
+      newheight=windowAttributes.height;
+      if(newwidth!=width || newheight!=height) {
+	width=newwidth;
+	height=newheight;
+	XResizeWindow(dis,win,width,height);
+	XFreePixmap(dis,pix);
+	pix = XCreatePixmap(dis,win,width,height,DefaultDepthOfScreen(screen));
+      }
+      MyDraw(plottype,procnum);
+      XCopyArea(dis,pix,win,gc,0,0,width,height,0,0);
       break;
-      /*    case ButtonPress:
-      printf("Pressed button!\n");
-      break;
-      */
     case KeyPress:
-      switch(XLookupKeysym(&report.xkey, 0)) {
+      switch(keysym=XLookupKeysym(&report.xkey, 0)) {
       case XK_q:
 	exit(0);
 	break;
@@ -162,20 +208,20 @@ int main() {
 	}
 	redraw=true;
 	break;
-      default:
-	if(isdigit(XLookupKeysym(&report.xkey, 0))) {
-	  str[0]=XLookupKeysym(&report.xkey, 0);
-	  str[1]='\0';
-	  if(procnum!=atoi(str))
-	    procnum=atoi(str);
-	    ReadGrid(procnum);
-	    redraw=true;
-	  }
+      case XK_0: case XK_1: case XK_2: case XK_3: case XK_4:
+      case XK_5: case XK_6: case XK_7: case XK_8: case XK_9:
+	str[0]=keysym;
+	str[1]='\0';
+	if(procnum!=atoi(str)) {
+	  procnum=atoi(str);
+	  ReadGrid(procnum);
+	  redraw=true;
+	}
 	break;
       }
       if(redraw) {
-	mydraw(plottype,procnum);
-	XCopyArea(dis,pix,win,gc,0,0,WIDTH,HEIGHT,0,0);
+	MyDraw(plottype,procnum);
+	XCopyArea(dis,pix,win,gc,0,0,width,height,0,0);
       }
       break;
     }
@@ -208,10 +254,6 @@ void ReadGrid(int proc) {
   cells = (int *)malloc(3*Nc*sizeof(int));
   depth = (float *)malloc(Nc*sizeof(float));
 
-  for(i=0;i<64;i++) {
-    fscanf(ifile,"%f %f %f\n",&cmap[i][0],&cmap[i][1],&cmap[i][2]);
-  }
-  fclose(ifile);
   for(i=0;i<Np;i++) {
     fscanf(pfile,"%f %f %d\n",&xc[i],&yc[i],&ind);
   }
@@ -249,16 +291,11 @@ void ReadScalar(float *scal, int kp, int Nk, int np, char *filename) {
   fclose(sfile);
 }
 
-void mydraw(char plottype, int procnum)
+void MyDraw(char plottype, int procnum)
 {
-  int x1, y1, x2, y2, N=3, mode=1, x, y, width, height, font_height, Nx, Ny, kp, np;
-  XPoint *vertices = (XPoint *)malloc(4*sizeof(XPoint));
-  char  str[256];
-  XFontStruct *font_info;
-  int i, ind, j;
+  int i;
+  float *scal;
   FILE *sfile, *hfile;
-  float val, dx, dy, xp, yp, xmax, xmin, ymax, ymin, zmax, zmin,
-    xp1, yp1, *scal;
 
   sprintf(str,"/home/fringer/research/SUNTANS/data/s.dat.%d",procnum);
   sfile = fopen(str,"r");
@@ -288,9 +325,9 @@ void mydraw(char plottype, int procnum)
   UnSurf(xc,yc,cells,scal,Nc);
 
   sprintf(str,"Time step: %d, K-level: %d",n,k); 
-  XSetForeground(dis,gc,white);
-  XDrawString(dis,pix,gc,WIDTH/4,HEIGHT-10,str,strlen(str));
+  Text(0.5,.1,str,20,white,center,top);
 
+  DrawControls();
   XFlush(dis);
 }
 
@@ -330,20 +367,12 @@ void AxisImage(float *axes, float *data) {
   }
 }
 
-void Fill(XPoint *vertices, int N,int cindex, int edges) {
-    color.red = cmap[cindex][0] * 0xffff;
-    color.green = cmap[cindex][1] * 0xffff;
-    color.blue = cmap[cindex][2] * 0xffff;
-    XAllocColor(dis, colormap,&color);
-    XSetForeground(dis,gc,color.pixel);
+void Fill(XPoint *vertices, int N, int cindex, int edges) {
+    XSetForeground(dis,gc,colors[cindex]);
     XFillPolygon(dis,pix,gc,vertices,3,Convex,CoordModeOrigin);
 
     if(edges) {
-      color.red = 0;
-      color.green = 0;
-      color.blue = 0;
-      XAllocColor(dis, colormap,&color);
-      XSetForeground(dis,gc,color.pixel);
+      XSetForeground(dis,gc,black);
       XDrawLines(dis,pix,gc,vertices,4,0);
     }
 }
@@ -363,9 +392,15 @@ void CAxis(float *caxis, float *data, int N) {
 void ReadColorMap(char *str) {
   int i;
   FILE *ifile = fopen(str,"r");
-  
-  for(i=0;i<64;i++) {
-    fscanf(ifile,"%f %f %f\n",&cmap[i][0],&cmap[i][1],&cmap[i][2]);
+  float r, g, b;
+
+  for(i=0;i<NUMCOLORS;i++) {
+    fscanf(ifile,"%f %f %f\n",&r, &g, &b);
+    color.red = r * 0xffff;
+    color.green = g * 0xffff;
+    color.blue = b * 0xffff;
+    XAllocColor(dis,colormap,&color);  
+    colors[i] = color.pixel;
   }
   fclose(ifile);
 }
@@ -374,44 +409,72 @@ void UnSurf(float *xc, float *yc, int *cells, float *data, int N) {
   int i, j, ind;
   XPoint *vertices = (XPoint *)malloc(4*sizeof(XPoint));
 
-  XSetForeground(dis,gc,black);
-  XFillRectangle(dis,pix,gc,0,0,WIDTH,HEIGHT);
+  Clf();
 
   for(i=0;i<N;i++) {
     for(j=0;j<3;j++) {
-      vertices[j].x = axesPosition[0]*WIDTH+
-	axesPosition[2]*WIDTH*(xc[cells[3*i+j]]-dataLimits[0])/
+      vertices[j].x = axesPosition[0]*width+
+	axesPosition[2]*width*(xc[cells[3*i+j]]-dataLimits[0])/
 	(dataLimits[1]-dataLimits[0]);
-      vertices[j].y = axesPosition[1]*HEIGHT+
-	axesPosition[3]*HEIGHT*(1-(yc[cells[3*i+j]]-dataLimits[2])/
+      vertices[j].y = axesPosition[1]*height+
+	axesPosition[3]*height*(1-(yc[cells[3*i+j]]-dataLimits[2])/
 	(dataLimits[3]-dataLimits[2]));
     }
 
     vertices[3].x = vertices[0].x;
     vertices[3].y = vertices[0].y;
 
-    ind = (data[i]-caxis[0])/(caxis[1]-caxis[0])*64;
+    ind = (data[i]-caxis[0])/(caxis[1]-caxis[0])*NUMCOLORS;
     if(data[i]==0)
       ind = 0;
 
     Fill(vertices,3,ind,edgelines);
   }
-  
+  free(vertices);
 }
 
 void InitializeGraphics(void) {
+  int screen_number;
+  XGCValues fontvalues;
+
   dis = XOpenDisplay(NULL);
-  win = XCreateSimpleWindow(dis, RootWindow(dis, 0), 
-			    1, 1, WIDTH, HEIGHT, 0, BlackPixel (dis, 0), BlackPixel(dis, 0));
   screen = ScreenOfDisplay(dis,0);
-  pix = XCreatePixmap(dis,win,WIDTH,HEIGHT,DefaultDepthOfScreen(screen));
+  screen_number = XScreenNumberOfScreen(screen);
+
+  black = BlackPixel(dis,screen_number);
+  white = WhitePixel(dis,screen_number);
+
+  width=XDisplayWidth(dis,screen_number);
+  height=XDisplayHeight(dis,screen_number);
+  printf("Screen is %d by %d pixels.\n",width,height);
+  
+  win = XCreateSimpleWindow(dis, RootWindow(dis, 0), 
+			    WINLEFT*width,WINTOP*height,
+			    WINWIDTH*width,WINHEIGHT*height, 
+			    0,black,black);
+  width = WINWIDTH*width;
+  height = WINHEIGHT*height;
+
+  pix = XCreatePixmap(dis,win,width,height,DefaultDepthOfScreen(screen));
 
   XMapWindow(dis, win);
 
-  colormap = DefaultColormap(dis, 0);
-  gc = XCreateGC(dis, win, 0, 0);
-  black = BlackPixel(dis,0);
-  white = WhitePixel(dis,0);
+  colormap = DefaultColormap(dis,screen_number);
+  gc = XCreateGC(dis, win,0,0);
+  
+  fontStruct = XLoadQueryFont(dis,DEFAULT_FONT);
+  if(!fontStruct) {
+    printf("Font \"%s\" does not exist!\n",DEFAULT_FONT);
+    exit(0);
+  } else {
+    fontvalues.background = black;
+    fontvalues.font = fontStruct->fid;
+    fontvalues.fill_style = FillSolid;
+    fontvalues.line_width = 1;
+    fontgc = XCreateGC(dis,win, GCForeground | GCBackground |
+		       GCFont | GCLineWidth | GCFillStyle, &fontvalues);
+  }
+
 }
 
 void SetDataLimits(void) {
@@ -422,11 +485,165 @@ void SetDataLimits(void) {
 }
 
 void SetAxesPosition(void) {
-  axesPosition[0] = 0.1;
-  axesPosition[1] = 0.1;
-  axesPosition[2] = 0.8;
-  axesPosition[3] = 0.8;
+  axesPosition[0] = 0.25;
+  axesPosition[1] = 0.05;
+  axesPosition[2] = 0.7;
+  axesPosition[3] = 0.9;
 
   if(axisType=='i')
     AxisImage(axesPosition,dataLimits);
+}
+
+void Clf(void) {
+  XSetForeground(dis,gc,black);
+  XFillRectangle(dis,pix,gc,0,0,width,height);
+}
+
+void Cla(void) {
+  XSetForeground(dis,gc,black);
+  XFillRectangle(dis,pix,gc,
+		 axesPosition[0]*width,
+		 axesPosition[1]*height,
+		 axesPosition[2]*width,
+		 axesPosition[3]*height);
+}
+
+void Text(float x, float y, char *str, int fontsize, int color, 
+	  hjustifyT hjustify, vjustifyT vjustify) {
+
+  char **fonts;
+  XFontStruct ** fontsReturn;
+  int i, xf, yf, font_width, font_height, numfonts;
+
+  font_width=XTextWidth(fontStruct,str,strlen(str));
+  font_height=fontStruct->ascent+fontStruct->descent;
+
+  switch(hjustify) {
+  case left:
+    xf=x*width;
+    break;
+  case center:
+    xf=x*width-font_width/2;
+    break;
+  case right:
+    xf=x*width-font_width;
+    break;
+  default:
+    printf("Error!  Unknown horizontal justification type!\n");
+    break;
+  }
+
+  switch(vjustify) {
+  case bottom:
+    yf=(1-y)*height;
+    break;
+  case middle:
+    yf=y*height+font_height/2;
+    break;
+  case top:
+    yf=y*height-font_height;
+    break;
+  default:
+    printf("Error!  Unknown vertical justification type!\n");
+    break;
+  }
+
+  XSetForeground(dis,fontgc,color);
+  XDrawString(dis,pix,fontgc,xf,(1-y)*height,str,strlen(str));
+
+  /*
+  fonts = XListFontsWithInfo(dis,"*cour*",200,&numfonts,fontsReturn);
+  for(i=0;i<numfonts;i++)
+    printf("Found %s\n",fonts[i]);
+  exit(0);
+  */
+}
+
+void DrawControls(void) {
+  XPoint *vertices = (XPoint *)malloc(5*sizeof(XPoint));
+  
+  axesPosition[0] = 0.25;
+  axesPosition[1] = 0.05;
+  axesPosition[2] = 0.7;
+  axesPosition[3] = 0.9;
+
+  buttonAxesPosition[0]=.1*axesPosition[0];
+  buttonAxesPosition[1]=axesPosition[1];
+  buttonAxesPosition[2]=.8*axesPosition[0];
+  buttonAxesPosition[3]=axesPosition[3];
+
+  XSetForeground(dis,gc,white);
+  XDrawRectangle(dis,pix,gc,
+		 buttonAxesPosition[0]*width,
+		 buttonAxesPosition[1]*height,
+		 buttonAxesPosition[2]*width,
+		 buttonAxesPosition[3]*height);
+
+  prevwin = NewButton("prev",
+		      (buttonAxesPosition[0]+.1*buttonAxesPosition[2])*width,
+		      (buttonAxesPosition[1]+.1*buttonAxesPosition[2])*height,
+		      buttonAxesPosition[2]*.4*width,
+		      BUTTONHEIGHT);
+  XMapWindow(dis,prevwin);
+  DrawButton(prevwin,"<<");
+  /*
+  nextwin = NewButton("next",0,0,100,100);
+  XMapWindow(dis,nextwin);
+  DrawButton(nextwin);
+
+  kupwin = NewButton("kup",0,0,100,100);
+  XMapWindow(dis,kupwin);
+  DrawButton(kupwin);
+
+  kdownwin = NewButton("kdown",0,0,100,100);
+  XMapWindow(dis,kdownwin);
+  DrawButton(kdownwin);
+  */
+}
+
+Window NewButton(char *name, int x, int y, int buttonwidth, int buttonheight) {
+  char c;
+
+  XSetWindowAttributes attr;
+  XSizeHints hints;
+  Window button;
+
+  attr.background_pixel = black;
+  attr.border_pixel = white;
+  attr.backing_store = NotUseful;
+  attr.event_mask = ExposureMask | ButtonReleaseMask | ButtonPressMask;
+  attr.bit_gravity = SouthWestGravity;
+  attr.win_gravity = SouthWestGravity;
+  attr.save_under = False;
+  button = XCreateWindow(dis,win, x, y, buttonwidth, buttonheight,
+                         2, 0, InputOutput, CopyFromParent,
+                         CWBackPixel | CWBorderPixel | CWEventMask |
+                         CWBitGravity | CWWinGravity | CWBackingStore |
+                         CWSaveUnder, &attr);
+  hints.width = buttonwidth;
+  hints.height = buttonheight - 4;
+  hints.min_width = 0;
+  hints.min_height = buttonheight - 4;
+  hints.max_width = buttonwidth;
+  hints.max_height = buttonheight - 4;
+  hints.width_inc = 1;
+  hints.height_inc = 1;
+  hints.flags = PMinSize | PMaxSize | PSize | PResizeInc;
+  XSetStandardProperties(dis,button,name,"SUNTANS",None,(char **)NULL,0,&hints);
+
+  return button;
+}
+
+void DrawButton(Window button, char *str) {
+  int x, y, w, h, d, b;
+  Window root;
+
+  XGetGeometry(dis,button,&root, &x, &y, &w, &h, &d, &b);
+  printf("w = %d, h= %d\n",w,h);
+
+  XSetForeground(dis,gc,white);  
+  XFillRectangle(dis,button, gc, 0, 0,w,h);
+  
+  XSetForeground(dis,gc,black);  
+  XDrawString(dis,button,gc,0,h,str,strlen(str));  
 }
