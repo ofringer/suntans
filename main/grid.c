@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.23 2003-12-02 02:36:43 fringer Exp $
+ * $Id: grid.c,v 1.24 2003-12-02 04:38:46 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.23  2003/12/02 02:36:43  fringer
+ * Removed ability to transfer first or all in send/recv routines.
+ *
  * Revision 1.22  2003/12/02 02:05:11  fringer
  * Removed all traces of nearest edge/cell indices.
  *
@@ -478,6 +481,79 @@ void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc,
 }
 
 /*
+ * Function: ISendRecvCellData3D
+ * Usage: ISendRecvCellData3D(grid->s,grid,myproc,comm);
+ * ----------------------------------------------------
+ * This function will transfer the 3D cell data back and forth between
+ * processors using nonblocking sends/recvs.
+ *
+ */
+void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
+			MPI_Comm comm)
+{
+  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
+  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  REAL **recv, **send;
+  MPI_Status *status = (MPI_Status *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvCellData3D");
+  MPI_Request *request = (MPI_Request *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvCellData3D");
+
+  num_send=grid->num_cells_send;
+  num_recv=grid->num_cells_recv;
+
+  recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"ISendRecvCellData3D");
+  send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"ISendRecvCellData3D");
+  Nsend = (int *)SunMalloc(grid->Nneighs*sizeof(int),"ISendRecvCellData3D");
+  Nrecv = (int *)SunMalloc(grid->Nneighs*sizeof(int),"ISendRecvCellData3D");
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    neighproc = grid->myneighs[neigh];
+
+    Nsend[neigh] = 0;
+    Nrecv[neigh] = 0;
+    for(n=0;n<num_send[neigh];n++) 
+      Nsend[neigh]+=grid->Nk[grid->cell_send[neigh][n]];
+    for(n=0;n<num_recv[neigh];n++) 
+      Nrecv[neigh]+=grid->Nk[grid->cell_recv[neigh][n]];
+
+    send[neigh] = (REAL *)SunMalloc(Nsend[neigh]*sizeof(REAL),"ISendRecvCellData3D");
+    recv[neigh] = (REAL *)SunMalloc(Nrecv[neigh]*sizeof(REAL),"ISendRecvCellData3D");
+
+    nstart=0;
+    for(n=0;n<num_send[neigh];n++) {
+      for(k=0;k<grid->Nk[grid->cell_send[neigh][n]];k++) 
+	send[neigh][nstart+k]=celldata[grid->cell_send[neigh][n]][k];
+      nstart+=grid->Nk[grid->cell_send[neigh][n]];
+    }
+
+    MPI_Isend((void *)(send[neigh]),Nsend[neigh],MPI_DOUBLE,neighproc,1,comm,&(request[neigh])); 
+  }
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    neighproc = grid->myneighs[neigh];
+    MPI_Irecv((void *)(recv[neigh]),Nrecv[neigh],MPI_DOUBLE,neighproc,1,comm,&(request[grid->Nneighs+neigh]));
+  }
+  MPI_Waitall(2*grid->Nneighs,request,status);
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    nstart=0;
+    for(n=0;n<num_recv[neigh];n++) {
+      for(k=0;k<grid->Nk[grid->cell_recv[neigh][n]];k++) 
+	celldata[grid->cell_recv[neigh][n]][k]=recv[neigh][nstart+k];
+      nstart+=grid->Nk[grid->cell_recv[neigh][n]];
+    }
+  }
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    SunFree(send[neigh],Nsend[neigh]*sizeof(REAL),"ISendRecvCellData3D");
+    SunFree(recv[neigh],Nrecv[neigh]*sizeof(REAL),"ISendRecvCellData3D");
+  }
+  SunFree(send,grid->Nneighs*sizeof(REAL *),"ISendRecvCellData3D");
+  SunFree(recv,grid->Nneighs*sizeof(REAL *),"ISendRecvCellData3D");
+  SunFree(Nsend,grid->Nneighs*sizeof(int),"ISendRecvCellData3D");
+  SunFree(Nrecv,grid->Nneighs*sizeof(int),"ISendRecvCellData3D");
+}
+
+/*
  * Function: SendRecvWData
  * Usage: SendRecvWData(grid->w,grid,myproc,comm);
  * -----------------------------------------------
@@ -550,6 +626,79 @@ void SendRecvWData(REAL **celldata, gridT *grid, int myproc,
 }
 
 /*
+ * Function: ISendRecvWData
+ * Usage: ISendRecvWData(grid->w,grid,myproc,comm);
+ * -----------------------------------------------
+ * This function will transfer the 3D w data back and forth between
+ * processors using nonblocking sends/recvs.
+ *
+ */
+void ISendRecvWData(REAL **celldata, gridT *grid, int myproc, 
+		   MPI_Comm comm)
+{
+  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
+  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  REAL **recv, **send;
+  MPI_Status *status = (MPI_Status *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvCellData2D");
+  MPI_Request *request = (MPI_Request *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvCellData2D");
+
+  num_send=grid->num_cells_send;
+  num_recv=grid->num_cells_recv;
+
+  recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"ISendRecvWData");
+  send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"ISendRecvWData");
+  Nsend = (int *)SunMalloc(grid->Nneighs*sizeof(int),"ISendRecvWData");
+  Nrecv = (int *)SunMalloc(grid->Nneighs*sizeof(int),"ISendRecvWData");
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    neighproc = grid->myneighs[neigh];
+
+    Nsend[neigh] = 0;
+    Nrecv[neigh] = 0;
+    for(n=0;n<num_send[neigh];n++) 
+      Nsend[neigh]+=(1+grid->Nk[grid->cell_send[neigh][n]]);
+    for(n=0;n<num_recv[neigh];n++) 
+      Nrecv[neigh]+=(1+grid->Nk[grid->cell_recv[neigh][n]]);
+
+    send[neigh] = (REAL *)SunMalloc(Nsend[neigh]*sizeof(REAL),"ISendRecvWData");
+    recv[neigh] = (REAL *)SunMalloc(Nrecv[neigh]*sizeof(REAL),"ISendRecvWData");
+
+    nstart=0;
+    for(n=0;n<num_send[neigh];n++) {
+      for(k=0;k<(1+grid->Nk[grid->cell_send[neigh][n]]);k++) 
+	send[neigh][nstart+k]=celldata[grid->cell_send[neigh][n]][k];
+      nstart+=(1+grid->Nk[grid->cell_send[neigh][n]]);
+    }
+
+    MPI_Isend((void *)(send[neigh]),Nsend[neigh],MPI_DOUBLE,neighproc,1,comm,&(request[neigh])); 
+  }
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    neighproc = grid->myneighs[neigh];
+    MPI_Irecv((void *)(recv[neigh]),Nrecv[neigh],MPI_DOUBLE,neighproc,1,comm,&(request[grid->Nneighs+neigh]));
+  }
+  MPI_Waitall(2*grid->Nneighs,request,status);
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    nstart=0;
+    for(n=0;n<num_recv[neigh];n++) {
+      for(k=0;k<(1+grid->Nk[grid->cell_recv[neigh][n]]);k++) 
+	celldata[grid->cell_recv[neigh][n]][k]=recv[neigh][nstart+k];
+      nstart+=(1+grid->Nk[grid->cell_recv[neigh][n]]);
+    }
+  }
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    SunFree(send[neigh],Nsend[neigh]*sizeof(REAL),"ISendRecvWData");
+    SunFree(recv[neigh],Nrecv[neigh]*sizeof(REAL),"ISendRecvWData");
+  }
+  SunFree(send,grid->Nneighs*sizeof(REAL *),"ISendRecvWData");
+  SunFree(recv,grid->Nneighs*sizeof(REAL *),"ISendRecvWData");
+  SunFree(Nsend,grid->Nneighs*sizeof(int),"ISendRecvWData");
+  SunFree(Nrecv,grid->Nneighs*sizeof(int),"ISendRecvWData");
+}
+
+/*
  * Function: SendRecvEdgeData3D
  * Usage: SendRecvEdgeData3D(grid->u,grid,myproc,comm);
  * ----------------------------------------------------
@@ -588,10 +737,8 @@ void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
 
     nstart=0;
     for(n=0;n<num_send[neigh];n++) {
-      for(k=0;k<grid->Nke[grid->edge_send[neigh][n]];k++) {
+      for(k=0;k<grid->Nke[grid->edge_send[neigh][n]];k++) 
 	send[neigh][nstart+k]=edgedata[grid->edge_send[neigh][n]][k];
-      //      printf("Sent: %f\n",edgedata[grid->edge_send[neigh][n]][k]);
-      }
       nstart+=grid->Nke[grid->edge_send[neigh][n]];
     }
 
@@ -609,7 +756,6 @@ void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
     for(n=0;n<num_recv[neigh];n++) {
       for(k=0;k<grid->Nke[grid->edge_recv[neigh][n]];k++) {
 	edgedata[grid->edge_recv[neigh][n]][k]=recv[neigh][nstart+k];
-	//	printf("Received: %f\n",edgedata[grid->edge_recv[neigh][n]][k]);
       }
       nstart+=grid->Nke[grid->edge_recv[neigh][n]];
     }
@@ -623,6 +769,80 @@ void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
   SunFree(recv,grid->Nneighs*sizeof(REAL *),"SendRecvEdgeData3D");
   SunFree(Nsend,grid->Nneighs*sizeof(int),"SendRecvEdgeData3D");
   SunFree(Nrecv,grid->Nneighs*sizeof(int),"SendRecvEdgeData3D");
+}
+
+/*
+ * Function: ISendRecvEdgeData3D
+ * Usage: ISendRecvEdgeData3D(grid->u,grid,myproc,comm);
+ * ----------------------------------------------------
+ * This function will transfer the 3D edge data back and forth between
+ * processors using onblocking sends/recvs.
+ *
+ */
+void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
+			MPI_Comm comm)
+{
+  int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
+  int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
+  REAL **recv, **send;
+  MPI_Status *status = (MPI_Status *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvEdgeData3D");
+  MPI_Request *request = (MPI_Request *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvEdgeData3D");
+
+  num_send=grid->num_edges_send;
+  num_recv=grid->num_edges_recv;
+
+  recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"ISendRecvEdgeData3D");
+  send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"ISendRecvEdgeData3D");
+  Nsend = (int *)SunMalloc(grid->Nneighs*sizeof(int),"ISendRecvEdgeData3D");
+  Nrecv = (int *)SunMalloc(grid->Nneighs*sizeof(int),"ISendRecvEdgeData3D");
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    neighproc = grid->myneighs[neigh];
+
+    Nsend[neigh] = 0;
+    Nrecv[neigh] = 0;
+    for(n=0;n<num_send[neigh];n++) 
+      Nsend[neigh]+=grid->Nke[grid->edge_send[neigh][n]];
+    for(n=0;n<num_recv[neigh];n++) 
+      Nrecv[neigh]+=grid->Nke[grid->edge_recv[neigh][n]];
+
+    send[neigh] = (REAL *)SunMalloc(Nsend[neigh]*sizeof(REAL),"ISendRecvEdgeData3D");
+    recv[neigh] = (REAL *)SunMalloc(Nrecv[neigh]*sizeof(REAL),"ISendRecvEdgeData3D");
+
+    nstart=0;
+    for(n=0;n<num_send[neigh];n++) {
+      for(k=0;k<grid->Nke[grid->edge_send[neigh][n]];k++) 
+	send[neigh][nstart+k]=edgedata[grid->edge_send[neigh][n]][k];
+      nstart+=grid->Nke[grid->edge_send[neigh][n]];
+    }
+
+    MPI_Isend((void *)(send[neigh]),Nsend[neigh],MPI_DOUBLE,neighproc,1,comm,&(request[neigh])); 
+  }
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    neighproc = grid->myneighs[neigh];
+    MPI_Irecv((void *)(recv[neigh]),Nrecv[neigh],MPI_DOUBLE,neighproc,1,comm,&(request[grid->Nneighs+neigh]));
+  }
+  MPI_Waitall(2*grid->Nneighs,request,status);
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    nstart=0;
+    for(n=0;n<num_recv[neigh];n++) {
+      for(k=0;k<grid->Nke[grid->edge_recv[neigh][n]];k++) {
+	edgedata[grid->edge_recv[neigh][n]][k]=recv[neigh][nstart+k];
+      }
+      nstart+=grid->Nke[grid->edge_recv[neigh][n]];
+    }
+  }
+
+  for(neigh=0;neigh<grid->Nneighs;neigh++) {
+    SunFree(send[neigh],Nsend[neigh]*sizeof(REAL),"ISendRecvEdgeData3D");
+    SunFree(recv[neigh],Nrecv[neigh]*sizeof(REAL),"ISendRecvEdgeData3D");
+  }
+  SunFree(send,grid->Nneighs*sizeof(REAL *),"ISendRecvEdgeData3D");
+  SunFree(recv,grid->Nneighs*sizeof(REAL *),"ISendRecvEdgeData3D");
+  SunFree(Nsend,grid->Nneighs*sizeof(int),"ISendRecvEdgeData3D");
+  SunFree(Nrecv,grid->Nneighs*sizeof(int),"ISendRecvEdgeData3D");
 }
 
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm)
