@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.3 2004-06-13 07:08:57 fringer Exp $
+ * $Id: boundaries.c,v 1.4 2004-06-15 18:24:23 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2004/06/13 07:08:57  fringer
+ * Changes after testing of open boundaries.  No physical breakthroughs...
+ *
  * Revision 1.2  2004/05/29 20:25:02  fringer
  * Revision before converting to CVS.
  *
@@ -26,6 +29,9 @@
  * Note that phys->uold,vold contain the velocity at time step n-1 and 
  * phys->uc,vc contain it at time step n.
  *
+ * The radiative open boundary condition does not work yet!!!  For this reason c[k] is
+ * set to 0
+ *
  */
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop) {
 
@@ -33,27 +39,13 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
   REAL z, uf, vf, cmax, *uboundary = phys->c, *c = phys->b, *phin = phys->a, xc, yc, width,
     **u = phys->uc, **v = phys->vc, **uold = phys->uold, **vold = phys->vold, flux, area;
 
-  /*
-  for(j=0;j<grid->Nc;j++) 
-    for(k=0;k<grid->Nk[j];k++) {
-      uold[j][k]=10*grid->yv[j];
-      vold[j][k]=10*grid->yv[j];
-      u[j][k]=10*grid->yv[j];
-      v[j][k]=10*grid->yv[j];
-    }
-
-  for(j=0;j<grid->Ne;j++) 
-    for(k=0;k<grid->Nke[j];k++) {
-      ubn[j][k]=10*grid->xe[j]*grid->n1[j]+10*grid->ye[j]*grid->n2[j];
-    }
-  */
-
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
 
     ib = grid->grad[2*j];
 
     // For Three-mile slough
+    /*
     if(grid->yv[ib]>1500) //for threemile
       if(cos(prop->omega*prop->rtime)>0) {
 	forced=0;
@@ -74,17 +66,8 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	  uboundary[k] = prop->amp*cos(prop->omega*prop->rtime);
       }
-    /*
-    if(grid->yv[ib]>2.5) {
-      forced=0;
-      for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	uboundary[k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]+phys->h[ib]));
-    } else {
-      forced=1;
-      for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	uboundary[k] = prop->amp;
-    }
     */
+
     // For Huntington Beach
     /*
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
@@ -99,8 +82,8 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 	  z=-grid->dzz[ib][k]/2;
 	else
 	  z-=grid->dzz[ib][k];
-	uboundary[k]=prop->amp*cos(prop->omega*prop->rtime)*cos(PI*z/grid->dv[ib]);
-	//ub[j][k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
+	//uboundary[k]=prop->amp*cos(prop->omega*prop->rtime)*cos(PI*z/grid->dv[ib]);
+	uboundary[k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
       }
       forced=1;
     } else 
@@ -160,41 +143,21 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
       
       if(c[k]>cmax)
       	c[k]=cmax;
+
+      // Set to 0 for now...
+      c[k]=0;
     }
-    if(grid->xv[ib]>2500) printf("%e %e %e %e\n",prop->rtime,phin[4],c[4],phys->s[ib][4]);
-    //    for(k=grid->etop[j];k<grid->Nke[j];k++) c[k]=0;
 
     if(forced) 
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	ub[j][k]=uboundary[k];
     else {
-      for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	//    	ub[j][k]=(1-prop->dt*(1-prop->theta)/prop->timescale)*ub[j][k]+prop->dt*uboundary[k]/prop->timescale
-	ub[j][k]+=2.0*prop->dt*c[k]*(u[ib][k]*grid->n1[j]+v[ib][k]*grid->n2[j]-ub[j][k])/
-    	  grid->dg[j];
-	flux+=ub[j][k]*grid->dzz[ib][k]*grid->df[j];
-	area+=grid->dzz[ib][k]*grid->df[j];
-      }
-      //      for(k=grid->etop[j];k<grid->Nke[j];k++)
-      //    	ub[j][k]/=(1+prop->theta*prop->dt/prop->timescale);
-    }
-
-    /*
-    if(grid->xv[ib]>2.5)
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-	ub[j][k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]+phys->h[ib]));
-    else
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-	ub[j][k] = .2*sin(3.14*prop->rtime);
-    */
-  }
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-    j = grid->edgep[jptr];
-
-    ib = grid->grad[2*j];
-
-    if(grid->xv[ib]>2500)
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      	ub[j][k]-=flux/area;
+	ub[j][k]=(1-prop->dt*(1-prop->theta)/prop->timescale)*ub[j][k]+prop->dt*uboundary[k]/prop->timescale
+	  +2.0*prop->dt*c[k]*(u[ib][k]*grid->n1[j]+v[ib][k]*grid->n2[j]-ub[j][k])/
+    	  grid->dg[j];
+      for(k=grid->etop[j];k<grid->Nke[j];k++)
+	ub[j][k]/=(1+prop->theta*prop->dt/prop->timescale);
+    }
   }
 }
