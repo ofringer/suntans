@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.54 2004-05-19 20:15:39 fringer Exp $
+ * $Id: phys.c,v 1.55 2004-05-19 22:46:24 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.54  2004/05/19 20:15:39  fringer
+ * Put the old velocities back into the explicit advection terms for scalar.
+ *
  * Revision 1.53  2004/05/17 19:09:41  fringer
  * Placed the kmin and kmax if statements inside the if(nc!=-1) for
  * the horizontal diffusion term.
@@ -1269,7 +1272,11 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
 static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs) {
   int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin, wetdry_offset;
-  REAL fab, sum;
+  REAL fab, sum, *a, *b, *c;
+
+  a = phys->a;
+  b = phys->b;
+  c = phys->c;
 
   if(prop->wetdry)
     wetdry_offset=1;
@@ -1285,7 +1292,7 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
     fab=1.5;
 
   // Add on the nonhydrostatic pressure gradient from the previous time
-  // step.
+  // step to compute the source term for the tridiagonal inversion.
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr]; 
     
@@ -1403,7 +1410,46 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
     i = grid->cellp[iptr]; 
     
     for(k=grid->ctop[i];k<grid->Nk[i];k++) 
-      phys->w[i][k]=phys->wtmp[i][k]+fab*phys->Cn_W[i][k];
+      phys->wtmp[i][k]+=fab*phys->Cn_W[i][k];
+  }
+
+  // wtmp now contains the right hand side without the vertical diffusion terms.  Now we
+  // add the vertical diffusion terms to the explicit side and invert the tridiagonal for
+  // vertical diffusion (only if grid->Nk[i]-grid->ctop[i]>=2)
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr]; 
+
+    if(grid->Nk[i]-grid->ctop[i]>1) {
+      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	a[k] = 2*(prop->nu+phys->nu_tv[i][k-1])/grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1]);
+	b[k] = 2*(prop->nu+phys->nu_tv[i][k])/grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1]);
+      }
+      b[grid->ctop[i]]=(prop->nu+phys->nu_tv[i][grid->ctop[i]])/pow(grid->dzz[i][grid->ctop[i]],2);
+      a[grid->ctop[i]]=b[grid->ctop[i]];
+      
+      // Add on the explicit part of the vertical diffusion term
+      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
+	phys->wtmp[i][k]+=prop->dt*(1-prop->theta)*(a[k]*phys->w[i][k-1]
+						    -(a[k]+b[k])*phys->w[i][k]
+						    +b[k]*phys->w[i][k+1]);
+      phys->wtmp[i][grid->ctop[i]]+=prop->dt*(1-prop->theta)*(-(a[grid->ctop[i]]+b[grid->ctop[i]])*phys->w[i][grid->ctop[i]]
+							      +(a[grid->ctop[i]]+b[grid->ctop[i]])*phys->w[i][grid->ctop[i]+1]);
+      
+      // Now formulate the components of the tridiagonal inversion.
+      // c is the diagonal entry, a is the lower diagonal, and b is the upper diagonal.
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	c[k]=1+prop->dt*prop->theta*(a[k]+b[k]);
+	a[k]*=(-prop->dt*prop->theta);
+	b[k]*=(-prop->dt*prop->theta);
+      }
+      b[grid->ctop[i]]+=a[grid->ctop[i]];
+
+      TriSolve(&(a[grid->ctop[i]]),&(c[grid->ctop[i]]),&(b[grid->ctop[i]]),
+	       &(phys->wtmp[i][grid->ctop[i]]),&(phys->w[i][grid->ctop[i]]),grid->Nkc[i]-grid->ctop[i]);
+    } else {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	phys->w[i][k]=phys->wtmp[i][k];
+    }
   }
 }
 
