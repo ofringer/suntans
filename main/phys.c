@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.9 2003-04-21 20:26:08 fringer Exp $
+ * $Id: phys.c,v 1.10 2003-04-22 02:42:32 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.9  2003/04/21 20:26:08  fringer
+ * Working version before addition of ghost cells for kriging.
+ *
  * Revision 1.8  2003/04/08 23:32:46  fringer
  * Added binary output functionality so far for fs,u,v,w.  Use the -a option to enforce ASCII output.
  *
@@ -204,7 +207,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
 	hfmax=hf;
     }
     //phys->h[i]=-grid->dv[i]+hfmax;
-    phys->h[i]=0.0*cos(PI*grid->xv[i]/10);
+    //    phys->h[i]=0.1*cos(PI*grid->xv[i]/10);
 
     /*
     if(grid->xv[i]>5)
@@ -213,8 +216,8 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
       phys->h[i]=-grid->dv[i];
     */
     //    phys->h[i] = 0;
-    //    phys->h[i]=exp(-pow((grid->xv[i]-5),2)
-    //    		   -pow((grid->yv[i]-5),2));
+    phys->h[i]=.5*exp(-pow((grid->xv[i]-5),2)
+		   -pow((grid->yv[i]-5),2));
     //    phys->h[i]=exp(-pow((grid->xv[i]-50000)/10000,2)
     //		   -pow((grid->yv[i]-50000)/10000,2));
 
@@ -1438,6 +1441,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
   phys->Eflux4 = 0;
 
   //  jflux = 25;
+  /*
   jflux = 0;
   u_barotropic = 0;
   nc1 = grid->grad[2*jflux];
@@ -1460,7 +1464,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
   }
   phys->Eflux1*=grid->df[jflux];
   phys->Eflux3*=grid->df[jflux];
-
+  
   //  jflux = 225;
   jflux = 0;
   u_barotropic = 0;
@@ -1484,7 +1488,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
   }
   phys->Eflux2*=grid->df[jflux];
   phys->Eflux4*=grid->df[jflux];
-
+  */
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
     height = 0;
@@ -1509,7 +1513,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
   //MPI_Reduce(&volh,&(phys->volume),1,MPI_DOUBLE,MPI_SUM,0,comm);
   MPI_Reduce(&volume,&(phys->volume),1,MPI_DOUBLE,MPI_SUM,0,comm);
   MPI_Reduce(&Ep,&(phys->Ep),1,MPI_DOUBLE,MPI_SUM,0,comm);
-  
+
   if(myproc==0) {
     if(prop->n==0) {
       phys->volume0 = phys->volume;
