@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.11 2003-04-26 14:16:22 fringer Exp $
+ * $Id: phys.c,v 1.12 2003-04-29 00:12:10 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.11  2003/04/26 14:16:22  fringer
+ * Added initialization function ReturnFreeSurface
+ *
  * Revision 1.10  2003/04/22 02:42:32  fringer
  * Changed makepointers() in grid.c so that the ghost points include
  * extra points for the ELM interpolation.  Only the number of neihbors is
@@ -196,56 +199,13 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
   REAL r, u, v, xc, yc, hf, hfmax, z;
 
   for(i=0;i<Nc;i++) {
-    hfmax=0;
-    for(nf=0;nf<NFACES;nf++) {
-      ne = grid->face[i*NFACES+nf];
-      nc1 = grid->grad[2*ne];
-      nc2 = grid->grad[2*ne+1];
-      if(nc1==-1) nc1=nc2;
-      if(nc2==-1) nc2=nc1;
-
-      xc = 0.5*(grid->xv[nc1]+grid->xv[nc2]);
-      hf=-2.5+2.5*cos(PI*xc/15)+grid->dv[i];
-      if(xc>7.5)
-	hfmax=grid->dv[i];
-      else
-	hfmax=0;
-      if(hf>hfmax)
-	hfmax=hf;
-    }
-    //phys->h[i]=-grid->dv[i]+hfmax;
-    //    phys->h[i]=0.1*cos(PI*grid->xv[i]/10);
-
-    /*
-    if(grid->xv[i]>5)
-      phys->h[i]=0;
-    else
-      phys->h[i]=-grid->dv[i];
-    */
-    //    phys->h[i] = 0;
-    //        phys->h[i]=0.5*exp(-pow((grid->xv[i]-5),2)
-    //			     -pow((grid->yv[i]-5),2));
     phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i]);
-    //    phys->h[i]=exp(-pow((grid->xv[i]-50000)/10000,2)
-    //		   -pow((grid->yv[i]-50000)/10000,2));
-
-    //      phys->h[i]=-grid->dv[i];
-    //    phys->h[i]=-2.5+2.5*cos(PI*grid->xv[i]/15);
-    //    if(grid->xv[i]>500)
-    //      phys->h[i]=-grid->dv[i]+1;
-    //    if(grid->yv[i]>grid->xv[i])
-    //      phys->h[i]=-grid->dv[i];
-    //    phys->h[i]=-grid->dv[i]+1;
-    // Free-surface is ALWAYS > -depth!
     if(phys->h[i]<-grid->dv[i])
       phys->h[i]=-grid->dv[i];
   }
 
   UpdateDZ(grid,phys,1);
-  /*
-  for(j=0;j<Ne;j++)
-    printf("Start: etop[%d]=%d\n",j,grid->etop[j]);
-  */
+
   for(i=0;i<Nc;i++) {
     phys->w[i][grid->Nk[i]]=0;
     for(k=0;k<grid->Nk[i];k++) {
@@ -259,28 +219,12 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
   for(i=0;i<Nc;i++) {
     z = 0;
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      z-=grid->dzz[i][k]/2;
-      //      phys->s[i][k]=-1.07*0*(z+1500+0*cos(PI*(grid->xv[i]-10000)/10000))/1500;
-      //phys->s[i][k]=-7.333e-3*(.5*(z+1500)/1500);
-      //phys->s0[i][k]=-7.333e-3*(.5*(z+1500)/1500);
-      phys->s[i][k]=-0.0147*(z/3000+.5);
-      phys->s0[i][k]=-0.0147*(z/3000+.5);
-      //      if(grid->xv[i]>70000) phys->s[i][k]=.01;
-      //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
-
-      //if(grid->xv[i]>5) phys->s[i][k]=0.01;
-      //      phys->s[i][k]=-(1-tanh((grid->xv[i]-5)/.25));
-      //phys->s[i][k]=-tanh((z+0.5*grid->dv[i]-.1*cos(PI*grid->xv[i]/10))/.01);
-      //phys->s[i][k]=-0*tanh((z+0.5+.3*exp(-pow(grid->xv[i]/2,2)))/.01);
-      //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
-      //      	phys->s[i][k]=0;
-      //      r=sqrt(pow(grid->xv[i]-11.25,2)+pow(grid->yv[i]-7.5,2));
-      //      if(r<2)
-      //	phys->s[i][k]=1;
-      //      else
-      //	phys->s[i][k]=0;
-      //      phys->s[i][k]=1-tanh((grid->xv[i]-7.5)/2);
-      z-=grid->dzz[i][k]/2;
+      //z-=grid->dzz[i][k]/2;
+      z-=grid->dz[k]/2;
+      phys->s[i][k]=ReturnSalinity(grid->xv[i],grid->yv[i],z);
+      phys->s0[i][k]=ReturnSalinity(grid->xv[i],grid->yv[i],z);
+      //      z-=grid->dzz[i][k]/2;
+      z-=grid->dz[k]/2;
     }
   }
 
@@ -288,20 +232,21 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
     for(k=0;k<grid->Nkc[j];k++) 
       phys->u[j][k]=0;
 
-  /*
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
     xc=0.5*(grid->xv[nc1]+grid->xv[nc2]);
     yc=0.5*(grid->yv[nc1]+grid->yv[nc2]);
-    r = sqrt(pow(xc-7.5,2)+pow(yc-7.5,2));
     u = -(yc-7.5)/7.5;
     v = (xc-7.5)/7.5;
-    for(k=0;k<grid->Nkc[j];k++)
-      phys->u[j][k]=u*grid->n1[j]+v*grid->n2[j];
+    z = 0;
+    for(k=0;k<grid->Nkc[j];k++) {
+      z-=0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+      phys->u[j][k]=ReturnHorizontalVelocity(xc,yc,grid->n1[j],grid->n2[j],z);
+      z-=0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+    }
   }
-  */
 
   /*
    * Determine minimum and maximum scalar values.
@@ -572,6 +517,12 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
     nc2 = grid->grad[2*j+1];
 
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
+      for(k0=grid->etop[j];k0<k;k0++)
+	phys->utmp[j][k]-=0.5*GRAV*prop->beta*dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
+	  (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
+    }
+    /*
+    for(k=grid->etop[j];k<grid->Nke[j];k++) {
       phys->utmp[j][k]-=0.5*dt*GRAV*prop->beta*
 	(phys->s[nc1][k]*grid->dzz[nc1][k]-
 	 phys->s[nc2][k]*grid->dzz[nc2][k])/grid->dg[j];
@@ -579,6 +530,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
 	phys->utmp[j][k]-=dt*GRAV*prop->beta*(phys->s[nc1][k0]*grid->dzz[nc1][k0]-
 					      phys->s[nc2][k0]*grid->dzz[nc2][k0])/grid->dg[j];
     }
+    */
   }	
 
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
@@ -973,7 +925,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
     if(fabs(resid)<prop->epsilon)
       break;
   }
-  if(n==niters) 
+  if(n==niters && myproc==0) 
     printf("Warning... Iteration not converging after %d steps! RES=%e\n",n,resid);
   
   /*
@@ -1014,7 +966,7 @@ static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop)
 {
   int i, j, jptr, iptr, k, nf, kp, km, kstart, kend, ktop;
   int Nc=grid->Nc, Ne=grid->Ne, normal, nc1, nc2, ne;
-  REAL wup, wum, wlp, wlm, df, Ac, dt=prop->dt;
+  REAL wup, wum, wlp, wlm, df, Ac, dt=prop->dt, tmp;
   REAL *a, *b, *c, *d, *ap, *am, dznew, dzold, mass, rat;
 
   ap = phys->ap;
@@ -1103,23 +1055,34 @@ static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop)
       phys->s[i][k]=0;
   }
 
+  /*
+   * Need to modify the boundary cells here.  For now they
+   * are left unmodified.
+   *
+   */
+  /*
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
 
-    for(k=0;k<grid->Nk[i];k++)
+    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      tmp=phys->s[i][k];
       phys->s[i][k]=0;
-
-    km = 0;
-    for(nf=0;nf<NFACES;nf++) 
-      if(grid->neigh[i*NFACES+nf] != -1) {
-	km++;
-	for(k=0;k<grid->Nk[i];k++)
-	  phys->s[i][k]+=phys->s[grid->neigh[i*NFACES+nf]][k];
+      km=0;
+      for(nf=0;nf<NFACES;nf++) {
+	if(grid->neigh[i*NFACES+nf]!=-1) 
+	  if(k<=grid->Nk[grid->neigh[i*NFACES+nf]] &&
+	     k>=grid->ctop[grid->neigh[i*NFACES+nf]]) {
+	    phys->s[i][k]+=phys->s[grid->neigh[i*NFACES+nf]][k];
+	    km++;
+	  }
       }
-
-    for(k=0;k<grid->Nk[i];k++)
-      phys->s[i][k]/=km;
-  }
+      if(km>0)
+	phys->s[i][k]/=km;
+      else
+	phys->s[i][k]=tmp;
+    }
+   }
+  */
 }
 
 static void UpdateScalars(gridT *grid, physT *phys, propT *prop)
@@ -1745,15 +1708,23 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     if(ASCII) {
       for(i=0;i<grid->Nc;i++) {
 	for(k=0;k<grid->Nk[i];k++)
-	  fprintf(prop->SalinityFID,"%e\n",phys->s[i][k]-phys->s0[i][k]);
+	  fprintf(prop->SalinityFID,"%e\n",phys->s[i][k]);
 	for(k=grid->Nk[i];k<grid->Nkmax;k++)
 	  fprintf(prop->SalinityFID,"0.0\n");
+      }
+      if(prop->n==1) {
+	for(i=0;i<grid->Nc;i++) {
+	  for(k=0;k<grid->Nk[i];k++)
+	    fprintf(prop->BGSalinityFID,"%e\n",phys->s0[i][k]);
+	  for(k=grid->Nk[i];k<grid->Nkmax;k++)
+	    fprintf(prop->BGSalinityFID,"0.0\n");
+	}
       }
     } else {
       for(k=0;k<grid->Nkmax;k++) {
 	for(i=0;i<grid->Nc;i++) {
 	  if(k<grid->Nk[i])
-	    phys->htmp[i]=phys->s[i][k]-phys->s0[i][k];
+	    phys->htmp[i]=phys->s[i][k];
 	  else
 	    phys->htmp[i]=EMPTY;
 	}
@@ -1763,6 +1734,20 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	  exit(EXIT_WRITING);
 	}
       }
+      if(prop->n==1) 
+	for(k=0;k<grid->Nkmax;k++) {
+	  for(i=0;i<grid->Nc;i++) {
+	    if(k<grid->Nk[i])
+	      phys->htmp[i]=phys->s0[i][k];
+	    else
+	      phys->htmp[i]=EMPTY;
+	  }
+	  nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->BGSalinityFID);
+	  if(nwritten!=grid->Nc) {
+	    printf("Error outputting background salinity data!\n");
+	    exit(EXIT_WRITING);
+	  }
+	}
     }
 
     
@@ -1773,6 +1758,9 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	fprintf(prop->VerticalGridFID,"0.0\n");
     }
   }
+
+  if(prop->n==1)
+    fclose(prop->BGSalinityFID);
 
   if(prop->n==prop->nsteps) {
     fclose(prop->FreeSurfaceFID);
@@ -1833,6 +1821,10 @@ static void OpenFiles(propT *prop, int myproc)
   MPI_GetString(filename,DATAFILE,"SalinityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->SalinityFID = fopen(str,"w");
+
+  MPI_GetString(filename,DATAFILE,"BGSalinityFile","OpenFiles",myproc);
+  sprintf(str,"%s.%d",filename,myproc);
+  prop->BGSalinityFID = fopen(str,"w");
 
   MPI_GetString(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
