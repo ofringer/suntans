@@ -1,8 +1,12 @@
 /*
  * Main header file
  *
- * $Id: suntans.h,v 1.2 2002-11-03 00:52:35 fringer Exp $
+ * $Id: suntans.h,v 1.3 2002-11-03 00:54:57 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2002/11/03 00:52:35  fringer
+ * Removed the requirement of specifying a separate file that contains the
+ * grid data files.  They are specified in the main suntans data file now.
+ *
  * Revision 1.1  2002/11/03 00:20:49  fringer
  * Initial revision
  *
@@ -21,8 +25,6 @@
 #define INFTY 10000
 #define CONSERVED 1e-5
 
-#define DATADIR "/home/fringer/research/SUNTANS/data"
-#define GRIDDATAFILELIST DATADIR"/suntans_grid_files.dat"
 #define DATAFILE "suntans.dat"
 
 char POINTSFILE[BUFFERLENGTH], EDGEFILE[BUFFERLENGTH], CELLSFILE[BUFFERLENGTH], INPUTDEPTHFILE[BUFFERLENGTH],
