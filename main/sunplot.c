@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.20 2003-04-29 16:39:43 fringer Exp $
+ * $Id: sunplot.c,v 1.21 2003-05-01 00:28:30 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.20  2003/04/29 16:39:43  fringer
+ * Added MPI_FOPen in place of fopen.
+ *
  * Revision 1.19  2003/04/29 00:17:22  fringer
  * Removed some unnecessary code which was commented out.
  * Added abiilty to select s,s-s0, or s0 by clicking on the salinity
@@ -86,7 +89,7 @@
 #include "suntans.h"
 #include "fileio.h"
 
-#define AXESSLICETOP 0.1
+#define AXESSLICETOP 0.25
 #define SMALLHEIGHT .001
 #define VERSION "0.0.0"
 #define WIDTH 500
@@ -1014,6 +1017,12 @@ void QuadSurf(float *h, float *D,
 
       if(((z[j]<=h[i] && z[j+1]<=h[i]) || (z[j]>=h[i] && z[j+1]<=h[i])) &&
 	 ((z[j]>=-D[i] && z[j+1]>=-D[i]) || (z[j]>=-D[i] && z[j+1]<=-D[i]))) {
+	if(z[j]<h[i] && j==0) {
+	  yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
+					(dataLimits[3]-dataLimits[2]));
+	  yp1 = axesPosition[3]*height*(1-(z[j+1]-dataLimits[2])/
+					(dataLimits[3]-dataLimits[2]));
+	}
 	if(z[j]>=h[i] && z[j+1]<=h[i])
 	  yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
 					(dataLimits[3]-dataLimits[2]));
@@ -1047,6 +1056,7 @@ void QuadSurf(float *h, float *D,
 	}
       }
     }
+    // Draw the bottom
     yp2 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
 				  (dataLimits[3]-dataLimits[2]));    
     if(i>0)
@@ -1059,6 +1069,7 @@ void QuadSurf(float *h, float *D,
     XDrawLine(dis,pix,gc,points[0].x,yp1,points[0].x,yp2);
     XDrawLine(dis,pix,gc,points[0].x,yp2,points[1].x,yp2);
     
+    // Draw the free-surface
     yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
 				  (dataLimits[3]-dataLimits[2]));    
     if(i>0)
