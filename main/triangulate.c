@@ -3,8 +3,15 @@
  * --------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.6 2003-05-12 00:15:07 fringer Exp $
+ * $Id: triangulate.c,v 1.7 2004-01-27 01:43:27 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.6  2003/05/12 00:15:07  fringer
+ * Changed the string that is passed to triangle when segments are
+ * specified in the pslg to include the "p" flag, which tells
+ * triangle to preserve the convex hull.  If this is not used then
+ * when edge markers are specified in the pslg they may not necessarily
+ * be preserved in the final triangulation.
+ *
  * Revision 1.5  2003/05/05 01:27:48  fringer
  * Added verbose line to be compatible with grid.c.
  *
@@ -52,7 +59,7 @@ int GetTriangulation(gridT **grid, int myproc) {
 
   GetPoints(&in,&minarea,myproc);
   InitializeTriangle(&out,&vorout);
-  
+
   // Options for the triangulation:
   // Q quiet
   // z C-style numbering (start at 0 instead of 1)
@@ -64,9 +71,9 @@ int GetTriangulation(gridT **grid, int myproc) {
   // q (from README triangle):
   //    Adds points to the mesh to ensure that no angles smaller than 20 degrees occur.
   if(in.numberofsegments==0) 
-    sprintf(str,"Qznevc"); 
+    sprintf(str,"Qznevc");//Qpzq33.8evc
   else
-    sprintf(str,"Qpzqnev");
+    sprintf(str,"Qpzqnev");//Qpzq33.8nev
   if(minarea>0)
     sprintf(str,"%sa%.5f",str,minarea);
   else
@@ -124,8 +131,8 @@ void GetPoints(struct triangulateio *in, REAL *minarea, int myproc)
   int i, dummy, dimensions;
   char str[BUFFERLENGTH], c;
   REAL num;
-  MPI_GetString(PSLGFILE,DATAFILE,"pslg","GetPoints",0);
   FILE *infile = MPI_FOpen(PSLGFILE,"r","GetPoints",myproc);
+  MPI_GetFile(PSLGFILE,DATAFILE,"pslg","GetPoints",0);
 
   in->numberofpoints = (int)getfield(infile,str);
 
@@ -149,6 +156,7 @@ void GetPoints(struct triangulateio *in, REAL *minarea, int myproc)
     in->segmentlist[2*i]= (int)getfield(infile,str);
     in->segmentlist[2*i+1] = (int)getfield(infile,str);
     in->segmentmarkerlist[i] = (int)getfield(infile,str);
+    //    printf("%d %d\n",in->segmentlist[2*i],in->segmentlist[2*i+1]);
   }
 
   in->numberofpointattributes = 0;
