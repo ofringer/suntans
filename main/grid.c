@@ -6,8 +6,15 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.33 2004-08-22 23:48:29 fringer Exp $
+ * $Id: grid.c,v 1.34 2004-09-28 22:52:22 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.33  2004/08/22 23:48:29  fringer
+ * Fixed an out-of-bounds bug in the call to GetDZ which referenced
+ * maingrid->dv[i] to get the depth even though this is not needed
+ * when populating the elements of the grid->dz array.  This is only
+ * needed when obtaining the return value from GetDZ when it is used
+ * to obtain the weights for the grid partitioning.
+ *
  * Revision 1.32  2004/06/14 17:20:43  fringer
  * Removed xi and eneigh from being written to the edgedata output file
  * since it is not used by phys.c.
@@ -588,6 +595,8 @@ void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc,
   SunFree(recv,grid->Nneighs*sizeof(REAL *),"ISendRecvCellData3D");
   SunFree(Nsend,grid->Nneighs*sizeof(int),"ISendRecvCellData3D");
   SunFree(Nrecv,grid->Nneighs*sizeof(int),"ISendRecvCellData3D");
+  SunFree(status,2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvCellData3D");
+  SunFree(request,2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvCellData3D");
 }
 
 /*
@@ -731,6 +740,8 @@ void ISendRecvWData(REAL **celldata, gridT *grid, int myproc,
   SunFree(recv,grid->Nneighs*sizeof(REAL *),"ISendRecvWData");
   SunFree(Nsend,grid->Nneighs*sizeof(int),"ISendRecvWData");
   SunFree(Nrecv,grid->Nneighs*sizeof(int),"ISendRecvWData");
+  SunFree(status,2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvCellData2D");
+  SunFree(request,2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvCellData2D");
 }
 
 /*
@@ -876,6 +887,8 @@ void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
   SunFree(recv,grid->Nneighs*sizeof(REAL *),"ISendRecvEdgeData3D");
   SunFree(Nsend,grid->Nneighs*sizeof(int),"ISendRecvEdgeData3D");
   SunFree(Nrecv,grid->Nneighs*sizeof(int),"ISendRecvEdgeData3D");
+  SunFree(status,2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvEdgeData3D");
+  SunFree(request,2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvEdgeData3D");
 }
 
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm)
