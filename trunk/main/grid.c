@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.22 2003-12-02 02:05:11 fringer Exp $
+ * $Id: grid.c,v 1.23 2003-12-02 02:36:43 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.22  2003/12/02 02:05:11  fringer
+ * Removed all traces of nearest edge/cell indices.
+ *
  * Revision 1.21  2003/12/02 02:00:59  fringer
  * Removed CreateNearestCellPointers and CreateNearestEdgePointers
  * since these were only necessary for the kriging interpolation.
@@ -208,7 +211,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
 
   //CheckCommunicateCells(maingrid,*localgrid,myproc,comm);
   CheckCommunicateEdges(maingrid,*localgrid,myproc,comm);
-  //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm,first);
+  //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm);
 
   OutputData(maingrid,*localgrid,myproc,numprocs);
   //  FreeGrid(maingrid,numprocs);
@@ -288,30 +291,22 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
 /*
  * Function: SendRecvCellData2D
- * Usage: SendRecvCellData2D(grid->h,grid,myproc,comm,first);
- * ----------------------------------------------------------
+ * Usage: SendRecvCellData2D(grid->h,grid,myproc,comm);
+ * ----------------------------------------------------
  * This function will transfer the cell data back and forth between
- * processors.  If type==first, then only the bordering cells are
- * transferred.  If type==all, then all of them are transferred.  The
- * first type is used when communicating data for the free-surface iteration,
- * since only the bordering cells are needed.
+ * processors.  
  *
  */
 void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
-			MPI_Comm comm, transferType type)
+			MPI_Comm comm)
 {
   int n, neigh, neighproc, receivesize, sendsize, noncontig, flag;
   int senstart, senend, recstart, recend, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
 
-  if(type==first) {
-    num_send=grid->num_cells_send_first;
-    num_recv=grid->num_cells_recv_first;
-  } else {
-    num_send=grid->num_cells_send;
-    num_recv=grid->num_cells_recv;
-  }
+  num_send=grid->num_cells_send;
+  num_recv=grid->num_cells_recv;
     
   recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvCellData2D");
   send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvCellData2D");
@@ -351,19 +346,16 @@ void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc,
 
 /*
  * Function: ISendRecvCellData2D
- * Usage: ISendRecvCellData2D(grid->h,grid,myproc,comm,first);
- * ----------------------------------------------------------
+ * Usage: ISendRecvCellData2D(grid->h,grid,myproc,comm);
+ * -----------------------------------------------------
  * This function will transfer the cell data back and forth between
- * processors.  If type==first, then only the bordering cells are
- * transferred.  If type==all, then all of them are transferred.  The
- * first type is used when communicating data for the free-surface iteration,
- * since only the bordering cells are needed.
+ * processors.  
  *
  * This is the non-blocking version of SendRecvCellData2D.
  *
  */
 void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
-			 MPI_Comm comm, transferType type)
+			 MPI_Comm comm)
 {
   int n, neigh, neighproc, receivesize, sendsize, noncontig, flag;
   int senstart, senend, recstart, recend, *num_send, *num_recv;
@@ -371,13 +363,8 @@ void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc,
   MPI_Status *status = (MPI_Status *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Status),"ISendRecvCellData2D");
   MPI_Request *request = (MPI_Request *)SunMalloc(2*grid->Nneighs*sizeof(MPI_Request),"ISendRecvCellData2D");
 
-  if(type==first) {
-    num_send=grid->num_cells_send_first;
-    num_recv=grid->num_cells_recv_first;
-  } else {
-    num_send=grid->num_cells_send;
-    num_recv=grid->num_cells_recv;
-  }
+  num_send=grid->num_cells_send;
+  num_recv=grid->num_cells_recv;
     
   recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"ISendRecvCellData2D");
   send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"ISendRecvCellData2D");
@@ -420,30 +407,22 @@ void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc,
 
 /*
  * Function: SendRecvCellData3D
- * Usage: SendRecvCellData3D(grid->s,grid,myproc,comm,first);
- * ----------------------------------------------------------
+ * Usage: SendRecvCellData3D(grid->s,grid,myproc,comm);
+ * ----------------------------------------------------
  * This function will transfer the 3D cell data back and forth between
- * processors.  If type==first, then only the bordering cells are
- * transferred.  If type==all, then all of them are transferred.  The
- * first type is used when communicating data for the free-surface iteration,
- * since only the bordering cells are needed.
+ * processors.  
  *
  */
 void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
-			MPI_Comm comm, transferType type)
+			MPI_Comm comm)
 {
   int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
   int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
 
-  if(type==first) {
-    num_send=grid->num_cells_send_first;
-    num_recv=grid->num_cells_recv_first;
-  } else {
-    num_send=grid->num_cells_send;
-    num_recv=grid->num_cells_recv;
-  }
+  num_send=grid->num_cells_send;
+  num_recv=grid->num_cells_recv;
 
   recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvCellData3D");
   send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvCellData3D");
@@ -500,30 +479,22 @@ void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc,
 
 /*
  * Function: SendRecvWData
- * Usage: SendRecvWData(grid->w,grid,myproc,comm,first);
- * ----------------------------------------------------------
+ * Usage: SendRecvWData(grid->w,grid,myproc,comm);
+ * -----------------------------------------------
  * This function will transfer the 3D w data back and forth between
- * processors.  If type==first, then only the bordering cells are
- * transferred.  If type==all, then all of them are transferred.  The
- * first type is used when communicating data for the free-surface iteration,
- * since only the bordering cells are needed.
+ * processors.  
  *
  */
 void SendRecvWData(REAL **celldata, gridT *grid, int myproc, 
-			MPI_Comm comm, transferType type)
+		   MPI_Comm comm)
 {
   int k, n, nstart, neigh, neighproc, receivesize, sendsize, noncontig, flag;
   int senstart, senend, recstart, recend, *Nsend, *Nrecv, *num_send, *num_recv;
   REAL **recv, **send;
   MPI_Status status;
 
-  if(type==first) {
-    num_send=grid->num_cells_send_first;
-    num_recv=grid->num_cells_recv_first;
-  } else {
-    num_send=grid->num_cells_send;
-    num_recv=grid->num_cells_recv;
-  }
+  num_send=grid->num_cells_send;
+  num_recv=grid->num_cells_recv;
 
   recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvWData");
   send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvWData");
@@ -580,8 +551,8 @@ void SendRecvWData(REAL **celldata, gridT *grid, int myproc,
 
 /*
  * Function: SendRecvEdgeData3D
- * Usage: SendRecvEdgeData3D(grid->u,grid,myproc,comm,first);
- * ----------------------------------------------------------
+ * Usage: SendRecvEdgeData3D(grid->u,grid,myproc,comm);
+ * ----------------------------------------------------
  * This function will transfer the 3D edge data back and forth between
  * processors.  
  *
@@ -1305,8 +1276,6 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     fprintf(ofile,"%d %d %d %d %d %d\n",
 	    grid->num_cells_send[neigh],
 	    grid->num_cells_recv[neigh],
-	    grid->num_cells_send_first[neigh],
-	    grid->num_cells_recv_first[neigh],
 	    grid->num_edges_send[neigh],
 	    grid->num_edges_recv[neigh]);
     for(n=0;n<grid->num_cells_send[neigh];n++)
@@ -1397,8 +1366,6 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->myneighs=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
   (*grid)->num_cells_send=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
   (*grid)->num_cells_recv=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
-  (*grid)->num_cells_send_first=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
-  (*grid)->num_cells_recv_first=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
   (*grid)->num_edges_send=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
   (*grid)->num_edges_recv=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
   (*grid)->cell_send=(int **)SunMalloc((*grid)->Nneighs*sizeof(int *),"ReadGrid");
@@ -1413,8 +1380,6 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
 
     (*grid)->num_cells_send[neigh]=(int)getfield(ifile,str);
     (*grid)->num_cells_recv[neigh]=(int)getfield(ifile,str);
-    (*grid)->num_cells_send_first[neigh]=(int)getfield(ifile,str);
-    (*grid)->num_cells_recv_first[neigh]=(int)getfield(ifile,str);
     (*grid)->num_edges_send[neigh]=(int)getfield(ifile,str);
     (*grid)->num_edges_recv[neigh]=(int)getfield(ifile,str);
 
@@ -1912,7 +1877,7 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
 {
   int i, n, nf, ne, neigh, neighproc, nc, j, k, mark, bctype, count, found;
   int **cell_send, **cell_recv, **edge_send, **edge_recv;
-  int *num_cells_send, *num_cells_recv, *num_cells_send_first, *num_cells_recv_first,
+  int *num_cells_send, *num_cells_recv,
     *num_edges_send, *num_edges_recv;
   int *cellp, *edgep, *celldist, *edgedist, *lcptr, *leptr;
   int kcellsend, kcellrecv, kedgesend, kedgerecv;
@@ -1988,16 +1953,12 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
   edge_recv = (int **)SunMalloc((*localgrid)->Nneighs*sizeof(int *),"MakePointers");
   num_cells_send = (int *)SunMalloc((*localgrid)->Nneighs*sizeof(int),"MakePointers");
   num_cells_recv = (int *)SunMalloc((*localgrid)->Nneighs*sizeof(int),"MakePointers");
-  num_cells_send_first = (int *)SunMalloc((*localgrid)->Nneighs*sizeof(int),"MakePointers");
-  num_cells_recv_first = (int *)SunMalloc((*localgrid)->Nneighs*sizeof(int),"MakePointers");
   num_edges_send = (int *)SunMalloc((*localgrid)->Nneighs*sizeof(int),"MakePointers");
   num_edges_recv = (int *)SunMalloc((*localgrid)->Nneighs*sizeof(int),"MakePointers");
 
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     num_cells_send[neigh]=0;
     num_cells_recv[neigh]=0;
-    num_cells_send_first[neigh]=0;
-    num_cells_recv_first[neigh]=0;
     num_edges_send[neigh]=0;
     num_edges_recv[neigh]=0;
   }
@@ -2014,7 +1975,6 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
 	num_cells_recv[neigh]++;
     cell_recv[neigh]=(int *)SunMalloc(num_cells_recv[neigh]*sizeof(int),"MakePointers");
 
-    // First retrieve the neighbors that border the local processor
     k=0;
     for(n=0;n<(*localgrid)->Nc;n++) 
       if(maingrid->part[(*localgrid)->mnptr[n]]==neighproc) {
@@ -2022,45 +1982,28 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
 	  ne=(*localgrid)->neigh[n*NFACES+nf];
 	  if(ne!=-1)
 	    if(maingrid->part[(*localgrid)->mnptr[ne]]==myproc) {
-	      num_cells_recv_first[neigh]++;
 	      cell_recv[neigh][k++]=(*localgrid)->mnptr[n];
 	      break;
 	    }
 	}
       }
-
-    // Now do the rest
-    for(n=0;n<(*localgrid)->Nc;n++) 
-      if(maingrid->part[(*localgrid)->mnptr[n]]==neighproc) {
-	found=0;
-	for(nf=0;nf<NFACES;nf++) {
-	  ne=(*localgrid)->neigh[n*NFACES+nf];
-	  if(ne!=-1)
-	    if(maingrid->part[(*localgrid)->mnptr[ne]]==myproc) 
-	      found=1;
-	}
-	if(!found)
-	  cell_recv[neigh][k++]=(*localgrid)->mnptr[n];
-      }
   }
   if(VERBOSE>2) 
     for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++)
-      printf("Proc: %d, neighbor %d, receiving %d, (%d first)\n",
+      printf("Proc: %d, neighbor %d, receiving %d\n",
 	     myproc,(*localgrid)->myneighs[neigh],
-	     num_cells_recv[neigh],num_cells_recv_first[neigh]);
+	     num_cells_recv[neigh]);
 
   // Send out the number of cells that are being received and then
   // the actual global indices being sent.
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     neighproc=(*localgrid)->myneighs[neigh];
     MPI_Send(&(num_cells_recv[neigh]),1,MPI_INT,neighproc,1,comm); 
-    MPI_Send(&(num_cells_recv_first[neigh]),1,MPI_INT,neighproc,1,comm); 
   }
 
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     neighproc=(*localgrid)->myneighs[neigh];
     MPI_Recv(&(num_cells_send[neigh]),1,MPI_INT,neighproc,1,comm,&status);
-    MPI_Recv(&(num_cells_send_first[neigh]),1,MPI_INT,neighproc,1,comm,&status);
   }
 
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
@@ -2177,8 +2120,6 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
   (*localgrid)->edge_recv=edge_recv;
   (*localgrid)->num_cells_send=num_cells_send;
   (*localgrid)->num_cells_recv=num_cells_recv;
-  (*localgrid)->num_cells_send_first=num_cells_send_first;
-  (*localgrid)->num_cells_recv_first=num_cells_recv_first;
   (*localgrid)->num_edges_send=num_edges_send;
   (*localgrid)->num_edges_recv=num_edges_recv;
 
