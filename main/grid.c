@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.21 2003-12-02 02:00:59 fringer Exp $
+ * $Id: grid.c,v 1.22 2003-12-02 02:05:11 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.21  2003/12/02 02:00:59  fringer
+ * Removed CreateNearestCellPointers and CreateNearestEdgePointers
+ * since these were only necessary for the kriging interpolation.
+ *
  * Revision 1.20  2003/12/02 01:48:32  fringer
  * Commented out FreeGrid since it needs to be fixed.
  *
@@ -274,9 +278,6 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
   if(myproc==0 && VERBOSE>2) printf("Making pointers...\n");
   MakePointers(maingrid,localgrid,myproc,comm);
-
-  if(myproc==0 && VERBOSE>2) printf("Creating nearest edge pointers...\n");
-  //  CreateNearestEdgePointers(maingrid,*localgrid,myproc);
 
   // NEED THIS?
   //  ResortBoundaries(*localgrid,myproc);
@@ -1333,17 +1334,6 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   for(n=0;n<grid->Ne;n++) 
     fprintf(ofile,"%d ",grid->edgep[n]);
   fprintf(ofile,"\n");
-  fprintf(ofile,"%d %d\n",grid->Nnearestcells,grid->Nnearestedges);
-  for(j=grid->celldist[0];j<grid->celldist[2];j++)
-    for(n=0;n<grid->Nnearestcells;n++)
-      fprintf(ofile,"%d ",grid->nearestcells[j][n]);
-  fprintf(ofile,"\n");
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-    j=grid->edgep[jptr];
-    for(n=0;n<grid->Nnearestedges;n++)
-      fprintf(ofile,"%d ",grid->nearestedges[j][n]);
-  }
-  fprintf(ofile,"\n");
   fclose(ofile);
 
   if(myproc==0 && VERBOSE>2) printf("Outputting %s...\n",VERTSPACEFILE);
@@ -1367,7 +1357,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
  */
 void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm) 
 {
-  int neigh, j, jptr, n, nf, Nkmax, Nnearestedges, Nnearestcells;
+  int neigh, j, jptr, n, nf, Nkmax;
   char str[BUFFERLENGTH];
   FILE *ifile;
 
@@ -1456,44 +1446,6 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
     (*grid)->cellp[n]=(int)getfield(ifile,str);
   for(n=0;n<(*grid)->Ne;n++) 
     (*grid)->edgep[n]=(int)getfield(ifile,str);
-
-  // Determine the maximum number of nearest cells/edges.  If this does
-  // not match up with the DATAFILE then exit.
-  Nnearestcells=(int)getfield(ifile,str);
-  Nnearestedges=(int)getfield(ifile,str);
-
-  (*grid)->Nnearestcells=(int)MPI_GetValue(DATAFILE,"Nnearestcells","VertGrid",myproc);
-  (*grid)->Nnearestedges=(int)MPI_GetValue(DATAFILE,"Nnearestedges","VertGrid",myproc);
-  if((*grid)->Nnearestcells != Nnearestcells && VERBOSE>0) {
-    printf("Error! Nnearestcells specified in %s is not what is in %s.%d\n",
-	   DATAFILE,TOPOLOGYFILE,myproc);
-    MPI_Finalize();
-    exit(1);
-  }
-  if((*grid)->Nnearestedges != Nnearestedges && VERBOSE>0) {
-    printf("Error! Nnearestedges specified in %s is not what is in %s.%d\n",
-	   DATAFILE,TOPOLOGYFILE,myproc);
-    MPI_Finalize();
-    exit(1);
-  }
-  (*grid)->nearestcells=(int **)SunMalloc((*grid)->celldist[2]*sizeof(int *),"ReadGrid");
-  (*grid)->nearestedges=(int **)SunMalloc((*grid)->Ne*sizeof(int *),"ReadGrid");
-
-  for(n=0;n<(*grid)->celldist[2];n++)
-    (*grid)->nearestcells[n]=(int *)SunMalloc((*grid)->Nnearestcells*sizeof(int),"ReadGrid");
-  for(jptr=(*grid)->edgedist[0];jptr<(*grid)->edgedist[1];jptr++) {
-    j=(*grid)->edgep[jptr];
-    (*grid)->nearestedges[j]=(int *)SunMalloc((*grid)->Nnearestedges*sizeof(int),"ReadGrid");
-  }
-
-  for(n=0;n<(*grid)->celldist[2];n++)
-    for(j=0;j<(*grid)->Nnearestcells;j++)
-      (*grid)->nearestcells[n][j]=(int)getfield(ifile,str);
-  for(jptr=(*grid)->edgedist[0];jptr<(*grid)->edgedist[1];jptr++) {
-    j=(*grid)->edgep[jptr];
-    for(n=0;n<(*grid)->Nnearestedges;n++)
-      (*grid)->nearestedges[j][n]=(int)getfield(ifile,str);
-  }
 
   /*
    * Now read in cell-centered data.dat
