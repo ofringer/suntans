@@ -1,8 +1,11 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.5 2003-05-01 00:32:39 fringer Exp $
+ * $Id: grid.h,v 1.6 2003-05-12 00:20:25 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2003/05/01 00:32:39  fringer
+ * Added prototypes for first/all transfer of 2D/3D data.
+ *
  * Revision 1.4  2003/04/29 00:21:25  fringer
  * The include line for parmetis.h has to come after the mympi.h
  * line since parmetis.h does not have the mpi.h header in it.
@@ -40,6 +43,8 @@ typedef struct _gridT {
   REAL *yp;
   REAL *xv;
   REAL *yv;
+  REAL *xe;
+  REAL *ye;
   REAL *dv;
   REAL *dz;
   REAL **dzz;
@@ -129,6 +134,8 @@ void GetGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm);
 void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
 			MPI_Comm comm, transferType type);
+void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
+			MPI_Comm comm, transferType type);
 void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
 			MPI_Comm comm, transferType type);
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
@@ -142,5 +149,6 @@ void CreateEdgeGraph(gridT *grid);
 void Connectivity(gridT *grid, int myproc);
 void ReadFileNames(int myproc);
 int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc);
+void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 
 #endif
