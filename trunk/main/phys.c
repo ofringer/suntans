@@ -6,8 +6,22 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.67 2004-06-24 08:35:46 fringer Exp $
+ * $Id: phys.c,v 1.68 2004-06-30 23:48:55 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.67  2004/06/24 08:35:46  fringer
+ * Changed continuity so that the grid->dzz values are not being
+ * accessed beneath grid->dv.  i.e. added if(k<grid->Nk[nc1,2]) before
+ * accessing grid->dzz[nc1,2][k].  This does not crash the intel platform but
+ * crashes with a floating point error on the compaq architecture.
+ *
+ * Also fixed ComputeConservatives to correctly compute the potential
+ * energy Ep without dividing by volume and using
+ * (phys->h[i]+grid->dv[i])*(phys->h[i]-grid->dv[i]) instead
+ * of
+ * pow(phys->h[i],2)-pow(grid->dv[i],2)
+ * since the latter crashes on the compaq architecture.  When phys->h[i] is
+ * small it returns a number out of bounds.
+ *
  * Revision 1.66  2004/06/24 03:57:41  fringer
  * Moved the Ep/=vol; line outside the loop in ComputeConservatives.  This
  * line was causing a floating exception on baywulf which was not caught
@@ -1885,8 +1899,10 @@ static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
     phys->CdB[j]=prop->CdB;
   }
   for(i=0;i<grid->Nc;i++) {
-    for(k=0;k<grid->Nk[i];k++)
+    for(k=0;k<grid->Nk[i];k++) {
       phys->nu_tv[i][k]=0;
+      phys->kappa_tv[i][k]=0;
+    }
   }
 }
 
