@@ -6,8 +6,14 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.41 2004-03-13 02:48:52 fringer Exp $
+ * $Id: phys.c,v 1.42 2004-03-16 17:59:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.41  2004/03/13 02:48:52  fringer
+ * Added ability to switch between upwind and central in advection
+ * scheme (nonlinear: 1, upwind ; 2, central).  Also fixed some advection
+ * bugs so that fluxes are not computed outside of the grid at
+ * surface faces.
+ *
  * Revision 1.40  2004/03/13 00:43:00  fringer
  * Working lock-exchange case -> Nonhydrostatic, nonlinear, central differencing
  * for momentum, upwind for scalar.
@@ -751,11 +757,11 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
   } else
     fab=1.5;
 
-  // Set utmp to zero for all Nke and ut=u to store the old velocity
+  // Set utmp and ut to zero.
   for(j=0;j<grid->Ne;j++) {
     for(k=0;k<grid->Nke[j];k++) {
       phys->utmp[j][k]=0;
-      phys->ut[j][k]=phys->u[j][k];
+      phys->ut[j][k]=0;
     }
   }
 
