@@ -6,8 +6,17 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.9 2004-09-30 21:01:14 fringer Exp $
+ * $Id: boundaries.c,v 1.10 2004-11-20 22:28:40 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.9  2004/09/30 21:01:14  fringer
+ * Added the GetBoundaryVelococity function, which separates code input
+ * by the user from the open boundary implementation.  This function
+ * only sets the velocity at the boundary based on geometry and
+ * time, which are inputs to the function.  The user sets ub0, the
+ * barotropic velocity magnitude, and forced.  If *forced==1, then
+ * this is a clamped-free condition, while if *forced==0, this
+ * is a free open boundary condition.
+ *
  * Revision 1.8  2004/09/27 01:28:15  fringer
  * Changed the open boundary condition so that the user needs to specify c0 and
  * c1, the surface and internal wave speeds at the boundary.  c0 is set to
@@ -60,15 +69,14 @@ static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, R
 static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp) {
 
   // For Monterey
-  /*
   if(x<1000) {
     *ub=0.002445*cos(omega*t)+.00182*cos(2*PI/(24*3600)*t+.656);
     //*ub=-2.9377*sqrt(GRAV/d)*(cos(omega*t)+0.00182/.002445*cos(2*PI/(24*3600)*t+.656));
     *forced=1;
   } else 
     *forced=0;
-  */
 
+  /*
   // New 3MS boundary forcing (cleaner) 9/27/2004 OBF/DAF
   *forced=1; // always
   
@@ -85,6 +93,7 @@ static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, R
       *ub = amp*fabs(cos(omega*t));
     }
   // end 3MS new forcing
+  */
   *forced = 1;
 }
 
