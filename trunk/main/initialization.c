@@ -3,8 +3,12 @@
  * Description:  This file contains the functions that are used
  * to initialize the depth, free-surface, and salinity.
  *
- * $Id: initialization.c,v 1.10 2004-07-22 20:24:52 fringer Exp $
+ * $Id: initialization.c,v 1.11 2004-09-15 02:00:57 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.10  2004/07/22 20:24:52  fringer
+ * Added initial sech^2 solitary waves of depsression to simulate transbasin
+ * solitary waves.
+ *
  * Revision 1.9  2004/06/23 05:24:44  fringer
  * Committing as a test since fringer is not a writer.
  *
@@ -95,37 +99,17 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
  *
  */
 REAL ReturnDepth(REAL x, REAL y) {
-  int nc, np, Nc = 13;
-  REAL length, xmid, *xc, *yc, R=0.025, shelfdepth=200;
+  REAL length, xmid, shelfdepth;
 
-  return 1000-0*975*exp(-pow((x-70000)/10000,2)-pow((y-60000)/10000,2));
-
-  // Huntington beach continental shelf
-  /*
-  if(x<6418)
-   return 590-145*exp(x/5000);
+  length = 20000;
+  xmid = 75000;
+  shelfdepth = 500;
+  if(x<=xmid-length/2)
+    return 3000;
+  else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
+    return 3000-(3000-shelfdepth)*(x-xmid+length/2)/length;
   else
-   return 62-55*(x-7000)/7000;
-  */
-  /*
-   length = 2000;
-   if(x<=6500-length/2)
-     return 120;
-   else if(x>6500-length/2 && x<=6500+length/2 && length>0)
-     return 120-60*(x-6500+length/2)/length;
-   else
-     return 60;
-   */
-   // Monterey Bay continental shelf
-   length = 10000;
-   xmid = 75000;
-   shelfdepth = 500;
-   if(x<=xmid-length/2)
-     return 3000;
-   else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
-     return 3000-(3000-shelfdepth)*(x-xmid+length/2)/length;
-   else
-     return shelfdepth;
+    return shelfdepth;
 }
 
  /*
@@ -137,25 +121,7 @@ REAL ReturnDepth(REAL x, REAL y) {
   *
   */
 REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
-  REAL r, rp, zeta, zetav, s=tan(PI/3), x0, y0, sig;
-  
-  return 0*cos(PI*x/100000);
-  sig = 3000;
-  x0 = 40000;
-  y0 = 65000;
-  r = s*(x-x0)-(y-y0);
-  rp = (x-x0)+s*(y-y0);
-  zeta = .5*(-tanh((rp-40000)/sig)+tanh((rp+40000)/sig));
-  zeta = pow(sech(-(r/sig)),2)*zeta;
-  //  zeta = exp(-fabs(r/sig))*zeta;
-
-  x0 = 50000;
-  y0 = 40000;
-  zetav = .5*(-tanh((y-y0-20000)/sig)+tanh((y-y0+20000)/sig));
-  zetav = zetav*pow(sech(-s*(x-x0)/sig),2);
-  //  zetav = zetav*exp(-s*fabs(x-50000)/sig);
-
-  return 1000*(zeta+zetav);
+  return 0;
 }
 
 /*
@@ -167,52 +133,11 @@ REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
  *
  */
 REAL ReturnSalinity(REAL x, REAL y, REAL z) {
-  REAL delta_s, thermocline_depth=20, z0, zeta, r, rp, zetav, x0, y0, sig, s=tan(PI/3);
-  REAL power, factor,dmax=120,dshelf=60;//dmax=3000,dshelf=500;//dmax=120,dshelf=60;//dmax = 3000;
-  thermocline_depth=35;
-  dmax = 120;
-  dshelf = 60;
+  REAL thermocline_depth=20;
 
-  sig = 3000;
-  x0 = 40000;
-  y0 = 65000;
-  r = s*(x-x0)-(y-y0);
-  rp = (x-x0)+s*(y-y0);
-  zeta = .5*(-tanh((rp-40000)/sig)+tanh((rp+40000)/sig));
-  zeta = pow(sech(-(r/sig)),2)*zeta;
-  //  zeta = exp(-fabs(r/sig))*zeta;
-
-  x0 = 50000;
-  y0 = 40000;
-  zetav = .5*(-tanh((y-y0-20000)/sig)+tanh((y-y0+20000)/sig));
-  zetav = zetav*pow(sech(-s*(x-x0)/sig),2);
-  //  zetav = zetav*exp(-s*fabs(x-50000)/sig);
-
-  return -.5*.04286*tanh((z+50+100*(zeta+zetav))/10);
-  //  return -.0728*tanh(-(x-.4)/.001);
-
-  thermocline_depth=25;
-  dmax = 3000;
-  
   if(z>-thermocline_depth)
     return 3.4286*pow(fabs(thermocline_depth),0.0187)-3.6;
   return 3.4286*pow(fabs(z),0.0187)-3.6;
-
-  // Monterey (critical when length=10000 slope=2500/10000)
-  delta_s = 0.0147;
-  // Huntington (critical when length=2000 slope=60/2000)
-  //delta_s = 0.038377;
-
-  power = .35;
-  factor = 1/power*pow((dmax-thermocline_depth)/(dshelf-thermocline_depth),power-1);
-
-  if(z>-thermocline_depth) {
-    //    printf("%e %e\n",z,0.09*fabs(z/dmax));
-    return 0.09*fabs(z/dmax);
-  } else {
-    //    printf("%e %e\n",z,0.09*thermocline_depth/dmax+delta_s*pow(fabs((z+thermocline_depth)/dmax),0.35));
-    return 0.09*thermocline_depth/dmax+delta_s*pow(fabs((z+thermocline_depth)/dmax),0.35);
-  }
 }
 
 /*
@@ -224,10 +149,6 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
  *
  */
 REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
-
-  REAL x0=7500, x1=5500, z0=-60, z1=-120, w=500, h=40,
-    x2=7000, z2=-90;
-
   if(z<-depth+100)
     return 1;
   return 0;
@@ -243,11 +164,6 @@ REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
  *
  */
 REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
-  REAL u, v, umag=0;
-  
-  // Irrotational vortex.
-  u = -umag*(y-5)/5;
-  v = umag*(x-5)/5;
-  return u*n1+v*n2;
+  return 0;
 }
 
