@@ -7,8 +7,11 @@
  * This file contains functions that print out data into
  * files as well as printing for debugging.
  *
- * $Id: report.c,v 1.1 2002-11-03 00:22:22 fringer Exp $
+ * $Id: report.c,v 1.2 2003-03-28 11:36:28 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:22:22  fringer
+ * Initial revision
+ *
  *
  */
 #include "report.h"
@@ -20,6 +23,7 @@ void ParseFlags(int argc, char *argv[], int myproc)
   SOLVE=0;
   VERBOSE=0;
   WARNING=0;
+  ASCII=0;
 
   if(argc>1) {
     for(i=1;i<argc;i++) {
@@ -30,6 +34,8 @@ void ParseFlags(int argc, char *argv[], int myproc)
 	  SOLVE=1;
 	else if(argv[i][1]=='w' && strlen(argv[i])==2)
 	  WARNING=1;
+	else if(argv[i][1]=='a' && strlen(argv[i])==2)
+	  ASCII=1;
 	else if(argv[i][1]=='v') 
 	  for(j=1;j<strlen(argv[i]);j++)
 	    if(argv[i][j]=='v')
