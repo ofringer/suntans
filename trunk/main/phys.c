@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.63 2004-05-31 06:59:33 fringer Exp $
+ * $Id: phys.c,v 1.64 2004-06-08 18:38:09 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.63  2004/05/31 06:59:33  fringer
+ * Added vertical diffusion of scalar.  Left in Ftop and Fbot
+ * as commented out terms.  These are where top and bottom diffusive
+ * fluxes are included.
+ *
  * Revision 1.62  2004/05/29 20:25:02  fringer
  * Revision before converting to CVS.
  *
@@ -941,19 +946,37 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
     }
   } else {    
 
-    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-      j = grid->edgep[jptr]; 
-      
-      nc1 = grid->grad[2*j];
-      nc2 = grid->grad[2*j+1];
-
-      for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
-	  //	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-	  //	    prop->sponge_decay)*phys->u[j][k];
-
-	phys->Cn_U[j][k]=0;
+    // Sponge layer at x=0 that decays exponentially with distance sponge_distance
+    // over a timescale given by sponge_decay.  Both defined in suntans.dat
+    if(prop->sponge_distance==0) {
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	j = grid->edgep[jptr]; 
+	
+	nc1 = grid->grad[2*j];
+	nc2 = grid->grad[2*j+1];
+	
+	for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	  phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
+	    -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
+	  
+	  phys->Cn_U[j][k]=0;
+	}
+      }
+    } else {
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	j = grid->edgep[jptr]; 
+	
+	nc1 = grid->grad[2*j];
+	nc2 = grid->grad[2*j+1];
+	
+	for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	  phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+0*phys->u[j][k]
+	    -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
+	    +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	      prop->sponge_decay)*phys->u[j][k];
+	  
+	  phys->Cn_U[j][k]=0;
+	}
       }
     }
 
