@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.25 2003-12-02 20:37:48 fringer Exp $
+ * $Id: grid.c,v 1.26 2003-12-02 23:34:41 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.25  2003/12/02 20:37:48  fringer
+ * Updated outputdata and readgrid to accomodate gradf and def as well as
+ * the removal of num_cells_send_first and num_edges_send_first.
+ *
  * Revision 1.24  2003/12/02 04:38:46  fringer
  * Added nonblocking send/recv routines for wdata and edgedata3d.
  *
@@ -1815,8 +1819,8 @@ static void FreeGrid(gridT *grid, int numprocs)
 
 static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 {
-  int i, j, k, n, ne, myproc, numprocs, status, vertgridcorrect;
-  REAL dz0, dmin, dmax, z, dzsmall;
+  int i, j, k, n, ne, myproc, numprocs, status, vertgridcorrect, stairstep;
+  REAL dz0, dmin, dmax, dmaxtest, z, dzsmall;
 
   MPI_Comm_size(comm,&numprocs);
   MPI_Comm_rank(comm,&myproc);
@@ -1825,6 +1829,7 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   maingrid->Nkmax = MPI_GetValue(DATAFILE,"Nkmax","VertGrid",myproc);
   vertgridcorrect = MPI_GetValue(DATAFILE,"vertgridcorrect","VertGrid",myproc);
   dzsmall = MPI_GetValue(DATAFILE,"dzsmall","VertGrid",myproc);
+  stairstep = MPI_GetValue(DATAFILE,"stairstep","VertGrid",myproc);
 
   if(myproc==0) {
     dmax = maingrid->dv[0];
@@ -1849,8 +1854,15 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
     }
     maingrid->dz = (REAL *)SunMalloc(maingrid->Nkmax*sizeof(REAL),"VertGrid");
 
+    GetDZ(maingrid->dz,dmax,maingrid->Nkmax);
+    dmaxtest=0;
     for(k=0;k<maingrid->Nkmax;k++)
-      maingrid->dz[k] = dz0;
+      dmaxtest+=maingrid->dz[k];
+    for(i=0;i<maingrid->Nc;i++)
+      if(maingrid->dv[i]>dmaxtest) {
+	printf("Warning...sum of grid spacings dz is less than depth!\n");
+	break;
+      }
   }
   MPI_Bcast(&(maingrid->Nkmax),1,MPI_INT,0,comm);
   if(myproc!=0)
@@ -1861,9 +1873,9 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
   (*localgrid)->Nkmax = maingrid->Nkmax;
   (*localgrid)->dz = (REAL *)SunMalloc((*localgrid)->Nkmax*sizeof(REAL),"VertGrid");
-  for(k=0;k<(*localgrid)->Nkmax;k++)
+  for(k=0;k<(*localgrid)->Nkmax;k++) 
     (*localgrid)->dz[k]=maingrid->dz[k];
-  
+
   maingrid->Nk = (int *)SunMalloc(maingrid->Nc*sizeof(int),"VertGrid");
   (*localgrid)->dztop = (REAL *)SunMalloc((*localgrid)->Nc*sizeof(REAL),"VertGrid");
   (*localgrid)->ctop = (int *)SunMalloc((*localgrid)->Nc*sizeof(int),"VertGrid");
@@ -1874,43 +1886,30 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   (*localgrid)->Nke = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),"VertGrid");
   (*localgrid)->Nkc = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),"VertGrid");
 
-  // Adjust depth if bottom cell thickness is too small.  This is
-  // working only for constant vertical grid spacings!!!
-  // This only needs to be done if an explicit method is used for
-  // vertical transport.
-  /*
-  for(i=0;i<maingrid->Nc;i++) 
-    if(fmod(maingrid->dv[i],dz0)/dz0<dzsmall &&
-       fmod(maingrid->dv[i],dz0)/dz0!=0) 
-      maingrid->dv[i]-=2.0*fmod(maingrid->dv[i],dz0);
-  for(i=0;i<(*localgrid)->Nc;i++)
-    if(fmod((*localgrid)->dv[i],dz0)/dz0<dzsmall &&
-       fmod((*localgrid)->dv[i],dz0)/dz0!=0) {
-      if(WARNING) {
-	printf("Warning!  Proc %d Vertical spacing at bottom boundary of cell %d too small!\n",
-	       myproc,i);
-	printf("Adjusting depth from %f to %f.\n",(*localgrid)->dv[i],
-	       (*localgrid)->dv[i]-2.0*fmod((*localgrid)->dv[i],dz0));
-      }
-      (*localgrid)->dv[i]-=2.0*fmod((*localgrid)->dv[i],dz0);
-    }
-  */
   if((*localgrid)->Nkmax>1) {
     for(i=0;i<(*localgrid)->Nc;i++) 
       if((*localgrid)->dv[i]==dmax) 
 	(*localgrid)->Nk[i] = (*localgrid)->Nkmax;
       else {
-	(*localgrid)->Nk[i] = ceil((*localgrid)->dv[i]/dz0);
-	//if(fabs((*localgrid)->Nk[i]*dz0 - (*localgrid)->dv[i])>=0.5*dz0)
-	//	  (*localgrid)->Nk[i]--;
+	dmaxtest=0;
+	for(k=0;k<(*localgrid)->Nkmax;k++) {
+	  dmaxtest+=(*localgrid)->dz[k];
+	  (*localgrid)->Nk[i] = k+1;
+	  if(dmaxtest>=(*localgrid)->dv[i]) 
+	    break;
+	}
       }
     for(i=0;i<maingrid->Nc;i++) 
       if(maingrid->dv[i]==dmax) 
 	maingrid->Nk[i] = maingrid->Nkmax;
       else {
-	maingrid->Nk[i] = ceil(maingrid->dv[i]/dz0);
-	//	if(fabs(maingrid->Nk[i]*dz0 - maingrid->dv[i])>=0.5*dz0) 
-	//	  maingrid->Nk[i]--;
+	dmaxtest=0;
+	for(k=0;k<maingrid->Nkmax;k++) {
+	  dmaxtest+=maingrid->dz[k];
+	  maingrid->Nk[i] = k+1;
+	  if(dmaxtest>=maingrid->dv[i]) 
+	    break;
+	}
       }
   } else {
     for(i=0;i<(*localgrid)->Nc;i++)
@@ -1930,8 +1929,13 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   }
   
   // To use stair-stepping do this (not partial-stepping).
-  for(i=0;i<(*localgrid)->Nc;i++)
-    (*localgrid)->dv[i]=(*localgrid)->Nk[i]*dz0;
+  if(stairstep) 
+    for(i=0;i<(*localgrid)->Nc;i++) {
+      dmaxtest=0;
+      for(k=0;k<(*localgrid)->Nk[i];k++)
+	dmaxtest+=(*localgrid)->dz[k];
+      (*localgrid)->dv[i]=dmaxtest;
+    }
 
   for(j=0;j<(*localgrid)->Ne;j++) {
     ne = (*localgrid)->eptr[j];
