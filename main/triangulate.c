@@ -3,8 +3,13 @@
  * --------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.4 2003-05-02 23:07:39 fringer Exp $
+ * $Id: triangulate.c,v 1.5 2003-05-05 01:27:48 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2003/05/02 23:07:39  fringer
+ * Cleaned up options passed to triangle function and also allowed
+ * for input PSLG file without any segments, which requires the c
+ * option to triangle.
+ *
  * Revision 1.3  2003/04/29 16:39:07  fringer
  * Added MPI_FOPen in place of fopen.
  *
@@ -75,6 +80,7 @@ int GetTriangulation(gridT **grid, int myproc) {
     printf("Created a triangulation with %d Cells, %d Edges, %d Delaunay points...\n",
 		       Nc, Ne, Np);
   
+  if(myproc==0 && VERBOSE>0) printf("Initializing Main Grid...\n");  
   InitMainGrid(grid,Np,Ne,Nc);
 
   for(n=0;n<(*grid)->Np;n++) {
