@@ -1,0 +1,57 @@
+########################################################################
+#
+#  Input file for SUNTANS.  This does not work with empty lines!!!
+#
+#  Parameters
+#
+########################################################################
+Nkmax   		5	# Number of vertical grid points
+CorrectVoronoi		1	# Whether or not to correct Voronoi points
+VoronoiRatio		.1	# Adjust the voronoi points by this amount
+vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
+IntDepth 		0	# 1 if interpdepth, 0 otherwise
+dzsmall			0.01	# Smallest grid spacing ratio before correction
+scaledepth 		1 	# Scale the depth by scalefactor
+scaledepthfactor 	.1 	# Depth scaling factor (to test deep grids with explicit methods)
+theta			.6	# 0: fully explicit, 1: fully implicit
+thetaAB			0	# Adams-Bashforth theta
+thetaFS			.55	# Free-surface theta (for debugging)
+nu 			1 	# Laminar viscosity of water (m^2 s^-1)
+tau_T			0 -10	# Wind shear stress
+CdT	                0	# Drag coefficient at surface
+CdB	                1	# Drag coefficient at bottom
+dt 			.05  	# Time step
+nsteps 			600      # Number of steps
+ntout   		40 	# How often to output data
+ntprog   		5 	# How often to report progress (in %)
+ntconserve 		1	# How often to output conserved data
+maxiters		100	# Maximum number of CG iterations
+epsilon			1e-10	# Tolerance for CG convergence
+relax			1	# Relaxation parameter for GS solver.	
+amp 			.01	# amplitude
+omega 			0.0	# frequency
+flux 			-1.0	# flux
+########################################################################
+#
+#  Grid Files
+#
+########################################################################
+points /home/fringer/research/SUNTANS/data/points.dat		# Vertices file (input)
+edges /home/fringer/research/SUNTANS/data/edges.dat		# Edge file (input)
+cells /home/fringer/research/SUNTANS/data/cells.dat		# Cell centered file (input)
+depth /home/fringer/research/SUNTANS/data/depth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
+celldata /home/fringer/research/SUNTANS/data/celldata.dat	# Cell-centered output (output)
+edgedata /home/fringer/research/SUNTANS/data/edgedata.dat	# Edge-centered output (output)
+vertspace /home/fringer/research/SUNTANS/data/vertspace.dat	# Vertical grid spacing (output)
+topology /home/fringer/research/SUNTANS/data/topology.dat	# Grid topology data
+########################################################################
+#
+#  Output Data Files
+#
+########################################################################
+FreeSurfaceFile   	/home/fringer/research/SUNTANS/data/fs.dat
+HorizontalVelocityFile 	/home/fringer/research/SUNTANS/data/u.dat
+VerticalVelocityFile 	/home/fringer/research/SUNTANS/data/w.dat
+SalinityFile 		/home/fringer/research/SUNTANS/data/s.dat
+VerticalGridFile 	/home/fringer/research/SUNTANS/data/g.dat
+ConserveFile		/home/fringer/research/SUNTANS/data/e.dat
