@@ -6,8 +6,12 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.32 2003-11-20 18:02:33 fringer Exp $
+ * $Id: sunplot.c,v 1.33 2004-02-10 22:02:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.32  2003/11/20 18:02:33  fringer
+ * Added ubar and vbar which contain the barotropic horizontal velocity
+ * fields.
+ *
  * Revision 1.31  2003/10/02 17:39:22  fringer
  * Added ability to plot baroclinic u and v velocity fields and loading
  * of uc and vc velocity fields which are cell-centered.
@@ -181,10 +185,11 @@
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
 #define MAXZOOMRATIO 100.0
-#define NUMBUTTONS 33
+#define NUMBUTTONS 34
 #define POINTSIZE 2
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
+#define AXESBIGRATIO 1e5
 
 typedef enum {
   in, out, box, none
@@ -210,7 +215,7 @@ typedef enum {
   prevwin, gowin, nextwin,
   kupwin, kdownwin,
   prevprocwin, allprocswin, nextprocwin,
-  saltwin, tempwin, fswin,
+  saltwin, tempwin, preswin, fswin,
   uwin, vwin, wwin, vecwin, Euwin, Evwin, Evecwin, 
   depthwin, nonewin,
   edgewin, voronoiwin, delaunaywin,
@@ -231,7 +236,7 @@ typedef enum {
 } goT;
 
 typedef enum {
-  noplottype, freesurface, depth, h_d, salinity, temperature, saldiff, 
+  noplottype, freesurface, depth, h_d, salinity, temperature, pressure, saldiff, 
   salinity0, u_velocity, v_velocity, w_velocity, u_baroclinic, v_baroclinic, Eu_velocity, Ev_velocity
 } plottypeT;
 
@@ -261,6 +266,7 @@ typedef struct {
   float ***sd;
   float ***s0;
   float ***T;
+  float ***q;
   float ***u;
   float ***v;
   float **ubar;
@@ -286,16 +292,19 @@ typedef struct {
 
   int *Ne, *Nc, Np, Nkmax, nsteps, numprocs, Nslice;
   int timestep, klevel;
-  float umagmax, dmax, rx, ry, Emagmax;
+  float umagmax, dmax, hmax, hmin, rx, ry, Emagmax;
 } dataT;
 
 void AllButtonsFalse(void);
 void Sort(int *ind1, int *ind2, float *data, int N);
 void QuadSurf(float *h, float *D, 
 	      float **data, float *x, float *z, int N, int Nk,plottypeT plottype);
+void QuadContour(float *h, float *D, 
+	      float **data, float *x, float *z, int N, int Nk,plottypeT plottype);
 void GetSlice(dataT *data, int xs, int ys, int xe, int ye, 
 	      int procnum, int numprocs, plottypeT plottype);
 void GetDMax(dataT *data, int numprocs);
+void GetHMax(dataT *data, int numprocs);
 void GetUMagMax(dataT *data, int klevel, int numprocs);
 void GetEMagMax(dataT *data, int numprocs);
 void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N);
@@ -617,6 +626,15 @@ int main(int argc, char *argv[]) {
 	    redraw=true;
 	  } else 
 	    sprintf(message,"Temperature is already being displayed...");
+	}
+      } else if(report.xany.window==controlButtons[preswin].butwin) {
+	if(mousebutton==left_button) {
+	  if(plottype!=pressure) {
+	    plottype=pressure;
+	    sprintf(message,"Pressure selected...");
+	    redraw=true;
+	  } else 
+	    sprintf(message,"Pressure is already being displayed...");
 	}
       } else if(report.xany.window==controlButtons[fswin].butwin && mousebutton==left_button) {
 	if(plottype!=freesurface) {
@@ -1177,8 +1195,10 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
     }
 
   if(vertprofile==true && sliceType==slice) 
-    QuadSurf(data->sliceH,data->sliceD,
+    QuadContour(data->sliceH,data->sliceD,
 	     data->sliceData,data->sliceX,data->z,data->Nslice,data->Nkmax,plottype);
+    //    QuadSurf(data->sliceH,data->sliceD,
+    //	     data->sliceData,data->sliceX,data->z,data->Nslice,data->Nkmax,plottype);
   else {
     if(plottype!=noplottype)
       UnSurf(data->xc,data->yc,data->cells[procnum],scal,data->Nc[procnum]);
@@ -1223,71 +1243,203 @@ void QuadSurf(float *h, float *D,
 
     xp1 = xp2;
 
-    for(j=0;j<Nk;j++) {
-      yp1 = axesPosition[3]*height*(1-(z[j+1]-dataLimits[2])/
-				    (dataLimits[3]-dataLimits[2]));
-      yp2 = axesPosition[3]*height*(1-(z[j]-dataLimits[2])/
+    if(plottype!=freesurface) {
+      for(j=0;j<Nk;j++) {
+	yp1 = axesPosition[3]*height*(1-(z[j+1]-dataLimits[2])/
+				      (dataLimits[3]-dataLimits[2]));
+	yp2 = axesPosition[3]*height*(1-(z[j]-dataLimits[2])/
+				      (dataLimits[3]-dataLimits[2]));
+
+	if(((z[j]<=h[i] && z[j+1]<=h[i]) || (z[j]>=h[i] && z[j+1]<=h[i])) &&
+	   ((z[j]>=-D[i] && z[j+1]>=-D[i]) || (z[j]>=-D[i] && z[j+1]<=-D[i]))) {
+	  if(z[j]<h[i] && j==0) {
+	    yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
+					  (dataLimits[3]-dataLimits[2]));
+	    yp1 = axesPosition[3]*height*(1-(z[j+1]-dataLimits[2])/
+					  (dataLimits[3]-dataLimits[2]));
+	  }
+	  if(z[j]>=h[i] && z[j+1]<=h[i])
+	    yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
+					  (dataLimits[3]-dataLimits[2]));
+	  if(z[j]>=-D[i] && z[j+1]<=-D[i])
+	    yp1 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
+					  (dataLimits[3]-dataLimits[2]));
+	  
+	  points[0].y = yp1;
+	  points[1].y = yp1;
+	  points[2].y = yp2;
+	  points[3].y = yp2;
+	  points[4].y = yp1;
+	  
+	  dataval = data[i][j];
+	  ind = (dataval-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
+	  
+	  if(dataval>caxis[1])
+	    ind = NUMCOLORS-3;
+	  if(dataval<caxis[0])
+	    ind = 0;
+	  
+	  if(dataval==EMPTY || (plottype=='D' && dataval==0))
+	    ind = NUMCOLORS-1;
+	  
+	  if(plottype!=noplottype) {
+	    XSetForeground(dis,gc,colors[ind]);
+	    XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
+	  }
+	  
+	  if(edgelines && dataval!=EMPTY) {
+	    if(plottype==noplottype)
+	      XSetForeground(dis,gc,white);
+	    else
+	      XSetForeground(dis,gc,black);
+	    XDrawLines(dis,pix,gc,points,5,0);
+	  }
+	}
+      }
+      // Draw the bottom
+      yp2 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
+				    (dataLimits[3]-dataLimits[2]));    
+      if(i>0)
+	yp1 = axesPosition[3]*height*(1-(-D[i-1]-dataLimits[2])/
+				      (dataLimits[3]-dataLimits[2]));    
+      else
+	yp1 = yp2;
+
+      XSetForeground(dis,gc,white);
+      XDrawLine(dis,pix,gc,points[0].x,yp1,points[0].x,yp2);
+      XDrawLine(dis,pix,gc,points[0].x,yp2,points[1].x,yp2);
+    }
+
+    // Draw the free-surface
+    yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
+				  (dataLimits[3]-dataLimits[2]));    
+    if(i>0)
+      yp1 = axesPosition[3]*height*(1-(h[i-1]-dataLimits[2])/
+				    (dataLimits[3]-dataLimits[2]));    
+    else 
+      yp1 = yp2;
+
+    XSetForeground(dis,gc,white);
+    XDrawLine(dis,pix,gc,points[0].x,yp1,points[0].x,yp2);
+    XDrawLine(dis,pix,gc,points[0].x,yp2,points[1].x,yp2);
+  }
+  /*
+    for(i=0;i<Nc;i++) {
+      yp2 = axesPosition[3]*height*(1-(0-dataLimits[2])/
 				    (dataLimits[3]-dataLimits[2]));
 
-      if(((z[j]<=h[i] && z[j+1]<=h[i]) || (z[j]>=h[i] && z[j+1]<=h[i])) &&
-	 ((z[j]>=-D[i] && z[j+1]>=-D[i]) || (z[j]>=-D[i] && z[j+1]<=-D[i]))) {
-	if(z[j]<h[i] && j==0) {
-	  yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
-					(dataLimits[3]-dataLimits[2]));
-	  yp1 = axesPosition[3]*height*(1-(z[j+1]-dataLimits[2])/
-					(dataLimits[3]-dataLimits[2]));
-	}
-	if(z[j]>=h[i] && z[j+1]<=h[i])
-	  yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
-					(dataLimits[3]-dataLimits[2]));
-	if(z[j]>=-D[i] && z[j+1]<=-D[i])
-	  yp1 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
-					(dataLimits[3]-dataLimits[2]));
-	
+      if(yp1!=yp2) {
 	points[0].y = yp1;
 	points[1].y = yp1;
 	points[2].y = yp2;
 	points[3].y = yp2;
 	points[4].y = yp1;
 	
-	dataval = data[i][j];
-	ind = (dataval-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
-	
-	if(dataval>caxis[1])
-	  ind = NUMCOLORS-3;
-	if(dataval<caxis[0])
-	  ind = 0;
-
-	if(dataval==EMPTY || (plottype=='D' && dataval==0))
-	  ind = NUMCOLORS-1;
-	
-	if(plottype!=noplottype) {
-	  XSetForeground(dis,gc,colors[ind]);
-	  XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
-	}
-
-	if(edgelines && dataval!=EMPTY) {
-	  if(plottype==noplottype)
-	    XSetForeground(dis,gc,white);
-	  else
-	    XSetForeground(dis,gc,black);
-	  XDrawLines(dis,pix,gc,points,5,0);
-	}
+	XSetForeground(dis,gc,black);
+	XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
+      }
+      if(edgelines && plottype==noplottype) {
+	XSetForeground(dis,gc,white);
+	XDrawLine(dis,pix,gc,points[0].x,yp1,points[1].x,yp1);
       }
     }
-    // Draw the bottom
-    yp2 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
-				  (dataLimits[3]-dataLimits[2]));    
-    if(i>0)
-      yp1 = axesPosition[3]*height*(1-(-D[i-1]-dataLimits[2])/
-				    (dataLimits[3]-dataLimits[2]));    
-    else
-      yp1 = yp2;
+    */
+}
 
-    XSetForeground(dis,gc,white);
-    XDrawLine(dis,pix,gc,points[0].x,yp1,points[0].x,yp2);
-    XDrawLine(dis,pix,gc,points[0].x,yp2,points[1].x,yp2);
+void QuadContour(float *h, float *D, 
+	      float **data, float *x, float *z, int N, int Nk,plottypeT plottype) {
+  int i, j, xp1, xp2, yp1, yp2, w, ind;
+  float xs, xe, zs, dataval;
+  XPoint points[5];
     
+  w = 2*axesPosition[2]*width*(x[1]-x[0])/
+    (dataLimits[1]-dataLimits[0]);
+  xp1 = axesPosition[2]*width*(x[0]-dataLimits[0])/
+    (dataLimits[1]-dataLimits[0])-w/2;
+
+  for(i=0;i<N;i++) {
+    if(i==N-1)
+      xp2 = axesPosition[2]*width*(x[i]+0.5*(x[i]-x[i-1])-dataLimits[0])/
+	(dataLimits[1]-dataLimits[0]);
+    else
+      xp2 = axesPosition[2]*width*(x[i]+0.5*(x[i+1]-x[i])-dataLimits[0])/
+	(dataLimits[1]-dataLimits[0]);
+
+    points[0].x = xp1;
+    points[1].x = xp2;
+    points[2].x = xp2;
+    points[3].x = xp1;
+    points[4].x = xp1;
+
+    xp1 = xp2;
+
+    if(plottype!=freesurface) {
+      for(j=0;j<Nk;j++) {
+	yp1 = axesPosition[3]*height*(1-(z[j+1]-dataLimits[2])/
+				      (dataLimits[3]-dataLimits[2]));
+	yp2 = axesPosition[3]*height*(1-(z[j]-dataLimits[2])/
+				      (dataLimits[3]-dataLimits[2]));
+
+	if(((z[j]<=h[i] && z[j+1]<=h[i]) || (z[j]>=h[i] && z[j+1]<=h[i])) &&
+	   ((z[j]>=-D[i] && z[j+1]>=-D[i]) || (z[j]>=-D[i] && z[j+1]<=-D[i]))) {
+	  if(z[j]<h[i] && j==0) {
+	    yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
+					  (dataLimits[3]-dataLimits[2]));
+	    yp1 = axesPosition[3]*height*(1-(z[j+1]-dataLimits[2])/
+					  (dataLimits[3]-dataLimits[2]));
+	  }
+	  if(z[j]>=h[i] && z[j+1]<=h[i])
+	    yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
+					  (dataLimits[3]-dataLimits[2]));
+	  if(z[j]>=-D[i] && z[j+1]<=-D[i])
+	    yp1 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
+					  (dataLimits[3]-dataLimits[2]));
+	  
+	  points[0].y = yp1;
+	  points[1].y = yp1;
+	  points[2].y = yp2;
+	  points[3].y = yp2;
+	  points[4].y = yp1;
+	  
+	  dataval = data[i][j];
+	  ind = (dataval-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
+	  
+	  if(dataval>caxis[1])
+	    ind = NUMCOLORS-3;
+	  if(dataval<caxis[0])
+	    ind = 0;
+	  
+	  if(dataval==EMPTY || (plottype=='D' && dataval==0))
+	    ind = NUMCOLORS-1;
+	  
+	  if(plottype!=noplottype) {
+	    XSetForeground(dis,gc,colors[ind]);
+	    XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
+	  }
+	  
+	  if(edgelines && dataval!=EMPTY) {
+	    if(plottype==noplottype)
+	      XSetForeground(dis,gc,white);
+	    else
+	      XSetForeground(dis,gc,black);
+	    XDrawLines(dis,pix,gc,points,5,0);
+	  }
+	}
+      }
+      // Draw the bottom
+      yp2 = axesPosition[3]*height*(1-(-D[i]-dataLimits[2])/
+				    (dataLimits[3]-dataLimits[2]));    
+      if(i>0)
+	yp1 = axesPosition[3]*height*(1-(-D[i-1]-dataLimits[2])/
+				      (dataLimits[3]-dataLimits[2]));    
+      else
+	yp1 = yp2;
+
+      XSetForeground(dis,gc,white);
+      XDrawLine(dis,pix,gc,points[0].x,yp1,points[0].x,yp2);
+      XDrawLine(dis,pix,gc,points[0].x,yp2,points[1].x,yp2);
+    }
+
     // Draw the free-surface
     yp2 = axesPosition[3]*height*(1-(h[i]-dataLimits[2])/
 				  (dataLimits[3]-dataLimits[2]));    
@@ -1570,6 +1722,9 @@ float *GetScalarPointer(dataT *data, plottypeT plottype, int klevel, int proc) {
   case temperature:
     return data->T[proc][klevel];
     break;
+  case pressure:
+    return data->q[proc][klevel];
+    break;
   case u_velocity: case u_baroclinic:
     return data->u[proc][klevel];
     break;
@@ -1784,11 +1939,25 @@ void SetDataLimits(dataT *data) {
     dataLimits[3] = Max(data->yc,data->Np);
     setdatalimits=true;
   } else if(!setdatalimitsslice && vertprofile && sliceType==slice) {
-    dataLimits[0] = 0;
-    dataLimits[1] = Max(data->sliceX,data->Nslice);
-    dataLimits[2] = -data->dmax;
-    dataLimits[3] = AXESSLICETOP*data->dmax;
-    setdatalimitsslice=true;
+    if(plottype!=freesurface) {
+      dataLimits[0] = 0;
+      dataLimits[1] = Max(data->sliceX,data->Nslice);
+      dataLimits[2] = -data->dmax;
+      dataLimits[3] = AXESSLICETOP*data->dmax;
+      setdatalimitsslice=true;
+    } else {
+      GetHMax(data,data->numprocs);
+      dataLimits[0] = 0;
+      dataLimits[1] = Max(data->sliceX,data->Nslice);
+      dataLimits[2] = data->hmin;
+      dataLimits[3] = data->hmax;
+      setdatalimitsslice=true;
+    }
+    if((dataLimits[1]-dataLimits[0])>AXESBIGRATIO*(dataLimits[3]-dataLimits[2])) {
+      Yc=0.5*(dataLimits[3]-dataLimits[2]);
+      dataLimits[2]=Yc-0.5*(dataLimits[1]-dataLimits[0])/AXESBIGRATIO;
+      dataLimits[3]=Yc+0.5*(dataLimits[1]-dataLimits[0])/AXESBIGRATIO;
+    }
   } else {
     switch(zoom) {
     case in:
@@ -2155,6 +2324,9 @@ void DrawColorBar(dataT *data, int procnum, int numprocs, plottypeT plottype) {
     case temperature: 
       sprintf(str,"T");
       break;
+    case pressure:
+      sprintf(str,"q");
+      break;
     default:
       sprintf(str,"");
       break;
@@ -2346,6 +2518,13 @@ void SetUpButtons(void) {
   controlButtons[tempwin].b=controlButtons[nextwin].b+3*dist;
   controlButtons[tempwin].w=0.1;
   controlButtons[tempwin].h=(float)BUTTONHEIGHT;
+
+  controlButtons[preswin].string="q";
+  controlButtons[preswin].mapstring="preswin";
+  controlButtons[preswin].l=0.35;
+  controlButtons[preswin].b=controlButtons[nextwin].b+3*dist;
+  controlButtons[preswin].w=0.1;
+  controlButtons[preswin].h=(float)BUTTONHEIGHT;
 
   controlButtons[fswin].string="Surface";
   controlButtons[fswin].mapstring="saltwin";
@@ -2620,6 +2799,7 @@ void FreeData(dataT *data, int numprocs) {
 	free(data->sd[proc][j]);
 	free(data->s0[proc][j]);
 	free(data->T[proc][j]);
+	free(data->q[proc][j]);
 	free(data->u[proc][j]);
 	free(data->v[proc][j]);
 	free(data->wf[proc][j]);
@@ -2631,6 +2811,7 @@ void FreeData(dataT *data, int numprocs) {
       free(data->sd[proc]);
       free(data->s0[proc]);
       free(data->T[proc]);
+      free(data->q[proc]);
       free(data->u[proc]);
       free(data->v[proc]);
       free(data->wf[proc]);
@@ -2687,6 +2868,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
   GetFile(EDGEFILE,DATADIR,DATAFILE,"edges",-1);
   GetFile(CELLSFILE,DATADIR,DATAFILE,"cells",-1);
   GetFile(CELLCENTEREDFILE,DATADIR,DATAFILE,"celldata",-1);
+  GetFile(VERTSPACEFILE,DATADIR,DATAFILE,"vertspace",-1);
 
   if(nstep==-1) {
     data->Np=getsize(POINTSFILE);
@@ -2774,6 +2956,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       data->sd[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->s0[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->T[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
+      data->q[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->u[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->v[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->ubar[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
@@ -2786,6 +2969,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	data->sd[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->s0[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->T[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
+	data->q[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->u[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->v[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->wf[proc][i]=(float *)malloc(data->Ne[proc]*sizeof(float));
@@ -2827,7 +3011,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	// This line was removed since 1 less int is printed to this file
 	// in grid.c (mnptr is no longer printed).
 	//	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
-	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d",
+	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %f %f %f",
 	       &(data->xv[proc][i]),
 	       &(data->yv[proc][i]),
 	       &xind,
@@ -2838,19 +3022,32 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	       &(data->face[proc][NFACES*i+2]),
 	       // Same for this line
 	       //	       &ind,&ind,&ind,&ind,&ind,&ind,&ind);
-	       &ind,&ind,&ind,&ind,&ind,&ind);
+	       &ind,&ind,&ind,&ind,&ind,&ind,&ind,&ind,&ind);
       }
       fclose(fid);
     }
     GetDMax(data,numprocs);
     for(i=0;i<data->Nkmax+1;i++)
       data->z[i]=-data->dmax*(float)i/(float)(data->Nkmax);
+    sprintf(string,"%s",VERTSPACEFILE);
+    fid = MyFOpen(string,"r","ReadData");
+    data->z[0]=0;
+    for(i=1;i<data->Nkmax+1;i++) {
+      fscanf(fid,"%f",&dz);
+      data->z[i]=data->z[i-1]-dz;
+    }
   } else if(data->timestep != nstep) {
 
     data->timestep=nstep;
 
     for(proc=0;proc<numprocs;proc++) {
-      dummy=(double *)malloc(data->Ne[proc]*sizeof(double));
+
+      //      printf("Reading salinity at step %d, proc %d\n",nstep,proc);
+
+      if(data->Ne[proc]>data->Nkmax)
+	dummy=(double *)malloc(data->Ne[proc]*sizeof(double));
+      else
+	dummy=(double *)malloc(data->Nkmax*sizeof(double));
 
       if(data->timestep==1) {
       GetFile(string,DATADIR,DATAFILE,"BGSalinityFile",proc);
@@ -2881,6 +3078,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
+      //      printf("Reading temperature at step %d, proc %d\n",nstep,proc);
+
       GetFile(string,DATADIR,DATAFILE,"TemperatureFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
@@ -2890,6 +3089,18 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  data->T[proc][i][j]=dummy[j];
       }
       fclose(fid);
+
+      GetFile(string,DATADIR,DATAFILE,"PressureFile",proc);
+      fid = MyFOpen(string,"r","ReadData");
+      fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+      for(i=0;i<data->Nkmax;i++) {
+	fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	for(j=0;j<data->Nc[proc];j++) 
+	  data->q[proc][i][j]=dummy[j];
+      }
+      fclose(fid);
+
+      //      printf("Reading u and v at step %d, proc %d\n",nstep,proc);
 
       GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
@@ -2916,6 +3127,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
+      //      printf("Computing ubar and vbar at step %d, proc %d\n",nstep,proc);
+
       dz = data->dmax/data->Nkmax;
       for(j=0;j<data->Nc[proc];j++) {
 	data->ubar[proc][j]=0;
@@ -2926,6 +3139,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	    data->vbar[proc][j]+=data->v[proc][i][j]*dz/data->depth[proc][j];
 	  }
       }
+
+      //      printf("Reading w at step %d, proc %d\n",nstep,proc);
 
       GetFile(string,DATADIR,DATAFILE,"VerticalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
@@ -2947,6 +3162,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
+      //      printf("Reading h at step %d, proc %d\n",nstep,proc);
+
       GetFile(string,DATADIR,DATAFILE,"FreeSurfaceFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       fseek(fid,(nstep-1)*data->Nc[proc]*sizeof(double),0);
@@ -2960,6 +3177,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	if(data->h_d[proc][i]/data->depth[proc][i]<SMALLHEIGHT)
 	  data->h_d[proc][i]=EMPTY;
       }
+
+      //      printf("Computing energy flux at step %d, proc %d\n",nstep,proc);
 
       dz = data->dmax/(float)data->Nkmax;
       beta=GetValue(DATAFILE,"beta",&status);
@@ -2983,7 +3202,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  }
       }
 
-      //      free(dummy);
+      free(dummy);
     }
   }
 }
@@ -3036,6 +3255,19 @@ void GetDMax(dataT *data, int numprocs) {
     for(j=0;j<data->Nc[proc];j++) 
       if(data->depth[proc][j]>dmax) dmax=data->depth[proc][j];
   data->dmax=dmax;
+}
+
+void GetHMax(dataT *data, int numprocs) {
+  int j, proc;
+  float hmax=-INFTY, hmin=INFTY;
+  
+  for(proc=0;proc<numprocs;proc++)  
+    for(j=0;j<data->Nc[proc];j++) {
+      if(data->h[proc][j]>hmax) hmax=data->h[proc][j];
+      if(data->h[proc][j]<hmin) hmin=data->h[proc][j];
+    }
+  data->hmax=hmax;
+  data->hmin=hmin;
 }
 
 void GetSlice(dataT *data, int xs, int ys, int xe, int ye, 
@@ -3140,6 +3372,11 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
       for(i=0;i<data->Nslice;i++) 
 	for(ik=0;ik<data->Nkmax;ik++) 
 	  data->sliceData[i][ik]=data->T[data->sliceProc[i]][ik][data->sliceInd[i]];
+      break;
+    case pressure:
+      for(i=0;i<data->Nslice;i++) 
+	for(ik=0;ik<data->Nkmax;ik++) 
+	  data->sliceData[i][ik]=data->q[data->sliceProc[i]][ik][data->sliceInd[i]];
       break;
     case u_velocity: 
       for(i=0;i<data->Nslice;i++) 
