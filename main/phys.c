@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.4 2002-11-03 20:36:33 fringer Exp $
+ * $Id: phys.c,v 1.5 2002-11-05 01:31:17 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2002/11/03 20:36:33  fringer
+ * Added parameters to check for mass and volume conservation
+ *
  * Revision 1.3  2002/11/03 20:25:08  fringer
  * Cleaned up the udpatedz routine.
  *
@@ -163,7 +166,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
 void InitializePhysicalVariables(gridT *grid, physT *phys)
 {
   int i, j, jptr, k, n, nc1, nc2, ne, nf, Nc=grid->Nc, Ne=grid->Ne;
-  REAL r, u, v, xc, yc, hf, hfmax;
+  REAL r, u, v, xc, yc, hf, hfmax, z;
 
   for(i=0;i<Nc;i++) {
     hfmax=0;
@@ -184,12 +187,14 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
 	hfmax=hf;
     }
     //phys->h[i]=-grid->dv[i]+hfmax;
-    //    phys->h[i]=-2.5+2.5*cos(PI*grid->xv[i]/15);
+    //    phys->h[i]=cos(PI*grid->xv[i]/100000);
 
     phys->h[i] = 0;
+    //    if(grid->xv[i]>50000)
+    //      phys->h[i]=-grid->dv[i];
     //    phys->h[i]=-2.5+2.5*cos(PI*grid->xv[i]/15);
     //    if(grid->xv[i]>500)
-    //      phys->h[i]=-grid->dv[i];
+    //      phys->h[i]=-grid->dv[i]+1;
     //    if(grid->yv[i]>grid->xv[i])
     //      phys->h[i]=-grid->dv[i];
     //    phys->h[i]=-grid->dv[i]+1;
@@ -208,14 +213,20 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
     for(k=0;k<grid->Nk[i];k++) {
       phys->w[i][k]=0;
       phys->q[i][k]=0;
-      phys->s[i][k]=1;
+      phys->s[i][k]=0;
     }
   }
 
-  for(i=0;i<Nc;i++)
+  for(i=0;i<Nc;i++) {
+    z = 0;
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      //      if(grid->xv[i]>7.5 && grid->dzz[i][k]>0)
-      //	phys->s[i][k]=1;
+      z-=grid->dzz[i][k]/2;
+      //      phys->s[i][k]=-1.07*0*(z+1500+0*cos(PI*(grid->xv[i]-10000)/10000))/1500;
+      phys->s[i][k]=-7.333e-3*(.5*(z+1500)/1500);
+      z-=grid->dzz[i][k]/2;
+      //      if(grid->xv[i]>70000) phys->s[i][k]=.01;
+      //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
+      //      	phys->s[i][k]=0;
       //      r=sqrt(pow(grid->xv[i]-11.25,2)+pow(grid->yv[i]-7.5,2));
       //      if(r<2)
       //	phys->s[i][k]=1;
@@ -223,6 +234,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
       //	phys->s[i][k]=0;
       //      phys->s[i][k]=1-tanh((grid->xv[i]-7.5)/2);
     }
+  }
 
   for(j=0;j<grid->Ne;j++)
     for(k=0;k<grid->Nkc[j];k++) 
@@ -304,13 +316,18 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
 
       for(k=0;k<grid->Nk[i];k++) {
 	z-=grid->dz[k];
-	if(phys->h[i]>z) 
+	if(phys->h[i]>=z) 
 	  if(!flag) {
-	    if(k==grid->Nk[i]-1) 
+	    if(k==grid->Nk[i]-1) {
 	      grid->dzz[i][k]=phys->h[i]+grid->dv[i];
-	    else 
+	      grid->ctop[i]=k;
+	    } else if(phys->h[i]==z) {
+	      grid->dzz[i][k]=0;
+	      grid->ctop[i]=k+1;
+	    } else {
 	      grid->dzz[i][k]=phys->h[i]-z;
-	    grid->ctop[i]=k;
+	      grid->ctop[i]=k;
+	    }
 	    flag=1;
 	  } else {
 	    if(k==grid->Nk[i]-1) 
@@ -407,9 +424,8 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 
       HydroW(grid,phys);
 
-      //      UpdateScalarsImp(grid,phys,prop);
-      //UpdateScalars(grid,phys,prop);
-      //      SendRecvCellData3D(phys->s,grid,myproc,comm);
+      UpdateScalarsImp(grid,phys,prop);
+      SendRecvCellData3D(phys->s,grid,myproc,comm);
 
       //      UpdateU(grid,phys,prop);
     }
@@ -473,7 +489,7 @@ static void UpdateU(gridT *grid, physT *phys, propT *prop)
 static void BarotropicPredictor(gridT *grid, physT *phys, 
 				propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, iptr, j, jptr, ne, nf, normal, nc1, nc2, k, upwind;
+  int i, iptr, j, jptr, ne, nf, normal, nc1, nc2, k, upwind, k0;
   REAL sum, dt=prop->dt, theta=prop->theta, thetaFS=prop->thetaFS, fluxheight;
   REAL *a, *b, *c, *d, *e1, **E;
 
@@ -499,6 +515,23 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       phys->utmp[j][k]=phys->u[j][k];
   }
+
+  // Add on the baroclinic term
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+    j = grid->edgep[jptr];
+
+    nc1 = grid->grad[2*j];
+    nc2 = grid->grad[2*j+1];
+
+    for(k=grid->etop[j];k<grid->Nke[j];k++) {
+      phys->utmp[j][k]-=0.5*dt*GRAV*prop->beta*
+	(phys->s[nc1][k]*grid->dzz[nc1][k]-
+	 phys->s[nc2][k]*grid->dzz[nc2][k])/grid->dg[j];
+      for(k0=grid->etop[j];k0<k;k0++)
+	phys->utmp[j][k]-=dt*GRAV*prop->beta*(phys->s[nc1][k0]*grid->dzz[nc1][k0]-
+					      phys->s[nc2][k0]*grid->dzz[nc2][k0])/grid->dg[j];
+    }
+  }	
 
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
@@ -832,10 +865,12 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   MPI_Bcast(&Nsrc,1,MPI_DOUBLE,0,comm);
   Nsrc=sqrt(Nsrc);
 
+  /*
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
-    //    printf("%f %f\n",grid->xv[i],hsrc[i]);
+    printf("%f %f\n",grid->xv[i],hsrc[i]);
   }
+  */
 
   for(n=0;n<niters;n++) {
 
@@ -892,7 +927,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
       break;
   }
   if(n==niters) 
-    printf("Warning... Iteration not converging after %d steps!\n",n);
+    printf("Warning... Iteration not converging after %d steps! RES=%e\n",n,resid);
   
   fprintf(fid,"M=[");
   for(i=0;i<Nc;i++) {
@@ -1507,6 +1542,7 @@ static void ReadProperties(propT **prop, int myproc)
   (*prop)->theta = MPI_GetValue(DATAFILE,"theta","ReadProperties",myproc);
   (*prop)->thetaAB = MPI_GetValue(DATAFILE,"thetaAB","ReadProperties",myproc);
   (*prop)->thetaFS = MPI_GetValue(DATAFILE,"thetaFS","ReadProperties",myproc);
+  (*prop)->beta = MPI_GetValue(DATAFILE,"beta","ReadProperties",myproc);
   (*prop)->nu = MPI_GetValue(DATAFILE,"nu","ReadProperties",myproc);
   (*prop)->tau_T = MPI_GetValue(DATAFILE,"tau_T","ReadProperties",myproc);
   (*prop)->CdT = MPI_GetValue(DATAFILE,"CdT","ReadProperties",myproc);
