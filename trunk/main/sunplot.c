@@ -6,8 +6,17 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.24 2003-05-12 00:16:28 fringer Exp $
+ * $Id: sunplot.c,v 1.25 2003-05-14 11:23:15 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.24  2003/05/12 00:16:28  fringer
+ * Fixed the v-component in the slice retrieval so that it
+ * reads data->ry*data->v... instead of data->ry*data->u, since
+ * it should be R dot U, where R is the horizontal vector that
+ * forms the slice and U is the horizontal velocity vector.
+ *
+ * Also removed the subtraction of the mean (barotropic) velocity
+ * field from the slice retrieval.
+ *
  * Revision 1.23  2003/05/07 03:06:54  fringer
  * Changed lines that correspond to reading in from the
  * edgedata files since the output was updated in grid.c (i.e.
@@ -178,6 +187,10 @@ typedef enum {
   salinity0, u_velocity, v_velocity, w_velocity
 } plottypeT;
 
+typedef enum {
+  two_d, three_d
+} dimT;
+
 typedef struct {
   char *string;
   char *mapstring;
@@ -275,11 +288,12 @@ void Quiver(float *x, float *z, float *D, float *H,
 	    float **u, float **v, float umagmax, int Nk, int Nc);
 void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic);
 void Rotate(XPoint *points, int N, int ue, int ve, int mag);
-void ParseCommandLine(int N, char *str[], int *numprocs);
+void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions);
 void ShowMessage(void);
 void ReadData(dataT *data, int nstep, int numprocs);
 void FreeData(dataT *data, int numprocs);
 void CloseGraphics(void);
+void Usage(char *str);
 
 /*
  * Linux users will need to add -ldl to the Makefile to compile 
@@ -321,6 +335,7 @@ int main(int argc, char *argv[]) {
   dataT *data = NewData();
   bool redraw, quit=false;
   buttonnumT mousebutton;
+  dimT dims;
   setdatalimits = false;
   setdatalimitsslice = false;
   vectorplot = false;
@@ -331,7 +346,7 @@ int main(int argc, char *argv[]) {
   gridread = false;
   goT go;
   
-  ParseCommandLine(argc,argv,&numprocs);  
+  ParseCommandLine(argc,argv,&numprocs,&dims);  
 
   ReadData(data,-1,numprocs);
 
@@ -358,6 +373,15 @@ int main(int argc, char *argv[]) {
   go=nomovie;
   goprocs=true;
   sprintf(message,"SUNPLOT v %s",VERSION);
+
+  if(dims==two_d) {
+    sliceType=slice;
+    vertprofile=true;
+    xstart=0;
+    ystart=height/2*axesPosition[3];
+    xend=width*axesPosition[2];
+    yend=height/2*axesPosition[3];
+  }
 
   while(true) {
     fromprofile=false;
@@ -2181,25 +2205,34 @@ void SetUpButtons(void) {
 
 }
 
-void ParseCommandLine(int N, char *str[], int *numprocs) {
-  int i;
+void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions)
+{
+  int i, j, js, done=0, status;
+  char str[BUFFERLENGTH], val[BUFFERLENGTH];
+  *numprocs=1;
+  *dimensions=three_d;
 
-  switch(N) {
-  case 1:
-    *numprocs=1;
-    break;
-  case 3:
-    if(!strcmp(str[1],"-np")) {
-      for(i=0;i<strlen(str[2]);i++)
-	if(!isdigit(str[2][i]))
-	  break;
-      *numprocs=atoi(str[2]);
+  if(N>1) 
+    for(i=1;i<N;i++) {
+      if(argv[i][0]=='-') {
+	if(!strcmp(argv[i],"-np"))
+	  *numprocs = (int)atof(argv[i++]);
+	else if(!strcmp(argv[i],"-2d"))
+	  *dimensions=two_d;
+	else
+	  done=1;
+      } else
+	done=1;
     }
-    break;
-  default:
-    printf("Usage: %s [-np 2]\n",str[0]);
-    break;
+
+  if(done) {
+    Usage(argv[0]);
+    exit(1);
   }
+}    
+
+void Usage(char *str) {
+  printf("Usage: %s [-np 2, -2d]\n",str);
 }
 
 void FindNearest(dataT *data, int x, int y, int *iloc, int *procloc, int procnum, int numprocs) {
@@ -2597,7 +2630,7 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
   float dz, dmax, xstart, ystart, xend, yend, rx0, ry0, 
     rx, ry, dist, xcent, ycent, rad, mag, mag0, ubar;
 
-  if(!(xs==xe && ys==ye) && fromprofile && sliceType==slice) {
+  if(!(xs==xe && ys==ye) && sliceType==slice) {
 
     FindNearest(data,xs,ys,&istart,&pstart,procnum,numprocs);
     FindNearest(data,xe,ye,&iend,&pend,procnum,numprocs);
