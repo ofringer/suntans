@@ -6,8 +6,15 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.38 2004-06-16 18:59:37 fringer Exp $
+ * $Id: sunplot.c,v 1.39 2004-07-22 20:23:46 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2004/07/22 20:21:09  fringer
+ * Initial revision
+ *
+ * Revision 1.38  2004/06/16 18:59:37  fringer
+ * Added line to set k=0 if there is only one level being plotted, i.e.
+ * if Nkmax=1.
+ *
  * Revision 1.37  2004/06/12 01:39:40  fringer
  * Added ability to get input from user for:
  *
@@ -3197,11 +3204,13 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       for(j=0;j<data->Nc[proc];j++) {
 	data->ubar[proc][j]=0;
 	data->vbar[proc][j]=0;
-	for(i=0;i<data->Nkmax;i++)
+	for(i=0;i<data->Nkmax;i++) {
+	  dz = data->z[i-1]-data->z[i];
 	  if(data->s0[proc][i][j]!=EMPTY) {
 	    data->ubar[proc][j]+=data->u[proc][i][j]*dz/data->depth[proc][j];
 	    data->vbar[proc][j]+=data->v[proc][i][j]*dz/data->depth[proc][j];
 	  }
+	}
       }
 
       printf("Reading w at step %d, proc %d\n",nstep,proc);
@@ -3250,9 +3259,11 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
 	for(ik0=0;ik0<data->Nkmax;ik0++) {
 	  dummy[ik0]=0;
-	  for(ik=ik0;ik>=0;ik--) 
+	  for(ik=ik0;ik>=0;ik--) {
+	    dz = data->z[ik-1]-data->z[ik];
 	    if(data->s[proc][ik][i]!=EMPTY) 
 	      dummy[ik0]+=1000*GRAV*beta*(data->s[proc][ik][i]-data->s0[proc][ik][i])*dz;
+	  }
 	}
 	
 	if(nstep==1) {
@@ -3261,10 +3272,11 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	}
 	for(ik0=0;ik0<data->Nkmax;ik0++) 
 	  if(data->s[proc][ik0][i]!=EMPTY) {
+	    dz = data->z[ik0-1]-data->z[ik0];
 	    data->Eu[proc][i]+=(data->u[proc][ik0][i]-data->ubar[proc][i])*dummy[ik0]*dz;
 	    data->Ev[proc][i]+=(data->v[proc][ik0][i]-data->vbar[proc][i])*dummy[ik0]*dz;
-	    //	    data->u[proc][ik0][i]=data->u[proc][ik0][i]-data->ubar[proc][i];
-	    //	    data->v[proc][ik0][i]=data->v[proc][ik0][i]-data->vbar[proc][i];
+	    data->u[proc][ik0][i]=data->u[proc][ik0][i]-data->ubar[proc][i];
+	    data->v[proc][ik0][i]=data->v[proc][ik0][i]-data->vbar[proc][i];
 	  }
       }
 
@@ -3411,10 +3423,10 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
 	for(ik=0;ik<data->Nkmax;ik++) 
 	  if(data->u[data->sliceProc[i]][ik][data->sliceInd[i]]!=EMPTY) {
 	    nk++;
-	    ubar+=data->sliceU[i][ik];
+	    ubar+=data->sliceU[i][ik]*(data->z[i-1]-data->z[i]);
 	  }
 	for(ik=0;ik<data->Nkmax;ik++) 
-	  data->sliceU[i][ik]-=ubar/(float)nk;
+	  data->sliceU[i][ik]-=ubar/data->sliceD[i];
       }
     }
     
