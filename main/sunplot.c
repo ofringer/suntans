@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.11 2003-04-15 07:19:58 fringer Exp $
+ * $Id: sunplot.c,v 1.12 2003-04-15 10:42:10 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.11  2003/04/15 07:19:58  fringer
+ * Redid reading of data so that it is read at each step.
+ *
  * Revision 1.10  2003/04/09 17:46:08  fringer
  * Added point values using mouse click.
  *
@@ -66,8 +69,9 @@
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
 #define MAXZOOMRATIO 100.0
-#define NUMBUTTONS 21
+#define NUMBUTTONS 22
 #define POINTSIZE 2
+#define NSLICEMAX 1000
 
 typedef enum {
   in, out, box, none
@@ -97,7 +101,7 @@ typedef enum {
   uwin, vwin, wwin, vecwin,
   depthwin, nonewin,
   edgewin, voronoiwin, delaunaywin,
-  zoomwin, quitwin
+  zoomwin, profwin, quitwin
 } buttonName;
 
 typedef enum {
@@ -138,11 +142,22 @@ typedef struct {
 
   float *currptr;
 
-  int *Ne, *Nc, Np, Nkmax, nsteps, numprocs;
+  float **sliceData;
+  float **dz;
+  float *sliceX;
+  int *sliceInd;
+  int *sliceProc;
+
+  int *Ne, *Nc, Np, Nkmax, nsteps, numprocs, Nslice;
   int timestep, klevel;
-  float umagmax;
+  float umagmax, dmax;
 } dataT;
 
+void Sort(int *ind1, int *ind2, float *data, int N);
+void QuadSurf(float **data, float *x, float **dz, int N, int Nk);
+void GetSlice(dataT *data, int xs, int ys, int xe, int ye, 
+	      int procnum, int numprocs, plottypeT plottype);
+void GetDMax(dataT *data, int numprocs);
 void GetUMagMax(dataT *data, int klevel, int numprocs);
 void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N);
 void DrawDelaunayPoints(float *xc, float *yc, plottypeT plottype, int Np);
@@ -177,6 +192,7 @@ void DrawButton(Window button, char *str);
 void MapWindows(void);
 void RedrawWindows(void);
 void DrawZoomBox(void);
+void DrawSliceLine(void);
 void DrawHeader(Window leftwin,Window rightwin,char *str);
 void SetUpButtons(void);
 void DrawVoronoiPoints(float *xv, float *yv, int Nc);
@@ -218,7 +234,7 @@ float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4],
   zoomratio, vlengthfactor=1.0;
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
 bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, go, goprocs,
-  vertprofile, fromprofile, gridread;
+  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming;
 char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
@@ -231,8 +247,10 @@ int main(int argc, char *argv[]) {
   bool redraw, quit=false;
   buttonnumT mousebutton;
   setdatalimits = false;
+  setdatalimitsslice = false;
   vectorplot = false;
   zoomratio = 1;
+  zooming = true;
   procplottype = allprocs;
   vertprofile = false;
   gridread = false;
@@ -291,7 +309,12 @@ int main(int argc, char *argv[]) {
       XCopyArea(dis,controlspix,controlswin,gc,0,0,
 		buttonAxesPosition[2]*width,
 		buttonAxesPosition[3]*height,0,0);
-      DrawZoomBox();
+      if(zooming)
+	DrawZoomBox();
+      else {
+	DrawSliceLine();
+	vertprofile=true;
+      }
       break;
     case ButtonPress:
       if(report.xany.window==axeswin) {
@@ -472,21 +495,40 @@ int main(int argc, char *argv[]) {
 	  redraw=true;
 	}
       } else if(report.xany.window==controlButtons[zoomwin].butwin && mousebutton==left_button) {
+	if(vertprofile==false) {
+	  if(zooming==false) {
+	    sprintf(message,"Zooming on...");
+	    zooming=true;
+	  } else {
+	    sprintf(message,"Zooming off: ready for profile points...");
+	    zooming=false;
+	  }
+	} else {
+	  sprintf(message,"Can't turn zooming off during profile plot...");
+	}
+      } else if(report.xany.window==controlButtons[profwin].butwin && mousebutton==left_button) {
 	if(vertprofile==true) {
-	  sprintf(message,"Zooming on...");
+	  sprintf(message,"Profile off...");
 	  vertprofile=false;
 	}
 	else {
-	  sprintf(message,"Zooming off...");
-	  vertprofile=true;
-	  sliceType=noslice;
+	  if(data->Nslice==0) 
+	    sprintf(message,"Need two points for a profile first!\n");
+	  else {
+	    sprintf(message,"Profile on...");
+	    vertprofile=true;
+	    sliceType=slice;
+	  }
 	}
+	setdatalimits=false;
+	setdatalimitsslice=false;
+	redraw=true;
       } else if(report.xany.window==controlButtons[quitwin].butwin && mousebutton==left_button) {
 	quit=true;
       } else if(report.xany.window==axeswin) {
 	xend=report.xbutton.x;
 	yend=report.xbutton.y;
-	if(vertprofile==false) {
+	if(zooming==true) {
 	  if(report.xbutton.button==left_button) {
 	    if(xend==xstart && yend==ystart) 
 	      zoom=in;
@@ -501,17 +543,19 @@ int main(int argc, char *argv[]) {
 	    zoomratio=1;
 	    redraw=true;
 	    setdatalimits=false;
+	    setdatalimitsslice=false;
 	  }
 	} else {
 	  if(report.xbutton.button==left_button) {
-	    sliceType=value;
+	    sliceType=slice;
 	  } else if(report.xbutton.button==middle_button) {
 	    sliceType=vertp;
 	  } else if(report.xbutton.button==right_button) {
-	    sliceType=slice;
+	    sliceType=value;
 	  }
 	  redraw=true;
 	  fromprofile=true;
+	  zooming=true;
 	}
       }
       pressed=false;
@@ -748,8 +792,11 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
 
   ReadData(data,n,numprocs);
 
-  if(vertprofile && sliceType==value) {
-    FindNearest(data,xend,yend,&iloc,&procloc,procnum,numprocs);
+  if(vertprofile) {
+    if(sliceType==value) 
+      FindNearest(data,xend,yend,&iloc,&procloc,procnum,numprocs);
+    else if(sliceType==slice)
+      GetSlice(data,xstart,ystart,xend,yend,procnum,numprocs,plottype);
   } 
 
   if(plottype!=noplottype)
@@ -758,9 +805,9 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   if(vectorplot)
     GetUMagMax(data,k,numprocs);
 
-  if(procplottype==allprocs) 
+  if(procplottype==allprocs && !vertprofile)
     for(proc=0;proc<numprocs;proc++) {
-      if(proc==0 && !fromprofile) {
+      if(proc==0) {
 	SetDataLimits(data);
 	SetAxesPosition();
 	Cla();
@@ -768,11 +815,9 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
       MyDraw(data,plottype,proc,numprocs,iloc,procloc);
     }
   else {
-    if(!fromprofile) {
-      SetDataLimits(data);
-      SetAxesPosition();
-      Cla();
-    }
+    SetDataLimits(data);
+    SetAxesPosition();
+    Cla();
     MyDraw(data,plottype,procnum,numprocs,iloc,procloc);
   }
 
@@ -813,21 +858,56 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
 	      procnum,iloc,k,scal[iloc],data->xv[procnum][iloc],
 	      data->yv[procnum][iloc]);
 
-  if(!fromprofile) {
+  if(vertprofile==true && sliceType==slice) 
+    QuadSurf(data->sliceData,data->sliceX,data->dz,data->Nslice,data->Nkmax);
+  else {
     if(plottype!=noplottype)
       UnSurf(data->xc,data->yc,data->cells[procnum],scal,data->Nc[procnum]);
-  
+    
     if(delaunaypoints)
       DrawDelaunayPoints(data->xc,data->yc,plottype,data->Np);
-
+    
     if(voronoipoints) 
       DrawVoronoiPoints(data->xv[procnum],data->yv[procnum],data->Nc[procnum]);
-  
+    
     if(edgelines)
       DrawEdgeLines(data->xc,data->yc,data->cells[procnum],plottype,data->Nc[procnum]);
+  }
+  DrawControls(data,procnum,numprocs);
+}
 
-    DrawControls(data,procnum,numprocs);
-  }     
+void QuadSurf(float **data, float *x, float **dz, int N, int Nk) {
+  int i, j, xp, yp, w, h, ind;
+  float xs, xe, zs, ze, dataval;
+
+  for(i=0;i<N-1;i++) {
+    ze=0;
+    xp = axesPosition[2]*width*(x[i]-dataLimits[0])/
+      (dataLimits[1]-dataLimits[0]);
+    w = axesPosition[2]*width*(x[i+1]-x[i])/
+      (dataLimits[1]-dataLimits[0]);
+    for(j=0;j<Nk;j++) {
+      yp = axesPosition[3]*height*(1-(ze-dz[i][j]-dataLimits[2])/
+				   (dataLimits[3]-dataLimits[2]));
+      h = axesPosition[3]*height*dz[i][j]/
+	(dataLimits[3]-dataLimits[2]);
+      ze-=dz[i][j];
+
+      dataval = 0.5*(data[i+1][j]+data[i][j]);
+      ind = (dataval-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
+
+      if(dataval==EMPTY || (plottype=='D' && dataval==0))
+	ind = NUMCOLORS-1;
+
+      XSetForeground(dis,gc,colors[ind]);
+      XFillRectangle(dis,pix,gc,xp,yp,w,h);
+
+      if(edgelines) {
+	XSetForeground(dis,gc,black);
+	XDrawRectangle(dis,pix,gc,xp,yp,w,h);
+      }
+    }
+  }
 }
 
 void UnQuiver(float *xc, float *yc, int *edges, float *u, float *v, float umagmax, int Ne) {
@@ -1181,12 +1261,18 @@ void SetDataLimits(dataT *data) {
   dx = dataLimits[1]-dataLimits[0];
   dy = dataLimits[3]-dataLimits[2];
 
-  if(!setdatalimits) {
+  if(!setdatalimits && !vertprofile) {
     dataLimits[0] = Min(data->xc,data->Np);
     dataLimits[1] = Max(data->xc,data->Np);
     dataLimits[2] = Min(data->yc,data->Np);
     dataLimits[3] = Max(data->yc,data->Np);
     setdatalimits=true;
+  } else if(!setdatalimitsslice && vertprofile && sliceType==slice) {
+    dataLimits[0] = 0;
+    dataLimits[1] = Max(data->sliceX,data->Nslice);
+    dataLimits[2] = -data->dmax;
+    dataLimits[3] = 0;
+    setdatalimitsslice=true;
   } else {
     switch(zoom) {
     case in:
@@ -1552,6 +1638,11 @@ void DrawZoomBox(void) {
 		 x1,y1,boxwidth,boxheight);
 }
 
+void DrawSliceLine(void) {
+  XSetForeground(dis,gc,white);
+  XDrawLine(dis,axeswin,gc,xstart,ystart,xend,yend);
+}
+
 void SetUpButtons(void) {
   int buttonnum;
   float dist=0.25;
@@ -1696,10 +1787,17 @@ void SetUpButtons(void) {
   controlButtons[zoomwin].w=0.9;
   controlButtons[zoomwin].h=(float)BUTTONHEIGHT;
 
+  controlButtons[profwin].string="Profile";
+  controlButtons[profwin].mapstring="profwin";
+  controlButtons[profwin].l=0.05;
+  controlButtons[profwin].b=controlButtons[nextwin].b+8*dist;
+  controlButtons[profwin].w=0.9;
+  controlButtons[profwin].h=(float)BUTTONHEIGHT;
+
   controlButtons[quitwin].string="QUIT";
   controlButtons[quitwin].mapstring="quitwin";
   controlButtons[quitwin].l=0.05;
-  controlButtons[quitwin].b=controlButtons[nextwin].b+8*dist;
+  controlButtons[quitwin].b=controlButtons[nextwin].b+9*dist;
   controlButtons[quitwin].w=0.9;
   controlButtons[quitwin].h=(float)BUTTONHEIGHT;
 }
@@ -1862,6 +1960,17 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->xc = (float *)malloc(data->Np*sizeof(float *));
     data->yc = (float *)malloc(data->Np*sizeof(float *));
 
+    data->sliceData = (float **)malloc(NSLICEMAX*sizeof(float *));
+    data->dz = (float **)malloc(NSLICEMAX*sizeof(float *));
+    for(i=0;i<NSLICEMAX;i++) {
+      data->sliceData[i] = (float *)malloc(data->Nkmax*sizeof(float));
+      data->dz[i] = (float *)malloc(data->Nkmax*sizeof(float));
+    }
+    data->sliceX = (float *)malloc(NSLICEMAX*sizeof(float));
+    data->sliceInd = (int *)malloc(NSLICEMAX*sizeof(int));
+    data->sliceProc = (int *)malloc(NSLICEMAX*sizeof(int));
+    data->Nslice=0;
+
     for(proc=0;proc<numprocs;proc++) {
 
       data->cells[proc]=(int *)malloc(3*data->Nc[proc]*sizeof(int));
@@ -1926,6 +2035,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
     }
+    GetDMax(data,numprocs);
   } else if(data->timestep != nstep) {
     data->timestep=nstep;
 
@@ -1990,7 +2100,7 @@ void GetUMagMax(dataT *data, int klevel, int numprocs) {
   
   if(data->klevel!=klevel) {
     data->klevel=klevel;
-    for(proc=0;proc<numprocs;proc++) 
+    for(proc=0;proc<numprocs;proc++)  
       for(j=0;j<data->Ne[proc];j++) {
 	ud = data->u[proc][klevel][j];
 	vd = data->v[proc][klevel][j];
@@ -2001,8 +2111,96 @@ void GetUMagMax(dataT *data, int klevel, int numprocs) {
   }
 }
 
+void GetDMax(dataT *data, int numprocs) {
+  int j, proc;
+  float dmax=0;
+  
+  for(proc=0;proc<numprocs;proc++)  
+    for(j=0;j<data->Nc[proc];j++) 
+      if(data->depth[proc][j]>dmax) dmax=data->depth[proc][j];
+  data->dmax=dmax;
+}
 
+void GetSlice(dataT *data, int xs, int ys, int xe, int ye, 
+	      int procnum, int numprocs, plottypeT plottype) {
+  int i, nf, proc, ik, istart, pstart, iend, pend, numpoints;
+  float dz, dmax, xstart, ystart, xend, yend, rx0, ry0, rx, ry, dist, xcent, ycent, rad, mag, mag0;
+
+  if(!(xs==xe && ys==ye) && fromprofile && sliceType==slice) {
+    FindNearest(data,xs,ys,&istart,&pstart,procnum,numprocs);
+    FindNearest(data,xe,ye,&iend,&pend,procnum,numprocs);
+
+    xstart = data->xv[pstart][istart];
+    ystart = data->yv[pstart][istart];
+    xend = data->xv[pend][iend];
+    yend = data->yv[pend][iend];
     
+    rx0 = xend-xstart;
+    ry0 = yend-ystart;
+    mag0 = sqrt(rx0*rx0+ry0*ry0);
+    rx0 = rx0/mag0;
+    ry0 = ry0/mag0;
+
+    numpoints=0;
+    for(proc=0;proc<numprocs;proc++) {
+      for(i=0;i<data->Nc[proc];i++) {
+	xcent=0;
+	ycent=0;
+	for(nf=0;nf<NFACES;nf++) {
+	  xcent+=data->xc[data->cells[proc][3*i+nf]]/NFACES;
+	  ycent+=data->yc[data->cells[proc][3*i+nf]]/NFACES;
+	}
+	rad = sqrt(pow(data->xc[data->cells[proc][3*i]]-xcent,2)+
+		   pow(data->yc[data->cells[proc][3*i]]-ycent,2));
+	rx = (xcent-xstart);
+	ry = (ycent-ystart);
+	mag = rx*rx0+ry*ry0;
+	dist = sqrt(rx*rx+ry*ry-mag*mag);
+	if(dist<=rad && mag>=0 && mag<=mag0) {
+	  data->sliceInd[numpoints]=i;
+	  data->sliceProc[numpoints]=proc;
+	  data->sliceX[numpoints++]=mag;
+	}
+      }
+    }
+    data->Nslice = numpoints;
+    Sort(data->sliceInd,data->sliceProc,data->sliceX,data->Nslice);
+    if(numpoints>NSLICEMAX) {
+      printf("Error!  Too many points in slice.  Increase NSLICEMAX\n");
+      exit(0);
+    }
+  } 
+
+  switch(plottype) {
+  case salinity:
+    for(i=0;i<data->Nslice;i++) 
+      for(ik=0;ik<data->Nkmax;ik++) {
+	data->sliceData[i][ik]=data->s[data->sliceProc[i]][ik][data->sliceInd[i]];
+	data->dz[i][ik]=data->dmax/data->Nkmax;
+      }
+  }
+}
     
+void Sort(int *ind1, int *ind2, float *data, int N) {
+  int i, j, ind, itmp;
+  float ftmp;
+  
+  for(i=0;i<N;i++) 
+    for(j=i;j<N;j++) 
+      if(data[j]<data[i]) {
+	ftmp = data[j];
+	data[j] = data[i];
+	data[i] = ftmp;
+
+	itmp = ind1[j];
+	ind1[j] = ind1[i];
+	ind1[i] = itmp;
+    
+	itmp = ind2[j];
+	ind2[j] = ind2[i];
+	ind2[i] = itmp;
+      }
+}
+
 
     
