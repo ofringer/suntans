@@ -3,8 +3,11 @@
  * --------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.3 2003-04-29 16:39:07 fringer Exp $
+ * $Id: triangulate.c,v 1.4 2003-05-02 23:07:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2003/04/29 16:39:07  fringer
+ * Added MPI_FOPen in place of fopen.
+ *
  * Revision 1.2  2003/04/29 00:16:27  fringer
  * Fixed VERBOSE>0 line to include myproc==0, which required a redefinition
  * of the function prototype for triangulate.
@@ -22,7 +25,7 @@
 
 #define TRIANGLEFORMAT 0
 
-void GetTriangulation(gridT **grid, int myproc);
+int GetTriangulation(gridT **grid, int myproc);
 void GetPoints(struct triangulateio *in, REAL *minarea, int myproc);
 void InitializeTriangle(struct triangulateio *mid, struct triangulateio *vorout);
 
@@ -33,7 +36,7 @@ void InitializeTriangle(struct triangulateio *mid, struct triangulateio *vorout)
  * Creates a triangulation from a PLSG file using triangle libraries.
  *
  */
-void GetTriangulation(gridT **grid, int myproc) {
+int GetTriangulation(gridT **grid, int myproc) {
   int n, j, nf, Np, Ne, Nc;
   struct triangulateio in, out, vorout;
   REAL minarea;
@@ -41,12 +44,25 @@ void GetTriangulation(gridT **grid, int myproc) {
 
   GetPoints(&in,&minarea,myproc);
   InitializeTriangle(&out,&vorout);
-
-  //  triangulate("pzAevnqa10", &in, &out, &vorout);
-  if(minarea>0)
-    sprintf(str,"Qpzqevna%.5f",minarea);
+  
+  // Options for the triangulation:
+  // Q quiet
+  // z C-style numbering (start at 0 instead of 1)
+  // e edge list.
+  // v voronoi list.
+  // n neighbor list.
+  // c triangulate interior of convex hull in pslg
+  // a maximum triangle area
+  // q (from README triangle):
+  //    Adds points to the mesh to ensure that no angles smaller than 20 degrees occur.
+  if(in.numberofsegments==0)
+    sprintf(str,"Qznevc"); 
   else
-    sprintf(str,"Qpzqevn");
+    sprintf(str,"Qzqnev");
+  if(minarea>0)
+    sprintf(str,"%sa%.5f",str,minarea);
+  else
+    sprintf(str,"%s",str);
 
   // This is the triangulation performed by the triangle.c program.
   triangulate(str, &in, &out, &vorout);
@@ -55,10 +71,10 @@ void GetTriangulation(gridT **grid, int myproc) {
   Ne = out.numberofedges;
   Nc = out.numberoftriangles;
 
-  if(VERBOSE>0 && myproc==0) 
+  if(VERBOSE>0 && myproc==0 && Nc>0) 
     printf("Created a triangulation with %d Cells, %d Edges, %d Delaunay points...\n",
 		       Nc, Ne, Np);
-
+  
   InitMainGrid(grid,Np,Ne,Nc);
 
   for(n=0;n<(*grid)->Np;n++) {
@@ -88,6 +104,10 @@ void GetTriangulation(gridT **grid, int myproc) {
   free(in.segmentlist);
   free(in.segmentmarkerlist);
   free(in.holelist);
+
+  if(Nc==0)
+    return 0;
+  return 1;
 }
 
 void GetPoints(struct triangulateio *in, REAL *minarea, int myproc)
