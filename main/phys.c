@@ -6,8 +6,15 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.49 2004-05-14 02:26:15 fringer Exp $
+ * $Id: phys.c,v 1.50 2004-05-15 00:05:36 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.49  2004/05/14 02:26:15  fringer
+ * Removed the theta-AB method, also only sum up until <k and not <=k
+ * in the baroclinic term.
+ *
+ * Added a ramping down of the value of theta over an amount of time
+ * given by thetaramptime to reduce transient oscillations.
+ *
  * Revision 1.48  2004/04/24 00:36:50  fringer
  * Working out some bugs with wetting/drying...
  *
@@ -825,7 +832,7 @@ static void StoreVariables(gridT *grid, physT *phys) {
  */
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs, MPI_Comm comm) {
-  int i, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin, wetdry_offset;
+  int i, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin, kmax, wetdry_offset;
   REAL *a, *b, *c, fab, sum;
 
   if(prop->wetdry)
@@ -987,7 +994,8 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				phys->uc[nc2][k]*grid->dzz[nc2][k]);
 	}
       
-      // Now compute the cell-centered source terms and put them into stmp
+      // Now compute the cell-centered source terms and put them into stmp and also
+      // add on diffusion of u.
       for(i=0;i<grid->Nc;i++) {
 	
 	for(k=0;k<grid->Nk[i];k++) 
@@ -996,11 +1004,29 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	for(nf=0;nf<NFACES;nf++) {
 	  
 	  ne = grid->face[i*NFACES+nf];
-	  
+	  nc = grid->neigh[i*NFACES+nf];
+
+	  if(grid->Nk[nc]<grid->Nk[i])
+	    kmax = grid->Nk[nc];
+	  else
+	    kmax = grid->Nk[i];
+
+	  if(grid->ctop[nc]>grid->ctop[i])
+	    kmin = grid->ctop[nc];
+	  else
+	    kmin = grid->ctop[i];
+
 	  for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
 	    phys->stmp[i][k]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	      (grid->Ac[i]*grid->dzz[i][k]);
 	  
+	  if(nc!=-1) {
+	    for(k=kmin;k<kmax;k++)
+	      phys->stmp[i][k]-=prop->nu_H*(phys->uc[nc][k]-phys->uc[i][k])*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
+	    for(k=kmax;k<grid->Nkc[ne];k++)
+	      phys->stmp[i][k]+=2*prop->nu_H*phys->uc[i][k]*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
+	  }
+
 	  // Top cell is filled with momentum from neighboring cells
 	  for(k=grid->etop[ne];k<=grid->ctop[i];k++) 
 	    phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
@@ -1059,7 +1085,8 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				phys->vc[nc2][k]*grid->dzz[nc2][k]);
 	}
 
-      // Now compute the cell-centered source terms and put them into stmp
+      // Now compute the cell-centered source terms and put them into stmp and also
+      // add on diffusion of v.
       for(i=0;i<grid->Nc;i++) {
 	
 	for(k=0;k<grid->Nk[i];k++) 
@@ -1068,11 +1095,29 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	for(nf=0;nf<NFACES;nf++) {
 	  
 	  ne = grid->face[i*NFACES+nf];
+	  nc = grid->neigh[i*NFACES+nf];
+
+	  if(grid->Nk[nc]<grid->Nk[i])
+	    kmax = grid->Nk[nc];
+	  else
+	    kmax = grid->Nk[i];
+
+	  if(grid->ctop[nc]>grid->ctop[i])
+	    kmin = grid->ctop[nc];
+	  else
+	    kmin = grid->ctop[i];
 	  
 	  for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
 	    phys->stmp2[i][k]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	      (grid->Ac[i]*grid->dzz[i][k]);
 	  
+	  if(nc!=-1) {
+	    for(k=kmin;k<kmax;k++)
+	      phys->stmp2[i][k]-=prop->nu_H*(phys->vc[nc][k]-phys->vc[i][k])*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
+	    for(k=kmax;k<grid->Nkc[ne];k++)
+	      phys->stmp2[i][k]+=2*prop->nu_H*phys->vc[i][k]*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
+	  }
+
 	  // Top cell is filled with momentum from neighboring cells
 	  for(k=grid->etop[ne];k<=grid->ctop[i];k++) 
 	    phys->stmp2[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
@@ -2582,7 +2627,7 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
 static void HydroW(REAL **w, gridT *grid, physT *phys, propT *prop)
 {
   int i, k, nf, iptr, ne, nc1, nc2;
-  REAL ap, am;
+  REAL ap, am, d;
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -2591,7 +2636,7 @@ static void HydroW(REAL **w, gridT *grid, physT *phys, propT *prop)
       w[i][k] = 0;
 
     w[i][grid->Nk[i]] = 0;
-
+    d=grid->dzz[i][grid->Nk[i]-1];
     for(k=grid->Nk[i]-1;k>=grid->ctop[i];k--) {
       w[i][k] = w[i][k+1];
       for(nf=0;nf<NFACES;nf++) {
@@ -3139,6 +3184,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->beta = MPI_GetValue(DATAFILE,"beta","ReadProperties",myproc);
   (*prop)->gamma = MPI_GetValue(DATAFILE,"gamma","ReadProperties",myproc);
   (*prop)->nu = MPI_GetValue(DATAFILE,"nu","ReadProperties",myproc);
+  (*prop)->nu_H = MPI_GetValue(DATAFILE,"nu_H","ReadProperties",myproc);
   (*prop)->tau_T = MPI_GetValue(DATAFILE,"tau_T","ReadProperties",myproc);
   (*prop)->CdT = MPI_GetValue(DATAFILE,"CdT","ReadProperties",myproc);
   (*prop)->CdB = MPI_GetValue(DATAFILE,"CdB","ReadProperties",myproc);
