@@ -6,8 +6,12 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.28 2003-05-25 16:10:43 fringer Exp $
+ * $Id: sunplot.c,v 1.29 2003-05-25 19:43:23 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.28  2003/05/25 16:10:43  fringer
+ * Added colorbar which is drawn in the cmappix pixel map and copied to the
+ * cmapwin window.
+ *
  * Revision 1.27  2003/05/14 11:53:18  fringer
  * Fixed so that the -2d option works.  Needed to make sure
  * fromprofile=false in the while() loop except for the first time
@@ -161,7 +165,7 @@
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
 #define MAXZOOMRATIO 100.0
-#define NUMBUTTONS 28
+#define NUMBUTTONS 29
 #define POINTSIZE 2
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
@@ -194,7 +198,7 @@ typedef enum {
   uwin, vwin, wwin, vecwin,
   depthwin, nonewin,
   edgewin, voronoiwin, delaunaywin,
-  zoomwin, profwin, quitwin, reloadwin, axisimagewin,
+  zoomwin, profwin, quitwin, reloadwin, axisimagewin, cmapholdwin,
   iskip_plus_win,iskip_minus_win,kskip_plus_win,kskip_minus_win
 } buttonName;
 
@@ -352,7 +356,7 @@ float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4], cmapAxesP
   zoomratio, vlengthfactor=1.0;
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
 bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, goprocs,
-  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming;
+  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, cmaphold;
 char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
@@ -373,6 +377,7 @@ int main(int argc, char *argv[]) {
   procplottype = allprocs;
   vertprofile = false;
   gridread = false;
+  cmaphold = false;
   goT go;
   
   ParseCommandLine(argc,argv,&numprocs,&dims);  
@@ -745,6 +750,16 @@ int main(int argc, char *argv[]) {
 	  sprintf(message,"Changing axis type to image...");
 	}
 	redraw=true;
+      } else if(report.xany.window==controlButtons[cmapholdwin].butwin 
+		&& mousebutton==left_button) {
+	if(cmaphold==false) {
+	  cmaphold=true;
+	  sprintf(message,"Keeping current color axes...");
+	} else {
+	  cmaphold=false;
+	  sprintf(message,"Color axes will be scaled with current data...");
+	}
+	redraw=true;
       } else if(report.xany.window==controlButtons[reloadwin].butwin && mousebutton==left_button) {
 	ReadData(data,-1,numprocs);
 	sprintf(message,"Reloading data...");
@@ -982,7 +997,7 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   if(sliceType==slice)
     GetSlice(data,xstart,ystart,xend,yend,procnum,numprocs,plottype);
 
-  if(plottype!=noplottype)
+  if(plottype!=noplottype && cmaphold==false)
     CAxis(data,plottype,k,procnum,numprocs);
 
   if(vectorplot) 
@@ -1938,6 +1953,12 @@ void DrawControls(dataT *data, int procnum, int numprocs) {
   else
     sprintf(str,"Image");
   DrawHeader(controlButtons[axisimagewin].butwin,controlButtons[axisimagewin].butwin,str);
+
+  if(cmaphold)
+    sprintf(str,"Fixed");
+  else
+    sprintf(str,"Unfixed");
+  DrawHeader(controlButtons[cmapholdwin].butwin,controlButtons[cmapholdwin].butwin,str);
 }
 
 void DrawColorBar(dataT *data, int procnum, int numprocs, plottypeT plottype) {
@@ -2303,6 +2324,13 @@ void SetUpButtons(void) {
   controlButtons[axisimagewin].w=0.4;
   controlButtons[axisimagewin].h=(float)BUTTONHEIGHT;
 
+  controlButtons[cmapholdwin].string="Caxis";
+  controlButtons[cmapholdwin].mapstring="axisimagewin";
+  controlButtons[cmapholdwin].l=0.55;
+  controlButtons[cmapholdwin].b=controlButtons[nextwin].b+10*dist;
+  controlButtons[cmapholdwin].w=0.4;
+  controlButtons[cmapholdwin].h=(float)BUTTONHEIGHT;
+
   controlButtons[reloadwin].string="Reload";
   controlButtons[reloadwin].mapstring="reloadwin";
   controlButtons[reloadwin].l=0.05;
@@ -2447,7 +2475,7 @@ void FreeData(dataT *data, int numprocs) {
 }
 
 void ReadData(dataT *data, int nstep, int numprocs) {
-  int i, j, ik, proc, status, ind, ind0, nf, count;
+  int i, j, ik, proc, status, ind, ind0, nf, count, nsteps, ntout;
   float xind, vel;
   double *dummy, *dummy2;
   char string[BUFFERLENGTH];
@@ -2486,8 +2514,13 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->timestep=-1;
 
     data->Nkmax=(int)GetValue(DATAFILE,"Nkmax",&status);
-    data->nsteps=1+(int)GetValue(DATAFILE,"nsteps",&status)/
-      (int)GetValue(DATAFILE,"ntout",&status);
+    nsteps=(int)GetValue(DATAFILE,"nsteps",&status);
+    ntout = (int)GetValue(DATAFILE,"ntout",&status);
+    if(ntout==1 || nsteps==1)
+      data->nsteps=nsteps;
+    else
+      data->nsteps=1+(int)GetValue(DATAFILE,"nsteps",&status)/ntout;
+
     data->numprocs=numprocs;
 
     for(proc=0;proc<numprocs;proc++) {
