@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.85 2004-09-23 01:19:03 fringer Exp $
+ * $Id: phys.c,v 1.86 2004-09-27 01:21:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.85  2004/09/23 01:19:03  fringer
+ * Changed the corrector step so that w is updated with the vertical nonhydrostatic
+ * pressure gradient instead of continuity.  This appears to remove the grid-scale
+ * oscillations in the vertical velocity.
+ *
  * Revision 1.84  2004/09/22 07:02:29  fringer
  * Fixed bug in OperatorQC which was updating the upper and lower BC
  * for pressure with only 1 vertical level (fixed by Steven Jachec)
@@ -519,6 +524,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop,
 static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, propT *prop, 
 		     int myproc, int numprocs, MPI_Comm comm);
 static void ConditionQ(REAL **x, gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
+static void Preconditioner(REAL **x, REAL **xc, REAL **coef, gridT *grid, physT *phys, propT *prop);
 static void GuessQ(REAL **q, REAL **wold, REAL **w, gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
 static void GSSolve(gridT *grid, physT *phys, propT *prop, 
 		    int myproc, int numprocs, MPI_Comm comm);
@@ -796,15 +802,17 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc) {
   for(i=0;i<grid->Nc;i++) 
     fread(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
 
-  for(i=0;i<grid->Nc;i++) 
-    fread(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
-  for(i=0;i<grid->Nc;i++) 
-    fread(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+  if(prop->turbmodel) {
+    for(i=0;i<grid->Nc;i++) 
+      fread(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+    for(i=0;i<grid->Nc;i++) 
+      fread(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
 
-  for(i=0;i<grid->Nc;i++) 
-    fread(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
-  for(i=0;i<grid->Nc;i++) 
-    fread(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+    for(i=0;i<grid->Nc;i++) 
+      fread(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+    for(i=0;i<grid->Nc;i++) 
+      fread(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+  }
   for(i=0;i<grid->Nc;i++) 
     fread(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
   for(i=0;i<grid->Nc;i++) 
@@ -945,9 +953,14 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     for(k=0;k<grid->Nk[i];k++) {
       phys->nu_tv[i][k]=0;
       phys->kappa_tv[i][k]=0;
-      phys->qT[i][k]=0;
-      phys->lT[i][k]=0;
     }
+
+  if(prop->turbmodel) 
+    for(i=0;i<grid->Nc;i++) 
+      for(k=0;k<grid->Nk[i];k++) {
+	phys->qT[i][k]=0;
+	phys->lT[i][k]=0;
+      }
 }
 
 /*
@@ -1199,7 +1212,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	// phys->stmp contains the source term
 	// phys->stmp3 is used for temporary storage
 	CGSolveQ(phys->qc,phys->stmp,phys->stmp3,grid,phys,prop,myproc,numprocs,comm);
-
+	
 	// Correct the nonhydrostatic velocity field with the nonhydrostatic pressure
 	// correction field phys->stmp2.  This will correct phys->u so that it is now
 	// the volume-conserving horizontal velocity field.  phys->w is not corrected since
@@ -1211,13 +1224,14 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
 	// Send q to the boundary cells now that it has been updated
 	ISendRecvCellData3D(phys->q,grid,myproc,comm);
-      } else {
+      }	else {
 	// Compute the vertical velocity based on continuity and then send/recv to
 	// neighboring processors.
 	Continuity(phys->w,grid,phys,prop);
       }
       // Send/recv the vertical velocity data 
       ISendRecvWData(phys->w,grid,myproc,comm);
+
 
       // Compute the eddy viscosity
       EddyViscosity(grid,phys,prop,comm,myproc);
@@ -2020,9 +2034,13 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
       if(nc1==-1) nc1=nc2;
       if(nc2==-1) nc2=nc1;
 
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      for(k=grid->ctop[i];k<grid->Nke[ne];k++) {
 	ap[k] = 0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]));
 	am[k] = 0.5*(phys->u[ne][k]-fabs(phys->u[ne][k]));
+      }
+      for(k=grid->Nke[ne];k<grid->Nkc[ne];k++) {
+	ap[k] = 0;
+	am[k] = 0;
       }
 
       for(k=grid->ctop[i];k<grid->Nke[ne];k++) 
@@ -2066,16 +2084,17 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
 
   int i, iptr, k, n, niters;
 
-  REAL **x, **r, **p, **z, mu, nu, eps, eps0;
+  REAL **x, **r, **rtmp, **p, **z, mu, nu, alpha, alpha0, eps, eps0;
 
   z = phys->uc;
   x = q;
   r = phys->vc;
+  rtmp = phys->uold;
   p = src;
 
   // Compute the preconditioner and the preconditioned solution
   // and send it to neighboring processors
-  if(prop->qprecond) {
+  if(prop->qprecond==1) {
     ConditionQ(c,grid,phys,prop,myproc,comm);
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
@@ -2094,28 +2113,48 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
   QCoefficients(phys->wtmp,phys->qtmp,c,grid,phys,prop);
 
   // Initialization for CG
-  if(prop->qprecond) OperatorQC(phys->wtmp,phys->qtmp,x,z,c,grid,phys,prop);
+  if(prop->qprecond==1) OperatorQC(phys->wtmp,phys->qtmp,x,z,c,grid,phys,prop);
   else OperatorQ(phys->wtmp,x,z,c,grid,phys,prop);
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
     
-    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+    for(k=grid->ctop[i];k<grid->Nk[i];k++) 
       r[i][k] = p[i][k]-z[i][k];
-      p[i][k] = r[i][k];
-    }
-  }
-  eps = eps0 = InnerProduct3(p,p,grid,myproc,numprocs,comm);
-  if(!prop->resnorm) eps0 = 1;
+  }    
+  if(prop->qprecond==2) {
+    Preconditioner(r,rtmp,phys->wtmp,grid,phys,prop);
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
 
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+	p[i][k] = rtmp[i][k];
+    }
+    alpha = alpha0 = InnerProduct3(r,rtmp,grid,myproc,numprocs,comm);
+  } else {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+	p[i][k] = r[i][k];
+    }
+    alpha = alpha0 = InnerProduct3(r,r,grid,myproc,numprocs,comm);
+  }
+  if(!prop->resnorm) alpha0 = 1;
+
+  if(prop->qprecond==2)
+    eps0=InnerProduct3(r,r,grid,myproc,numprocs,comm);
+  else
+    eps0=alpha0;
+  
   // Iterate until residual is less than prop->qepsilon
   for(n=0;n<niters && eps0!=0 && !IsNan(eps0);n++) {
 
     ISendRecvCellData3D(p,grid,myproc,comm);
-    if(prop->qprecond) OperatorQC(phys->wtmp,phys->qtmp,p,z,c,grid,phys,prop);
+    if(prop->qprecond==1) OperatorQC(phys->wtmp,phys->qtmp,p,z,c,grid,phys,prop);
     else OperatorQ(phys->wtmp,p,z,c,grid,phys,prop);
 
-    mu = 1/eps;
-    nu = eps/InnerProduct3(p,z,grid,myproc,numprocs,comm);
+    mu = 1/alpha;
+    nu = alpha/InnerProduct3(p,z,grid,myproc,numprocs,comm);
 
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
@@ -2125,28 +2164,45 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
 	r[i][k] -= nu*z[i][k];
       }
     }
-    eps = InnerProduct3(r,r,grid,myproc,numprocs,comm);
-    mu*=eps;
+    if(prop->qprecond==2) {
+      Preconditioner(r,rtmp,phys->wtmp,grid,phys,prop);
+      alpha = InnerProduct3(r,rtmp,grid,myproc,numprocs,comm);
+      mu*=alpha;
+      for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	i = grid->cellp[iptr];
 
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i = grid->cellp[iptr];
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+	  p[i][k] = rtmp[i][k] + mu*p[i][k];
+      }
+    } else {
+      alpha = InnerProduct3(r,r,grid,myproc,numprocs,comm);
+      mu*=alpha;
+      for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	i = grid->cellp[iptr];
 
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
-	p[i][k] = r[i][k] + mu*p[i][k];
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+	  p[i][k] = r[i][k] + mu*p[i][k];
+      }
     }
-    //    if(myproc==0 && n==0) printf("%e\n",sqrt(eps/eps0));
+
+    if(prop->qprecond==2)
+      eps=InnerProduct3(r,r,grid,myproc,numprocs,comm);
+    else
+      eps=alpha;
+
+    //    if(myproc==0) printf("%d %e %e %e %e\n",myproc,mu,nu,eps0,sqrt(eps/eps0));
     if(VERBOSE>3) printf("CGSolve Pressure Iteration: %d, resid=%e, proc=%d\n",n,sqrt(eps/eps0),myproc);
     if(sqrt(eps/eps0)<prop->qepsilon) 
       break;
   }
-
-  if(n==niters && myproc==0 && WARNING) 
-    printf("Warning... Time step %d, Pressure iteration not converging after %d steps! RES=%e\n",prop->n,n,sqrt(eps/eps0));
-  else
-    if(VERBOSE>2 && myproc==0) printf("Time step %d, CGSolve pressure converged after %d iterations, res=%e\n",prop->n,n,sqrt(eps/eps0));
+  if(myproc==0 && VERBOSE>2) 
+    if(n==niters)  printf("Warning... Time step %d, Pressure iteration not converging after %d steps! RES=%e > %.2e\n",
+			  prop->n,n,sqrt(eps/eps0),prop->qepsilon);
+    else printf("Time step %d, CGSolve pressure converged after %d iterations, res=%e < %.2e\n",
+		prop->n,n,sqrt(eps/eps0),prop->qepsilon);
 
   // Rescale the preconditioned solution 
-  if(prop->qprecond) {
+  if(prop->qprecond==1) {
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
       
@@ -2603,11 +2659,11 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
     if(sqrt(eps/eps0)<prop->epsilon) 
       break;
   }
-
-  if(n==niters && myproc==0 && WARNING) 
-    printf("Warning... Time step %d, Iteration not converging after %d steps! RES=%e\n",prop->n,n,sqrt(eps/eps0));
-  else
-    if(VERBOSE>2 && myproc==0) printf("Time step %d, CGSolve converged after %d iterations, res=%e\n",prop->n,n,sqrt(eps/eps0));
+  if(myproc==0 && VERBOSE>2) 
+    if(n==niters)  printf("Warning... Time step %d, Free-surface iteration not converging after %d steps! RES=%e > %.2e\n",
+			  prop->n,n,sqrt(eps/eps0),prop->epsilon);
+    else printf("Time step %d, CGSolve surface converged after %d iterations, res=%e < %.2e\n",
+		prop->n,n,sqrt(eps/eps0),prop->epsilon);
 
   ISendRecvCellData2D(x,grid,myproc,comm);
   SunFree(z,grid->Nc*sizeof(REAL),"CGSolve");
@@ -2755,7 +2811,7 @@ static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid, phys
 
   int i, iptr, k, kmin, nf, nc, ne;
 
-  if(prop->qprecond) 
+  if(prop->qprecond==1) 
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
       
@@ -2778,8 +2834,8 @@ static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid, phys
 	}
     }
   else
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i = grid->cellp[iptr];
+    for(i=0;i<grid->Nc;i++) {//iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      //      i = grid->cellp[iptr];
       
       coef[i][grid->ctop[i]]=grid->Ac[i]/grid->dzz[i][grid->ctop[i]];
       for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
@@ -2871,6 +2927,57 @@ static void GuessQ(REAL **q, REAL **wold, REAL **w, gridT *grid, physT *phys, pr
 }
 
 /*
+ * Function: Preconditioner
+ * Usage: Preconditioner(x,xc,coef,grid,phys,prop);
+ * ------------------------------------------------
+ * Multiply the vector x by the inverse of the preconditioner M with
+ * xc = M^{-1} x
+ *
+ */
+static void Preconditioner(REAL **x, REAL **xc, REAL **coef, gridT *grid, physT *phys, propT *prop) {
+  int i, iptr, k, nf, ne, nc, kmin;
+  REAL *a = phys->a, *b = phys->b, *c = phys->c, *d = phys->d;
+
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i=grid->cellp[iptr];
+
+    if(grid->ctop[i]<grid->Nk[i]-1) {
+      for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++) {
+	a[k]=coef[i][k];
+	b[k]=-coef[i][k]-coef[i][k+1];
+	c[k]=coef[i][k+1];
+	d[k]=x[i][k];
+      }
+
+      // Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
+      k=grid->ctop[i];
+      b[k]=-2*coef[i][k]-coef[i][k+1];
+      c[k]=coef[i][k+1];
+      d[k]=x[i][k];
+      
+      // Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
+      k=grid->Nk[i]-1;
+      a[k]=coef[i][k];
+      b[k]=-coef[i][k];
+      d[k]=x[i][k];
+
+      TriSolve(&(a[grid->ctop[i]]),&(b[grid->ctop[i]]),&(c[grid->ctop[i]]),
+      	       &(d[grid->ctop[i]]),&(xc[i][grid->ctop[i]]),grid->Nk[i]-grid->ctop[i]);
+      //      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+      //	xc[i][k]=x[i][k];
+
+      /*
+      if(i==1) {
+	printf("i = 1\n");
+	for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++) 
+	  printf("%f %f %f %f %f\n",a[i],b[i],c[i],d[i],xc[i][k]);
+      }
+      */
+    }
+  }
+}
+
+/*
  * Function: ConditionQ
  * Usage: ConditionQ(x,grid,phys,prop,myproc,comm);
  * ------------------------------------------------
@@ -2880,10 +2987,10 @@ static void GuessQ(REAL **q, REAL **wold, REAL **w, gridT *grid, physT *phys, pr
  */
 static void ConditionQ(REAL **x, gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm) {
 
-  int i, iptr, k, ne, nf, nc, kmin, kmax, warn=0;
+  int i, iptr, k, ne, nf, nc, kmin, warn=0;
   REAL *a = phys->a;
 
-  for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
 
       for(k=grid->ctop[i];k<grid->Nk[i];k++) 
@@ -2894,17 +3001,12 @@ static void ConditionQ(REAL **x, gridT *grid, physT *phys, propT *prop, int mypr
 
 	  ne = grid->face[i*NFACES+nf];
 	  
-	  if(grid->Nk[nc]<grid->Nk[i])
-	    kmax = grid->Nk[nc];
-	  else
-	    kmax = grid->Nk[i];
-	  
 	  if(grid->ctop[nc]>grid->ctop[i])
 	    kmin = grid->ctop[nc];
 	  else
 	    kmin = grid->ctop[i];
 	  
-	  for(k=kmin;k<kmax;k++) 
+	  for(k=kmin;k<grid->Nke[ne];k++) 
 	    x[i][k]+=grid->dzz[i][k]*phys->D[ne];
 	}
       
@@ -2915,16 +3017,18 @@ static void ConditionQ(REAL **x, gridT *grid, physT *phys, propT *prop, int mypr
       for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++)
 	x[i][k]+=(a[k]+a[k+1]);
 
-      // Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
-      k=grid->ctop[i];
-      x[i][k]+=2*a[k]+a[k+1];
+      if(grid->ctop[i]<grid->Nk[i]-1) {
+	// Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
+	k=grid->ctop[i];
+	x[i][k]+=2*a[k]+a[k+1];
 
-      // Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
-      k=grid->Nk[i]-1;
-      x[i][k]+=a[k];
+	// Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
+	k=grid->Nk[i]-1;
+	x[i][k]+=a[k];
+      }
   }
 
-  for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
 
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -3787,15 +3891,17 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
 
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    if(prop->turbmodel) {
+      for(i=0;i<grid->Nc;i++) 
+	fwrite(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+      for(i=0;i<grid->Nc;i++) 
+	fwrite(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
 
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+      for(i=0;i<grid->Nc;i++) 
+	fwrite(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+      for(i=0;i<grid->Nc;i++) 
+	fwrite(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    }
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
