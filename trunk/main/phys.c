@@ -6,8 +6,44 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.16 2003-05-12 00:06:23 fringer Exp $
+ * $Id: phys.c,v 1.17 2003-06-10 02:30:23 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.16  2003/05/12 00:06:23  fringer
+ * Added ComputeTangentialVelocity(gridT *grid, physT *phys), which
+ * is needed for advection of horizontal velocity (used to be computed
+ * for outputting data only).
+ *
+ * Added ComputeTraceBack, which computes the xd,yd, and zd points of
+ * the Lagrangian traceback.  Right now it is a simple xd=x-u*dt.
+ *
+ * Added FindNearestEdge, which finds the nearest edge as a member of
+ * the nearestedges array.  This reduces the search time required by
+ * a factor of Ne/Nnearestedges, since the entire grid does not have to
+ * be searched.  This was not the origingal intention of the nearestedges
+ * arrays but turned out to work well!
+ *
+ * Added Quadratic, which performs a quadratic interpolation in the
+ * vertical.  As of now, vertical interpolation is performed with
+ * this function to the level of the traceback, and then Kriging
+ * interpolation with linear drift is performed with the Kriging
+ * function.
+ *
+ * Added Kriging.  This function computes the value of the horizontal
+ * normal to a face given the normal components at the other edges
+ * in the nearestedges array.
+ *
+ * Added InterpolateEdge, which computes the traceback, determines i
+ * f it is within the domain, and then interpolates with Kriging.
+ *
+ * FindNearestPlane was added but was not used since the interpolation is
+ * not done using the cells around the traceback point but from the
+ * departure point.
+ *
+ * To do: precompute the kriging matrix and its inverse, and more
+ * accurately compute the vertical interpolation.  Quadratic is very
+ * inaccurate because it does not take into account different vertical
+ * grid spacings at the fs and bottom.
+ *
  * Revision 1.15  2003/05/05 01:27:01  fringer
  * Added AdvectHorizontalVelocity which only sets phys->utmp[i]=0.
  * Changed SendRecvCellData2D to ISendRecvCellData2D (non-blocking send/recv)
@@ -73,6 +109,7 @@
 #include "grid.h"
 #include "util.h"
 #include "initialization.h"
+#include "memory.h"
 
 /*
  * Private Function declarations.
@@ -81,7 +118,8 @@
 static void UpdateDZ(gridT *grid, physT *phys, int option);
 static void BarotropicPredictor(gridT *grid, physT *phys, 
 				propT *prop, int myproc, int numprocs, MPI_Comm comm);
-static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
+static void CGSolve(gridT *grid, physT *phys, propT *prop, 
+		    int myproc, int numprocs, MPI_Comm comm);
 static void UpdateU(gridT *grid, physT *phys, propT *prop);
 static void HydroW(gridT *grid, physT *phys);
 static void WtoVerticalFace(gridT *grid, physT *phys);
@@ -100,92 +138,101 @@ static void ReadProperties(propT **prop, int myproc);
 static void OpenFiles(propT *prop, int myproc);
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs);
-static void ComputeTangentialVelocity(gridT *grid, physT *phys);
+static void ComputeTangentialVelocity(REAL **u, REAL **ut, gridT *grid);
 static void ComputeTraceBack(REAL x0, REAL y0, REAL z0, 
 			     REAL *xd, REAL *yd, REAL *zd, 
 			     REAL un, REAL ut, 
 			     REAL W, REAL n1, REAL n2, REAL dt);
 static int FindNearestEdge(int j0, REAL xd, REAL yd, REAL zd, gridT *grid, physT *phys);
-static REAL InterpolateEdge(REAL xd, REAL yd, REAL zd,  
-			    int j0, int k0, REAL z0, int jnear, int knear,  
-			    gridT *grid, physT *phys, propT *prop);
+static void InterpolateEdge(REAL *ui, REAL *vi, REAL *wi,
+			    REAL xd, REAL yd, REAL zd,  
+			    int j0, int k0, REAL z0,  
+			    int jnear, int knear, 
+			    gridT *grid, physT *phys, propT *prop, REAL Cab);
 static REAL Quadratic(REAL f1, REAL f2, REAL f3, REAL r);
-static REAL Kriging(REAL *h, REAL *f, gridT *grid, int N);
+static REAL Bilinear(REAL f1, REAL f2, REAL f3, REAL r);
 
-static int FindNearestPlane(REAL zd, REAL *dz, int Nkmax);
-
+static void FindNearestPlane(REAL zd, REAL *dz, REAL *znear, int *knear, int Nkmax);
+static void InitializeKriging(gridT *grid, int pow);
 
 void AllocatePhysicalVariables(gridT *grid, physT **phys)
 {
-  int flag=0, i, j, k, Nc=grid->Nc, Ne=grid->Ne;
+  int flag=0, ci, i, j, k, Nc=grid->Nc, Ne=grid->Ne;
 
-  *phys = (physT *)malloc(sizeof(physT));
+  *phys = (physT *)SunMalloc(sizeof(physT),"AllocatePhysicalVariables");
 
-  (*phys)->u = (REAL **)malloc(Ne*sizeof(REAL *));
-  (*phys)->D = (REAL *)malloc(Ne*sizeof(REAL));
-  (*phys)->utmp = (REAL **)malloc(Ne*sizeof(REAL *));
-  (*phys)->ut = (REAL **)malloc(Ne*sizeof(REAL *));
-  (*phys)->wf = (REAL **)malloc(Ne*sizeof(REAL *));
+  (*phys)->u = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->D = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->utmp = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->ut = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Cn = (REAL ***)SunMalloc(3*sizeof(REAL **),"AllocatePhysicalVariables");
+  for(ci=0;ci<3;ci++)
+    (*phys)->Cn[ci] = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->wf = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
 
   for(j=0;j<Ne;j++) {
     if(grid->Nkc[j]<grid->Nke[j]) {
       printf("Error!  Nkc(=%d)<Nke(=%d) at edge %d\n",grid->Nkc[j],grid->Nke[j],j);
       flag = 1;
     }
-    (*phys)->u[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
-    (*phys)->utmp[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
-    (*phys)->ut[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
-    (*phys)->wf[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
+    (*phys)->u[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->utmp[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->ut[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    for(ci=0;ci<3;ci++)
+      (*phys)->Cn[ci][j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->wf[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
   }
   if(flag) {
     MPI_Finalize();
     exit(0);
   }
 
-  (*phys)->h = (REAL *)malloc(Nc*sizeof(REAL));
-  (*phys)->hold = (REAL *)malloc(Nc*sizeof(REAL));
-  (*phys)->htmp = (REAL *)malloc(Nc*sizeof(REAL));
+  (*phys)->h = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->hold = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->htmp = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   
-  (*phys)->w = (REAL **)malloc(Nc*sizeof(REAL *));
-  (*phys)->wtmp = (REAL **)malloc(Nc*sizeof(REAL *));
-  (*phys)->q = (REAL **)malloc(Nc*sizeof(REAL *));
-  (*phys)->s = (REAL **)malloc(Nc*sizeof(REAL *));
-  (*phys)->s0 = (REAL **)malloc(Nc*sizeof(REAL *));
-  (*phys)->stmp = (REAL **)malloc(Nc*sizeof(REAL *));
-  (*phys)->nu_tv = (REAL **)malloc(Nc*sizeof(REAL *));
-  (*phys)->tau_T = (REAL *)malloc(Ne*sizeof(REAL));
-  (*phys)->tau_B = (REAL *)malloc(Ne*sizeof(REAL));
-  (*phys)->CdT = (REAL *)malloc(Ne*sizeof(REAL));
-  (*phys)->CdB = (REAL *)malloc(Ne*sizeof(REAL));
+  (*phys)->w = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->wtmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->s = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->s0 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->stmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->nu_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->tau_T = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->tau_B = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->CdT = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->CdB = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   
   for(i=0;i<Nc;i++) {
-    (*phys)->w[i] = (REAL *)malloc((grid->Nk[i]+1)*sizeof(REAL));
-    (*phys)->wtmp[i] = (REAL *)malloc((grid->Nk[i]+1)*sizeof(REAL));
-    (*phys)->q[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
-    (*phys)->s[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
-    (*phys)->s0[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
-    (*phys)->stmp[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
-    (*phys)->nu_tv[i] = (REAL *)malloc(grid->Nk[i]*sizeof(REAL));
+    (*phys)->w[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->wtmp[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->s[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->s0[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->stmp[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->nu_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
   }
 
-  (*phys)->ap = (REAL *)malloc((grid->Nkmax+1)*sizeof(REAL));
-  (*phys)->am = (REAL *)malloc((grid->Nkmax+1)*sizeof(REAL));
-  (*phys)->bp = (REAL *)malloc((grid->Nkmax+1)*sizeof(REAL));
-  (*phys)->bm = (REAL *)malloc((grid->Nkmax+1)*sizeof(REAL));
-  (*phys)->a = (REAL *)malloc((grid->Nkmax+1)*sizeof(REAL));
-  (*phys)->b = (REAL *)malloc((grid->Nkmax+1)*sizeof(REAL));
-  (*phys)->c = (REAL *)malloc((grid->Nkmax+1)*sizeof(REAL));
-  (*phys)->d = (REAL *)malloc((grid->Nkmax+1)*sizeof(REAL));
+  (*phys)->ap = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->am = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->bp = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->bm = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->a = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->b = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->c = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->d = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
 }
 
 void FreePhysicalVariables(gridT *grid, physT *phys)
 {
-  int i, j, k, Nc=grid->Nc, Ne=grid->Ne;
+  int i, j, k, ci, Nc=grid->Nc, Ne=grid->Ne;
   
   for(j=0;j<Ne;j++) {
     free(phys->u[j]);
     free(phys->utmp[j]);
     free(phys->ut[j]);
+    for(ci=0;ci<3;ci++)
+      free(phys->Cn[ci][j]);
     free(phys->wf[j]);
   }
 
@@ -217,6 +264,9 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   free(phys->D);
   free(phys->utmp);
   free(phys->ut);
+  for(ci=0;ci<3;ci++)
+    free(phys->Cn[ci]);
+  free(phys->Cn);
 
   free(phys->ap);
   free(phys->am);
@@ -265,9 +315,12 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
     }
   }
 
-  for(j=0;j<grid->Ne;j++)
+  for(j=0;j<grid->Ne;j++) {
     for(k=0;k<grid->Nkc[j];k++) 
       phys->u[j][k]=0;
+    for(k=0;k<grid->Nke[j];k++)
+      phys->wf[j][k]=0;
+  }
 
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
@@ -301,12 +354,12 @@ void InitializeVerticalGrid(gridT **grid)
 {
   int i, k, Nc=(*grid)->Nc;
 
-  (*grid)->dzz = (REAL **)malloc(Nc*sizeof(REAL *));
-  (*grid)->dzzold = (REAL **)malloc(Nc*sizeof(REAL *));
+  (*grid)->dzz = (REAL **)SunMalloc(Nc*sizeof(REAL *),"InitializeVerticalGrid");
+  (*grid)->dzzold = (REAL **)SunMalloc(Nc*sizeof(REAL *),"InitializeVerticalGrid");
 
   for(i=0;i<Nc;i++) {
-    (*grid)->dzz[i]=(REAL *)malloc(((*grid)->Nk[i])*sizeof(REAL));
-    (*grid)->dzzold[i]=(REAL *)malloc(((*grid)->Nk[i])*sizeof(REAL));
+    (*grid)->dzz[i]=(REAL *)SunMalloc(((*grid)->Nk[i])*sizeof(REAL),"InitializeVerticalGrid");
+    (*grid)->dzzold[i]=(REAL *)SunMalloc(((*grid)->Nk[i])*sizeof(REAL),"InitializeVerticalGrid");
     for(k=0;k<(*grid)->Nk[i];k++) {
       (*grid)->dzz[i][k]=(*grid)->dz[k];  
       (*grid)->dzzold[i][k]=(*grid)->dz[k];  
@@ -433,7 +486,9 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
 void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 {
   int i, j, k, n;
+  extern int TotSpace;
   propT *prop;
+  //  FILE *fid;// = fopen("../../data/hleft.dat","w");
 
   ReadProperties(&prop,myproc);
   OpenFiles(prop,myproc);
@@ -441,10 +496,16 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
   prop->n=0;
   ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
 
+  if(prop->nonlinear) {
+    if(VERBOSE>1) printf("Initializing the covariance matrix for Kriging...\n");
+    InitializeKriging(grid,prop->kriging_cov);
+  }
+
+  if(VERBOSE>1) printf("Processor %d,  Total memory: %d bytes\n",myproc,TotSpace);
+
   for(n=1;n<=prop->nsteps;n++) {
     prop->n = n;
     prop->rtime = (n-1)*prop->dt;
-
     if(prop->nsteps>0) {
 
       EddyViscosity(grid,phys,prop);
@@ -463,7 +524,7 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
       // tracebacks and interpolation for the advection of the horizontal velocity
       // at the faces.
       WtoVerticalFace(grid,phys);
-      ComputeTangentialVelocity(grid,phys);
+      ComputeTangentialVelocity(phys->u,phys->ut,grid);
     }
 
     Progress(prop,myproc);
@@ -484,8 +545,12 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
  */
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs) {
-  int j, jptr, k, nc1, nc2, jnear, knear;
-  REAL x0, y0, z0, xd, yd, zd, h0, dv0, utmp;
+  int j, jptr, k, nc1, nc2, jnear, knear, n, numiters=1;
+  REAL x0, y0, z0, xd, yd, zd, zd0, h0, dv0, *ustar, *vstar, *wstar, Cab;
+
+  ustar = phys->a;
+  vstar = phys->b;
+  wstar = phys->c;
 
   // Set utmp to zero for all Nke.
   for(j=0;j<grid->Ne;j++) {
@@ -493,101 +558,190 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       phys->utmp[j][k]=0;
   }
 
-  // Interpolate the u.  Since etop[j] may contain newly-wetted
-  // edges this is okay since the velocity field is interpolated
-  // from the previous time step.
+  // Set utmp=u if this is a linear calculation.
+  if(!prop->nonlinear) {
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr];
+      
+      for(k=grid->etop[j];k<grid->Nke[j];k++)
+	phys->utmp[j][k]=phys->u[j][k];
+    }
+  } else {    
+    // Interpolate the u.  Since etop[j] may contain newly-wetted
+    // edges this is okay since the velocity field is interpolated
+    // from the previous time step.
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr];
+      
+      nc1 = grid->grad[2*j];
+      nc2 = grid->grad[2*j+1];
+      
+      if(nc1==-1 || nc2==-1) { 
+	printf("Error!  Trying to compute advection on a boundary edge!\n");
+	exit(1);
+      }
+      
+      // Assume face center is half-way between voronoi points.
+      h0 = 0.5*(phys->h[nc1]+phys->h[nc2]);
+      dv0 = 0.5*(grid->dv[nc1]+grid->dv[nc2]);
+      x0 = 0.5*(grid->xv[nc1]+grid->xv[nc2]);
+      y0 = 0.5*(grid->yv[nc1]+grid->yv[nc2]);
+      
+      for(k=0;k<grid->etop[j];k++)
+	phys->utmp[j][k]=0;
+      
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	ustar[k]=phys->u[j][k]*grid->n1[j]-phys->ut[j][k]*grid->n2[j];
+	vstar[k]=phys->u[j][k]*grid->n2[j]+phys->ut[j][k]*grid->n1[j];
+	wstar[k]=phys->wf[j][k];
+      }
+
+      for(n=0;n<numiters;n++) {
+	z0 = h0;
+	if(n==numiters-1)
+	  Cab=0;
+	else
+	  Cab=0.5;
+
+	for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	  z0-=0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	  
+	  xd=x0-prop->dt*ustar[k];
+	  yd=y0-prop->dt*vstar[k];
+	  zd=z0-prop->dt*wstar[k];
+
+	  if(FindNearestEdge(j,xd,yd,zd,grid,phys)>=0) {
+	    FindNearestPlane(zd,grid->dz,&zd0,&knear,grid->Nkmax);
+	    InterpolateEdge(&(ustar[k]),&(vstar[k]),&(wstar[k]),
+			    xd,yd,zd,j,k,zd0,j,knear,grid,phys,prop,Cab);
+	  } else {
+	    ustar[k]=0;
+	    vstar[k]=0;
+	    wstar[k]=0;
+	  } 
+
+	  z0-=0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	}
+      }
+
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+	phys->utmp[j][k]=ustar[k]*grid->n1[j]+vstar[k]*grid->n2[j];
+    }
+  }
+
+  // Hold on to the current velocity field to create V* using Adams-Bashforth.
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
-
-    nc1 = grid->grad[2*j];
-    nc2 = grid->grad[2*j+1];
-
-    if(nc1==-1 || nc2==-1) { 
-      printf("Error!  Trying to compute advection on a boundary edge!\n");
-      exit(1);
+      
+    for(k=0;k<grid->etop[j];k++) {
+      phys->Cn[0][j][k]=0;
+      phys->Cn[1][j][k]=0;
+      phys->Cn[2][j][k]=0;
     }
-
-    // Assume face center is half-way between voronoi points.
-    h0 = 0.5*(phys->h[nc1]+phys->h[nc2]);
-    dv0 = 0.5*(grid->dv[nc1]+grid->dv[nc2]);
-    x0 = 0.5*(grid->xv[nc1]+grid->xv[nc2]);
-    y0 = 0.5*(grid->yv[nc1]+grid->yv[nc2]);
-    z0 = h0;
-
-    for(k=0;k<grid->etop[j];k++)
-      phys->utmp[j][k]=0;
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      z0-=0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
-
-      ComputeTraceBack(x0,y0,z0,&xd,&yd,&zd,phys->u[j][k],
-		       phys->ut[j][k],phys->wf[j][k],
-		       grid->n1[j],grid->n2[j],prop->dt);
-
-      if(prop->nonlinear) {
-	if((jnear=FindNearestEdge(j,xd,yd,zd,grid,phys))>=0) {
-	  //	if(jnear=j>=0) {
-	  //knear = FindNearestPlane(zd,grid->dz,grid->Nkmax);
-	  jnear = j;
-	  knear = k;
-	  //	  utmp=phys->u[j][k];
-	  phys->utmp[j][k]=InterpolateEdge(xd,yd,zd,j,k,z0,jnear,knear,grid,phys,prop);
-	  //	  if(prop->n==100 && k==3)
-	  //	    printf("%f %f %f %f %f %f\n",grid->xe[j],grid->ye[j],utmp,
-	  //		   xd,yd,phys->utmp[j][k]);
-	} else {
-	  phys->utmp[j][k]=0;
-	}
-      } else 
-	phys->utmp[j][k]=phys->u[j][k];
+      phys->Cn[0][j][k]=phys->u[j][k];
+      phys->Cn[1][j][k]=phys->ut[j][k];
+      phys->Cn[2][j][k]=phys->wf[j][k];
     }
   }
 }
 
-static REAL InterpolateEdge(REAL xd, REAL yd, REAL zd,  
-			    int j0, int k0, REAL z0, int jnear, int knear,  
-			    gridT *grid, physT *phys, propT *prop) {
-  int n, j, k, je, nk, status;
-  REAL U, V, un[3], ui, 
-    *uf = (REAL *)malloc(grid->Nnearestedges*sizeof(REAL)), 
-    *x = (REAL *)malloc(grid->Nnearestedges*sizeof(REAL)), 
-    *y = (REAL *)malloc(grid->Nnearestedges*sizeof(REAL));
+static void InterpolateEdge(REAL *ui, REAL *vi, REAL *wi,
+			    REAL xd, REAL yd, REAL zd,  
+			    int j0, int k0, REAL z0,  
+			    int jnear, int knear, 
+			    gridT *grid, physT *phys, propT *prop, REAL Cab) {
+  int ci, n, j, k, je, nk, status, nc1, nc2, sign;
+  REAL U, V, un1, un2, dz,  *x, *y, **uf, us[3];
 
-  // U is the x component of velocity at the face
-  // V is the y component of velocity at the face.
-  // U^2 + V^2 = un^2 + ut^2
-  if(knear==grid->etop[jnear]) 
-    nk=-2;
-  else if(knear==grid->Nke[jnear]-1)
-    nk=2;
-  else
+  uf = (REAL **)SunMalloc(3*sizeof(REAL *),"InterpolateEdge");
+  for(ci=0;ci<3;ci++)
+    uf[ci]=(REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InterpolateEdge");
+
+  x = (REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InterpolateEdge");
+  y = (REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InterpolateEdge");
+
+  if(zd<z0) {
+    nk=1;
+    sign=-1;
+  } else {
     nk=-1;
+    sign=1;
+  }
 
-  for(n=0;n<grid->Nnearestedges;n++) {
-    je = grid->nearestedges[jnear][n];
-    for(k=0;k<3;k++) {
-      U=phys->u[je][knear+(k-nk)]*grid->n1[je];-phys->ut[je][knear+(k-nk)]*grid->n2[je];
-      V=phys->u[je][knear+(k-nk)]*grid->n2[je];+phys->ut[je][knear+(k-nk)]*grid->n1[je];
-      un[k]=U*grid->n1[j0]+V*grid->n2[j0];
+  if(knear==grid->etop[j0])
+    if(zd<=z0) 
+      nk=1;
+    else
+      nk=0;
+  else if(knear==grid->Nke[j0]-1)
+    if(zd>=z0) 
+      nk=-1;
+    else
+      nk=0;
+
+  if(grid->etop[j0]==grid->Nke[j0]-1)
+    nk=0;
+
+  for(ci=0;ci<3;ci++) 
+    for(n=0;n<grid->Nnearestedges;n++) {
+      je = grid->nearestedges[j0][n];
+      
+      nc1=grid->grad[2*je];
+      nc2=grid->grad[2*je+1];
+      if(nc1==-1) nc1=nc2;
+      if(nc2==-1) nc2=nc1;
+      
+      dz = 0.25*(grid->dzz[nc1][knear]+grid->dzz[nc2][knear]+
+		 grid->dzz[nc1][knear+nk]+grid->dzz[nc2][knear+nk]);
+      
+      if(ci==0) {
+	un1=(1+Cab)*(phys->u[je][knear]*grid->n1[je]-phys->ut[je][knear]*grid->n2[je])-
+	  Cab*(phys->Cn[0][je][knear]*grid->n1[je]-phys->Cn[1][je][knear]*grid->n2[je]);
+	un2=(1+Cab)*(phys->u[je][knear+nk]*grid->n1[je]-phys->ut[je][knear+nk]*grid->n2[je])-
+	  Cab*(phys->Cn[0][je][knear+nk]*grid->n1[je]-phys->Cn[1][je][knear+nk]*grid->n2[je]);
+      } else if(ci==1) {
+	un1=(1+Cab)*(phys->u[je][knear]*grid->n2[je]+phys->ut[je][knear]*grid->n1[je])-
+	  Cab*(phys->Cn[0][je][knear]*grid->n2[je]+phys->Cn[1][je][knear]*grid->n1[je]);
+	un2=(1+Cab)*(phys->u[je][knear+nk]*grid->n2[je]+phys->ut[je][knear+nk]*grid->n1[je])-
+	  Cab*(phys->Cn[0][je][knear+nk]*grid->n2[je]+phys->Cn[1][je][knear+nk]*grid->n1[je]);
+      } else {
+	un1=(1+Cab)*phys->wf[je][knear]-Cab*phys->Cn[2][je][knear];
+	un2=(1+Cab)*phys->wf[je][knear+nk]-Cab*phys->Cn[2][je][knear+nk];
+      }
+      
+      // If dz=0 this means that the interpolation is being performed in
+      // a dry zone, so set uf[n]=un1 if this is so.
+      if(dz==0)
+	uf[ci][n] = un1;
+      else 
+	uf[ci][n] = un1 + sign*(zd-z0)*(un2-un1)/dz;
     }
-    uf[n] = Quadratic(un[0],un[1],un[2],(zd-z0)/grid->dz[knear]);
+  
+  for(n=0;n<grid->Nnearestedges;n++) {
+    je = grid->nearestedges[j0][n];
     x[n] = grid->xe[je];
     y[n] = grid->ye[je];
   }
 
+  kriging(xd,yd,us,x,y,uf,3,prop->kriging_cov,grid->Nnearestedges,grid->Kriging[j0]);
 
-  kriging(xd,yd,&ui,x,y,uf,prop->kriging_cov,grid->Nnearestedges,&status);
-
-  //  if(prop->n==100)
-    //  printf("Interp from (%e,%e,%e) %.2f\n",
-    //	 grid->xe[j0]-xd,grid->ye[j0]-yd,z0-zd,phys->u[j0][k0]/ui);
+  *ui=us[0];
+  *vi=us[1];
+  *wi=us[2];
 
   free(x);
   free(y);
+  free(uf[0]);
+  free(uf[1]);
+  free(uf[2]);
   free(uf);
-
-  return ui;
 }
-    
+ 
+static REAL Bilinear(REAL f1, REAL f2, REAL f3, REAL r) {
+  return f2 + 0.5*(r*(f1-f2) + r*(f3-f2));
+}
+   
 static REAL Quadratic(REAL f1, REAL f2, REAL f3, REAL r) {
   return f1 + 0.5*r*(f3-f2) + 0.5*pow(r,2)*(f3-2*f2+f1);
 }
@@ -657,14 +811,23 @@ static int FindNearestEdge(int j0, REAL xd, REAL yd, REAL zd, gridT *grid, physT
   return jnearest;
 }
 
-static int FindNearestPlane(REAL zd, REAL *dz, int Nkmax) {
+static void FindNearestPlane(REAL zd, REAL *dz, REAL *znear, int *knear, int Nkmax) {
   int k;
   REAL ztop=0, zbot=-dz[0];
-
-  for(k=0;k<Nkmax-1;k++) 
-    if(zd<(ztop-=dz[k]) && zd>(zbot-=dz[k+1]))
-      return k;
-  return k;
+  
+  *knear=0;
+  *znear=0.5*(zbot+ztop);
+  for(k=0;k<Nkmax;k++) {
+    if(zd<ztop && zd>zbot) {
+      *knear=k;
+      *znear=0.5*(zbot+ztop);
+      break;
+    }
+    if(k<Nkmax-1) {
+      ztop=zbot;
+      zbot-=dz[k+1];
+    }
+  }
 }
 
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
@@ -739,7 +902,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   // First create U**.  This is where the semi-Lagrangian formulation is added
   // This is commented out since the ELM scheme is interpolated in 
   // AdvectHorizontalVelocity.
-  /*  
+  /*
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
@@ -943,8 +1106,11 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   }
 
   for(j=0;j<grid->Ne;j++) 
-    for(k=grid->etop[j];k<grid->Nke[j];k++)
-      if(phys->utmp[j][k]!=phys->utmp[j][k]) printf("Error at %d %d (U***=nan)\n",j,k);
+    for(k=grid->etop[j];k<grid->Nke[j];k++) 
+      if(phys->utmp[j][k]!=phys->utmp[j][k]) {
+	printf("Error at %d %d (U***=nan)\n",j,k);
+	exit(1);
+      }
 
   // So far we have U*** and D.  Now we need to create h* in htmp.   This
   // will comprise the source term for the free-surface solver.
@@ -1052,7 +1218,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 {
   int i, j, iptr, nf, ne, nc1, nc2, n, niters, *N, Nc=grid->Nc, *counts, count;
   REAL *h, *hold, *D, *hsrc, myresid, resid, residold, val, tmp, **M, relax, myNsrc, Nsrc, coef;
-  FILE *fid=fopen("../../data/cg.m","w");
+  //  FILE *fid=fopen("../../data/cg.m","w");
 
   h = phys->h;
   hold = phys->hold;
@@ -1063,9 +1229,9 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   tmp = GRAV*pow(prop->thetaFS*prop->dt,2);
 
   /*
-  M = (REAL **)malloc(Nc*sizeof(REAL *));
+  M = (REAL **)SunMalloc(Nc*sizeof(REAL *),"CGSolve");
   for(i=0;i<Nc;i++) {
-    M[i] = (REAL *)malloc(Nc*sizeof(REAL));
+    M[i] = (REAL *)SunMalloc(Nc*sizeof(REAL),"CGSolve");
     for(j=0;j<Nc;j++)
       M[i][j]=0;
   }
@@ -1830,23 +1996,23 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
   }
 }
 
-static void ComputeTangentialVelocity(gridT *grid, physT *phys) {
+static void ComputeTangentialVelocity(REAL **u, REAL **ut, gridT *grid) {
   
   int eneigh, j, k, ne;
   // ut will store the tangential component of velocity on each face
   for(j=0;j<grid->Ne;j++) {
     for(k=0;k<grid->Nke[j];k++) 
-      phys->ut[j][k]=0;
+      ut[j][k]=0;
     for(ne=0;ne<2*(NFACES-1);ne++) {
       eneigh=grid->eneigh[2*(NFACES-1)*j+ne];
       if(eneigh!=-1)
 	for(k=0;k<grid->Nke[j];k++)
-	  phys->ut[j][k] += grid->xi[2*(NFACES-1)*j+ne]*
-	    phys->u[grid->eneigh[2*(NFACES-1)*j+ne]][k];
+	  ut[j][k] += grid->xi[2*(NFACES-1)*j+ne]*
+	    u[grid->eneigh[2*(NFACES-1)*j+ne]][k];
     }
     if(grid->grad[2*j]!=-1 && grid->grad[2*j+1]!=-1)
       for(k=0;k<grid->Nke[j];k++)
-	phys->ut[j][k]*=0.5;
+	ut[j][k]*=0.5;
   }
   
 }
@@ -1855,9 +2021,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, MPI_Comm comm)
 {
   int i, j, k, ne, eneigh, nwritten;
-  REAL *tmp = (REAL *)malloc(grid->Ne*sizeof(REAL));
-  if(tmp==NULL)
-    printf("Out of memory in OutPutData!\n");
+  REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData");
 
   if(!(prop->n%prop->ntconserve)) {
     ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
@@ -1886,6 +2050,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	exit(EXIT_WRITING);
       }
     }
+    fflush(prop->FreeSurfaceFID);
 
     // ut stores the tangential component of velocity on the faces.
     if(ASCII) 
@@ -1934,6 +2099,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	  exit(EXIT_WRITING);
 	}
       }
+    fflush(prop->HorizontalVelocityFID);
 
     if(ASCII)
       for(i=0;i<grid->Nc;i++) {
@@ -1957,7 +2123,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	}
       }
     }
-
+    fflush(prop->VerticalVelocityFID);
 
     if(ASCII) {
       for(i=0;i<grid->Nc;i++) {
@@ -2003,7 +2169,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	  }
 	}
     }
-
+    fflush(prop->SalinityFID);
     
     for(i=0;i<grid->Nc;i++) {
       for(k=0;k<grid->Nk[i];k++)
@@ -2012,6 +2178,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	fprintf(prop->VerticalGridFID,"0.0\n");
     }
   }
+  fflush(prop->VerticalGridFID);
 
   if(prop->n==1)
     fclose(prop->BGSalinityFID);
@@ -2025,12 +2192,12 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     if(myproc==0) fclose(prop->ConserveFID);
   }
 
-  free(tmp);
+  SunFree(tmp,grid->Ne*sizeof(REAL),"OutputData");
 }
 
 static void ReadProperties(propT **prop, int myproc)
 {
-  *prop = (propT *)malloc(sizeof(propT));
+  *prop = (propT *)SunMalloc(sizeof(propT),"ReadProperties");
   
   (*prop)->theta = MPI_GetValue(DATAFILE,"theta","ReadProperties",myproc);
   (*prop)->thetaAB = MPI_GetValue(DATAFILE,"thetaAB","ReadProperties",myproc);
@@ -2104,5 +2271,27 @@ static void Progress(propT *prop, int myproc)
       if(!(prop->n%progout))
 	printf("%d%% Complete.\n",prog);
   }
+}
+
+static void InitializeKriging(gridT *grid, int pow) {
+  int j, jptr, n;
+  REAL *x = (REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
+  REAL *y = (REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
+
+  grid->Kriging = (REAL **)SunMalloc(grid->Ne*sizeof(REAL *),"InitializeKriging");
+
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+    j = grid->edgep[jptr];
+
+    for(n=0;n<grid->Nnearestedges;n++) {
+      x[n] = grid->xe[grid->nearestedges[j][n]];
+      y[n] = grid->ye[grid->nearestedges[j][n]];
+    }
+    
+    grid->Kriging[j]=(REAL *)inversekriging(x,y,pow,grid->Nnearestedges);
+  }
+
+  SunFree(x,grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
+  SunFree(y,grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
 }
 
