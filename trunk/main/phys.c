@@ -6,7 +6,7 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.75 2004-09-13 04:13:25 fringer Exp $
+ * $Id: phys.c,v 1.76 2004-09-15 01:13:11 fringer Exp $
  * $Log: not supported by cvs2svn $
  * Revision 1.74  2004/08/24 22:39:08  fringer
  * Removed Cn[i][k] from the face loop in UpdateScalars for the right hand
@@ -460,8 +460,6 @@ static void OperatorQC(REAL **coef, REAL **fcoef, REAL **x, REAL **y, REAL **c, 
 static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid, physT *phys, propT *prop);
 static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
 static void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop);
-static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
-			  REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta);
 static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
 			  MPI_Comm comm);
 static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
@@ -819,11 +817,15 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     }
   }
   
-
   // Initialize the velocity field 
   for(j=0;j<grid->Ne;j++) {
-    for(k=0;k<grid->Nkc[j];k++) 
-      phys->u[j][k]=0;
+    z = 0;
+    for(k=0;k<grid->Nkc[j];k++) {
+      z-=grid->dz[k]/2;
+      if(z<-5) phys->u[j][k]=0.0*grid->n1[j];
+      else phys->u[j][k]=0.0*grid->n1[j];
+      z-=grid->dz[k]/2;
+    }
     for(k=0;k<grid->Nke[j];k++)
       phys->wf[j][k]=0;
   }
@@ -841,6 +843,14 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
       if(phys->s[i][k]<phys->smin) phys->smin=phys->s[i][k];      
       if(phys->s[i][k]>phys->smax) phys->smax=phys->s[i][k];      
     }
+
+  // Initialize the eddy-viscosity and scalar diffusivity
+  for(i=0;i<grid->Nc;i++) {
+    for(k=0;k<grid->Nk[i];k++) {
+      phys->nu_tv[i][k]=0;
+      phys->kappa_tv[i][k]=0;
+    }
+  }
 }
 
 /*
@@ -1010,9 +1020,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	prop->theta=(1-exp(-prop->rtime/prop->thetaramptime))*prop->theta0+
 	  exp(-prop->rtime/prop->thetaramptime);
 
-      // Compute the eddy viscosity
-      EddyViscosity(grid,phys,prop);
-
       // Store the old velocity and scalar fields
       StoreVariables(grid,phys);
 
@@ -1070,17 +1077,22 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       Continuity(phys->w,grid,phys,prop);
       ISendRecvWData(phys->w,grid,myproc,comm);
 
+      // Compute the eddy viscosity
+      EddyViscosity(grid,phys,prop);
+
       // Update the salinity only if beta is nonzero in suntans.dat
       if(prop->beta) {
 	SetBoundaryScalars(phys->boundary_s,grid,phys,prop,"salt");
-	UpdateScalars(grid,phys,prop,phys->s,phys->boundary_s,phys->Cn_R,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->thetaS);
+	UpdateScalars(grid,phys,prop,phys->s,NULL,phys->Cn_R,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->thetaS,
+		      NULL,NULL,NULL,NULL,0,0);
 	ISendRecvCellData3D(phys->s,grid,myproc,comm);
       }
 
       // Update the temperature only if gamma is nonzero in suntans.dat
       if(prop->gamma) {
 	SetBoundaryScalars(phys->boundary_T,grid,phys,prop,"temperature");
-	UpdateScalars(grid,phys,prop,phys->T,phys->boundary_T,phys->Cn_T,prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->thetaS);
+	UpdateScalars(grid,phys,prop,phys->T,NULL,phys->Cn_T,prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->thetaS,
+		      NULL,NULL,NULL,NULL,0,0);
 	ISendRecvCellData3D(phys->T,grid,myproc,comm);
       }
 
@@ -2011,10 +2023,9 @@ static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
     
     phys->tau_T[j]=grid->n1[j]*prop->tau_T;
     phys->tau_B[j]=0;
-    phys->CdT[j]=prop->CdT;
-    phys->CdB[j]=prop->CdB;
   }
-  my25(grid,phys,prop,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv);
+  if(prop->turbmodel) 
+    my25(grid,phys,prop,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv);
 }
 
 /*
@@ -2874,18 +2885,13 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
  * kappa_tv denotes the vertical turbulent scalar diffusivity
  *
  */
-static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
-			  REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta) 
+void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
+		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
+		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot) 
 {
   int i, iptr, j, jptr, ib, k, nf, ktop;
   int Nc=grid->Nc, normal, nc1, nc2, ne;
   REAL df, dg, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, *bd, dznew, mass;
-  REAL Ftop,Fbot,alpha_bot,alpha_top;
-
-  Ftop=0;
-  Fbot=0;
-  alpha_top=0;  // 0=Neumann (Flux), 1=Dirichlet (Value)
-  alpha_bot=0;  
 
   ap = phys->ap;
   am = phys->am;
@@ -2916,22 +2922,23 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
     for(k=grid->ctop[i];k<grid->Nk[i];k++)
       phys->stmp2[i][k]=0;
   }
-  /*
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-    j = grid->edgep[jptr];
-    
-    ib = grid->grad[2*j];
-    
-    if(grid->n1[j]>0) {
-      // First take off the no-gradient term which is added on below
-      for(k=grid->ctop[ib];k<grid->Nk[ib];k++)
-	phys->stmp2[ib][k]-=dt/grid->Ac[ib]*phys->utmp[j][k]*phys->stmp[ib][k]*grid->df[j];
-      // Now add on the flux term 
-      for(k=grid->ctop[ib];k<grid->Nk[ib];k++)
-	phys->stmp2[ib][k]+=dt/grid->Ac[ib]*phys->utmp[j][k]*grid->df[j]*boundary_scal[jptr-grid->edgedist[2]][k];
+
+  if(boundary_scal) {
+    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+      j = grid->edgep[jptr];
+      
+      ib = grid->grad[2*j];
+      
+      if(grid->n1[j]>0) {
+	// First take off the no-gradient term which is added on below
+	for(k=grid->ctop[ib];k<grid->Nk[ib];k++)
+	  phys->stmp2[ib][k]-=dt/grid->Ac[ib]*phys->utmp[j][k]*phys->stmp[ib][k]*grid->df[j];
+	// Now add on the flux term 
+	for(k=grid->ctop[ib];k<grid->Nk[ib];k++)
+	  phys->stmp2[ib][k]+=dt/grid->Ac[ib]*phys->utmp[j][k]*grid->df[j]*boundary_scal[jptr-grid->edgedist[2]][k];
+      }
     }
   }
-  */
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -2977,6 +2984,9 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
       b[k-ktop]+=theta*dt*(bd[k]+bd[k+1]);
       c[k-ktop]-=theta*dt*bd[k+1];
     }
+    if(src1)
+      for(k=ktop;k<grid->Nk[i];k++)
+	b[k-ktop]+=grid->dzz[i][k]*src1[i][k]*theta*dt;
 
     // Diffusive fluxes only when more than 1 layer
     if(ktop<grid->Nk[i]-1) {
@@ -2992,13 +3002,22 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
     // Explicit part into source term d[] 
     for(k=ktop+1;k<grid->Nk[i];k++) 
       d[k-ktop]=grid->dzzold[i][k]*phys->stmp[i][k];
+    if(src1)
+      for(k=ktop+1;k<grid->Nk[i];k++) 
+	d[k-ktop]-=src1[i][k]*(1-theta)*dt*grid->dzzold[i][k]*phys->stmp[i][k];
 
     d[0]=0;
-    if(grid->ctopold[i]<=grid->ctop[i])
+    if(grid->ctopold[i]<=grid->ctop[i]) {
       for(k=grid->ctopold[i];k<=grid->ctop[i];k++)
 	d[0]+=grid->dzzold[i][k]*phys->stmp[i][k];
-    else
+      if(src1)
+	for(k=grid->ctopold[i];k<=grid->ctop[i];k++)
+	  d[0]-=src1[i][k]*(1-theta)*dt*grid->dzzold[i][k]*phys->stmp[i][k];
+    } else {
       d[0]=grid->dzzold[i][ktop]*phys->stmp[i][ktop];
+      if(src1)
+	d[0]-=src1[i][ktop]*(1-theta)*dt*grid->dzzold[i][ktop]*phys->stmp[i][k];
+    }
 
     // These are the advective components of the tridiagonal
     // that use the new velocity
@@ -3020,16 +3039,18 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
       //Flux through bottom of top cell
       k=ktop;
       d[0]=d[0]-(1-theta)*dt*(-am[k+1]*phys->stmp[i][k]-
-			      ap[k+1]*phys->stmp[i][k+1])+
+			   ap[k+1]*phys->stmp[i][k+1])-
 	(1-theta)*dt*(-(2*alpha_top*bd[k+1]+bd[k+1])*phys->stmp[i][k]+
-		      bd[k+1]*phys->stmp[i][k+1])+dt*(1-alpha_top+2*alpha_top*bd[k+1])*Ftop;
+		      bd[k+1]*phys->stmp[i][k+1]);
+      if(Ftop) d[0]+=dt*(1-alpha_top+2*alpha_top*bd[k+1])*Ftop[i];
 
       // Through top of bottom cell
       k=grid->Nk[i]-1;
-      d[k-ktop]=d[k-ktop]-(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
-					ap[k]*phys->stmp[i][k])+
+      d[k-ktop]-=(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
+			       ap[k]*phys->stmp[i][k])+
 	(1-theta)*dt*(bd[k]*phys->stmp[i][k-1]-
-		      (bd[k]+2*alpha_bot*bd[k])*phys->stmp[i][k])+dt*(-1+alpha_bot+2*alpha_bot*bd[k])*Fbot;
+		      (bd[k]+2*alpha_bot*bd[k])*phys->stmp[i][k]);
+      if(Fbot) d[k-ktop]+=dt*(-1+alpha_bot+2*alpha_bot*bd[k])*Fbot[i];
     }
 
     // First add on the source term from the previous time step.
@@ -3047,8 +3068,13 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
 
     for(k=0;k<grid->ctop[i];k++)
       Cn[i][k]=0;
-    for(k=grid->ctop[i];k<grid->Nk[i];k++)
-      Cn[i][k]=phys->stmp2[i][k];
+
+    if(src2)
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+	Cn[i][k]=phys->stmp2[i][k]+dt*src2[i][k]*grid->dzzold[i][k];
+    else
+      for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	Cn[i][k]=phys->stmp2[i][k];
 
     // Now create the source term for the current time step
     for(k=0;k<grid->Nk[i];k++)
@@ -3640,6 +3666,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->CdT = MPI_GetValue(DATAFILE,"CdT","ReadProperties",myproc);
   (*prop)->CdB = MPI_GetValue(DATAFILE,"CdB","ReadProperties",myproc);
   (*prop)->CdW = MPI_GetValue(DATAFILE,"CdW","ReadProperties",myproc);
+  (*prop)->turbmodel = (int)MPI_GetValue(DATAFILE,"turbmodel","ReadProperties",myproc);
   (*prop)->dt = MPI_GetValue(DATAFILE,"dt","ReadProperties",myproc);
   (*prop)->Cmax = MPI_GetValue(DATAFILE,"Cmax","ReadProperties",myproc);
   (*prop)->nsteps = (int)MPI_GetValue(DATAFILE,"nsteps","ReadProperties",myproc);
