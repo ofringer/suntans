@@ -1,8 +1,11 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.3 2003-04-21 20:26:35 fringer Exp $
+ * $Id: grid.h,v 1.4 2003-04-29 00:21:25 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2003/04/21 20:26:35  fringer
+ * Working version before addition of ghost cells for kriging.
+ *
  * Revision 1.2  2002/11/05 01:31:17  fringer
  * Added baroclinic term
  *
@@ -14,7 +17,7 @@
 #ifndef _grid_h
 #define _grid_h
 
-#include <parmetis.h>
+#include "parmetis.h"
 #include "suntans.h"
 #include "fileio.h"
 #include "mympi.h"
@@ -116,12 +119,13 @@ void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, MPI_Comm comm);
 void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, MPI_Comm comm);
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
 void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
-void InitMainGrid(gridT **grid);
+void InitMainGrid(gridT **grid, int Np, int Ne, int Nc);
+//void InitMainGrid(gridT **grid);
 void ReadMainGrid(gridT *grid);
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 void CreateCellGraph(gridT *grid);
 void CreateEdgeGraph(gridT *grid);
-void Connectivity(gridT *grid);
+void Connectivity(gridT *grid, int myproc);
 void ReadFileNames(int myproc);
 int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc);
 
