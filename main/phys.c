@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.81 2004-09-16 21:32:23 fringer Exp $
+ * $Id: phys.c,v 1.82 2004-09-21 23:33:10 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.81  2004/09/16 21:32:23  fringer
+ * Added MPI_Comm comm and int myproc to my25 and EddyViscosity functions
+ * in order to send/recv lT and qT data to the ghost points for advection
+ * of turbulent quantities.
+ *
  * Revision 1.80  2004/09/16 21:06:39  fringer
  * Added qT,lT,Cn_q,Cn_l,nu_tv,kappa_tv to the restart files.
  *
@@ -574,6 +579,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->wtmp2 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_W = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->qc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->qtmp = (REAL **)SunMalloc(NFACES*Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_s = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -606,6 +612,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     (*phys)->wtmp2[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_W[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->qc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     for(nf=0;nf<NFACES;nf++)
       (*phys)->qtmp[i*NFACES+nf] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -671,6 +678,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
     free(phys->wtmp2[i]);
     free(phys->Cn_W[i]);
     free(phys->q[i]);
+    free(phys->qc[i]);
     for(nf=0;nf<NFACES;nf++)
       free(phys->qtmp[i*NFACES+nf]);
     free(phys->s[i]);
@@ -1160,22 +1168,18 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	// Source term for the pressure-Poisson equation is in phys->stmp
 	ComputeQSource(phys->stmp,grid,phys,prop,myproc,numprocs);
 
-	// Guess a nonhydrostatic pressure field that enforces the hydrostatic velocity
-	// field and place it into phys->stmp2
-	GuessQ(phys->stmp2,phys->w,phys->wtmp,grid,phys,prop,myproc,numprocs,comm);
-
 	// Solve for the nonhydrostatic pressure.  
 	// phys->stmp2 contains the initial guess
 	// phys->stmp contains the source term
 	// phys->stmp3 is used for temporary storage
-	CGSolveQ(phys->stmp2,phys->stmp,phys->stmp3,grid,phys,prop,myproc,numprocs,comm);
+	CGSolveQ(phys->qc,phys->stmp,phys->stmp3,grid,phys,prop,myproc,numprocs,comm);
 
 	// Correct the nonhydrostatic velocity field with the nonhydrostatic pressure
 	// correction field phys->stmp2.  This will correct phys->u so that it is now
 	// the volume-conserving horizontal velocity field.  phys->w is not corrected since
 	// it is obtained via continuity.  Also, update the total nonhydrostatic pressure
 	// with the pressure correction. 
-	Corrector(phys->stmp2,grid,phys,prop,myproc,numprocs,comm);
+	Corrector(phys->qc,grid,phys,prop,myproc,numprocs,comm);
 
 	// Send/recv the horizontal velocity data after it has been corrected.
 	ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
@@ -2064,6 +2068,7 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
     }
   }
   eps = eps0 = InnerProduct3(p,p,grid,myproc,numprocs,comm);
+  if(!prop->resnorm) eps0 = 1;
 
   // Iterate until residual is less than prop->qepsilon
   for(n=0;n<niters && eps0!=0 && !IsNan(eps0);n++) {
@@ -2092,11 +2097,12 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
       for(k=grid->ctop[i];k<grid->Nk[i];k++) 
 	p[i][k] = r[i][k] + mu*p[i][k];
     }
-    //    if(myproc==0) printf("%e\n",sqrt(eps/eps0));
+    //    if(myproc==0 && n==0) printf("%e\n",sqrt(eps/eps0));
     if(VERBOSE>3) printf("CGSolve Pressure Iteration: %d, resid=%e, proc=%d\n",n,sqrt(eps/eps0),myproc);
     if(sqrt(eps/eps0)<prop->qepsilon) 
       break;
   }
+  printf("%d\n",n);
 
   if(n==niters && myproc==0 && WARNING) 
     printf("Warning... Time step %d, Pressure iteration not converging after %d steps! RES=%e\n",prop->n,n,sqrt(eps/eps0));
@@ -2532,6 +2538,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
     x[i] = 0;
   }
   eps0 = eps = InnerProduct(r,r,grid,myproc,numprocs,comm);
+  if(!prop->resnorm) eps0 = 1;
 
   for(n=0;n<niters && eps0!=0;n++) {
 
@@ -3819,6 +3826,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->qprecond = (int)MPI_GetValue(DATAFILE,"qprecond","ReadProperties",myproc);
   (*prop)->epsilon = MPI_GetValue(DATAFILE,"epsilon","ReadProperties",myproc);
   (*prop)->qepsilon = MPI_GetValue(DATAFILE,"qepsilon","ReadProperties",myproc);
+  (*prop)->resnorm = MPI_GetValue(DATAFILE,"resnorm","ReadProperties",myproc);
   (*prop)->relax = MPI_GetValue(DATAFILE,"relax","ReadProperties",myproc);
   (*prop)->amp = MPI_GetValue(DATAFILE,"amp","ReadProperties",myproc);
   (*prop)->omega = MPI_GetValue(DATAFILE,"omega","ReadProperties",myproc);
