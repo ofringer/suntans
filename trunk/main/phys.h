@@ -1,8 +1,12 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.8 2004-07-27 20:37:05 fringer Exp $
+ * $Id: phys.h,v 1.9 2004-08-22 18:15:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2004/07/27 20:37:05  fringer
+ * Added boundary_s and boundary_T arrays to the physT struct to store
+ * salinity and temperature values specified at the boundaries.
+ *
  * Revision 1.7  2004/05/29 20:25:02  fringer
  * Revision before converting to CVS.
  *
@@ -114,9 +118,9 @@ typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
     thetaS, thetaB, nu, nu_H, tau_T, CdT, CdB, CdW, relax, epsilon, qepsilon, dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f;
   int ntout, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, qprecond, volcheck, masscheck,
-    nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime;
+    nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
-    *SalinityFID, *BGSalinityFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
+    *SalinityFID, *BGSalinityFID, *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
     *StoreFID, *StartFID;
 
 } propT;
