@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.72 2004-08-23 02:05:08 fringer Exp $
+ * $Id: phys.c,v 1.73 2004-08-23 16:37:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.72  2004/08/23 02:05:08  fringer
+ * Fixed out-of-bounds edit which was not conserving mass in UpdateScalars.
+ * Now the flux from each side of face ne is computed on a per-column
+ * basis, so that 2 k-loops are required.
+ *
  * Revision 1.71  2004/08/22 23:53:32  fringer
  * Fixed out-of-bounds errors in phys.c:
  *
@@ -3016,6 +3021,8 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
       Cn[i][k]=0;
     for(k=grid->ctop[i];k<grid->Nk[i];k++)
       Cn[i][k]=phys->stmp2[i][k];
+    for(k=0;k<grid->Nk[i];k++)
+      ap[k]=0;
 
     // Now create the source term for the current time step
     for(nf=0;nf<NFACES;nf++) {
@@ -3034,7 +3041,7 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
 				 phys->stmp[nc2][k]*grid->dzzold[nc2][k]);
 
       for(k=0;k<grid->Nk[nc1];k++) 
-	ap[k] = dt*df*normal/Ac*(0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
+	ap[k] += dt*df*normal/Ac*(0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
 				 phys->stmp[nc1][k]*grid->dzzold[nc1][k]);
 
       for(k=ktop+1;k<grid->Nk[i];k++) 
