@@ -5,8 +5,11 @@
 # Stanford University
 # fringer@stanford.edu
 #
-# $Id: Makefile,v 1.6 2004-05-29 20:27:21 fringer Exp $
+# $Id: Makefile,v 1.7 2004-06-10 08:20:51 fringer Exp $
 # $Log: not supported by cvs2svn $
+# Revision 1.6  2004/05/29 20:27:21  fringer
+#  Revision before converting to CVS.
+#
 # Revision 1.5  2004/04/20 16:48:33  fringer
 # 4/20/04
 #
@@ -27,19 +30,18 @@
 # Initial revision
 #
 #
+MPIHOME = /usr/local/mpich-1.2.5.2
 SUNTANSHOME = /home/fringer/research/SUNTANS/suntans
 PARMETISHOME = /home/fringer/research/SUNTANS/packages/ParMetis-2.0
 TRIANGLEHOME = /home/fringer/research/SUNTANS/packages/triangle
-CLAPACKHOME = /home/fringer/research//CLAPACK
 BACKUP = /home/data
 
-CC = /usr/local/mpich-1.2.5.2/bin/mpicc
+CC = $(MPIHOME)/bin/mpicc
 OPTFLAGS = -O3
-#COPTIONS = -fsyntax-only  -pedantic  -pedantic-errors -w  -W  -Wall -Waggregate-return -Wcast-align  -Wcast-qual  -Wchar-subscripts  -Wcomment           -Wconversion  -Wno-deprecated-declarations -Wdisabled-optimization           -Wdiv-by-zero  -Werror -Wfloat-equal  -Wformat  -Wformat=2 -Wformat-nonliteral  -Wformat-security -Wimplicit  -Wimplicit-int -Wimplicit-function-declaration -Werror-implicit-function-declaration           -Wimport  -Winline -Wlong-long -Wmain  -Wmissing-braces -Wmissing-format-attribute  -Wmissing-noreturn -Wmultichar  -Wno-format-extra-args  -Wno-format-y2k -Wno-import  -Wpacked          -Wpadded -Wparentheses  -Wpointer-arith  -Wredundant-decls -Wreturn-type  -Wsequence-point  -Wshadow -Wsign-compare  -Wswitch           -Wsystem-headers -Wtrigraphs  -Wundef  -Wuninitialized -Wunknown-pragmas  -Wunreachable-code -Wunused  -Wunused-function           -Wunused-label  -Wunused-parameter -Wunused-value  -Wunused-variable  -Wwrite-strings
 LD = $(CC) -p -pg
 LIBDIR =  
 INCLUDES = -I$(PARMETISHOME)/ParMETISLib
-CFLAGS = $(COPTIONS) $(OPTFLAGS) $(INCLUDES)
+CFLAGS = $(OPTFLAGS) $(INCLUDES)
 XLIB=-lX11 -lm
 XINC=/usr/X11R6/include
 XLIBDIR = /usr/X11R6/lib
@@ -47,8 +49,6 @@ XLIBDIR = /usr/X11R6/lib
 MATHLIB = -lm
 LIBSDIR = -L$(PARMETISHOME) 
 LIBS = -lparmetis -lmetis $(MATHLIB)
-LAPACKLIB = $(CLAPACKHOME)/lapack_LINUX.a $(CLAPACKHOME)/blas_LINUX.a
-LAPACKINCLUDES = -I$(CLAPACKHOME) -I$(CLAPACKHOME)/F2CLIBS
 
 PARMETISLIB = $(PARMETISHOME)/libparmetis.a $(PARMETISHOME)/libmetis.a
 
@@ -63,14 +63,10 @@ all:	$(EXEC)
 	$(LD) $(CFLAGS) $(LIBSDIR) -c $*.c
 
 kriging.o:	kriging.c
-	$(LD) -c kriging.c $(MATHLIB) $(LAPACKINCLUDES)
+	$(LD) -c kriging.c $(MATHLIB)
 
 triangulate.o:	triangulate.c
 	$(LD) -c triangulate.c -I$(TRIANGLEHOME) -I$(PARMETISHOME)
-
-#$(EXEC): $(OBJS) $(PARMETISLIB) suntans.h triangulate.o kriging.o
-#	$(LD)  -o $@ $(OBJS) $(LIBSDIR) $(LIBS) triangulate.o kriging.o \
-#        $(TRIANGLEHOME)/triangle.o $(LAPACKLIB) $(LAPACKINCLUDES)
 
 $(EXEC): $(OBJS) $(PARMETISLIB) suntans.h triangulate.o 
 	$(LD)  -o $@ $(OBJS) $(LIBSDIR) $(LIBS) triangulate.o  \
