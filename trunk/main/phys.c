@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.50 2004-05-15 00:05:36 fringer Exp $
+ * $Id: phys.c,v 1.51 2004-05-15 00:18:35 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.50  2004/05/15 00:05:36  fringer
+ * Added horizontal diffusion into AdvectHorizontalVelocity
+ *
  * Revision 1.49  2004/05/14 02:26:15  fringer
  * Removed the theta-AB method, also only sum up until <k and not <=k
  * in the baroclinic term.
@@ -2513,10 +2516,10 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
       d[0]=grid->dzzold[i][ktop]*phys->stmp[i][ktop];
 
     // These are the advective components of the tridiagonal
-    // at the old time step.
+    // that use the new velocity
     for(k=0;k<grid->Nk[i]+1;k++) {
-      ap[k] = 0.5*(phys->wtmp2[i][k]+fabs(phys->wtmp2[i][k]));
-      am[k] = 0.5*(phys->wtmp2[i][k]-fabs(phys->wtmp2[i][k]));
+      ap[k] = 0.5*(phys->w[i][k]+fabs(phys->w[i][k]));
+      am[k] = 0.5*(phys->w[i][k]-fabs(phys->w[i][k]));
     }
     for(k=ktop+1;k<grid->Nk[i]-1;k++) 
       d[k-ktop]-=(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
@@ -2561,9 +2564,9 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
       if(nc2==-1) nc2=nc1;
 
       for(k=0;k<grid->Nkc[ne];k++) 
-	ap[k] = dt*df*normal/Ac*(0.5*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
+	ap[k] = dt*df*normal/Ac*(0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]))*
 				 phys->stmp[nc2][k]*grid->dzzold[nc2][k]
-	  +0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
+	  +0.5*(phys->utmp2[ne][k]-fabs(phys->u[ne][k]))*
 				 phys->stmp[nc1][k]*grid->dzzold[nc1][k]);
 
       for(k=ktop+1;k<grid->Nk[i];k++) 
