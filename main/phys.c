@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.23 2003-10-27 21:44:02 fringer Exp $
+ * $Id: phys.c,v 1.24 2003-10-28 04:08:07 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.23  2003/10/27 21:44:02  fringer
+ * Made explicit part of advection of scalar 2nd order with AB2.
+ * Added Cn_U,Cn_R,and Cn_T to store the time n-1 terms for the AB2.
+ *
  * Revision 1.22  2003/10/27 17:22:58  fringer
  * Added spong layer and changed loops in momentum advection so that
  * stmp and stmp2 are computed in the interprocessor ghost cells.
@@ -151,7 +155,7 @@ static void HydroW(gridT *grid, physT *phys);
 static void WtoVerticalFace(gridT *grid, physT *phys);
 static void UpdateScalars(gridT *grid, physT *phys, propT *prop);
 static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop);
-static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn);
+static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn, REAL theta);
 static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
 			  MPI_Comm comm);
 static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
@@ -539,7 +543,7 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
 
 void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, j, k, n, ip, nprofs=10, is[10];
+  int i, j, k, n, ip, nprofs=4, is[4];
   extern int TotSpace;
   propT *prop;
   FILE *fid = fopen("/tmp/fs.dat","w");
@@ -555,16 +559,10 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
     //    InitializeKriging(grid,prop->kriging_cov);
   }
 
-  is[0] = 6931;
-  is[1] = 3953;
-  is[2] = 9998;
-  is[3] = 1705;
-  is[4] = 2683;
-  is[5] = 6123;
-  is[6] = 10307;
-  is[7] = 5078;
-  is[8] = 10447;
-  is[9] = 7677;
+  is[0] = 1930;
+  is[1] = 681;
+  is[2] = 3545;
+  is[3] = 3254;
 
   if(VERBOSE>1) printf("Processor %d,  Total memory: %d Mb\n",myproc,(int)(TotSpace/(1024*1e3)));
 
@@ -587,8 +585,8 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
       HydroW(grid,phys);
 
       //      UpdateScalarsImp(grid,phys,prop);
-      UpdateUImp(grid,phys,prop,phys->s,phys->Cn_R);
-      UpdateUImp(grid,phys,prop,phys->T,phys->Cn_T);
+      UpdateUImp(grid,phys,prop,phys->s,phys->Cn_R,prop->thetaS);
+      UpdateUImp(grid,phys,prop,phys->T,phys->Cn_T,prop->thetaS);
 
       // We need w on the vertical faces as well as the tangential
       // components of velocity on the faces in order to compute the
@@ -600,13 +598,12 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 
       // This is where we adjust the boundary fluxes to employ IBM.
       //      AdjustBoundaryFluxes(phys->u,phys->uc,phys->vc,grid);
-      /*
       for(ip=0;ip<nprofs;ip++)
 	for(k=0;k<grid->Nkmax;k++)
-	  fprintf(fid,"%f %f %f %f %f %f\n",
+	  fprintf(fid,"%e %e %e %e %e\n",
 		  phys->h[is[ip]],phys->s[is[ip]][k]-phys->s0[is[ip]][k],
 		  phys->uc[is[ip]][k],phys->vc[is[ip]][k],phys->w[is[ip]][k]);
-      */
+
       SendRecvCellData3D(phys->s,grid,myproc,comm,first);
       SendRecvCellData3D(phys->T,grid,myproc,comm,first);
       SendRecvEdgeData3D(phys->u,grid,myproc,comm);
@@ -676,7 +673,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+
-	  (1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	  (1.0-0*prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
 	   prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
@@ -691,7 +688,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	phys->Cn_U[j][k]+=prop->dt*prop->Coriolis_f*(0.5*(phys->vc[nc1][k]+phys->vc[nc2][k])*grid->n1[j]-
-						      0.5*(phys->uc[nc1][k]+phys->uc[nc2][k])*grid->n2[j]);
+						     0.5*(phys->uc[nc1][k]+phys->uc[nc2][k])*grid->n2[j]);
     }
     
     // Add on the baroclinic term
@@ -1198,7 +1195,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   // htmp since the boundary values for h will be used in the cg solver.
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
-    phys->h[i] = -0.6+prop->amp*sin(prop->omega*prop->rtime);
+    phys->h[i] = -15+prop->amp*sin(prop->omega*prop->rtime);
   }
 
   // Now we have the required components for the CG solver for the free-surface:
@@ -1566,7 +1563,7 @@ static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop)
   }
 }
 
-static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn)
+static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn, REAL theta)
 {
   int i, j, jptr, iptr, k, nf, kp, km, kstart, kend, ktop;
   int Nc=grid->Nc, Ne=grid->Ne, normal, nc1, nc2, ne;
@@ -1611,23 +1608,29 @@ static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL 
       am[k] = 0.5*(phys->w[i][k]-fabs(phys->w[i][k]));
     }
     for(k=ktop+1;k<grid->Nk[i];k++) {
-      a[k-ktop]=dt*am[k];
-      b[k-ktop]=grid->dzz[i][k]+dt*(ap[k]-am[k+1]);
-      c[k-ktop]=-dt*ap[k+1];
+      a[k-ktop]=theta*dt*am[k];
+      b[k-ktop]=grid->dzz[i][k]+theta*dt*(ap[k]-am[k+1]);
+      c[k-ktop]=-theta*dt*ap[k+1];
     }
 
     a[0]=0;
-    b[0]=dznew-dt*am[ktop+1];
-    c[0]=-dt*ap[ktop+1];
+    b[0]=dznew-theta*dt*am[ktop+1];
+    c[0]=-theta*dt*ap[ktop+1];
     b[(grid->Nk[i]-1)-ktop]+=c[(grid->Nk[i]-1)-ktop];
 
     for(k=ktop+1;k<grid->Nk[i];k++) 
-      d[k-ktop]=grid->dzzold[i][k]*phys->stmp[i][k];
+      d[k-ktop]=grid->dzzold[i][k]*phys->stmp[i][k]-
+	(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
+	    (ap[k]-am[k+1])*phys->stmp[i][k]-
+		      ap[k+1]*phys->stmp[i][k+1]);
 
     d[0]=0;
     if(grid->ctopold[i]<=grid->ctop[i])
       for(k=grid->ctopold[i];k<=grid->ctop[i];k++)
-	d[0]+=grid->dzzold[i][k]*phys->stmp[i][k];
+	d[0]+=grid->dzzold[i][k]*phys->stmp[i][k]-
+	(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
+	    (ap[k]-am[k+1])*phys->stmp[i][k]-
+		      ap[k+1]*phys->stmp[i][k+1]);
     else
       d[0]=grid->dzzold[i][ktop]*phys->stmp[i][ktop];
 
@@ -2525,8 +2528,8 @@ static void ReadProperties(propT **prop, int myproc)
   *prop = (propT *)SunMalloc(sizeof(propT),"ReadProperties");
   
   (*prop)->theta = MPI_GetValue(DATAFILE,"theta","ReadProperties",myproc);
-  (*prop)->thetaAB = MPI_GetValue(DATAFILE,"thetaAB","ReadProperties",myproc);
   (*prop)->thetaFS = MPI_GetValue(DATAFILE,"thetaFS","ReadProperties",myproc);
+  (*prop)->thetaS = MPI_GetValue(DATAFILE,"thetaS","ReadProperties",myproc);
   (*prop)->beta = MPI_GetValue(DATAFILE,"beta","ReadProperties",myproc);
   (*prop)->nu = MPI_GetValue(DATAFILE,"nu","ReadProperties",myproc);
   (*prop)->tau_T = MPI_GetValue(DATAFILE,"tau_T","ReadProperties",myproc);
