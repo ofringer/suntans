@@ -1,8 +1,13 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.10 2004-09-16 20:17:45 fringer Exp $
+ * $Id: phys.h,v 1.11 2004-09-21 23:33:44 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.10  2004/09/16 20:17:45  fringer
+ * Added z0T and z0B to propT, and also added lT[][], qT[][] (length
+ * and turb velocity scales for MY25) and Cn_l, Cn_q for AB storage of
+ * l and q.
+ *
  * Revision 1.9  2004/08/22 18:15:39  fringer
  * Added readSalinity and readTemperature and initSalinityFile and
  * initTemperatureFile variables to propT, as well as the file pointers
@@ -60,6 +65,7 @@ typedef struct _physT {
   REAL **w;
   REAL **wf;
   REAL **q;
+  REAL **qc;
   REAL **s;
   REAL **boundary_s;
   REAL **T;
@@ -126,7 +132,7 @@ typedef struct _physT {
  */
 typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
-    thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, 
+    thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
     dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f;
   int ntout, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, qprecond, volcheck, masscheck,
     nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel;
@@ -151,5 +157,6 @@ void ReadProperties(propT **prop, int myproc);
 void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
 		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
 		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot);
+void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
 
 #endif
