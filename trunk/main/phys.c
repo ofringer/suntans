@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.48 2004-04-24 00:36:50 fringer Exp $
+ * $Id: phys.c,v 1.49 2004-05-14 02:26:15 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.48  2004/04/24 00:36:50  fringer
+ * Working out some bugs with wetting/drying...
+ *
  * Revision 1.47  2004/04/22 04:54:32  fringer
  * Added wtmp2 and stmp3 to store velocity and salinity at time step
  * n in order to implement theta method for buoyancy term in
@@ -724,24 +727,30 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 {
   int n;
   extern int TotSpace;
-  FILE *fid;
+  FILE *fid = fopen("/tmp/fs.dat","w");
 
   prop->n=0;
   ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
 
   if(VERBOSE>1) printf("Processor %d,  Total memory: %d Mb\n",myproc,(int)(TotSpace/(1024*1e3)));
   
+  prop->theta0=prop->theta;
+
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
     prop->n = n;
     prop->rtime = (n-1)*prop->dt;
     if(prop->nsteps>0) {
+
+      if(prop->thetaramptime!=0)
+	prop->theta=(1-exp(-prop->rtime/prop->thetaramptime))*prop->theta0+
+	  exp(-prop->rtime/prop->thetaramptime);
 
       EddyViscosity(grid,phys,prop);
 
       StoreVariables(grid,phys);
 
       if(VERBOSE>2 && myproc==0) printf("Creating horizontal source term...\n");
-      UpdateScalars(grid,phys,prop,phys->stmp3,phys->s,phys->Cn_R,0);
+      //      if(prop->beta) UpdateScalars(grid,phys,prop,phys->stmp3,phys->s,phys->Cn_R,0);
       AdvectHorizontalVelocity(grid,phys,prop,myproc,numprocs,comm);
 
       if(VERBOSE>2 && myproc==0) printf("Solving for h and hydrostatic u (predictor)...\n");
@@ -780,6 +789,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       ComputeVelocityVector(phys->utmp2,phys->uold,phys->vold,grid);
       ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
     }
+    fprintf(fid,"%f %f\n",prop->rtime,phys->h[0]);
+    fflush(fid);
 
     Progress(prop,myproc);
     OutputData(grid,phys,prop,myproc,numprocs,0,comm);
@@ -865,10 +876,10 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
-	  //	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-	  //	    prop->sponge_decay)*phys->u[j][k];
+	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+0*phys->u[j][k]
+	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
+	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	    prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
       }
@@ -893,13 +904,12 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	k0=grid->etop[j];
-	phys->Cn_U[j][k]-=0.5*prop->dt*GRAV*prop->beta*
-	  (prop->theta*(phys->s[nc1][k0]+phys->s[nc2][k0])+(1-prop->theta)*(phys->stmp3[nc1][k0]+phys->stmp3[nc2][k0]))*
-	  (grid->dzz[nc1][k0]-grid->dzz[nc2][k0])/grid->dg[j];
+	//	phys->Cn_U[j][k]-=0.5*prop->dt*GRAV*prop->beta*
+	//	  (prop->theta*(phys->s[nc1][k0]+phys->s[nc2][k0])+(1-prop->theta)*(phys->stmp3[nc1][k0]+phys->stmp3[nc2][k0]))*
+	//	  (grid->dzz[nc1][k0]-grid->dzz[nc2][k0])/grid->dg[j];
 
-	for(k0=grid->etop[j]+1;k0<=k;k0++)
-	  phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(prop->theta*(phys->s[nc1][k0]-phys->s[nc2][k0])+
-							  (1-prop->theta)*(phys->stmp3[nc1][k0]-phys->stmp3[nc2][k0]))*
+	for(k0=grid->etop[j];k0<k;k0++)
+	  phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
 	    (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
       }
       /*
@@ -1170,24 +1180,29 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 }
 
 static void NewCells(gridT *grid, physT *phys, propT *prop) {
-
+ 
   int j, jptr, k, nc1, nc2;
   REAL dz;
-
+ 
   // Correct the velocity resulting from changes in volume
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
-
+ 
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
-
-    if(grid->etop[j]<grid->etopold[j]) {
-      for(k=grid->etop[j];k<grid->etopold[j];k++)
-	phys->u[j][k]=phys->u[j][grid->etopold[j]];
+ 
+    if(grid->etop[j]<=grid->etopold[j]) {
+      dz = 0;
+      for(k=grid->etop[j];k<=grid->etopold[j];k++)
+        dz+=0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+ 
+      for(k=grid->etop[j];k<=grid->etopold[j];k++)
+        phys->u[j][k]=phys->u[j][grid->etopold[j]]/dz*
+          (0.5*(grid->dzzold[nc1][k]+grid->dzzold[nc2][k]));
     }
   }
 }
-  
+
 static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs) {
   int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin, wetdry_offset;
@@ -1574,7 +1589,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
 
   // Set D[j] = 0 
   for(i=0;i<grid->Nc;i++) 
-    for(k=0;k<grid->Nk[i]+1;k++)
+    for(k=0;k<grid->Nk[i]+1;k++) 
       phys->wtmp2[i][k]=phys->w[i][k];
 
   for(j=0;j<grid->Ne;j++) {
@@ -3117,6 +3132,7 @@ void ReadProperties(propT **prop, int myproc)
 {
   *prop = (propT *)SunMalloc(sizeof(propT),"ReadProperties");
   
+  (*prop)->thetaramptime = MPI_GetValue(DATAFILE,"thetaramptime","ReadProperties",myproc);
   (*prop)->theta = MPI_GetValue(DATAFILE,"theta","ReadProperties",myproc);
   (*prop)->thetaS = MPI_GetValue(DATAFILE,"thetaS","ReadProperties",myproc);
   (*prop)->thetaB = MPI_GetValue(DATAFILE,"thetaB","ReadProperties",myproc);
