@@ -6,8 +6,12 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.18 2003-04-26 14:17:48 fringer Exp $
+ * $Id: sunplot.c,v 1.19 2003-04-29 00:17:22 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.18  2003/04/26 14:17:48  fringer
+ * Fixed grid lines when drawing free surface and bottom.  They are
+ * always drawn in white.
+ *
  * Revision 1.17  2003/04/22 02:45:59  fringer
  * Changed next/prevproc buttons so that they loop around to the first/last
  * processor rather than printing an "at first proc" error.
@@ -144,7 +148,8 @@ typedef enum {
 } sliceT;
 
 typedef enum {
-  noplottype, freesurface, depth, h_d, salinity, u_velocity, v_velocity, w_velocity
+  noplottype, freesurface, depth, h_d, salinity, saldiff, 
+  salinity0, u_velocity, v_velocity, w_velocity
 } plottypeT;
 
 typedef struct {
@@ -166,6 +171,8 @@ typedef struct {
   float **depth;
 
   float ***s;
+  float ***sd;
+  float ***s0;
   float ***u;
   float ***v;
   float ***wf;
@@ -448,13 +455,29 @@ int main(int argc, char *argv[]) {
 	    procnum=numprocs-1; 
 	    procplottype=oneproc; 
 	  }
-      } else if(report.xany.window==controlButtons[saltwin].butwin && mousebutton==left_button) {
-	if(plottype!=salinity) {
-	  plottype=salinity;
-	  sprintf(message,"Salinity selected...");
-	  redraw=true;
-	} else 
-	  sprintf(message,"Salinity is already being displayed...");
+      } else if(report.xany.window==controlButtons[saltwin].butwin) {
+	if(mousebutton==left_button) {
+	  if(plottype!=salinity) {
+	    plottype=salinity;
+	    sprintf(message,"Salinity selected...");
+	    redraw=true;
+	  } else 
+	    sprintf(message,"Salinity is already being displayed...");
+	} else if(mousebutton==middle_button) {
+	  if(plottype!=saldiff) {
+	    plottype=saldiff;
+	    sprintf(message,"Perturbation salinity selected...");
+	    redraw=true;
+	  } else 
+	    sprintf(message,"Perturbation salinity is already being displayed...");
+	} else if(mousebutton==right_button) {
+	  if(plottype!=salinity0) {
+	    plottype=salinity0;
+	    sprintf(message,"Background salinity selected...");
+	    redraw=true;
+	  } else 
+	    sprintf(message,"Background salinity is already being displayed...");
+	}
       } else if(report.xany.window==controlButtons[fswin].butwin && mousebutton==left_button) {
 	if(plottype!=freesurface) {
 	  plottype=freesurface;
@@ -844,119 +867,6 @@ void ShowMessage(void) {
 	      message,strlen(message));  
 }
 
-/*
-void ReadGrid(int proc) {
-  int i, ind;
-  FILE *tfile,*dfile,*ifile = fopen("/home/fringer/research/SUNTANS/data/jet.cmap","r"), *efile,
-    *pfile = fopen("/home/fringer/research/SUNTANS/data/points.dat","r");
-  sprintf(str,"/home/fringer/research/SUNTANS/data/cells.dat.%d",proc);
-  tfile = fopen(str,"r");
-  sprintf(str,"/home/fringer/research/SUNTANS/data/celldata.dat.%d",proc);
-  dfile = fopen(str,"r");
-  sprintf(str,"/home/fringer/research/SUNTANS/data/edges.dat.%d",proc);
-  efile = fopen(str,"r");
-
-  FreeGrid();
-
-  Np=0;
-  while(fgets(str,256,pfile)) Np++;
-  fclose(pfile);
-  pfile = fopen("/home/fringer/research/SUNTANS/data/points.dat","r"),
-
-  Nc=0;
-  while(fgets(str,256,tfile)) Nc++;
-  fclose(tfile);
-  sprintf(str,"/home/fringer/research/SUNTANS/data/cells.dat.%d",proc);
-  tfile = fopen(str,"r"),
-
-  Ne=0;
-  while(fgets(str,256,efile)) Ne++;
-  fclose(efile);
-  sprintf(str,"/home/fringer/research/SUNTANS/data/edges.dat.%d",proc);
-  efile = fopen(str,"r");
-
-  xc = (float *)malloc(Np*sizeof(float));
-  yc = (float *)malloc(Np*sizeof(float));
-  xv = (float *)malloc(Nc*sizeof(float));
-  yv = (float *)malloc(Nc*sizeof(float));
-  cells = (int *)malloc(3*Nc*sizeof(int));
-  edges = (int *)malloc(2*Ne*sizeof(int));
-  depth = (float *)malloc(Nc*sizeof(float));
-
-  for(i=0;i<Np;i++) {
-    fscanf(pfile,"%f %f %d",&xc[i],&yc[i],&ind);
-  }
-  fclose(pfile);
-
-  for(i=0;i<Ne;i++) 
-    fscanf(efile,"%d %d %d %d %d",&edges[2*i],&edges[2*i+1],&ind,&ind,&ind);
-
-  for(i=0;i<Nc;i++) {
-    fscanf(dfile,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
-	   &xv[i],&yv[i],&xp,&depth[i],&ind,&ind,&ind,&ind,
-	   &ind,&ind,&ind,&ind,&ind,&ind,&ind);
-    fscanf(tfile,"%f %f %d %d %d %d %d %d",&xp,&xp,&cells[3*i],&cells[3*i+1],&cells[3*i+2],
-	   &ind,&ind,&ind);
-  }
-  fclose(tfile);
-  fclose(dfile);
-  fclose(efile);
-
-  lastgridread=proc;
-  gridread=true;
-}
-
-void FreeGrid(void) {
-  if(gridread) {
-    free(xc);
-    free(yc);
-    free(xv);
-    free(yv);
-    free(cells);
-    free(edges);
-    free(depth);
-  }
-}
-*/
-/*
-void ReadVelocity(float *u, float *v, int kp, int Nk, int np , char *filename) {
-  int i, currptr, count;
-  FILE *ufile = fopen(filename,"r");
-  double *dum = (double *)malloc(Ne*sizeof(double));
-  float dummy;
-  
-  currptr=fseek(ufile,(3*(np-1)*Ne*Nk + 3*Ne*(k-1))*sizeof(double),0);
-  count = fread(dum,sizeof(double),Ne,ufile);
-  for(i=0;i<Ne;i++)
-    u[i]=dum[i];
-  count=fread(dum,sizeof(double),Ne,ufile);
-  for(i=0;i<Ne;i++)
-    v[i]=dum[i];
-
-  fclose(ufile);
-  free(dum);
-}
-
-void ReadScalar(float *scal, int kp, int Nk, int np, char *filename) {
-  int i, currptr;
-  FILE *sfile = fopen(filename,"r");
-  double *dum = (double *)malloc(Nc*sizeof(double));
-  float dummy;
-
-  for(i=0;i<Nc;i++)
-    scal[i]=EMPTY;
-
-  currptr=fseek(sfile,(Nc*(kp-1)+(np-1)*Nc*Nk)*sizeof(double),SEEK_CUR);
-  fread(dum,sizeof(double),Nc,sfile);
-
-  for(i=0;i<Nc;i++)
-    scal[i]=dum[i];
-  fclose(sfile);
-
-  free(dum);
-}
-*/
-
 void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   float umagmax;
   int iloc, procloc, proc;
@@ -971,7 +881,7 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   if(plottype!=noplottype)
     CAxis(data,plottype,k,procnum,numprocs);
 
-  if(vectorplot)
+  if(vectorplot) 
     GetUMagMax(data,k,numprocs);
 
   if(procplottype==allprocs && !vertprofile)
@@ -996,10 +906,10 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
 	     data->umagmax,data->Nkmax,data->Nslice);
     else {
       if(procplottype==allprocs) 
-	for(proc=0;proc<numprocs;proc++)
+	for(proc=0;proc<numprocs;proc++) 
 	  UnQuiver(data->edges[proc],data->xc,data->yc,data->xv[proc],data->yv[proc],
 		   data->u[proc][k],data->v[proc][k],
-		   data->umagmax,data->Ne[procnum],data->Nc[proc]);
+		   data->umagmax,data->Ne[proc],data->Nc[proc]);
       else 
 	UnQuiver(data->edges[procnum],data->xc,data->yc,data->xv[procnum],data->yv[procnum],
 		 data->u[procnum][k],data->v[procnum][k],
@@ -1409,6 +1319,12 @@ float *GetScalarPointer(dataT *data, plottypeT plottype, int klevel, int proc) {
   case salinity:
     return data->s[proc][klevel];
     break;
+  case saldiff:
+    return data->sd[proc][klevel];
+    break;
+  case salinity0:
+    return data->s0[proc][klevel];
+    break;
   case u_velocity:
     return data->u[proc][klevel];
     break;
@@ -1444,17 +1360,21 @@ void CAxis(dataT *data, plottypeT plottype, int klevel, int procnum, int numproc
     for(i=0;i<data->Nslice;i++) 
       for(ik=0;ik<data->Nkmax;ik++) {
 	val=data->sliceData[i][ik]; 
-	if(val<=caxis[0] && val!=0 && val!=EMPTY) caxis[0]=val;
-	if(val>=caxis[1] && val!=0 && val!=EMPTY) caxis[1]=val;
+	if(val<=caxis[0] && val!=EMPTY) caxis[0]=val;
+	if(val>=caxis[1] && val!=EMPTY) caxis[1]=val;
       }
   } else {
     for(i=is;i<ie;i++) {
+      scal = GetScalarPointer(data,plottype,klevel,i);
       for(ni=0;ni<data->Nc[i];ni++) {
-	scal = GetScalarPointer(data,plottype,klevel,i);
-	if(scal[ni]<=caxis[0] && scal[ni]!=0 && scal[ni]!=EMPTY) caxis[0]=scal[ni];
-	if(scal[ni]>=caxis[1] && scal[ni]!=0 && scal[ni]!=EMPTY) caxis[1]=scal[ni];
+	if(scal[ni]<=caxis[0] && scal[ni]!=EMPTY) caxis[0]=scal[ni];
+	if(scal[ni]>=caxis[1] && scal[ni]!=EMPTY) caxis[1]=scal[ni];
       }
     }
+  }
+  if(caxis[0]==caxis[1]) {
+    caxis[0]=0;
+    caxis[1]=1;
   }
 }
 
@@ -2292,6 +2212,8 @@ void FreeData(dataT *data, int numprocs) {
 
       for(j=0;j<data->Nkmax;j++) {
 	free(data->s[proc][j]);
+	free(data->sd[proc][j]);
+	free(data->s0[proc][j]);
 	free(data->u[proc][j]);
 	free(data->v[proc][j]);
 	free(data->wf[proc][j]);
@@ -2300,6 +2222,8 @@ void FreeData(dataT *data, int numprocs) {
       free(data->w[proc][data->Nkmax]);
 
       free(data->s[proc]);
+      free(data->sd[proc]);
+      free(data->s0[proc]);
       free(data->u[proc]);
       free(data->v[proc]);
       free(data->wf[proc]);
@@ -2314,6 +2238,8 @@ void FreeData(dataT *data, int numprocs) {
     free(data->h);
     free(data->h_d);
     free(data->s);
+    free(data->sd);
+    free(data->s0);
     free(data->u);
     free(data->v);
     free(data->wf);
@@ -2336,6 +2262,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
   GetString(CELLSFILE,DATAFILE,"cells",&status);
   GetString(CELLCENTEREDFILE,DATAFILE,"celldata",&status);
 
+
   if(nstep==-1) {
     data->Np=getsize(POINTSFILE);
 
@@ -2350,6 +2277,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->h = (float **)malloc(numprocs*sizeof(float *));
     data->h_d = (float **)malloc(numprocs*sizeof(float *));
     data->s = (float ***)malloc(numprocs*sizeof(float **));
+    data->sd = (float ***)malloc(numprocs*sizeof(float **));
+    data->s0 = (float ***)malloc(numprocs*sizeof(float **));
     data->u = (float ***)malloc(numprocs*sizeof(float **));
     data->v = (float ***)malloc(numprocs*sizeof(float **));
     data->wf = (float ***)malloc(numprocs*sizeof(float **));
@@ -2360,7 +2289,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     
     data->timestep=-1;
 
-    data->Nkmax=(int)GetValue("suntans.dat","Nkmax",&status);
+    data->Nkmax=(int)GetValue(DATAFILE,"Nkmax",&status);
     data->nsteps=(int)GetValue(DATAFILE,"nsteps",&status)/
       (int)GetValue(DATAFILE,"ntout",&status);
     data->numprocs=numprocs;
@@ -2405,6 +2334,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       data->h[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->h_d[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->s[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
+      data->sd[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
+      data->s0[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->u[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->v[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->wf[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
@@ -2412,6 +2343,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
       for(i=0;i<data->Nkmax;i++) {
 	data->s[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
+	data->sd[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
+	data->s0[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->u[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->v[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->wf[proc][i]=(float *)malloc(data->Ne[proc]*sizeof(float));
@@ -2473,13 +2406,33 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     for(proc=0;proc<numprocs;proc++) {
       dummy=(double *)malloc(data->Ne[proc]*sizeof(double));
 
+      if(data->timestep==1) {
+	sprintf(string,"/home/fringer/research/SUNTANS/data/s0.dat.%d",proc);
+	fid = fopen(string,"r");
+	for(i=0;i<data->Nkmax;i++) {
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	  for(j=0;j<data->Nc[proc];j++) 
+	    if(dummy[j]!=EMPTY)
+	      data->s0[proc][i][j]=dummy[j];
+	    else
+	      data->s0[proc][i][j]=EMPTY;
+	}
+	fclose(fid);
+      }
+
+      
       sprintf(string,"/home/fringer/research/SUNTANS/data/s.dat.%d",proc);
       fid = fopen(string,"r");
       fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
       for(i=0;i<data->Nkmax;i++) {
 	fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	for(j=0;j<data->Nc[proc];j++) 
+	for(j=0;j<data->Nc[proc];j++) {
 	  data->s[proc][i][j]=dummy[j];
+	  if(dummy[j]!=EMPTY)
+	    data->sd[proc][i][j]=dummy[j]-data->s0[proc][i][j];
+	  else
+	    data->sd[proc][i][j]=EMPTY;
+	}
       }
       fclose(fid);
 
@@ -2503,7 +2456,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	for(j=0;j<data->Nc[proc];j++) 
 	  data->wf[proc][i][j]=dummy[j];
 	for(j=0;j<data->Nc[proc];j++) 
-	  if(data->s[proc][i][j]==EMPTY) {
+	  if(data->s0[proc][i][j]==EMPTY) {
 	    data->u[proc][i][j]=EMPTY;
 	    data->v[proc][i][j]=EMPTY;
 	  }
@@ -2588,7 +2541,8 @@ void GetDMax(dataT *data, int numprocs) {
 void GetSlice(dataT *data, int xs, int ys, int xe, int ye, 
 	      int procnum, int numprocs, plottypeT plottype) {
   int i, nf, proc, ik, istart, pstart, iend, pend, numpoints;
-  float dz, dmax, xstart, ystart, xend, yend, rx0, ry0, rx, ry, dist, xcent, ycent, rad, mag, mag0;
+  float dz, dmax, xstart, ystart, xend, yend, rx0, ry0, 
+    rx, ry, dist, xcent, ycent, rad, mag, mag0, ubar;
 
   if(!(xs==xe && ys==ye) && fromprofile && sliceType==slice) {
 
@@ -2645,18 +2599,35 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
       data->sliceD[i]=data->depth[data->sliceProc[i]][data->sliceInd[i]];
     }
 
-    for(i=0;i<data->Nslice;i++) 
+    dz = data->z[0]-data->z[1];
+    for(i=0;i<data->Nslice;i++) {
+      ubar=0;
       for(ik=0;ik<data->Nkmax;ik++) {
 	data->sliceU[i][ik]=data->rx*data->u[data->sliceProc[i]][ik][data->sliceInd[i]]+
 	  data->ry*data->u[data->sliceProc[i]][ik][data->sliceInd[i]];
 	data->sliceW[i][ik]=data->w[data->sliceProc[i]][ik][data->sliceInd[i]];
+	if(data->u[data->sliceProc[i]][ik][data->sliceInd[i]]!=EMPTY)
+	  ubar+=data->sliceU[i][ik];
       }
+      for(ik=0;ik<data->Nkmax;ik++) 
+	data->sliceU[i][ik]-=ubar/data->sliceD[i];
+    }
     
     switch(plottype) {
     case salinity:
       for(i=0;i<data->Nslice;i++) 
 	for(ik=0;ik<data->Nkmax;ik++) 
 	  data->sliceData[i][ik]=data->s[data->sliceProc[i]][ik][data->sliceInd[i]];
+      break;
+    case saldiff:
+      for(i=0;i<data->Nslice;i++) 
+	for(ik=0;ik<data->Nkmax;ik++) 
+	  data->sliceData[i][ik]=data->sd[data->sliceProc[i]][ik][data->sliceInd[i]];
+      break;
+    case salinity0:
+      for(i=0;i<data->Nslice;i++) 
+	for(ik=0;ik<data->Nkmax;ik++) 
+	  data->sliceData[i][ik]=data->s0[data->sliceProc[i]][ik][data->sliceInd[i]];
       break;
     case u_velocity:
       for(i=0;i<data->Nslice;i++) 
