@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.16 2003-06-10 03:23:23 fringer Exp $
+ * $Id: grid.c,v 1.17 2003-09-16 23:51:58 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.16  2003/06/10 03:23:23  fringer
+ * Changed MPI_GetString to MPI_GetFile
+ *
  * Revision 1.15  2003/06/10 02:15:47  fringer
  * Changed all malloc to SunMalloc and all free to SunFree.
  *
@@ -111,6 +114,7 @@ static int GetNumCells(gridT *grid, int proc);
 static void TransferData(gridT *maingrid, gridT **localgrid, int myproc);
 static int GetNumEdges(gridT *grid);
 static void Geometry(gridT *maingrid, gridT **grid, int myproc);
+static REAL GetCircumcircleRadius(REAL *xt, REAL *yt, int Nf);
 static REAL GetArea(REAL *xt, REAL *yt, int Nf);
 static void EdgeMarkers(gridT *maingrid, gridT **localgrid, int myproc);
 static void ReOrder(gridT *grid);
@@ -2690,12 +2694,13 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
 static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 {
   int n, nf, k, j, Nc=(*grid)->Nc, Ne=(*grid)->Ne;
-  REAL xt[NFACES], yt[NFACES], xc, yc, den;
+  REAL xt[NFACES], yt[NFACES], xc, yc, den, R0, l0;
   FILE *ofile;
   
   (*grid)->Ac = (REAL *)SunMalloc(Nc*sizeof(REAL),"Geometry");
   (*grid)->df = (REAL *)SunMalloc(Ne*sizeof(REAL),"Geometry");
   (*grid)->dg = (REAL *)SunMalloc(Ne*sizeof(REAL),"Geometry");
+  (*grid)->def = (REAL *)SunMalloc(NFACES*Nc*sizeof(REAL),"Geometry");
   (*grid)->n1 = (REAL *)SunMalloc(Ne*sizeof(REAL),"Geometry");
   (*grid)->n2 = (REAL *)SunMalloc(Ne*sizeof(REAL),"Geometry");
   (*grid)->xe = (REAL *)SunMalloc(Ne*sizeof(REAL),"Geometry");
@@ -2759,6 +2764,7 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 			      pow((*grid)->n2[n],2));
 	(*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
 	(*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
+	(*grid)->dg[n] = 2.0*grid->dg[n];
       } else {
         (*grid)->n1[n] = (*grid)->xv[(*grid)->grad[2*n]]-xc;
         (*grid)->n2[n] = (*grid)->yv[(*grid)->grad[2*n]]-yc;
@@ -2766,7 +2772,23 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 			      pow((*grid)->n2[n],2));
 	(*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
 	(*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
+	(*grid)->dg[n] = 2.0*grid->dg[n];
       }
+    }
+  }
+
+  /* Compute the distance from the cell circumcenter to the edge center */
+  for(n=0;n<Nc;n++) {
+    for(nf=0;nf<NFACES;nf++) {
+      xt[nf]=maingrid->xp[(*grid)->cells[n*NFACES+nf]];
+      yt[nf]=maingrid->yp[(*grid)->cells[n*NFACES+nf]];
+    }
+    // Radius of the circumcircle
+    R0 = GetCircumcircleRadius(xt,yt,NFACES);
+    for(nf=0;nf<NFACES;nf++) {
+      (*grid)->def[n*NFACES+nf]=sqrt(R0*R0-pow((*grid)->df[(*grid)->face[n*NFACES+nf]]/2,2));
+      if(IsNan((*grid)->def[n*NFACES+nf]))
+	(*grid)->def[n*NFACES+nf]=0;
     }
   }
 
@@ -2800,6 +2822,20 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
     }
 }
 
+REAL GetCircumcircleRadius(REAL *xt, REAL *yt, int Nf)
+{
+  int nf;
+  REAL R0 = 1;
+  for(nf=0;nf<Nf;nf++)
+    if(nf==Nf-1)
+      R0*=sqrt(pow(xt[Nf-1]-xt[0],2)+pow(yt[Nf-1]-yt[0],2));
+    else
+      R0*=sqrt(pow(xt[nf+1]-xt[nf],2)+pow(yt[nf+1]-yt[nf],2));
+  R0/=(4*GetArea(xt,yt,Nf));
+  
+  return R0;
+}
+  
 REAL GetArea(REAL *xt, REAL *yt, int Nf)
 {
   int i;
