@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.29 2004-03-18 17:20:55 fringer Exp $
+ * $Id: grid.c,v 1.30 2004-05-17 19:00:20 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.29  2004/03/18 17:20:55  fringer
+ * Fixed bug associated with setting def to 0 for right triangles.
+ *
  * Revision 1.28  2004/03/18 17:18:03  fringer
  * Removed unused ints and REALS.
  *
@@ -1290,6 +1293,7 @@ static void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int Nc
 	}
       }
   }
+
   for(n=0;n<Ne;n++)
     for(j=0;j<2;j++) {
       nc = grad[2*n+j];
@@ -1488,7 +1492,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     fprintf(ofile,"%f %f %f %f %f %f %d %d %d %d %d %d %d ",
 	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
 	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
-	    grid->grad[2*n],grid->grad[2*n+1],grid->mark[n]);
+	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n]);
     for(nf=0;nf<2*(NFACES-1);nf++)
       fprintf(ofile,"%f ",grid->xi[2*(NFACES-1)*n+nf]);
     for(nf=0;nf<2*(NFACES-1);nf++)
@@ -1655,7 +1659,6 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->Ac = (REAL *)SunMalloc((*grid)->Nc*sizeof(REAL),"ReadGrid");
 
   (*grid)->Nk = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");
-  (*grid)->face = (int *)SunMalloc(NFACES*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->neigh = (int *)SunMalloc(NFACES*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->face = (int *)SunMalloc(NFACES*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->normal = (int *)SunMalloc(NFACES*(*grid)->Nc*sizeof(int),"ReadGrid");
@@ -2783,7 +2786,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
   CreateFaceArray((*localgrid)->grad,(*localgrid)->gradf,(*localgrid)->neigh,(*localgrid)->face,
 		  (*localgrid)->Nc,(*localgrid)->Ne);
   CreateNormalArray((*localgrid)->grad,(*localgrid)->face,(*localgrid)->normal,(*localgrid)->Nc);
-  
+
   for(n=0;n<(*localgrid)->Ne;n++) {
     for(ne=0;ne<2*(NFACES-1);ne++)
       (*localgrid)->eneigh[2*(NFACES-1)*n+ne]=-1;
@@ -2890,6 +2893,12 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
   /* Compute the distance from the cell circumcenter to the edge center */
   for(n=0;n<Nc;n++) {
     for(nf=0;nf<NFACES;nf++) {
+      (*grid)->def[n*NFACES+nf]=sqrt(pow((*grid)->xv[n]-(*grid)->xe[(*grid)->face[n*NFACES+nf]],2)+
+				     pow((*grid)->yv[n]-(*grid)->ye[(*grid)->face[n*NFACES+nf]],2));
+    }
+  }
+    /*
+    for(nf=0;nf<NFACES;nf++) {
       xt[nf]=maingrid->xp[(*grid)->cells[n*NFACES+nf]];
       yt[nf]=maingrid->yp[(*grid)->cells[n*NFACES+nf]];
     }
@@ -2897,10 +2906,13 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
     R0 = GetCircumcircleRadius(xt,yt,NFACES);
     for(nf=0;nf<NFACES;nf++) {
       (*grid)->def[n*NFACES+nf]=sqrt(R0*R0-pow((*grid)->df[(*grid)->face[n*NFACES+nf]]/2,2));
-      if(IsNan((*grid)->def[n*NFACES+nf]) || (*grid)->def[n*NFACES+nf]==0)
+      if(IsNan((*grid)->def[n*NFACES+nf]) || (*grid)->def[n*NFACES+nf]==0) {
+	printf("Corrected at x=%f\n",(*grid)->xv[n]);
 	(*grid)->def[n*NFACES+nf]=(*grid)->dg[(*grid)->face[n*NFACES+nf]]/2;
+      }
     }
   }
+    */
 
   /* Now compute the coefficients that make up the tangents to compute advection */
   if(myproc==0 && VERBOSE>2) printf("Computing xi coefficients...\n");
