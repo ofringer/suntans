@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.16 2003-04-21 20:28:48 fringer Exp $
+ * $Id: sunplot.c,v 1.17 2003-04-22 02:45:59 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.16  2003/04/21 20:28:48  fringer
+ * Fixed up comments.
+ *
  * Revision 1.15  2003/04/21 20:27:09  fringer
  * Added button colors when pressed.  Need to sort out how to make button
  * colors change when redraw=false.
@@ -390,13 +393,13 @@ int main(int argc, char *argv[]) {
 	    procnum=0;
 	    procplottype=oneproc;
 	    redraw=true;
-	  } else if(procnum>0) { 
+	  } else {
+	    if(procnum==0) 
+	      procnum = numprocs-1;
+	    else
+	      procnum--;
 	    redraw = true; 
-	    procnum--; 
 	    procplottype=oneproc; 
-	  } else { 
-	    redraw = false ; 
-	    sprintf(message,"At procnum==0!"); 
 	  }
 	} else if(mousebutton==right_button) 
 	  if(procplottype==allprocs) {
@@ -419,13 +422,13 @@ int main(int argc, char *argv[]) {
 	    procnum=numprocs-1;
 	    procplottype=oneproc;
 	    redraw=true;
-	  } else if(procnum<numprocs-1) { 
+	  } else {
+	    if(procnum==(numprocs-1)) 
+	      procnum=0;
+	    else
+	      procnum++;
 	    redraw = true;
-	    procnum++;
 	    procplottype=oneproc;
-	  } else { 
-	    redraw = false ; 
-	    sprintf(message,"At procnum==numprocs!"); 
 	  }
 	} else if(mousebutton==right_button) 
 	  if(procplottype==allprocs) {
@@ -2367,6 +2370,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     fclose(fid);  
 
     for(proc=0;proc<numprocs;proc++) {
+
       sprintf(string,"%s.%d",CELLSFILE,proc);
       fid = fopen(string,"r");
       for(i=0;i<data->Nc[proc];i++) 
@@ -2505,7 +2509,7 @@ void GetUMagMax(dataT *data, int klevel, int numprocs) {
   } else if(data->klevel!=klevel) {
     data->klevel=klevel;
     for(proc=0;proc<numprocs;proc++)  
-      for(j=0;j<data->Ne[proc];j++) {
+      for(j=0;j<data->Nc[proc];j++) {
 	ud = data->u[proc][klevel][j];
 	vd = data->v[proc][klevel][j];
 	umag=sqrt(pow(ud,2)+pow(vd,2));
