@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.32 2004-06-14 17:20:43 fringer Exp $
+ * $Id: grid.c,v 1.33 2004-08-22 23:48:29 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.32  2004/06/14 17:20:43  fringer
+ * Removed xi and eneigh from being written to the edgedata output file
+ * since it is not used by phys.c.
+ *
  * Revision 1.31  2004/05/29 20:25:02  fringer
  * Revision before converting to CVS.
  *
@@ -1862,7 +1866,7 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
     }
     maingrid->dz = (REAL *)SunMalloc(maingrid->Nkmax*sizeof(REAL),"VertGrid");
 
-    GetDZ(maingrid->dz,dmax,maingrid->dv[i],maingrid->Nkmax,myproc);
+    GetDZ(maingrid->dz,dmax,dmax,maingrid->Nkmax,myproc);
     dmaxtest=0;
     for(k=0;k<maingrid->Nkmax;k++)
       dmaxtest+=maingrid->dz[k];
