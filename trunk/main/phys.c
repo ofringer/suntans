@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.20 2003-10-25 00:55:09 fringer Exp $
+ * $Id: phys.c,v 1.21 2003-10-25 02:04:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.20  2003/10/25 00:55:09  fringer
+ * Added Eulerian scheme with AB for horizontal advection.
+ * Before removal of Kriging terms.
+ *
  * Revision 1.19  2003/09/16 22:29:51  fringer
  * Added ComputeVelocityVector to compute velocity vector at faces and also changed outputdata so that horizontal velocity is output at cell centers.
  *
@@ -611,7 +615,7 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
  */
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs) {
-  int i, iptr, nf, j, jptr, k, nc, nc1, nc2, jnear, knear, n, numiters=1, ne, sgn;
+  int i, iptr, nf, j, jptr, k, nc, nc1, nc2, jnear, knear, n, numiters=1, ne, sgn, k0;
   REAL x0, y0, z0, xd, yd, zd, zd0, h0, dv0, *ustar, *vstar, *wstar, Cab, uf1, uf2, fab;
 
   ustar = phys->a;
@@ -619,13 +623,12 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
   wstar = phys->c;
 
   if(prop->n==1) {
-    printf("IN HERE!\n");
-    fab=1.5;
+    fab=1;
     for(j=0;j<grid->Ne;j++)
       for(k=0;k<grid->Nke[j];k++)
 	phys->Cn[0][j][k]=0;
   } else
-    fab=1;
+    fab=1.5;
 
   // Set utmp to zero for all Nke.
   for(j=0;j<grid->Ne;j++) {
@@ -648,6 +651,52 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	  phys->utmp[j][k]=phys->u[j][grid->etopold[j]];
     }
   } else {    
+    
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr]; 
+      
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	phys->utmp[j][k]=phys->u[j][k]+(1-fab)*phys->Cn[0][j][k];
+	phys->Cn[0][j][k]=0;
+      }
+    }
+
+    // Add the Coriolis Terms
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr];
+      
+      nc1 = grid->grad[2*j];
+      nc2 = grid->grad[2*j+1];
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+	phys->Cn[0][j][k]+=prop->dt*prop->Coriolis_f*(0.5*(phys->vc[nc1][k]+phys->vc[nc2][k])*grid->n1[j]-
+						      0.5*(phys->uc[nc1][k]+phys->uc[nc2][k])*grid->n2[j]);
+    }
+    
+    // Add on the baroclinic term
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr];
+      
+      nc1 = grid->grad[2*j];
+      nc2 = grid->grad[2*j+1];
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	
+	for(k0=grid->etop[j];k0<k;k0++)
+	  phys->Cn[0][j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
+	    (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
+      }
+      
+      /*
+	for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	phys->utmp[j][k]-=0.5*dt*GRAV*prop->beta*
+	(phys->s[nc1][k]*grid->dzz[nc1][k]-
+	phys->s[nc2][k]*grid->dzz[nc2][k])/grid->dg[j];
+	for(k0=grid->etop[j];k0<k;k0++)
+	phys->utmp[j][k]-=dt*GRAV*prop->beta*(phys->s[nc1][k0]*grid->dzz[nc1][k0]-
+	phys->s[nc2][k0]*grid->dzz[nc2][k0])/grid->dg[j];
+	}
+      */
+    }
+
     // First compute the cell-centered source terms and put them into stmp
     for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
       i = grid->cellp[iptr];
@@ -681,12 +730,6 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 
       nc1 = grid->grad[2*j];
       nc2 = grid->grad[2*j+1];
-
-      for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=-0.5*phys->Cn[0][j][k]+(1.0-0*prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-						 prop->sponge_decay)*phys->u[j][k];
-	phys->Cn[0][j][k]=0;
-      }
 
       if(nc1!=-1)
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
@@ -777,124 +820,6 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
   }
 }
 
-static void InterpolateEdge(REAL *ui, REAL *vi, REAL *wi,
-			    REAL xd, REAL yd, REAL zd,  
-			    int j0, int k0, REAL z0,  
-			    int jnear, int knear, 
-			    gridT *grid, physT *phys, propT *prop, REAL Cab) {
-  int ci, n, j, k, je, nk, status, nc1, nc2, sign;
-  REAL U, V, un1, un2, dz,  *x, *y, **uf, us[3];
-
-  uf = (REAL **)SunMalloc(3*sizeof(REAL *),"InterpolateEdge");
-  for(ci=0;ci<3;ci++)
-    uf[ci]=(REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InterpolateEdge");
-
-  x = (REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InterpolateEdge");
-  y = (REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InterpolateEdge");
-
-  if(zd<z0) {
-    nk=1;
-    sign=-1;
-  } else {
-    nk=-1;
-    sign=1;
-  }
-
-  if(knear==grid->etop[j0])
-    if(zd<=z0) 
-      nk=1;
-    else
-      nk=0;
-  else if(knear==grid->Nke[j0]-1)
-    if(zd>=z0) 
-      nk=-1;
-    else
-      nk=0;
-
-  if(grid->etop[j0]==grid->Nke[j0]-1)
-    nk=0;
-
-  for(ci=0;ci<3;ci++) 
-    for(n=0;n<grid->Nnearestedges;n++) {
-      je = grid->nearestedges[j0][n];
-      
-      nc1=grid->grad[2*je];
-      nc2=grid->grad[2*je+1];
-      if(nc1==-1) nc1=nc2;
-      if(nc2==-1) nc2=nc1;
-      
-      dz = 0.25*(grid->dzz[nc1][knear]+grid->dzz[nc2][knear]+
-		 grid->dzz[nc1][knear+nk]+grid->dzz[nc2][knear+nk]);
-      
-      if(ci==0) {
-	un1=(1+Cab)*(phys->u[je][knear]*grid->n1[je]-phys->ut[je][knear]*grid->n2[je])-
-	  Cab*(phys->Cn[0][je][knear]*grid->n1[je]-phys->Cn[1][je][knear]*grid->n2[je]);
-	un2=(1+Cab)*(phys->u[je][knear+nk]*grid->n1[je]-phys->ut[je][knear+nk]*grid->n2[je])-
-	  Cab*(phys->Cn[0][je][knear+nk]*grid->n1[je]-phys->Cn[1][je][knear+nk]*grid->n2[je]);
-      } else if(ci==1) {
-	un1=(1+Cab)*(phys->u[je][knear]*grid->n2[je]+phys->ut[je][knear]*grid->n1[je])-
-	  Cab*(phys->Cn[0][je][knear]*grid->n2[je]+phys->Cn[1][je][knear]*grid->n1[je]);
-	un2=(1+Cab)*(phys->u[je][knear+nk]*grid->n2[je]+phys->ut[je][knear+nk]*grid->n1[je])-
-	  Cab*(phys->Cn[0][je][knear+nk]*grid->n2[je]+phys->Cn[1][je][knear+nk]*grid->n1[je]);
-      } else {
-	un1=(1+Cab)*phys->wf[je][knear]-Cab*phys->Cn[2][je][knear];
-	un2=(1+Cab)*phys->wf[je][knear+nk]-Cab*phys->Cn[2][je][knear+nk];
-      }
-      
-      // If dz=0 this means that the interpolation is being performed in
-      // a dry zone, so set uf[n]=un1 if this is so.
-      if(dz==0)
-	uf[ci][n] = un1;
-      else 
-	uf[ci][n] = un1 + 0*sign*(zd-z0)*(un2-un1)/dz;
-    }
-  
-  for(n=0;n<grid->Nnearestedges;n++) {
-    je = grid->nearestedges[j0][n];
-    x[n] = grid->xe[je];
-    y[n] = grid->ye[je];
-  }
-
-  //  kriging(xd,yd,us,x,y,uf,3,prop->kriging_cov,grid->Nnearestedges,grid->Kriging[j0]);
-
-  *ui=us[0];
-  *vi=us[1];
-  *wi=us[2];
-
-  free(x);
-  free(y);
-  free(uf[0]);
-  free(uf[1]);
-  free(uf[2]);
-  free(uf);
-}
- 
-static REAL Bilinear(REAL f1, REAL f2, REAL f3, REAL r) {
-  return f2 + 0.5*(r*(f1-f2) + r*(f3-f2));
-}
-   
-static REAL Quadratic(REAL f1, REAL f2, REAL f3, REAL r) {
-  return f1 + 0.5*r*(f3-f2) + 0.5*pow(r,2)*(f3-2*f2+f1);
-}
-
-static void ComputeTraceBack(REAL x0, REAL y0, REAL z0, 
-			     REAL *xd, REAL *yd, REAL *zd, 
-			     REAL un, REAL ut, 
-			     REAL W, REAL n1, REAL n2, REAL dt) {
-
-  REAL U, V;
-
-  // U is the x component of velocity at the face
-  // V is the y component of velocity at the face.
-  // U^2 + V^2 = un^2 + ut^2
-  U = un*n1-ut*n2;
-  V = un*n2+ut*n1;
-
-  *xd=x0-dt*U;
-  *yd=y0-dt*V;
-  *zd=z0-dt*W;
-}
-  
 static int FindNearestEdge(int j0, REAL xd, REAL yd, REAL zd, gridT *grid, physT *phys) {
 
   int j, je, jnearest, departurecell;
@@ -1047,42 +972,6 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   // phys->utmp contains the interpolated velocity field which is computed
   // in AdvectHorizontalVelocity.
   
-  // Add the Coriolis Terms
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-    j = grid->edgep[jptr];
-
-    nc1 = grid->grad[2*j];
-    nc2 = grid->grad[2*j+1];
-    for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      phys->utmp[j][k]+=prop->dt*prop->Coriolis_f*(0.5*(phys->vc[nc1][k]+phys->vc[nc2][k])*grid->n1[j]-
-					  0.5*(phys->uc[nc1][k]+phys->uc[nc2][k])*grid->n2[j]);
-  }
-
-  // Add on the baroclinic term
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-    j = grid->edgep[jptr];
-
-    nc1 = grid->grad[2*j];
-    nc2 = grid->grad[2*j+1];
-    for(k=grid->etop[j];k<grid->Nke[j];k++) {
-
-      for(k0=grid->etop[j];k0<k;k0++)
-	phys->utmp[j][k]-=0.5*GRAV*prop->beta*dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
-	  (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
-    }
-
-    /*
-    for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      phys->utmp[j][k]-=0.5*dt*GRAV*prop->beta*
-	(phys->s[nc1][k]*grid->dzz[nc1][k]-
-	 phys->s[nc2][k]*grid->dzz[nc2][k])/grid->dg[j];
-      for(k0=grid->etop[j];k0<k;k0++)
-	phys->utmp[j][k]-=dt*GRAV*prop->beta*(phys->s[nc1][k0]*grid->dzz[nc1][k0]-
-					      phys->s[nc2][k0]*grid->dzz[nc2][k0])/grid->dg[j];
-    }
-    */
-  }	
-
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
@@ -2605,7 +2494,6 @@ static void ReadProperties(propT **prop, int myproc)
   (*prop)->flux = MPI_GetValue(DATAFILE,"flux","ReadProperties",myproc);
   (*prop)->volcheck = MPI_GetValue(DATAFILE,"volcheck","ReadProperties",myproc);
   (*prop)->masscheck = MPI_GetValue(DATAFILE,"masscheck","ReadProperties",myproc);
-  (*prop)->kriging_cov = MPI_GetValue(DATAFILE,"kriging_cov","ReadProperties",myproc);
   (*prop)->nonlinear = MPI_GetValue(DATAFILE,"nonlinear","ReadProperties",myproc);
   (*prop)->Coriolis_f = MPI_GetValue(DATAFILE,"Coriolis_f","ReadProperties",myproc);
   (*prop)->sponge_distance = MPI_GetValue(DATAFILE,"sponge_distance","ReadProperties",myproc);
@@ -2664,25 +2552,5 @@ static void Progress(propT *prop, int myproc)
   }
 }
 
-static void InitializeKriging(gridT *grid, int pow) {
-  int j, jptr, n;
-  REAL *x = (REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
-  REAL *y = (REAL *)SunMalloc(grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
 
-  grid->Kriging = (REAL **)SunMalloc(grid->Ne*sizeof(REAL *),"InitializeKriging");
-
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-    j = grid->edgep[jptr];
-
-    for(n=0;n<grid->Nnearestedges;n++) {
-      x[n] = grid->xe[grid->nearestedges[j][n]];
-      y[n] = grid->ye[grid->nearestedges[j][n]];
-    }
-    
-    //    grid->Kriging[j]=(REAL *)inversekriging(x,y,pow,grid->Nnearestedges);
-  }
-
-  SunFree(x,grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
-  SunFree(y,grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
-}
 
