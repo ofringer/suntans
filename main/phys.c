@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.5 2002-11-05 01:31:17 fringer Exp $
+ * $Id: phys.c,v 1.6 2002-11-30 13:44:26 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2002/11/05 01:31:17  fringer
+ * Added baroclinic term
+ *
  * Revision 1.4  2002/11/03 20:36:33  fringer
  * Added parameters to check for mass and volume conservation
  *
@@ -222,7 +225,8 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       z-=grid->dzz[i][k]/2;
       //      phys->s[i][k]=-1.07*0*(z+1500+0*cos(PI*(grid->xv[i]-10000)/10000))/1500;
-      phys->s[i][k]=-7.333e-3*(.5*(z+1500)/1500);
+      //      phys->s[i][k]=-7.333e-3*(.5*(z+1500)/1500);
+      phys->s[i][k]=-0.0147*(z/3000+.5);
       z-=grid->dzz[i][k]/2;
       //      if(grid->xv[i]>70000) phys->s[i][k]=.01;
       //      if(grid->xv[i]>500 && grid->dzz[i][k]>0)
@@ -819,22 +823,23 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   hsrc = phys->htmp;
   N = grid->normal;
 
+  tmp = GRAV*pow(prop->thetaFS*prop->dt,2);
 
+  /*
   M = (REAL **)malloc(Nc*sizeof(REAL *));
   for(i=0;i<Nc;i++) {
     M[i] = (REAL *)malloc(Nc*sizeof(REAL));
     for(j=0;j<Nc;j++)
       M[i][j]=0;
   }
+  */
   /*
   for(i=0;i<Nc;i++)
     printf("%d: Edges: %d %d %d, Neighs: %d %d %d\n",
 	   i,grid->face[3*i],grid->face[3*i+1],grid->face[3*i+2],
 	   grid->neigh[3*i],grid->neigh[3*i+1],grid->neigh[3*i+2]);
   */
-
-  tmp = GRAV*pow(prop->thetaFS*prop->dt,2);
-
+  /*
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
     
@@ -847,6 +852,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
       }
     }
   }
+  */
 
   SendRecvCellData2D(h,grid,myproc,comm);
 
@@ -929,6 +935,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   if(n==niters) 
     printf("Warning... Iteration not converging after %d steps! RES=%e\n",n,resid);
   
+  /*
   fprintf(fid,"M=[");
   for(i=0;i<Nc;i++) {
     for(j=0;j<Nc;j++)
@@ -949,10 +956,11 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
     fprintf(fid,"%f ",grid->xv[i]);
   fprintf(fid,"]';");
   fclose(fid);
-  
+
   for(i=0;i<Nc;i++) 
     free(M[i]);
   free(M);
+  */
 
   for(i=0;i<grid->Nc;i++)
     if(h[i]!=h[i]) 
@@ -1052,6 +1060,24 @@ static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop)
 
     for(k=0;k<grid->ctop[i];k++)
       phys->s[i][k]=0;
+  }
+
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    i = grid->cellp[iptr];
+
+    for(k=0;k<grid->Nk[i];k++)
+      phys->s[i][k]=0;
+
+    km = 0;
+    for(nf=0;nf<NFACES;nf++) 
+      if(grid->neigh[i*NFACES+nf] != -1) {
+	km++;
+	for(k=0;k<grid->Nk[i];k++)
+	  phys->s[i][k]+=phys->s[grid->neigh[i*NFACES+nf]][k];
+      }
+
+    for(k=0;k<grid->Nk[i];k++)
+      phys->s[i][k]/=km;
   }
 }
 
@@ -1416,8 +1442,9 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
     
 static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, k, Nc=grid->Nc, Ne=grid->Ne;
+  int i, k, ic, kc, Nc=grid->Nc, Ne=grid->Ne;
   int uflag=1, sflag=1, hflag=1, myalldone, alldone;
+  REAL C, Cmax;
 
   for(i=0;i<Nc;i++) 
     if(phys->h[i]!=phys->h[i]) {
@@ -1445,9 +1472,36 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
       break;
   }
 
+  Cmax=0;
+  for(i=0;i<Ne;i++) 
+    for(k=0;k<grid->Nke[i];k++) {
+      C = fabs(phys->u[i][k])*prop->dt/grid->dg[i];
+      if(C>Cmax) {
+	ic = i;
+	kc = k;
+	Cmax = C;
+      }
+    }
+
+  /*
+  if(Cmax>prop->Cmax) {
+    printf("Warning! U(%d,%d)=%f, dx(%d)=%f, Time step changed from %f to ",
+	   ic,kc,phys->u[ic][kc],ic,grid->dg[ic],prop->dt);
+    prop->dt = prop->dt*prop->Cmax/Cmax;
+    Cmax = 1.0;
+    printf("%f\n",prop->dt);
+  }
+  */
+
   myalldone=0;
-  if(!uflag || !sflag || !hflag) {
+  if(!uflag || !sflag || !hflag || Cmax>prop->Cmax) {
     printf("Time step %d: Processor %d, Run is blowing up!\n",prop->n,myproc);
+    
+    if(Cmax>prop->Cmax)
+      printf("Courant number problems at (%d,%d), Umax=%f, dx=%f Cmax=%.2f > %.2f\n",
+	     ic,kc,phys->u[ic][kc],grid->dg[ic],Cmax,prop->Cmax);
+    else
+      printf("Courant number is okay: Cmax=%.2f < %.2f\n",Cmax,prop->Cmax);
     if(!uflag)
       printf("U is divergent.\n");
     else
@@ -1548,6 +1602,7 @@ static void ReadProperties(propT **prop, int myproc)
   (*prop)->CdT = MPI_GetValue(DATAFILE,"CdT","ReadProperties",myproc);
   (*prop)->CdB = MPI_GetValue(DATAFILE,"CdB","ReadProperties",myproc);
   (*prop)->dt = MPI_GetValue(DATAFILE,"dt","ReadProperties",myproc);
+  (*prop)->Cmax = MPI_GetValue(DATAFILE,"Cmax","ReadProperties",myproc);
   (*prop)->nsteps = (int)MPI_GetValue(DATAFILE,"nsteps","ReadProperties",myproc);
   (*prop)->ntout = (int)MPI_GetValue(DATAFILE,"ntout","ReadProperties",myproc);
   (*prop)->ntprog = (int)MPI_GetValue(DATAFILE,"ntprog","ReadProperties",myproc);
