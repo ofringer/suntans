@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.29 2003-12-02 04:38:27 fringer Exp $
+ * $Id: phys.c,v 1.30 2003-12-02 23:33:57 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.29  2003/12/02 04:38:27  fringer
+ * Changed send/recv routines to be nonblocking.
+ *
  * Revision 1.28  2003/12/02 02:31:44  fringer
  * Removed ability to transfer first or all in send/recv routines.
  *
@@ -519,10 +522,13 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
     for(i=0;i<Nc;i++) 
       grid->dzz[i][0]=grid->dv[i]+phys->h[i];
 
-
-  //  for(k=grid->ctop[8];k<grid->Nk[8];k++)
-  //    printf("dzz[8][%d]=%f\n",k,grid->dzz[8][k]);
-
+  for(i=0;i<Nc;i++)
+    for(k=grid->ctop[i];k<grid->Nk[i];k++)
+      if(grid->dzz[i][k]==0) {
+	printf("Error in UpdateDZ: dz=0 at i=%d,k=%d!\n",i,k);
+	exit(1);
+      }
+  
   /*
   for(i=0;i<Nc;i++)
     for(k=0;k<grid->Nk[i];k++)
@@ -607,7 +613,10 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 
       EddyViscosity(grid,phys,prop);
 
+      if(VERBOSE>2 && myproc==0) printf("Creating horizontal source term...\n");
       AdvectHorizontalVelocity(grid,phys,prop,myproc,numprocs);
+
+      if(VERBOSE>2 && myproc==0) printf("Solving for h and hydrostatic u (predictor)...\n");
       BarotropicPredictor(grid,phys,prop,myproc,numprocs,comm);
       ISendRecvCellData2D(phys->h,grid,myproc,comm);
 
@@ -1151,7 +1160,7 @@ static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop
   }
   eps0 = eps = InnerProduct3(r,r,grid,myproc,numprocs,comm);
 
-  for(n=0;n<niters;n++) {
+  for(n=0;n<niters && eps0!=0;n++) {
 
     ISendRecvCellData3D(p,grid,myproc,comm);
     OperatorQ(p,z,grid,phys,prop);
@@ -1274,7 +1283,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
 
   // phys->utmp contains the interpolated velocity field which is computed
   // in AdvectHorizontalVelocity.
-  
+
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
@@ -1443,7 +1452,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   for(j=0;j<grid->Ne;j++) 
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       if(phys->utmp[j][k]!=phys->utmp[j][k]) {
-	printf("Error at %d %d (U***=nan)\n",j,k);
+	printf("Error in function BarotropicPredictor at j=%d k=%d (U***=nan)\n",j,k);
 	exit(1);
       }
 
@@ -1478,7 +1487,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
     //phys->htmp[i] = phys->h[i]+prop->dt*prop->amp*prop->omega*cos(prop->omega*prop->rtime);
-    phys->h[i] = -0.5+prop->amp*sin(prop->omega*prop->rtime);
+    phys->h[i] = prop->amp*sin(prop->omega*prop->rtime);
   }
 
   // Now we have the required components for the CG solver for the free-surface:
@@ -1633,7 +1642,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   }
   eps0 = eps = InnerProduct(r,r,grid,myproc,numprocs,comm);
 
-  for(n=0;n<niters;n++) {
+  for(n=0;n<niters && eps0!=0;n++) {
 
     ISendRecvCellData2D(p,grid,myproc,comm);
     OperatorH(p,z,grid,phys,prop);
