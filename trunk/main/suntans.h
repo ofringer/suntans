@@ -1,8 +1,11 @@
 /*
  * Main header file
  *
- * $Id: suntans.h,v 1.4 2002-11-05 01:31:17 fringer Exp $
+ * $Id: suntans.h,v 1.5 2003-04-29 00:20:32 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2002/11/05 01:31:17  fringer
+ * Added baroclinic term
+ *
  * Revision 1.3  2002/11/03 00:54:57  fringer
  * Also removed the DATADIR line since the main file is the only
  * file that contains any information about directories, etc...
@@ -26,12 +29,17 @@
 #define BREAK printf("%d\n",*((int *)0));
 #define PI 3.141592654
 #define GRAV 9.81
-#define INFTY 10000
+#define INFTY 1e20
 #define CONSERVED 1e-5
+#define EMPTY 999999
+
+// Error/Exit codes
+#define EXIT_WRITING 1
 
 #define DATAFILE "suntans.dat"
 
-char POINTSFILE[BUFFERLENGTH], 
+char PSLGFILE[BUFFERLENGTH], 
+  POINTSFILE[BUFFERLENGTH], 
   EDGEFILE[BUFFERLENGTH], 
   CELLSFILE[BUFFERLENGTH], 
   INPUTDEPTHFILE[BUFFERLENGTH],
@@ -39,6 +47,6 @@ char POINTSFILE[BUFFERLENGTH],
   EDGECENTEREDFILE[BUFFERLENGTH], 
   VERTSPACEFILE[BUFFERLENGTH], 
   TOPOLOGYFILE[BUFFERLENGTH];
-int GRID, SOLVE, VERBOSE, WARNING;
+int TRIANGULATE, GRID, SOLVE, VERBOSE, WARNING, ASCII;
 
 #endif
