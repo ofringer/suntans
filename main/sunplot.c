@@ -6,8 +6,13 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.39 2004-07-22 20:23:46 fringer Exp $
+ * $Id: sunplot.c,v 1.40 2004-11-20 22:17:52 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.39  2004/07/22 20:23:46  fringer
+ * Baroclinic velocity field is now plotted in plan view.
+ *
+ * Added variable vertical grid spacing in energy flux calculator.
+ *
  * Revision 1.1  2004/07/22 20:21:09  fringer
  * Initial revision
  *
@@ -385,7 +390,7 @@ void Quiver(float *x, float *z, float *D, float *H,
 	    float **u, float **v, float umagmax, int Nk, int Nc);
 void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic);
 void Rotate(XPoint *points, int N, int ue, int ve, int mag);
-void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions);
+void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *dimensions);
 void ShowMessage(void);
 void ReadData(dataT *data, int nstep, int numprocs);
 void FreeData(dataT *data, int numprocs);
@@ -425,7 +430,7 @@ char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
 sliceT sliceType;
-plottypeT plottype = salinity;
+plottypeT plottype = v_velocity;//salinity;
 int plotGrid = false;
 
 int main(int argc, char *argv[]) {
@@ -439,16 +444,16 @@ int main(int argc, char *argv[]) {
   vectorplot = false;
   zoomratio = 1;
   zooming = true;
-  procplottype = oneproc;
+  procplottype = allprocs;
   vertprofile = false;
   gridread = false;
   cmaphold = false;
   getcmap = false;
   raisewindow = false;
   goT go;
-  
-  ParseCommandLine(argc,argv,&numprocs,&dims);  
 
+  ParseCommandLine(argc,argv,&numprocs,&n,&k,&dims);  
+  
   ReadData(data,-1,numprocs);
 
   InitializeGraphics();
@@ -456,9 +461,6 @@ int main(int argc, char *argv[]) {
   ReadColorMap(CMAPFILE);
 
   XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask );
-
-  k=data->Nkmax/2-1;
-  if(k<0) k=0;
 
   axisType='i';
   edgelines=false;
@@ -2758,7 +2760,7 @@ void SetUpButtons(void) {
 
 }
 
-void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions)
+void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *dimensions)
 {
   int i, j, js, done=0, status;
   struct stat filestat;
@@ -2774,6 +2776,10 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions)
       if(argv[i][0]=='-') {
 	if(!strcmp(argv[i],"-np"))
 	  *numprocs = (int)atof(argv[++i]);
+	else if(!strcmp(argv[i],"-n"))
+	  *n = (int)atof(argv[++i]);
+	else if(!strcmp(argv[i],"-k"))
+	  *k = (int)atof(argv[++i]);
 	else if(!strcmp(argv[i],"-2d"))
 	  *dimensions=two_d;
 	else if(!strcmp(argv[i],"-ng"))
@@ -2804,7 +2810,7 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions)
 }    
 
 void Usage(char *str) {
-  printf("Usage: %s [-np 2, -2d]\n",str);
+  printf("Usage: %s [-np 2, -2d, -n, -k]\n",str);
 }
 
 void FindNearest(dataT *data, int x, int y, int *iloc, int *procloc, int procnum, int numprocs) {
@@ -3251,6 +3257,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  data->h_d[proc][i]=EMPTY;
       }
 
+      /*
       printf("Computing energy flux at step %d, proc %d\n",nstep,proc);
 
       dz = data->dmax/(float)data->Nkmax;
@@ -3275,11 +3282,11 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	    dz = data->z[ik0-1]-data->z[ik0];
 	    data->Eu[proc][i]+=(data->u[proc][ik0][i]-data->ubar[proc][i])*dummy[ik0]*dz;
 	    data->Ev[proc][i]+=(data->v[proc][ik0][i]-data->vbar[proc][i])*dummy[ik0]*dz;
-	    data->u[proc][ik0][i]=data->u[proc][ik0][i]-data->ubar[proc][i];
-	    data->v[proc][ik0][i]=data->v[proc][ik0][i]-data->vbar[proc][i];
+	    //	    data->u[proc][ik0][i]=data->u[proc][ik0][i]-data->ubar[proc][i];
+	    //	    data->v[proc][ik0][i]=data->v[proc][ik0][i]-data->vbar[proc][i];
 	  }
       }
-
+      */
       free(dummy);
     }
   }
