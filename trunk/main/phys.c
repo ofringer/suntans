@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.87 2004-09-27 04:42:54 fringer Exp $
+ * $Id: phys.c,v 1.88 2004-09-28 23:16:33 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.87  2004/09/27 04:42:54  fringer
+ * Fixed pressure and free-surface solvers so that they do not produce nans
+ * when the norm of source is zero.  This was not causing problems on Intel
+ * gcc but was crashing on the alpha architecture.
+ *
  * Revision 1.86  2004/09/27 01:21:02  fringer
  * Made several changes, including:
  *
@@ -2960,7 +2965,8 @@ static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, ph
 	// Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
 	k=grid->Nk[i]-1;
 	y[i][k]+=coef[i][k]*x[i][k-1]-coef[i][k]*x[i][k];
-      }
+      } else
+	y[i][grid->ctop[i]]-=2.0*coef[i][grid->ctop[i]]*x[i][grid->ctop[i]];
   }
 }
 
@@ -3042,7 +3048,8 @@ static void Preconditioner(REAL **x, REAL **xc, REAL **coef, gridT *grid, physT 
 	  printf("%f %f %f %f %f\n",a[i],b[i],c[i],d[i],xc[i][k]);
       }
       */
-    }
+    } else 
+      xc[i][grid->ctop[i]]=-0.5*x[i][grid->ctop[i]]/coef[i][grid->ctop[i]];
   }
 }
 
