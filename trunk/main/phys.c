@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.83 2004-09-22 06:28:36 fringer Exp $
+ * $Id: phys.c,v 1.84 2004-09-22 07:02:29 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.83  2004/09/22 06:28:36  fringer
+ * Added propT to AllocatePhysicalVariables and FreePhysicalVariables so
+ * that the turbulence arrays are allocated (and freed) only if
+ * turbmodel is set to 1 in suntans.dat.
+ *
  * Revision 1.82  2004/09/21 23:33:10  fringer
  * Added a variable to store qc, since if this is used as an initial guess in the
  * pressure solver then it vastly reduces the number of iterations required over
@@ -2709,13 +2714,15 @@ static void OperatorQC(REAL **coef, REAL **fcoef, REAL **x, REAL **y, REAL **c, 
       for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++)
 	y[i][k]+=coef[i][k]*x[i][k-1]+coef[i][k+1]*x[i][k+1];
 
-      // Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
-      k=grid->ctop[i];
-      y[i][k]+=coef[i][k+1]*x[i][k+1];
+      if(grid->ctop[i]<grid->Nk[i]-1) {
+	// Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
+	k=grid->ctop[i];
+	y[i][k]+=coef[i][k+1]*x[i][k+1];
 
-      // Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
-      k=grid->Nk[i]-1;
-      y[i][k]+=coef[i][k]*x[i][k-1];
+	// Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
+	k=grid->Nk[i]-1;
+	y[i][k]+=coef[i][k]*x[i][k-1];
+      }
   }
 }
 
