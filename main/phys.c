@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.45 2004-04-21 02:32:49 fringer Exp $
+ * $Id: phys.c,v 1.46 2004-04-22 04:15:27 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.45  2004/04/21 02:32:49  fringer
+ * Added the k0=grid->etop[j] to the baroclinic term and had the
+ * summation for the integral changed so that it includes the bottom
+ * cell in the summation.
+ *
  * Revision 1.44  2004/04/14 13:31:22  fringer
  * Added  QCoefficients to compute coefficients for pressure solver
  * at each time step in order to speed up CG (preconditioned) solution
@@ -1083,11 +1088,16 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	if(nc1==-1) nc1=nc2;
 	if(nc2==-1) nc2=nc1;
 
-	for(k=grid->ctop[nc1];k<grid->Nk[nc1];k++) 
+	if(grid->ctop[nc1]>grid->ctop[nc2])
+	  k0=grid->ctop[nc1]+1;
+	else
+	  k0=grid->ctop[nc2]+1;
+
+	for(k=k0;k<grid->Nk[nc1];k++) 
 	  phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
 	    *prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
 	
-	for(k=grid->ctop[nc2];k<grid->Nk[nc2];k++) 
+	for(k=k0;k<grid->Nk[nc2];k++) 
 	  phys->Cn_U[j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]
 	    *prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
       }
@@ -1114,14 +1124,9 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
 
-    if(grid->etop[j]<=grid->etopold[j]) {
-      dz = 0;
-      for(k=grid->etop[j];k<=grid->etopold[j];k++)
-	dz+=0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
-
-      for(k=grid->etop[j];k<=grid->etopold[j];k++)
-	phys->u[j][k]=phys->u[j][grid->etopold[j]]/dz*
-	  (0.5*(grid->dzzold[nc1][k]+grid->dzzold[nc2][k]));
+    if(grid->etop[j]<grid->etopold[j]) {
+      for(k=grid->etop[j];k<grid->etopold[j];k++)
+	phys->u[j][k]=phys->u[j][grid->etopold[j]];
     }
   }
 }
@@ -1242,13 +1247,13 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr]; 
       
-      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
+      for(k=grid->ctop[i]+2;k<grid->Nk[i];k++) 
 	phys->Cn_W[i][k]-=prop->dt*(grid->dzz[i][k-1]*phys->stmp[i][k-1]+grid->dzz[i][k]*phys->stmp[i][k])/
 	  (grid->dzz[i][k-1]+grid->dzz[i][k]);
       
       // Top flux advection consists only of top cell
-      k=grid->ctop[i];
-      phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
+      //      k=grid->ctop[i];
+      //      phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
     }
   }
 
@@ -1267,7 +1272,7 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
   // Correct the horizontal velocity only if this is not a boundary point.
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr]; 
-    if(phys->D[j]!=0)
+    if(phys->D[j]!=0 && grid->etop[j]<grid->Nke[j]-1)
       for(k=grid->etop[j];k<grid->Nke[j];k++)
 	phys->u[j][k]-=prop->theta*prop->dt/grid->dg[j]*
 	  (qc[grid->grad[2*j]][k]-qc[grid->grad[2*j+1]][k]);
@@ -1288,8 +1293,9 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
 
-    for(k=grid->ctop[i];k<grid->Nk[i];k++) 
-      phys->q[i][k]+=qc[i][k];
+    if(grid->ctop[i]<grid->Nk[i]-1)
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+	phys->q[i][k]+=qc[i][k];
   }
 
   // Send q to the boundary cells now that it has been updated with qc
@@ -2635,7 +2641,7 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
 
   CmaxU=0;
   for(i=0;i<Ne;i++) 
-    for(k=0;k<grid->Nke[i];k++) {
+    for(k=grid->etop[i]+1;k<grid->Nke[i];k++) {
       C = fabs(phys->u[i][k])*prop->dt/grid->dg[i];
       if(C>CmaxU) {
 	icu = i;
