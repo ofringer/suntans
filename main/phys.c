@@ -6,8 +6,15 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.70 2004-08-22 18:14:06 fringer Exp $
+ * $Id: phys.c,v 1.71 2004-08-22 23:53:32 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.70  2004/08/22 18:14:06  fringer
+ * Added ability to read vertical salinity and temperature profiles in
+ * from data.  The flags are given by readSalinity and readTemperature
+ * flags.  If these are nonzero in suntans.dat, then the data is read
+ * from the files described by the initSalinityFile and initTemperatureFile
+ * variables in suntans.dat.
+ *
  * Revision 1.69  2004/07/27 20:33:40  fringer
  * Updated UpdateScalars which now allows for the specification of the
  * scalar quantities at the boundaries using the SetBoundaryScalars
@@ -982,7 +989,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
 	// Guess a nonhydrostatic pressure field that enforces the hydrostatic velocity
 	// field and place it into phys->stmp2
-	GuessQ(phys->stmp2,phys->w,phys->uold,grid,phys,prop,myproc,numprocs,comm);
+	GuessQ(phys->stmp2,phys->w,phys->wtmp,grid,phys,prop,myproc,numprocs,comm);
 
 	// Solve for the nonhydrostatic pressure.  
 	// phys->stmp2 contains the initial guess
@@ -1799,7 +1806,7 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
 	am[k] = 0.5*(phys->u[ne][k]-fabs(phys->u[ne][k]));
       }
 
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+      for(k=grid->ctop[i];k<grid->Nke[ne];k++) 
 	src[i][k]+=(grid->dzz[nc2][k]*ap[k]+grid->dzz[nc1][k]*am[k])*
 	  grid->normal[i*NFACES+nf]*grid->df[ne];
     }
@@ -2593,13 +2600,15 @@ static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, ph
       for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++)
 	y[i][k]+=coef[i][k]*x[i][k-1]-(coef[i][k]+coef[i][k+1])*x[i][k]+coef[i][k+1]*x[i][k+1];
 
-      // Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
-      k=grid->ctop[i];
-      y[i][k]+=(-2*coef[i][k]-coef[i][k+1])*x[i][k]+coef[i][k+1]*x[i][k+1];
+      if(grid->ctop[i]<grid->Nk[i]-1) {
+	// Top q=0 so q[i][grid->ctop[i]-1]=-q[i][grid->ctop[i]]
+	k=grid->ctop[i];
+	y[i][k]+=(-2*coef[i][k]-coef[i][k+1])*x[i][k]+coef[i][k+1]*x[i][k+1];
 
-      // Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
-      k=grid->Nk[i]-1;
-      y[i][k]+=coef[i][k]*x[i][k-1]-coef[i][k]*x[i][k];
+	// Bottom dq/dz = 0 so q[i][grid->Nk[i]]=q[i][grid->Nk[i]-1]
+	k=grid->Nk[i]-1;
+	y[i][k]+=coef[i][k]*x[i][k-1]-coef[i][k]*x[i][k];
+      }
   }
 }
 
@@ -2997,7 +3006,7 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
       if(nc1==-1) nc1=nc2;
       if(nc2==-1) nc2=nc1;
 
-      for(k=0;k<grid->Nkc[ne];k++) 
+      for(k=0;k<grid->Nke[ne];k++) 
 	ap[k] = dt*df*normal/Ac*(0.5*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
 				 phys->stmp[nc2][k]*grid->dzzold[nc2][k]
 				 +0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
