@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains utility functions for array operations.
  *
- * $Id: util.c,v 1.1 2002-11-03 00:23:27 fringer Exp $
+ * $Id: util.c,v 1.2 2003-04-26 14:23:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:23:27  fringer
+ * Initial revision
+ *
  *
  */
 #include "util.h"
@@ -106,7 +109,7 @@ void FindNearest(int *points, REAL *x, REAL *y, int N, int np, REAL xi, REAL yi)
   for(n=0;n<np;n++) points[n]=-1;
 
   for(n=0;n<np;n++) {
-    dist=100000;
+    dist=INFTY;
     for(i=0;i<N;i++) {
       d = (x[i]-xi)*(x[i]-xi)+(y[i]-yi)*(y[i]-yi);
       if(d<dist & IsMember(i,points,np)==-1) {
