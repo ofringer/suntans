@@ -3,8 +3,12 @@
  * --------------
  * Contains helper functions for opening and reading data from a file.
  *
- * $Id: fileio.c,v 1.2 2003-04-29 16:38:00 fringer Exp $
+ * $Id: fileio.c,v 1.3 2003-05-07 15:18:33 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2003/04/29 16:38:00  fringer
+ * Added MyFOpen which uses errno error codes and exits when fopen
+ * encounters an error.
+ *
  * Revision 1.1  2002/11/03 00:19:53  fringer
  * Initial revision
  *
@@ -15,6 +19,7 @@
 #include <string.h>
 #include "fileio.h"
 #include <errno.h>
+
 
 #define BUFFERLENGTH 256
 #define THISFILE "fileio.c"
@@ -33,7 +38,7 @@ FILE *MyFOpen(char *file, char *perms, char *caller) {
   char str[BUFFERLENGTH];
   FILE *fid = fopen(file,perms);
 
-  if(errno) {
+  if(!fid) {
     sprintf(str,"Error in Function %s while trying to open %s",caller,file);
     perror(str);
     exit(EXIT_FAILURE);
@@ -198,7 +203,7 @@ double GetValue(char *filename, char *str, int *status)
 {
   int ispace;
   char c, istr[BUFFERLENGTH], ostr[BUFFERLENGTH];
-  FILE *ifile = fopen(filename,"r");
+  FILE *ifile = MyFOpen(filename,"r","GetValue");
   *status = 0;
 
   while(1) {
