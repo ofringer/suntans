@@ -6,8 +6,14 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.40 2004-11-20 22:17:52 fringer Exp $
+ * $Id: sunplot.c,v 1.41 2005-04-01 22:20:49 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.40  2004/11/20 22:17:52  fringer
+ * Added command line arguments to allow specification of time step to plot
+ * as well as vertical level to plot.  For example, to plot data in time
+ * step 5 and vertical level 12, use
+ * ./sunplot -n 5 -k 12 --datadir=./data
+ *
  * Revision 1.39  2004/07/22 20:23:46  fringer
  * Baroclinic velocity field is now plotted in plan view.
  *
@@ -221,7 +227,7 @@
 #define POINTSIZE 2
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
-#define AXESBIGRATIO 1e5
+#define AXESBIGRATIO 1e10
 #define MINAXESASPECT 1e-2
 
 typedef enum {
