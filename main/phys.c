@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.60 2004-05-22 23:07:00 fringer Exp $
+ * $Id: phys.c,v 1.61 2004-05-28 19:59:44 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.60  2004/05/22 23:07:00  fringer
+ * Fixed the GuessQ function, which reduces the number of iterations
+ * by approximating the initial pressure correction to be that required to
+ * enforce the hydrostatic vertical velocity field.
+ *
  * Revision 1.59  2004/05/22 19:38:01  fringer
  * Fixed bugs associated with horizontal diffusion with multiple processors.
  * The horizontal diffusion step for horizontal momentum was updating
@@ -355,7 +360,8 @@ static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid, phys
 static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
 static void HydroW(REAL **w, gridT *grid, physT *phys, propT *prop);
 static void WtoVerticalFace(gridT *grid, physT *phys);
-static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold, REAL **scal, REAL **Cn, REAL theta);
+static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn, 
+			  REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta);
 static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
 			  MPI_Comm comm);
 static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
@@ -429,6 +435,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->stmp2 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->stmp3 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->nu_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->kappa_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->tau_T = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->tau_B = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->CdT = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
@@ -455,6 +462,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     (*phys)->stmp2[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->stmp3[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->nu_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->kappa_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
   }
 
   (*phys)->ap = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
@@ -501,6 +509,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
     free(phys->stmp2[i]);
     free(phys->stmp3[i]);
     free(phys->nu_tv[i]);
+    free(phys->kappa_tv[i]);
   }
 
   free(phys->h);
@@ -523,6 +532,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   free(phys->stmp2);
   free(phys->stmp3);
   free(phys->nu_tv);
+  free(phys->kappa_tv);
   free(phys->tau_T);
   free(phys->tau_B);
   free(phys->CdT);
@@ -830,11 +840,11 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       ISendRecvWData(phys->w,grid,myproc,comm);
 
       if(prop->beta) {
-	UpdateScalars(grid,phys,prop,phys->s,phys->s,phys->Cn_R,prop->thetaS);
+	UpdateScalars(grid,phys,prop,phys->s,phys->Cn_R,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->thetaS);
 	ISendRecvCellData3D(phys->s,grid,myproc,comm);
       }
       if(prop->gamma) {
-	UpdateScalars(grid,phys,prop,phys->T,phys->T,phys->Cn_T,prop->thetaS);
+	UpdateScalars(grid,phys,prop,phys->T,phys->Cn_T,prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->thetaS);
 	ISendRecvCellData3D(phys->T,grid,myproc,comm);
       }
 
@@ -1293,8 +1303,8 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
         dz+=0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
  
       for(k=grid->etop[j];k<=grid->etopold[j];k++)
-        phys->u[j][k]=phys->u[j][grid->etopold[j]]/dz*
-          (0.5*(grid->dzzold[nc1][k]+grid->dzzold[nc2][k]));
+        phys->u[j][k]=phys->u[j][grid->etopold[j]];///dz*
+      //          (0.5*(grid->dzzold[nc1][k]+grid->dzzold[nc2][k]));
     }
   }
 }
@@ -2558,7 +2568,8 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
 }
 
-static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold, REAL **scal, REAL **Cn, REAL theta)
+static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn, 
+			  REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta) 
 {
   int i, iptr, k, nf, ktop;
   int Nc=grid->Nc, normal, nc1, nc2, ne;
@@ -2578,10 +2589,11 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
 	Cn[i][k]=0;
   } else
     fab=1.5;
-
+  
   for(i=0;i<Nc;i++) 
     for(k=0;k<grid->Nk[i];k++) 
-      phys->stmp[i][k]=scalold[i][k];
+      phys->stmp[i][k]=scal[i][k];
+
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -2593,7 +2605,7 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
     } else {
       ktop=grid->ctopold[i];
       dznew=0;
-      for(k=grid->ctop[i];k<=grid->ctopold[i];k++)
+      for(k=grid->ctop[i];k<=grid->ctopold[i];k++) 
 	dznew+=grid->dzz[i][k];      
     }
 
@@ -2651,16 +2663,18 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
 			       ap[k]*phys->stmp[i][k]);
     }
 
-    /* Comment this out for AB2 */
-    /*
-    for(k=0;k<grid->Nk[i];k++)
-      Cn[i][k]=0;
-    fab=1;
-    */
-
     // First add on the source term from the previous time step.
-    for(k=0;k<grid->Nk[i]-ktop;k++)
-      d[k]+=(1-fab)*Cn[i][k];
+    if(grid->ctop[i]<=grid->ctopold[i]) {
+      for(k=grid->ctop[i];k<=grid->ctopold[i];k++) 
+	d[0]+=(1-fab)*Cn[i][grid->ctopold[i]]/(1+fabs(grid->ctop[i]-grid->ctopold[i]));
+      for(k=grid->ctopold[i]+1;k<grid->Nk[i];k++) 
+	d[k-grid->ctopold[i]]+=(1-fab)*Cn[i][k];
+    } else {
+      for(k=grid->ctopold[i];k<=grid->ctop[i];k++) 
+	d[0]+=(1-fab)*Cn[i][k];
+      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
+	d[k-grid->ctop[i]]+=(1-fab)*Cn[i][k];
+    }
 
     for(k=0;k<grid->Nk[i];k++)
       Cn[i][k]=0;
@@ -2679,19 +2693,28 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
       for(k=0;k<grid->Nkc[ne];k++) 
 	ap[k] = dt*df*normal/Ac*(0.5*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
 				 phys->stmp[nc2][k]*grid->dzzold[nc2][k]
-	  +0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
+				 +0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
 				 phys->stmp[nc1][k]*grid->dzzold[nc1][k]);
 
       for(k=ktop+1;k<grid->Nk[i];k++) 
       	Cn[i][k-ktop]-=ap[k];
-
-      for(k=0;k<=ktop;k++)
+      
+      for(k=0;k<=ktop;k++) 
 	Cn[i][0]-=ap[k];
     }
 
     // Add on the source from the current time step to the rhs.
-    for(k=0;k<grid->Nk[i]-ktop;k++)
+    for(k=0;k<grid->Nk[i]-ktop;k++) 
       d[k]+=fab*Cn[i][k];
+
+    for(k=ktop;k<grid->Nk[i];k++)
+      ap[k]=Cn[i][k-ktop];
+    for(k=0;k<=ktop;k++)
+      Cn[i][k]=0;
+    for(k=ktop+1;k<grid->Nk[i];k++)
+      Cn[i][k]=ap[k];
+    for(k=grid->ctop[i];k<=ktop;k++)
+      Cn[i][k]=ap[ktop]/(1+fabs(grid->ctop[i]-ktop));
 
     if(grid->Nk[i]-ktop>1) 
       TriSolve(a,b,c,d,&(scal[i][ktop]),grid->Nk[i]-ktop);
@@ -2700,14 +2723,13 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
 
     if(dznew!=0) {
       mass = scal[i][ktop]*dznew;
-      for(k=grid->ctop[i];k<=grid->ctopold[i];k++)
+      for(k=grid->ctop[i];k<=grid->ctopold[i];k++) 
 	scal[i][k]=mass/dznew;
     }
 
     for(k=0;k<grid->ctop[i];k++)
       scal[i][k]=0;
   }
-
   /*
    * Need to modify the boundary cells here.  For now they
    * are left unmodified.
@@ -3297,7 +3319,11 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->thetaS = MPI_GetValue(DATAFILE,"thetaS","ReadProperties",myproc);
   (*prop)->thetaB = MPI_GetValue(DATAFILE,"thetaB","ReadProperties",myproc);
   (*prop)->beta = MPI_GetValue(DATAFILE,"beta","ReadProperties",myproc);
+  (*prop)->kappa_s = MPI_GetValue(DATAFILE,"kappa_s","ReadProperties",myproc);
+  (*prop)->kappa_sH = MPI_GetValue(DATAFILE,"kappa_sH","ReadProperties",myproc);
   (*prop)->gamma = MPI_GetValue(DATAFILE,"gamma","ReadProperties",myproc);
+  (*prop)->kappa_T = MPI_GetValue(DATAFILE,"kappa_T","ReadProperties",myproc);
+  (*prop)->kappa_TH = MPI_GetValue(DATAFILE,"kappa_TH","ReadProperties",myproc);
   (*prop)->nu = MPI_GetValue(DATAFILE,"nu","ReadProperties",myproc);
   (*prop)->nu_H = MPI_GetValue(DATAFILE,"nu_H","ReadProperties",myproc);
   (*prop)->tau_T = MPI_GetValue(DATAFILE,"tau_T","ReadProperties",myproc);
