@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.51 2004-05-15 00:18:35 fringer Exp $
+ * $Id: phys.c,v 1.52 2004-05-17 19:02:10 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.51  2004/05/15 00:18:35  fringer
+ * Changed the advection scheme for scalars so that the velocities to
+ * compute advection at time step n are all at the new time level.
+ *
  * Revision 1.50  2004/05/15 00:05:36  fringer
  * Added horizontal diffusion into AdvectHorizontalVelocity
  *
@@ -921,6 +925,8 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	for(k0=grid->etop[j];k0<k;k0++)
 	  phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
 	    (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
+	phys->Cn_U[j][k]-=0.25*GRAV*prop->beta*prop->dt*(phys->s[nc1][k]-phys->s[nc2][k])*
+	  (grid->dzz[nc1][k]+grid->dzz[nc2][k])/grid->dg[j];
       }
       /*
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
