@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.40 2004-03-13 00:43:00 fringer Exp $
+ * $Id: phys.c,v 1.41 2004-03-13 02:48:52 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.40  2004/03/13 00:43:00  fringer
+ * Working lock-exchange case -> Nonhydrostatic, nonlinear, central differencing
+ * for momentum, upwind for scalar.
+ *
  * Revision 1.39  2004/03/12 06:24:41  fringer
  * Removed OpenBoundaryFluxes function and added it to its own .c file
  * boundaries.c, where all boundary values are defined.
@@ -732,7 +736,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
  */
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs, MPI_Comm comm) {
-  int i, nf, j, jptr, k, nc, nc1, nc2, ne, k0;
+  int i, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin;
   REAL *a, *b, *c, fab, sum;
 
   a = phys->a;
@@ -778,10 +782,10 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
-	  //	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-	  //	  prop->sponge_decay)*phys->u[j][k];
+	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+0*phys->u[j][k]
+	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
+	+(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	  prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
       }
@@ -824,34 +828,52 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       */
     }
 
-    // Compute Eulerian advection of momentum (nonlinear=1)
-    if(prop->nonlinear==1) {
+    // Compute Eulerian advection of momentum (nonlinear!=0)
+    if(prop->nonlinear) {
 
       // Compute the u-component fluxes at the faces
+      if(prop->nonlinear==1)  // Upwind
+	for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	  j = grid->edgep[jptr];
+	  
+	  nc1 = grid->grad[2*j];
+	  nc2 = grid->grad[2*j+1];
+	  
+	  if(grid->ctop[nc1]>grid->ctop[nc2])
+	    kmin = grid->ctop[nc1];
+	  else
+	    kmin = grid->ctop[nc2];
 
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-	j = grid->edgep[jptr];
-	
-	nc1 = grid->grad[2*j];
-	nc2 = grid->grad[2*j+1];
-	
-	for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	  
-	  if(phys->u[j][k]>0)
-	    nc = grid->grad[2*j+1];
-	  else
-	    nc = grid->grad[2*j];
-	  
-	  // Upwind
-	  if(k<grid->Nk[nc])
-	    phys->ut[j][k]=phys->uc[nc][k]*grid->dzz[nc][k];
-	  else
+	  for(k=0;k<kmin;k++)
 	    phys->ut[j][k]=0;
-	  // Central
-	  phys->ut[j][k]=0.5*(phys->uc[nc1][k]*grid->dzz[nc1][k]+
-			      phys->uc[nc2][k]*grid->dzz[nc2][k]);
+
+	  for(k=kmin;k<grid->Nke[j];k++) {
+	    if(phys->u[j][k]>0)
+	      nc=nc2;
+	    else
+	      nc=nc1;
+	    phys->ut[j][k]=phys->uc[nc][k]*grid->dzz[nc][k];
+	  }
 	}
-      }
+      else // Central
+	for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	  j = grid->edgep[jptr];
+	  
+	  nc1 = grid->grad[2*j];
+	  nc2 = grid->grad[2*j+1];
+	  
+	  if(grid->ctop[nc1]>grid->ctop[nc2])
+	    kmin = grid->ctop[nc1];
+	  else
+	    kmin = grid->ctop[nc2];
+
+	  for(k=0;k<kmin;k++)
+	    phys->ut[j][k]=0;
+
+	  for(k=kmin;k<grid->Nke[j];k++) 
+	    phys->ut[j][k]=0.5*(phys->uc[nc1][k]*grid->dzz[nc1][k]+
+				phys->uc[nc2][k]*grid->dzz[nc2][k]);
+	}
       
       // Now compute the cell-centered source terms and put them into stmp
       for(i=0;i<grid->Nc;i++) {
@@ -875,30 +897,48 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       }
       
       // Compute the v-component fluxes at the faces
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-	j = grid->edgep[jptr];
-	
-	nc1 = grid->grad[2*j];
-	nc2 = grid->grad[2*j+1];
-	
-	for(k=grid->etop[j];k<grid->Nke[j];k++) {
+      if(prop->nonlinear==1)  // Upwind
+	for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	  j = grid->edgep[jptr];
 	  
-	  if(phys->u[j][k]>0)
-	    nc = grid->grad[2*j+1];
-	  else
-	    nc = grid->grad[2*j];
+	  nc1 = grid->grad[2*j];
+	  nc2 = grid->grad[2*j+1];
 	  
-	  // Upwind
-	  if(k<grid->Nk[nc])
-	    phys->ut[j][k]=phys->vc[nc][k]*grid->dzz[nc][k];
+	  if(grid->ctop[nc1]>grid->ctop[nc2])
+	    kmin = grid->ctop[nc1];
 	  else
+	    kmin = grid->ctop[nc2];
+
+	  for(k=0;k<kmin;k++)
 	    phys->ut[j][k]=0;
-	  // Central
-	  phys->ut[j][k]=0.5*(phys->vc[nc1][k]*grid->dzz[nc1][k]+
-			      phys->vc[nc2][k]*grid->dzz[nc2][k]);
+	  for(k=kmin;k<grid->Nke[j];k++) {
+	    if(phys->u[j][k]>0)
+	      nc=nc2;
+	    else
+	      nc=nc1;
+	    phys->ut[j][k]=phys->vc[nc][k]*grid->dzz[nc][k];
+	  }
 	}
-      }
-      
+      else // Central
+	for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	  j = grid->edgep[jptr];
+	  
+	  nc1 = grid->grad[2*j];
+	  nc2 = grid->grad[2*j+1];
+	  
+	  if(grid->ctop[nc1]>grid->ctop[nc2])
+	    kmin = grid->ctop[nc1];
+	  else
+	    kmin = grid->ctop[nc2];
+
+	  for(k=0;k<kmin;k++)
+	    phys->ut[j][k]=0;
+
+	  for(k=kmin;k<grid->Nke[j];k++) 
+	    phys->ut[j][k]=0.5*(phys->vc[nc1][k]*grid->dzz[nc1][k]+
+				phys->vc[nc2][k]*grid->dzz[nc2][k]);
+	}
+
       // Now compute the cell-centered source terms and put them into stmp
       for(i=0;i<grid->Nc;i++) {
 	
@@ -923,24 +963,21 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       // Now do vertical advection
       for(i=0;i<grid->Nc;i++) {
 	
-	// Central differencing
+	if(prop->nonlinear==1)  // Upwind
+	  for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	    a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
+			(phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
+	    b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
+			(phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
+	  }
+	else  // Central
+	  for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	    a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
+				   grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
+	    b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
+				   grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
+	  }
 
-	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
-				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
-	  b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
-				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
-	}
-
-	// Upwinding
-	/*
-	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-	  a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
-		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
-	  b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
-		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
-	}
-	*/
 	for(k=grid->ctop[i]+2;k<grid->Nk[i]-1;k++) {
 	  phys->stmp[i][k]+=(a[k]-a[k+1])/grid->dzz[i][k];
 	  phys->stmp2[i][k]+=(b[k]-b[k+1])/grid->dzz[i][k];
@@ -1057,7 +1094,7 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
   
 static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs) {
-  int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2;
+  int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin;
   REAL fab, sum;
 
   if(prop->n==1) {
@@ -1085,33 +1122,52 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
       phys->q[i][grid->ctop[i]];
   }
 
-  // Compute Eulerian advection (nonlinear=1)
-  if(prop->nonlinear==1) {
+  // Compute Eulerian advection (nonlinear!=0)
+  if(prop->nonlinear) {
     // Compute the w-component fluxes at the faces
-    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-      j = grid->edgep[jptr];
-      
-      nc1 = grid->grad[2*j];
-      nc2 = grid->grad[2*j+1];
-      
-      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+
+    if(prop->nonlinear==1) // Upwind
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	j = grid->edgep[jptr];
 	
-	if(phys->u[j][k]>0)
-	  nc = grid->grad[2*j+1];
-	else
-	  nc = grid->grad[2*j];
+	nc1 = grid->grad[2*j];
+	nc2 = grid->grad[2*j+1];
 	
-	// Upwind
-	if(k<=grid->Nk[nc])
-	  phys->ut[j][k]=0.5*(phys->w[nc][k]+phys->w[nc][k+1])*grid->dzz[nc][k];
+	if(grid->ctop[nc1]>grid->ctop[nc2])
+	  kmin = grid->ctop[nc1];
 	else
+	  kmin = grid->ctop[nc2];
+	
+	for(k=0;k<kmin;k++)
 	  phys->ut[j][k]=0;
 	
-	// Central
-	phys->ut[j][k]=0.5*(0.5*(phys->w[nc1][k]+phys->w[nc1][k+1])*grid->dzz[nc1][k]+
-			    0.5*(phys->w[nc2][k]+phys->w[nc2][k+1])*grid->dzz[nc2][k]);
+	for(k=kmin;k<grid->Nke[j];k++) {
+	  if(phys->u[j][k]>0)
+	    nc = nc2;
+	  else
+	    nc = nc1;
+
+	  phys->ut[j][k]=0.5*(phys->w[nc][k]+phys->w[nc][k+1])*grid->dzz[nc][k];
+	}
       }
-    }
+    else // Central 
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	j = grid->edgep[jptr];
+	
+	nc1 = grid->grad[2*j];
+	nc2 = grid->grad[2*j+1];
+	
+	if(grid->ctop[nc1]>grid->ctop[nc2])
+	  kmin = grid->ctop[nc1];
+	else
+	  kmin = grid->ctop[nc2];
+	
+	for(k=0;k<kmin;k++)
+	  phys->ut[j][k]=0;
+	for(k=kmin;k<grid->Nke[j];k++) 
+	  phys->ut[j][k]=0.5*(0.5*(phys->w[nc1][k]+phys->w[nc1][k+1])*grid->dzz[nc1][k]+
+			      0.5*(phys->w[nc2][k]+phys->w[nc2][k+1])*grid->dzz[nc2][k]);
+      }
     
     for(i=0;i<grid->Nc;i++) {
       
