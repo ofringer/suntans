@@ -5,8 +5,11 @@
 # Stanford University
 # fringer@stanford.edu
 #
-# $Id: Makefile,v 1.5 2004-04-20 16:48:33 fringer Exp $
+# $Id: Makefile,v 1.6 2004-05-29 20:27:21 fringer Exp $
 # $Log: not supported by cvs2svn $
+# Revision 1.5  2004/04/20 16:48:33  fringer
+# 4/20/04
+#
 # Revision 1.4  2003/05/12 00:18:26  fringer
 # Added the blas and lapack libraries to compile kriging.c.  These
 # must be compiled from the CLAPACK libraries obtained from

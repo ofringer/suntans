@@ -6,16 +6,18 @@
  * --------------------------------
  * This file contains utility functions for array operations.
  *
- * $Id: util.c,v 1.2 2003-04-26 14:23:39 fringer Exp $
+ * $Id: util.c,v 1.3 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2003/04/26 14:23:39  fringer
+ * Changed the large number to INFTY, which is defined in suntans.h
+ *
  * Revision 1.1  2002/11/03 00:23:27  fringer
  * Initial revision
  *
  *
  */
+#include "grid.h"
 #include "util.h"
-
-static REAL Max(REAL x1, REAL x2);
 
 void Sort(int *a, int *v, int N)
 {
@@ -94,9 +96,9 @@ void Interp(REAL *x, REAL *y, REAL *z, int N, REAL *xi, REAL *yi, REAL *zi, int 
     zi[n]=0;
     r=0;
     for(j=0;j<numpoints;j++) 
-      r += sqrt(x[points[j]]*x[points[j]]+y[points[j]]*y[points[j]]);
+      r += sqrt(x[points[j]]*x[points[j]]+0*y[points[j]]*y[points[j]]);
     for(j=0;j<numpoints;j++)
-      zi[n] += z[points[j]]*sqrt(x[points[j]]*x[points[j]]+y[points[j]]*y[points[j]])/r;
+      zi[n] += z[points[j]]*sqrt(x[points[j]]*x[points[j]]+0*y[points[j]]*y[points[j]])/r;
   }
 
   free(points);
@@ -167,3 +169,12 @@ REAL UpWind(REAL u, REAL dz1, REAL dz2)
   
   return fluxheight;
 }
+
+void Copy(REAL **from, REAL **to, gridT *grid) {
+  int i, k;
+
+  for(i=0;i<grid->Nc;i++)
+    for(k=0;k<grid->Nk[i];k++)
+      to[i][k]=from[i][k];
+}
+

@@ -1,3 +1,8 @@
+/*
+ * $Id: scraps.c,v 1.2 2004-05-29 20:28:50 fringer Exp $
+ * $Log: not supported by cvs2svn $
+ *
+ */
 static void MakePointers0(gridT *maingrid, gridT **localgrid, int myproc);
 static void ReOrder0(gridT *maingrid, gridT **localgrid, int myproc);
 void SendRecvCellData0(REAL *celldata, gridT *maingrid, gridT *localgrid, 

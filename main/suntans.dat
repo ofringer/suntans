@@ -2,8 +2,11 @@
 #
 #  Input file for SUNTANS.  This does not work with empty lines!!!
 #
-#  $Id: suntans.dat,v 1.3 2002-11-05 01:31:17 fringer Exp $
+#  $Id: suntans.dat,v 1.4 2004-05-29 20:25:02 fringer Exp $
 #  $Log: not supported by cvs2svn $
+#  Revision 1.3  2002/11/05 01:31:17  fringer
+#  Added baroclinic term
+#
 #  Revision 1.2  2002/11/03 01:02:10  fringer
 #  This is the main parameter file for SUNTANS.  These parameters
 #  specify all physical constants as well as filenames.
@@ -12,56 +15,67 @@
 #  Parameters
 #
 ########################################################################
-Nkmax   		50	# Number of vertical grid points
-CorrectVoronoi		0	# Whether or not to correct Voronoi points
-VoronoiRatio		.1	# Adjust the voronoi points by this amount
+Nkmax   		100	# Number of vertical grid points
+CorrectVoronoi		1	# Whether or not to correct Voronoi points
+VoronoiRatio		1	# Adjust the voronoi points by this amount if 1 then = centroid.
 vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
-IntDepth 		0	# 1 if interpdepth, 0 otherwise
-dzsmall			0.01	# Smallest grid spacing ratio before correction
-scaledepth 		1 	# Scale the depth by scalefactor
+IntDepth 		1	# 1 if interpdepth, 0 otherwise
+dzsmall			0.1	# Smallest grid spacing ratio before correction
+scaledepth 		0 	# Scale the depth by scalefactor
 scaledepthfactor 	.1 	# Depth scaling factor (to test deep grids with explicit methods)
-theta			.55	# 0: fully explicit, 1: fully implicit
-thetaAB			0	# Adams-Bashforth theta
-thetaFS			.55	# Free-surface theta (for debugging)
+theta			0.51	# 0: fully explicit, 1: fully implicit
+thetaFS			0.51	# Free-surface theta (for debugging)
+thetaS			0.5	# For scalar advection
 beta 			0.007 	# Coefficient of expansivity of salt.
-nu 			0 	# Laminar viscosity of water (m^2 s^-1)
-tau_T			0 -10	# Wind shear stress
-CdT	                0	# Drag coefficient at surface
-CdB	                0	# Drag coefficient at bottom
+nu 			1e-4 	# Laminar viscosity of water (m^2 s^-1)
+tau_T			0 	# Wind shear stress
+CdT	                0 10.01	# Drag coefficient at surface
+CdB	                0.01	# Drag coefficient at bottom
 dt 			60  	# Time step
-nsteps 			6000    # Number of steps
-ntout   		300 	# How often to output data
+Cmax 			100  	# Maximum permissible Courant number
+nsteps 			4500 3000 12000 18000    # Number of steps
+ntout   		225 25 600 	# How often to output data
 ntprog   		5 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
 maxiters		10000	# Maximum number of CG iterations
-epsilon			1e-10	# Tolerance for CG convergence
+epsilon			1e-5 	# Tolerance for CG convergence
 relax			1	# Relaxation parameter for GS solver.	
-amp 			1.0	# amplitude
+amp 			1.0     # amplitude
 omega 			1.40526e-4	# frequency
-flux 			-1.0	# flux
+flux 			0	# flux
 volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
+Nnearestedges		10	# Number of points to use for kriging for momentum
+Nnearestcells		10	# Number of points to use for ELM traceback interpolation
+kriging_cov		1	# Power of Kriging covariance function h^kriging_pow
+nonlinear		1	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
+Coriolis_f              0 7.25e-5 # Coriolis frequency f=2*Omega*sin(phi)
+sponge_distance	        10e3	# Decay distance scale for sponge layer
+sponge_decay	        1e3	# Decay time scale for sponge layer
 ########################################################################
 #
 #  Grid Files
 #
 ########################################################################
-points /home/fringer/research/SUNTANS/data/points.dat		# Vertices file (input)
-edges /home/fringer/research/SUNTANS/data/edges.dat		# Edge file (input)
-cells /home/fringer/research/SUNTANS/data/cells.dat		# Cell centered file (input)
-depth /home/fringer/research/SUNTANS/data/depth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
-celldata /home/fringer/research/SUNTANS/data/celldata.dat	# Cell-centered output (output)
-edgedata /home/fringer/research/SUNTANS/data/edgedata.dat	# Edge-centered output (output)
-vertspace /home/fringer/research/SUNTANS/data/vertspace.dat	# Vertical grid spacing (output)
-topology /home/fringer/research/SUNTANS/data/topology.dat	# Grid topology data
+pslg   /home/data/suntans_data.tmp/data_mbay_100/mbay_equilateral.dat		# Planar straight line graph (input)
+points /home/data/suntans_data.tmp/data_mbay_100/points.dat		# Vertices file (input)
+edges /home/data/suntans_data.tmp/data_mbay_100/edges.dat		# Edge file (input)
+cells /home/data/suntans_data.tmp/data_mbay_100/cells.dat		# Cell centered file (input)
+depth /home/data/suntans_data.tmp/data_mbay_100/simpledepth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
+celldata /home/data/suntans_data.tmp/data_mbay_100/celldata.dat	# Cell-centered output (output)
+edgedata /home/data/suntans_data.tmp/data_mbay_100/edgedata.dat	# Edge-centered output (output)
+vertspace /home/data/suntans_data.tmp/data_mbay_100/vertspace.dat	# Vertical grid spacing (output)
+topology /home/data/suntans_data.tmp/data_mbay_100/topology.dat	# Grid topology data
 ########################################################################
 #
 #  Output Data Files
 #
 ########################################################################
-FreeSurfaceFile   	/home/fringer/research/SUNTANS/data/fs.dat
-HorizontalVelocityFile 	/home/fringer/research/SUNTANS/data/u.dat
-VerticalVelocityFile 	/home/fringer/research/SUNTANS/data/w.dat
-SalinityFile 		/home/fringer/research/SUNTANS/data/s.dat
-VerticalGridFile 	/home/fringer/research/SUNTANS/data/g.dat
-ConserveFile		/home/fringer/research/SUNTANS/data/e.dat
+FreeSurfaceFile   	/home/data/suntans_data.tmp/data_mbay_100/fs.dat
+HorizontalVelocityFile 	/home/data/suntans_data.tmp/data_mbay_100/u.dat
+VerticalVelocityFile 	/home/data/suntans_data.tmp/data_mbay_100/w.dat
+SalinityFile 		/home/data/suntans_data.tmp/data_mbay_100/s.dat
+BGSalinityFile 		/home/data/suntans_data.tmp/data_mbay_100/s0.dat
+TemperatureFile		/home/data/suntans_data.tmp/data_mbay_100/T.dat
+VerticalGridFile 	/home/data/suntans_data.tmp/data_mbay_100/g.dat
+ConserveFile		/home/data/suntans_data.tmp/data_mbay_100/e.dat
