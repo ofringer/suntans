@@ -7,8 +7,11 @@
 % Stanford University
 % 15 Jun 04
 %
-% $Id: plotslice.m,v 1.1 2004-06-16 02:29:36 fringer Exp $
+% $Id: plotslice.m,v 1.2 2004-08-23 23:03:25 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.1  2004/06/16 02:29:36  fringer
+% This file plots a slice of data from 2d suntans output.
+%
 %
 % Surface plot determined by:
 % PLOT: 0: q, 1: s, 2: u, 3: w
@@ -41,7 +44,7 @@ function plotslice(PLOT,datadir,n,proc)
   dmax = max(dv);
   
   % Set up the Cartesian grid
-  z = -dmax+cumsum(dz);
+  z = -cumsum(dz);
   [xs,is]=sort(xv);
   [X,Z]=meshgrid(xs,z);
   
@@ -88,10 +91,10 @@ function plotslice(PLOT,datadir,n,proc)
   hd = getcdata(hfid,Nc,0,n,precision);
   
   S = reshape(sd,Nc,Nk);
-  S = S(is,end:-1:1)';
+  S = S(is,:)';
   
   Q = reshape(qd,Nc,Nk);
-  Q = Q(is,end:-1:1)';
+  Q = Q(is,:)';
   Q(find(S==EMPTY))=nan;
   H = hd(is);
   
@@ -102,13 +105,13 @@ function plotslice(PLOT,datadir,n,proc)
     nstart = 1+numcomponents*Nc*(k-1)+(component-1)*Nc;
     nend = nstart+Nc-1;
     us = ud(nstart:nend)';
-    U(Nk-k+1,:) = us(is);
+    U(k,:) = us(is);
     
     component = 3;
     nstart = 1+numcomponents*Nc*(k-1)+(component-1)*Nc;
     nend = nstart+Nc-1;
     us = ud(nstart:nend)';
-    W(Nk-k+1,:) = us(is);
+    W(k,:) = us(is);
   end
   
   switch(PLOT)
