@@ -5,8 +5,11 @@
 # Stanford University
 # fringer@stanford.edu
 #
-# $Id: Makefile,v 1.9 2004-09-12 22:12:00 fringer Exp $
+# $Id: Makefile,v 1.10 2004-09-15 01:29:59 fringer Exp $
 # $Log: not supported by cvs2svn $
+# Revision 1.9  2004/09/12 22:12:00  fringer
+# Added bounds checking options.
+#
 # Revision 1.8  2004/06/10 08:29:11  fringer
 # Added PI* to the superclean command.
 #
@@ -62,7 +65,7 @@ PARMETISLIB = $(PARMETISHOME)/libparmetis.a $(PARMETISHOME)/libmetis.a
 EXEC = sun
 PEXEC = sunplot
 
-OBJS = mympi.o grid.o report.o util.o fileio.o phys.o suntans.o initialization.o memory.o boundaries.o
+OBJS = mympi.o grid.o report.o util.o fileio.o phys.o suntans.o initialization.o memory.o turbulence.o boundaries.o
           
 all:	$(EXEC)
 
