@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.84 2004-09-22 07:02:29 fringer Exp $
+ * $Id: phys.c,v 1.85 2004-09-23 01:19:03 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.84  2004/09/22 07:02:29  fringer
+ * Fixed bug in OperatorQC which was updating the upper and lower BC
+ * for pressure with only 1 vertical level (fixed by Steven Jachec)
+ * which was causing an out-of-bounds error.
+ *
  * Revision 1.83  2004/09/22 06:28:36  fringer
  * Added propT to AllocatePhysicalVariables and FreePhysicalVariables so
  * that the turbulence arrays are allocated (and freed) only if
@@ -1206,11 +1211,12 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
 	// Send q to the boundary cells now that it has been updated
 	ISendRecvCellData3D(phys->q,grid,myproc,comm);
+      } else {
+	// Compute the vertical velocity based on continuity and then send/recv to
+	// neighboring processors.
+	Continuity(phys->w,grid,phys,prop);
       }
-
-      // Compute the vertical velocity based on continuity and then send/recv to
-      // neighboring processors.
-      Continuity(phys->w,grid,phys,prop);
+      // Send/recv the vertical velocity data 
       ISendRecvWData(phys->w,grid,myproc,comm);
 
       // Compute the eddy viscosity
@@ -1964,7 +1970,17 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
 	phys->u[j][k]-=prop->theta*prop->dt/grid->dg[j]*
 	  (qc[grid->grad[2*j]][k]-qc[grid->grad[2*j+1]][k]);
   }
-  
+
+  // Correct the vertical velocity
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr]; 
+    for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
+      phys->w[i][k]-=2.0*prop->theta*prop->dt/(grid->dzz[i][k-1]+grid->dzz[i][k])*
+	(qc[i][k-1]-qc[i][k]);
+    phys->w[i][grid->ctop[i]]+=2.0*prop->theta*prop->dt/grid->dzz[i][grid->ctop[i]]*
+      qc[i][grid->ctop[i]];
+  }
+
   // Update the pressure since qc is a pressure correction
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
