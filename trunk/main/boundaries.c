@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.5 2004-06-17 02:53:58 fringer Exp $
+ * $Id: boundaries.c,v 1.6 2004-06-23 06:20:36 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2004/06/17 02:53:58  fringer
+ * Added river plume forcing code.
+ *
  * Revision 1.4  2004/06/15 18:24:23  fringer
  * Cleaned up and removed extraneous code used for testing.
  *
@@ -79,7 +82,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
     */
 
     // For Monterey
-    if(grid->xv[ib]<1000) {
+    if(1) {//grid->xv[ib]<1000) {
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	if(k==grid->etop[j])
 	  z=-grid->dzz[ib][k]/2;
@@ -188,5 +191,8 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
       for(k=grid->etop[j];k<grid->Nke[j];k++)
 	ub[j][k]/=(1+prop->theta*prop->dt/prop->timescale);
     }
+
+    for(k=grid->etop[j];k<grid->Nke[j];k++) 
+      ub[j][k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
   }
 }
