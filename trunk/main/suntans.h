@@ -1,8 +1,12 @@
 /*
  * Main header file
  *
- * $Id: suntans.h,v 1.3 2002-11-03 00:54:57 fringer Exp $
+ * $Id: suntans.h,v 1.4 2002-11-05 01:31:17 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2002/11/03 00:54:57  fringer
+ * Also removed the DATADIR line since the main file is the only
+ * file that contains any information about directories, etc...
+ *
  * Revision 1.2  2002/11/03 00:52:35  fringer
  * Removed the requirement of specifying a separate file that contains the
  * grid data files.  They are specified in the main suntans data file now.
@@ -27,8 +31,13 @@
 
 #define DATAFILE "suntans.dat"
 
-char POINTSFILE[BUFFERLENGTH], EDGEFILE[BUFFERLENGTH], CELLSFILE[BUFFERLENGTH], INPUTDEPTHFILE[BUFFERLENGTH],
-  CELLCENTEREDFILE[BUFFERLENGTH], EDGECENTEREDFILE[BUFFERLENGTH], VERTSPACEFILE[BUFFERLENGTH], 
+char POINTSFILE[BUFFERLENGTH], 
+  EDGEFILE[BUFFERLENGTH], 
+  CELLSFILE[BUFFERLENGTH], 
+  INPUTDEPTHFILE[BUFFERLENGTH],
+  CELLCENTEREDFILE[BUFFERLENGTH], 
+  EDGECENTEREDFILE[BUFFERLENGTH], 
+  VERTSPACEFILE[BUFFERLENGTH], 
   TOPOLOGYFILE[BUFFERLENGTH];
 int GRID, SOLVE, VERBOSE, WARNING;
 

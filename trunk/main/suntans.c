@@ -7,11 +7,14 @@
  * This file reads in and partitions the unstructured grid and 
  * writes files that contain grid information for each processor.
  *
- * $Id: suntans.c,v 1.1 2002-11-03 00:16:10 fringer Exp $
+ * $Id: suntans.c,v 1.2 2002-11-05 01:31:17 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:16:10  fringer
+ * Initial revision
+ *
  *
  */
-#include "main.h"
+#include "suntans.h"
 #include "mympi.h"
 #include "grid.h"
 #include "phys.h"

@@ -1,8 +1,11 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.2 2002-11-03 20:36:33 fringer Exp $
+ * $Id: phys.h,v 1.3 2002-11-05 01:31:17 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2002/11/03 20:36:33  fringer
+ * Added parameters to check for mass and volume conservation
+ *
  * Revision 1.1  2002/11/03 00:19:17  fringer
  * Initial revision
  *
@@ -69,7 +72,7 @@ typedef struct _physT {
  */
 typedef struct _propT {
   REAL dt, rtime, amp, omega, flux, theta, thetaAB, 
-    thetaFS, nu, tau_T, CdT, CdB, relax, epsilon, dzsmall;
+    thetaFS, nu, tau_T, CdT, CdB, relax, epsilon, dzsmall, beta;
   int ntout, ntprog, nsteps, n, ntconserve, maxiters, volcheck, masscheck;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
     *SalinityFID, *VerticalGridFID, *ConserveFID;

@@ -1,14 +1,17 @@
 /*
  * Header file for util.c
  *
- * $Id: util.h,v 1.1 2002-11-03 00:24:01 fringer Exp $
+ * $Id: util.h,v 1.2 2002-11-05 01:31:17 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:24:01  fringer
+ * Initial revision
+ *
  *
  */
 #ifndef _util_h
 #define _util_h
 
-#include "main.h"
+#include "suntans.h"
 
 void Sort(int *a, int *v, int N);
 void ReOrderIntArray(int *a, int *order, int *tmp, int N, int Num);

@@ -1,15 +1,18 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.1 2002-11-03 00:18:19 fringer Exp $
+ * $Id: grid.h,v 1.2 2002-11-05 01:31:17 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:18:19  fringer
+ * Initial revision
+ *
  *
  */
 #ifndef _grid_h
 #define _grid_h
 
 #include <parmetis.h>
-#include "main.h"
+#include "suntans.h"
 #include "fileio.h"
 #include "mympi.h"
 
