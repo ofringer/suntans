@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.14 2003-05-01 00:29:05 fringer Exp $
+ * $Id: phys.c,v 1.15 2003-05-05 01:27:01 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.14  2003/05/01 00:29:05  fringer
+ * Changed SendRecvCellData2D/3D so that only the first cells are
+ * transferred in the CG solver while all of them are transferred only
+ * once when data needs to be output.
+ *
  * Revision 1.13  2003/04/29 16:39:29  fringer
  * Added MPI_FOPen in place of fopen.
  *
@@ -89,6 +94,8 @@ static void Progress(propT *prop, int myproc);
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop);
 static void ReadProperties(propT **prop, int myproc);
 static void OpenFiles(propT *prop, int myproc);
+static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
+				     int myproc, int numprocs);
 
 void AllocatePhysicalVariables(gridT *grid, physT **phys)
 {
@@ -424,8 +431,9 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 
       EddyViscosity(grid,phys,prop);
 
+      AdvectHorizontalVelocity(grid,phys,prop,myproc,numprocs);
       BarotropicPredictor(grid,phys,prop,myproc,numprocs,comm);
-      SendRecvCellData2D(phys->h,grid,myproc,comm,first);
+      ISendRecvCellData2D(phys->h,grid,myproc,comm,first);
 
       HydroW(grid,phys);
 
@@ -440,6 +448,38 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
     Check(grid,phys,prop,myproc,numprocs,comm);
   }
   //  free(prop);
+}
+
+/*
+ * Function: AdvectHorizontalVelocity
+ * Usage: AdvectHorizontalVelocity(grid,phys,prop,myproc,numprocs);
+ * ----------------------------------------------------------------
+ * This function computes the tracebacks from each computational
+ * edge and stores the interpolated values in the array
+ * phys->utmp.
+ *
+ */
+static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
+				     int myproc, int numprocs) {
+  int j, jptr, k;
+
+  // Set utmp to zero for all Nke.
+  for(j=0;j<grid->Ne;j++) {
+    for(k=grid->etop[j];k<grid->Nke[j];k++)
+      phys->utmp[j][k]=0;
+  }
+
+  // Interpolate the u.  Since etop[j] may contain newly-wetted
+  // edges this is okay since the velocity field is interpolated
+  // from the previous time step.
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+    j = grid->edgep[jptr];
+
+    for(k=0;k<grid->etop[j];k++)
+      phys->utmp[j][k]=0;
+    for(k=grid->etop[j];k<grid->Nke[j];k++) 
+      phys->utmp[j][k]=phys->u[j][k];
+  }
 }
 
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
@@ -507,11 +547,14 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
 
   for(j=0;j<grid->Ne;j++) {
     phys->D[j]=0;
-    for(k=grid->etop[j];k<grid->Nke[j];k++)
-      phys->utmp[j][k]=0;
+    //    for(k=grid->etop[j];k<grid->Nke[j];k++)
+    //      phys->utmp[j][k]=0;
   }
 
   // First create U**.  This is where the semi-Lagrangian formulation is added
+  // This is commented out since the ELM scheme is interpolated in 
+  // AdvectHorizontalVelocity.
+  /*  
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
@@ -520,6 +563,10 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       phys->utmp[j][k]=phys->u[j][k];
   }
+  */
+
+  // phys->utmp contains the interpolated velocity field which is computed
+  // in AdvectHorizontalVelocity.
 
   // Add on the baroclinic term
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
@@ -859,7 +906,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   }
   */
 
-  SendRecvCellData2D(h,grid,myproc,comm,first);
+  ISendRecvCellData2D(h,grid,myproc,comm,first);
 
   relax = prop->relax;
   niters = prop->maxiters;
@@ -931,7 +978,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
     //    printf("Proc %d: %e\n",myproc,resid);
 
-    SendRecvCellData2D(h,grid,myproc,comm,first);
+    ISendRecvCellData2D(h,grid,myproc,comm,first);
     MPI_Barrier(comm);
 
     if(fabs(resid)<prop->epsilon)
@@ -1620,7 +1667,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     // Transfer back and forth all the data to all of the ghost points.
     // This is mostly so that ghost cells do not have empty values in the data.
     // It is NOT necessarily required for the computation!
-    SendRecvCellData2D(phys->h,grid,myproc,comm,all);
+    ISendRecvCellData2D(phys->h,grid,myproc,comm,all);
     SendRecvCellData3D(phys->s,grid,myproc,comm,all);
 
     WtoVerticalFace(grid,phys);
