@@ -1,8 +1,11 @@
 /*
  * Main header file
  *
- * $Id: suntans.h,v 1.6 2004-05-29 20:25:02 fringer Exp $
+ * $Id: suntans.h,v 1.7 2004-09-22 06:31:25 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.6  2004/05/29 20:25:02  fringer
+ *  Revision before converting to CVS.
+ *
  * Revision 1.5  2003/04/29 00:20:32  fringer
  * Changed INFTY to 1e20, added EMPTY 999999, and added TRIANGULATE and ASCII.
  *
@@ -36,6 +39,7 @@
 #define INFTY 1e20
 #define CONSERVED 1e-5
 #define EMPTY 999999
+#define SMALL 1e-15
 
 // Error/Exit codes
 #define EXIT_WRITING 1
