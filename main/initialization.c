@@ -3,8 +3,12 @@
  * Description:  This file contains the functions that are used
  * to initialize the depth, free-surface, and salinity.
  *
- * $Id: initialization.c,v 1.8 2004-06-17 02:54:53 fringer Exp $
+ * $Id: initialization.c,v 1.9 2004-06-23 05:24:44 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2004/06/17 02:54:53  fringer
+ * Added new Monterey density field which uses the swstate m-file to obtain
+ * the density from salinity and temperature.
+ *
  * Revision 1.7  2004/06/15 18:24:40  fringer
  * Cleaned up and removed extraneous code for testing.
  *
@@ -90,8 +94,6 @@ REAL ReturnDepth(REAL x, REAL y) {
   int nc, np, Nc = 13;
   REAL length, xmid, *xc, *yc, R=0.025, shelfdepth=200;
 
-  return 50;
-
   // Huntington beach continental shelf
   /*
   if(x<6418)
@@ -147,9 +149,11 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
   dmax = 120;
   dshelf = 60;
 
-  thermocline_depth=150;
+  thermocline_depth=25;
   dmax = 3000;
   
+  if(z>-thermocline_depth)
+    return 3.4286*pow(fabs(thermocline_depth),0.0187)-3.6;
   return 3.4286*pow(fabs(z),0.0187)-3.6;
 
   // Monterey (critical when length=10000 slope=2500/10000)
@@ -161,10 +165,10 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
   factor = 1/power*pow((dmax-thermocline_depth)/(dshelf-thermocline_depth),power-1);
 
   if(z>-thermocline_depth) {
-    printf("%e %e\n",z,0.09*fabs(z/dmax));
+    //    printf("%e %e\n",z,0.09*fabs(z/dmax));
     return 0.09*fabs(z/dmax);
   } else {
-    printf("%e %e\n",z,0.09*thermocline_depth/dmax+delta_s*pow(fabs((z+thermocline_depth)/dmax),0.35));
+    //    printf("%e %e\n",z,0.09*thermocline_depth/dmax+delta_s*pow(fabs((z+thermocline_depth)/dmax),0.35));
     return 0.09*thermocline_depth/dmax+delta_s*pow(fabs((z+thermocline_depth)/dmax),0.35);
   }
 }
@@ -181,10 +185,6 @@ REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
 
   REAL x0=7500, x1=5500, z0=-60, z1=-120, w=500, h=40,
     x2=7000, z2=-90;
-
-  if(x>4000 && x<5000 && y<1000)
-    return 1;
-  return 0;
 
   if(z<-depth+100)
     return 1;
