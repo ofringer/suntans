@@ -1,8 +1,11 @@
 /*
  * Header file for boundaries.c
  *
- * $Id: boundaries.h,v 1.3 2004-07-27 20:36:28 fringer Exp $
+ * $Id: boundaries.h,v 1.4 2005-04-01 22:39:35 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2004/07/27 20:36:28  fringer
+ * Added SetBoundaryScalars function prototype.
+ *
  * Revision 1.2  2004/05/29 20:25:02  fringer
  * Revision before converting to CVS.
  *
@@ -18,7 +21,14 @@
 #include "phys.h"
 #include "grid.h"
 
+// Enumerated type for open/specified bc specification
+enum {
+  specified, open
+};
+
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop);
-void SetBoundaryScalars(REAL **boundary_scal, gridT *grid, physT *phys, propT *prop, char *type);
+void BoundaryVelocities(gridT *grid, physT *phys, propT *prop);
+void BoundaryScalars(gridT *grid, physT *phys, propT *prop);
+void WindStress(gridT *grid, physT *phys, propT *prop);
 
 #endif
