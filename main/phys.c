@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.80 2004-09-16 21:06:39 fringer Exp $
+ * $Id: phys.c,v 1.81 2004-09-16 21:32:23 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.80  2004/09/16 21:06:39  fringer
+ * Added qT,lT,Cn_q,Cn_l,nu_tv,kappa_tv to the restart files.
+ *
  * Revision 1.79  2004/09/16 20:16:42  fringer
  * Added ability to specify z0 for the upper and lower surfaces.  If either
  * z0T or z0B are zero, then the drag coefficients are specified by
@@ -507,7 +510,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
 			  MPI_Comm comm);
 static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
 static void Progress(propT *prop, int myproc);
-static void EddyViscosity(gridT *grid, physT *phys, propT *prop);
+static void EddyViscosity(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc);
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 			     int myproc, int numprocs, MPI_Comm comm);
 static void StoreVariables(gridT *grid, physT *phys);
@@ -1186,7 +1189,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       ISendRecvWData(phys->w,grid,myproc,comm);
 
       // Compute the eddy viscosity
-      EddyViscosity(grid,phys,prop);
+      EddyViscosity(grid,phys,prop,comm,myproc);
 
       // Update the salinity only if beta is nonzero in suntans.dat
       if(prop->beta) {
@@ -2123,10 +2126,10 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
  * boundaries.
  *
  */
-static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
+static void EddyViscosity(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc)
 {
   if(prop->turbmodel) 
-    my25(grid,phys,prop,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv);
+    my25(grid,phys,prop,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv,comm,myproc);
 }
 
 /*
