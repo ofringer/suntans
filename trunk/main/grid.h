@@ -1,8 +1,14 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.4 2003-04-29 00:21:25 fringer Exp $
+ * $Id: grid.h,v 1.5 2003-05-01 00:32:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2003/04/29 00:21:25  fringer
+ * The include line for parmetis.h has to come after the mympi.h
+ * line since parmetis.h does not have the mpi.h header in it.
+ * Changed prototype for Connectivity to use myproc to restrict printing on
+ * proc 0.
+ *
  * Revision 1.3  2003/04/21 20:26:35  fringer
  * Working version before addition of ghost cells for kriging.
  *
@@ -64,6 +70,8 @@ typedef struct _gridT {
   int **edge_recv;
   int *num_cells_send;
   int *num_cells_recv;
+  int *num_cells_send_first;
+  int *num_cells_recv_first;
   int *num_edges_send;
   int *num_edges_recv;
 
@@ -109,19 +117,25 @@ typedef struct _gridT {
 
 } gridT;
 
+typedef enum {
+  first, all
+} transferType;
+
 /*
  * Public function declarations.
  *
  */
 void GetGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm);
-void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, MPI_Comm comm);
-void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, MPI_Comm comm);
+void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
+			MPI_Comm comm, transferType type);
+void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
+			MPI_Comm comm, transferType type);
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
 void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
 void InitMainGrid(gridT **grid, int Np, int Ne, int Nc);
 //void InitMainGrid(gridT **grid);
-void ReadMainGrid(gridT *grid);
+void ReadMainGrid(gridT *grid, int myproc);
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 void CreateCellGraph(gridT *grid);
 void CreateEdgeGraph(gridT *grid);
