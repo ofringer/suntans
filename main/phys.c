@@ -6,8 +6,25 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.88 2004-09-28 23:16:33 fringer Exp $
+ * $Id: phys.c,v 1.89 2004-09-30 20:58:27 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.88  2004/09/28 23:16:33  fringer
+ * Added the following lines of code to OperatorQ and Preconditioner:
+ *
+ * To OperatorQ, added the line which applies the operator when
+ * the number of cells in the vertical is 1.  This was preventing the
+ * pressure solver from converging because the values of q for single-layer
+ * cells were not changing with the iteration and hence the residual
+ * would asymptote to a value well above the residual.
+ *      } else
+ *        y[i][grid->ctop[i]]-=2.0*coef[i][grid->ctop[i]]*x[i][grid->ctop[i]];
+ *
+ * Also added the same line to the preconditioner, which divides by
+ * the diagonal coefficient when there is only one layer in the vertical.
+ *
+ *      } else
+ *        xc[i][grid->ctop[i]]=-0.5*x[i][grid->ctop[i]]/coef[i][grid->ctop[i]];
+ *
  * Revision 1.87  2004/09/27 04:42:54  fringer
  * Fixed pressure and free-surface solvers so that they do not produce nans
  * when the norm of source is zero.  This was not causing problems on Intel
@@ -605,7 +622,7 @@ static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, ph
 static void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop);
 static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
 			  MPI_Comm comm);
-static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
+static int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
 static void Progress(propT *prop, int myproc);
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc);
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
@@ -1222,7 +1239,7 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
  */
 void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, k, n;
+  int i, k, n, blowup=0;
   extern int TotSpace;
 
   // Compute the initial quantities for comparison to determine conservative properties
@@ -1330,10 +1347,13 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
     // Output progress
     Progress(prop,myproc);
-    // Output data based on ntout specified in suntans.dat
-    OutputData(grid,phys,prop,myproc,numprocs,0,comm);
     // Check whether or not run is blowing up
-    Check(grid,phys,prop,myproc,numprocs,comm);
+    blowup=Check(grid,phys,prop,myproc,numprocs,comm);
+    // Output data based on ntout specified in suntans.dat
+    OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
+
+    if(blowup)
+      break;
   }
 }
 
@@ -3595,7 +3615,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
  * Check to make sure the run isn't blowing up.
  *
  */    
-static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
+static int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
   int i, k, icu, kcu, icw, kcw, Nc=grid->Nc, Ne=grid->Ne, ih, is, ks, iu, ku;
   int uflag=1, sflag=1, hflag=1, myalldone, alldone;
@@ -3689,10 +3709,7 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
   MPI_Reduce(&myalldone,&alldone,1,MPI_INT,MPI_SUM,0,comm);
   MPI_Bcast(&alldone,1,MPI_INT,0,comm);
 
-  if(alldone) {
-    MPI_Finalize();
-    exit(0);
-  }
+  return alldone;
 }
 
 /*
@@ -3744,7 +3761,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
   int i, j, k, nwritten;
   REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData");
 
-  if(!(prop->n%prop->ntconserve)) {
+  if(!(prop->n%prop->ntconserve) && !blowup) {
     ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
     if(myproc==0)
       fprintf(prop->ConserveFID,"%e %e %e %e %e %e %e %e\n",prop->rtime,phys->mass,phys->volume,
@@ -3753,7 +3770,12 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 
   if(!(prop->n%prop->ntout) || prop->n==1+prop->nstart || blowup) {
 
-    if(myproc==0 && VERBOSE>1) printf("Outputting data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
+    if(myproc==0 && VERBOSE>1) 
+      if(!blowup) 
+	printf("Outputting data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
+      else
+	printf("Outputting blowup data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
+
 
     if(ASCII) 
       for(i=0;i<grid->Nc;i++)
