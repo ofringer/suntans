@@ -6,16 +6,23 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.15 2003-04-21 20:27:09 fringer Exp $
+ * $Id: sunplot.c,v 1.16 2003-04-21 20:28:48 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.15  2003/04/21 20:27:09  fringer
+ * Added button colors when pressed.  Need to sort out how to make button
+ * colors change when redraw=false.
+ *
  * Revision 1.14  2003/04/21 01:56:24  fringer
- * Added iskip and kskip buttons.  Also removed vectors below depth and above fs.  Still need to draw edges for cells beneath surface.  This is not working.
+ * Added iskip and kskip buttons.  Also removed vectors below depth and above fs.  
+ * Still need to draw edges for cells beneath surface.  This is not working.
  *
  * Revision 1.13  2003/04/18 21:22:17  fringer
  * Added horizontal and vertical slice option -- press center or right button on profile window.
  *
  * Revision 1.12  2003/04/15 10:42:10  fringer
- * Added ability to create a view a slice with the mouse.  Only works for salinity.  Does not give the right axes position unless axis type is set to normal when a slice over a large area is chosen.
+ * Added ability to create a view a slice with the mouse.  Only works for salinity.  
+ * Does not give the right axes position unless axis type is set to normal when a 
+ * slice over a large area is chosen.
  *
  * Revision 1.11  2003/04/15 07:19:58  fringer
  * Redid reading of data so that it is read at each step.
