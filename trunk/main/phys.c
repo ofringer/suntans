@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.18 2003-06-10 03:28:46 fringer Exp $
+ * $Id: phys.c,v 1.19 2003-09-16 22:29:51 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.18  2003/06/10 03:28:46  fringer
+ * Changed MPI_GetString to MPI_GetFile
+ * Changed output of total memory to be in units of Mb
+ *
  * Revision 1.17  2003/06/10 02:30:23  fringer
  * Changed ELM scheme so that kriging matrices are computed during the
  * first time step.  Inverses are therefore not computed at each time
@@ -136,7 +140,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
 			  MPI_Comm comm);
 static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
 static void OutputData(gridT *grid, physT *phys, propT *prop,
-		int myproc, int numprocs, MPI_Comm comm);
+		int myproc, int numprocs, int blowup, MPI_Comm comm);
 static void ReadProperties(propT **prop, int myproc);
 static void OpenFiles(propT *prop, int myproc);
 static void Progress(propT *prop, int myproc);
@@ -146,6 +150,7 @@ static void OpenFiles(propT *prop, int myproc);
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs);
 static void ComputeTangentialVelocity(REAL **u, REAL **ut, gridT *grid);
+static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid);
 static void ComputeTraceBack(REAL x0, REAL y0, REAL z0, 
 			     REAL *xd, REAL *yd, REAL *zd, 
 			     REAL un, REAL ut, 
@@ -169,6 +174,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   *phys = (physT *)SunMalloc(sizeof(physT),"AllocatePhysicalVariables");
 
   (*phys)->u = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->uc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->vc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->D = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->utmp = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->ut = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -211,6 +218,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->CdB = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   
   for(i=0;i<Nc;i++) {
+    (*phys)->uc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->vc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->w[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->wtmp[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -244,6 +253,8 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   }
 
   for(i=0;i<Nc;i++) {
+    free(phys->uc[i]);
+    free(phys->vc[i]);
     free(phys->w[i]);
     free(phys->wtmp[i]);
     free(phys->q[i]);
@@ -255,6 +266,8 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
 
   free(phys->h);
   free(phys->htmp);
+  free(phys->uc);
+  free(phys->vc);
   free(phys->w);
   free(phys->wtmp);
   free(phys->wf);
@@ -495,17 +508,18 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
   int i, j, k, n;
   extern int TotSpace;
   propT *prop;
-  //  FILE *fid;// = fopen("../../data/hleft.dat","w");
+  FILE *fid = fopen("/tmp/fs.dat","w");
 
   ReadProperties(&prop,myproc);
   OpenFiles(prop,myproc);
+
 
   prop->n=0;
   ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
 
   if(prop->nonlinear) {
     if(VERBOSE>1) printf("Initializing the covariance matrix for Kriging...\n");
-    InitializeKriging(grid,prop->kriging_cov);
+    //    InitializeKriging(grid,prop->kriging_cov);
   }
 
   if(VERBOSE>1) printf("Processor %d,  Total memory: %d Mb\n",myproc,(int)(TotSpace/(1024*1e3)));
@@ -532,10 +546,16 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
       // at the faces.
       WtoVerticalFace(grid,phys);
       ComputeTangentialVelocity(phys->u,phys->ut,grid);
+      ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
+
+      fprintf(fid,"%f %f %f %f %f\n",prop->rtime,phys->h[0],
+	      phys->u[grid->face[0]][5],
+	      phys->u[grid->face[1]][5],
+	      phys->u[grid->face[2]][5]);
     }
 
     Progress(prop,myproc);
-    OutputData(grid,phys,prop,myproc,numprocs,comm);
+    OutputData(grid,phys,prop,myproc,numprocs,0,comm);
     Check(grid,phys,prop,myproc,numprocs,comm);
   }
   //  free(prop);
@@ -569,9 +589,15 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
   if(!prop->nonlinear) {
     for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
       j = grid->edgep[jptr];
-      
+
       for(k=grid->etop[j];k<grid->Nke[j];k++)
 	phys->utmp[j][k]=phys->u[j][k];
+
+      // New cells attain the velocity of the cell they emerged from.
+      // For the nonlinear case the velocity field is advected into it.
+      if(grid->etop[j]<grid->etopold[j])
+	for(k=grid->etop[j];k<grid->etopold[j];k++)
+	  phys->utmp[j][k]=phys->u[j][grid->etopold[j]];
     }
   } else {    
     // Interpolate the u.  Since etop[j] may contain newly-wetted
@@ -609,7 +635,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	  Cab=0;
 	else
 	  Cab=0.5;
-
+	
 	for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	  z0-=0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
 	  
@@ -722,7 +748,7 @@ static void InterpolateEdge(REAL *ui, REAL *vi, REAL *wi,
       if(dz==0)
 	uf[ci][n] = un1;
       else 
-	uf[ci][n] = un1 + sign*(zd-z0)*(un2-un1)/dz;
+	uf[ci][n] = un1 + 0*sign*(zd-z0)*(un2-un1)/dz;
     }
   
   for(n=0;n<grid->Nnearestedges;n++) {
@@ -731,7 +757,7 @@ static void InterpolateEdge(REAL *ui, REAL *vi, REAL *wi,
     y[n] = grid->ye[je];
   }
 
-  kriging(xd,yd,us,x,y,uf,3,prop->kriging_cov,grid->Nnearestedges,grid->Kriging[j0]);
+  //  kriging(xd,yd,us,x,y,uf,3,prop->kriging_cov,grid->Nnearestedges,grid->Kriging[j0]);
 
   *ui=us[0];
   *vi=us[1];
@@ -929,12 +955,13 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
 
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
-
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
+
       for(k0=grid->etop[j];k0<k;k0++)
 	phys->utmp[j][k]-=0.5*GRAV*prop->beta*dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
 	  (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
     }
+
     /*
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
       phys->utmp[j][k]-=0.5*dt*GRAV*prop->beta*
@@ -1212,7 +1239,6 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   }
 						
   // Set the flux values at boundary cells if specified
-
   for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
 
@@ -1378,7 +1404,6 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
 }
 
-
 static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop)
 {
   int i, j, jptr, iptr, k, nf, kp, km, kstart, kend, ktop;
@@ -1481,7 +1506,7 @@ static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop)
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
 
-    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+    for(k=grid->ctopold[i];k<grid->Nk[i];k++) {
       tmp=phys->s[i][k];
       phys->s[i][k]=0;
       km=0;
@@ -1498,7 +1523,7 @@ static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop)
       else
 	phys->s[i][k]=tmp;
     }
-   }
+  }
   */
 }
 
@@ -1918,13 +1943,14 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
     
 static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, k, ic, kc, Nc=grid->Nc, Ne=grid->Ne;
+  int i, k, ic, kc, Nc=grid->Nc, Ne=grid->Ne, ih, is, ks, iu, ku;
   int uflag=1, sflag=1, hflag=1, myalldone, alldone;
   REAL C, Cmax;
 
   for(i=0;i<Nc;i++) 
     if(phys->h[i]!=phys->h[i]) {
 	hflag=0;
+	ih=i;
 	break;
     }
 
@@ -1932,6 +1958,8 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
     for(k=0;k<grid->Nk[i];k++)
       if(phys->s[i][k]!=phys->s[i][k]) {
 	sflag=0;
+	is=i;
+	ks=k;
 	break;
       }
     if(!sflag)
@@ -1942,6 +1970,8 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
     for(k=0;k<grid->Nke[i];k++)
       if(phys->u[i][k]!=phys->u[i][k]) {
 	uflag=0;
+	iu=i;
+	ku=k;
 	break;
       }
     if(!uflag)
@@ -1979,18 +2009,19 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
     else
       printf("Courant number is okay: Cmax=%.2f < %.2f\n",Cmax,prop->Cmax);
     if(!uflag)
-      printf("U is divergent.\n");
+      printf("U is divergent at (%d,%d)\n",iu,ku);
     else
       printf("U is okay.\n");
-    if(!sflag)
-      printf("Scalar is divergent.\n");
+    if(!sflag) 
+      printf("Scalar is divergent at (%d,%d).\n",is,ks);
     else
       printf("Scalar is okay.\n");
     if(!hflag)
-      printf("Free-surface is divergent.\n");
+      printf("Free-surface is divergent at (%d)\n",ih);
     else
       printf("Free-surface is okay.\n");
     
+    OutputData(grid,phys,prop,myproc,numprocs,1,comm);
     myalldone=1;
   }
 
@@ -2001,6 +2032,23 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
     MPI_Finalize();
     exit(0);
   }
+}
+
+static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
+  
+  int k, n, ne, nf;
+  for(n=0;n<grid->Nc;n++) 
+    for(k=grid->ctop[n];k<grid->Nk[n];k++) {
+      uc[n][k]=0;
+      vc[n][k]=0;
+      for(nf=0;nf<NFACES;nf++) {
+	ne = grid->face[n*NFACES+nf];
+	uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+	vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+      }
+      uc[n][k]/=grid->Ac[n];
+      vc[n][k]/=grid->Ac[n];
+    }
 }
 
 static void ComputeTangentialVelocity(REAL **u, REAL **ut, gridT *grid) {
@@ -2019,16 +2067,17 @@ static void ComputeTangentialVelocity(REAL **u, REAL **ut, gridT *grid) {
     }
     if(grid->grad[2*j]!=-1 && grid->grad[2*j+1]!=-1)
       for(k=0;k<grid->Nke[j];k++)
-	ut[j][k]*=0.5;
+        ut[j][k]*=0.5;
   }
   
 }
 
 static void OutputData(gridT *grid, physT *phys, propT *prop,
-		int myproc, int numprocs, MPI_Comm comm)
+		int myproc, int numprocs, int blowup, MPI_Comm comm)
 {
-  int i, j, k, ne, eneigh, nwritten;
+  int i, j, k, ne, eneigh, nwritten, nc1, nc2;
   REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData");
+  FILE *tmpfile;
 
   if(!(prop->n%prop->ntconserve)) {
     ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
@@ -2037,7 +2086,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	      phys->Ep-phys->Ep0,phys->Eflux1,phys->Eflux2,phys->Eflux3,phys->Eflux4);
   }
 
-  if(!(prop->n%prop->ntout) || prop->n==1) {
+  if(!(prop->n%prop->ntout) || prop->n==1 || blowup) {
 
     if(myproc==0 && VERBOSE>1) printf("Outputting data at step %d of %d\n",prop->n,prop->nsteps);
 
@@ -2061,47 +2110,45 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 
     // ut stores the tangential component of velocity on the faces.
     if(ASCII) 
-      for(j=0;j<grid->Ne;j++) {
-	for(k=0;k<grid->Nke[j];k++) 
+      for(i=0;i<grid->Nc;i++) {
+	for(k=0;k<grid->Nk[i];k++) 
 	  fprintf(prop->HorizontalVelocityFID,"%e %e %e\n",
-		  phys->u[j][k]*grid->n1[j]-phys->ut[j][k]*grid->n2[j],
-		  phys->u[j][k]*grid->n2[j]+phys->ut[j][k]*grid->n1[j],
-		  phys->wf[j][k]);
-	for(k=grid->Nke[j];k<grid->Nkmax;k++)
+		  phys->uc[i][k],phys->vc[i][k],0.5*(phys->w[i][k]+phys->w[i][k+1]));
+	for(k=grid->Nk[i];k<grid->Nkmax;k++)
 	  fprintf(prop->HorizontalVelocityFID,"0.0 0.0 0.0\n");
       }
     else 
       for(k=0;k<grid->Nkmax;k++) {
-	for(j=0;j<grid->Ne;j++) {
-	  if(k<grid->Nke[j]) 
-	    tmp[j]=phys->u[j][k]*grid->n1[j]-0*phys->ut[j][k]*grid->n2[j];
+	for(i=0;i<grid->Nc;i++) {
+	  if(k<grid->Nk[i]) 
+	    tmp[i]=phys->uc[i][k];
 	  else
-	    tmp[j]=0;
+	    tmp[i]=0;
 	}
-	nwritten=fwrite(tmp,sizeof(REAL),grid->Ne,prop->HorizontalVelocityFID);
-	if(nwritten!=grid->Ne) {
+	nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
+	if(nwritten!=grid->Nc) {
 	  printf("Error outputting Horizontal Velocity data!\n");
 	  exit(EXIT_WRITING);
 	}
-	for(j=0;j<grid->Ne;j++) {
-	  if(k<grid->Nke[j])
-	    tmp[j]=phys->u[j][k]*grid->n2[j]+0*phys->ut[j][k]*grid->n1[j];
+	for(i=0;i<grid->Nc;i++) {
+	  if(k<grid->Nk[i])
+	    tmp[i]=phys->vc[i][k];
 	  else
-	    tmp[j]=0;
+	    tmp[i]=0;
 	}
-	nwritten=fwrite(tmp,sizeof(REAL),grid->Ne,prop->HorizontalVelocityFID);
-	if(nwritten!=grid->Ne) {
+	nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
+	if(nwritten!=grid->Nc) {
 	  printf("Error outputting Horizontal Velocity data!\n");
 	  exit(EXIT_WRITING);
 	}
-	for(j=0;j<grid->Ne;j++) {
-	  if(k<grid->Nke[j])
-	    tmp[j]=phys->wf[j][k];
+	for(i=0;i<grid->Nc;i++) {
+	  if(k<grid->Nk[i])
+	    tmp[i]=0.5*(phys->w[i][k]+phys->w[i][k+1]);
 	  else
-	    tmp[j]=0;
+	    tmp[i]=0;
 	}
-	nwritten=fwrite(tmp,sizeof(REAL),grid->Ne,prop->HorizontalVelocityFID);
-	if(nwritten!=grid->Ne) {
+	nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
+	if(nwritten!=grid->Nc) {
 	  printf("Error outputting Face Velocity data!\n");
 	  exit(EXIT_WRITING);
 	}
@@ -2295,7 +2342,7 @@ static void InitializeKriging(gridT *grid, int pow) {
       y[n] = grid->ye[grid->nearestedges[j][n]];
     }
     
-    grid->Kriging[j]=(REAL *)inversekriging(x,y,pow,grid->Nnearestedges);
+    //    grid->Kriging[j]=(REAL *)inversekriging(x,y,pow,grid->Nnearestedges);
   }
 
   SunFree(x,grid->Nnearestedges*sizeof(REAL),"InitializeKriging");
