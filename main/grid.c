@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.26 2003-12-02 23:34:41 fringer Exp $
+ * $Id: grid.c,v 1.27 2004-01-27 05:28:11 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.26  2003/12/02 23:34:41  fringer
+ * Fixed VertGrid so that it works with variable vertical grid spacing.
+ *
  * Revision 1.25  2003/12/02 20:37:48  fringer
  * Updated outputdata and readgrid to accomodate gradf and def as well as
  * the removal of num_cells_send_first and num_edges_send_first.
@@ -220,7 +223,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   Partition(maingrid,localgrid,comm);
 
   //CheckCommunicateCells(maingrid,*localgrid,myproc,comm);
-  CheckCommunicateEdges(maingrid,*localgrid,myproc,comm);
+  //  CheckCommunicateEdges(maingrid,*localgrid,myproc,comm);
   //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm);
 
   OutputData(maingrid,*localgrid,myproc,numprocs);
@@ -1182,9 +1185,10 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
     
   if(Nkmax>1) {
     if(mindepth!=maxdepth) 
-      for(n=0;n<grid->Nc;n++) 
-	grid->vwgt[n] = (int)(maxgridweight*(grid->dv[n]-mindepth)/(maxdepth-mindepth));
-    else
+      for(n=0;n<grid->Nc;n++) {
+	grid->vwgt[n]=(int)(maxgridweight*(float)GetDZ(NULL,maxdepth,grid->dv[n],Nkmax,myproc)/(float)Nkmax);
+	//	grid->vwgt[n] = (int)(maxgridweight*(grid->dv[n]-mindepth)/(maxdepth-mindepth));
+    } else
       for(n=0;n<grid->Nc;n++) 
 	grid->vwgt[n] = maxgridweight;
   } else {
@@ -1854,12 +1858,12 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
     }
     maingrid->dz = (REAL *)SunMalloc(maingrid->Nkmax*sizeof(REAL),"VertGrid");
 
-    GetDZ(maingrid->dz,dmax,maingrid->Nkmax);
+    GetDZ(maingrid->dz,dmax,maingrid->dv[i],maingrid->Nkmax,myproc);
     dmaxtest=0;
     for(k=0;k<maingrid->Nkmax;k++)
       dmaxtest+=maingrid->dz[k];
     for(i=0;i<maingrid->Nc;i++)
-      if(maingrid->dv[i]>dmaxtest) {
+      if(maingrid->dv[i]>dmaxtest && WARNING) {
 	printf("Warning...sum of grid spacings dz is less than depth!\n");
 	break;
       }
