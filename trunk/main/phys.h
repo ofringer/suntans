@@ -1,14 +1,17 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.1 2002-11-03 00:19:17 fringer Exp $
+ * $Id: phys.h,v 1.2 2002-11-03 20:36:33 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:19:17  fringer
+ * Initial revision
+ *
  *
  */
 #ifndef _phys_h
 #define _phys_h
 
-#include "main.h"
+#include "suntans.h"
 #include "grid.h"
 #include "fileio.h"
 
@@ -67,7 +70,7 @@ typedef struct _physT {
 typedef struct _propT {
   REAL dt, rtime, amp, omega, flux, theta, thetaAB, 
     thetaFS, nu, tau_T, CdT, CdB, relax, epsilon, dzsmall;
-  int ntout, ntprog, nsteps, n, ntconserve, maxiters;
+  int ntout, ntprog, nsteps, n, ntconserve, maxiters, volcheck, masscheck;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
     *SalinityFID, *VerticalGridFID, *ConserveFID;
 

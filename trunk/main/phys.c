@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.3 2002-11-03 20:25:08 fringer Exp $
+ * $Id: phys.c,v 1.4 2002-11-03 20:36:33 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2002/11/03 20:25:08  fringer
+ * Cleaned up the udpatedz routine.
+ *
  * Revision 1.2  2002/11/03 02:09:56  fringer
  * Moved up to field-scale and stable!!
  *
@@ -185,8 +188,8 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
 
     phys->h[i] = 0;
     //    phys->h[i]=-2.5+2.5*cos(PI*grid->xv[i]/15);
-    if(grid->xv[i]>500)
-      phys->h[i]=-grid->dv[i];
+    //    if(grid->xv[i]>500)
+    //      phys->h[i]=-grid->dv[i];
     //    if(grid->yv[i]>grid->xv[i])
     //      phys->h[i]=-grid->dv[i];
     //    phys->h[i]=-grid->dv[i]+1;
@@ -690,6 +693,13 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
       }
     }
     phys->htmp[i]=phys->h[i]-dt/grid->Ac[i]*sum;
+  }
+
+  // Set the free-surface values at the boundary.  These are set for h and not for
+  // htmp since the boundary values for h will be used in the cg solver.
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    i = grid->cellp[iptr];
+    phys->h[i] = prop->amp*sin(prop->omega*prop->rtime);
   }
 
   // Now we have the required components for the CG solver for the free-surface:
@@ -1359,10 +1369,10 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
       phys->mass0 = phys->mass;
       phys->Ep0 = phys->Ep;
     } else {
-      if(fabs((phys->volume-phys->volume0)/phys->volume0)>CONSERVED)
+      if(fabs((phys->volume-phys->volume0)/phys->volume0)>CONSERVED && prop->volcheck)
 	printf("Warning! Not volume conservative! V(0)=%e, V(t)=%e\n",
 	       phys->volume0,phys->volume);
-      if(fabs((phys->mass-phys->mass0)/phys->volume0)>CONSERVED)
+      if(fabs((phys->mass-phys->mass0)/phys->volume0)>CONSERVED && prop->masscheck)
 	printf("Warning! Not mass conservative! M(0)=%e, M(t)=%e\n",
 	       phys->mass0,phys->mass);
     }
@@ -1512,6 +1522,8 @@ static void ReadProperties(propT **prop, int myproc)
   (*prop)->amp = MPI_GetValue(DATAFILE,"amp","ReadProperties",myproc);
   (*prop)->omega = MPI_GetValue(DATAFILE,"omega","ReadProperties",myproc);
   (*prop)->flux = MPI_GetValue(DATAFILE,"flux","ReadProperties",myproc);
+  (*prop)->volcheck = MPI_GetValue(DATAFILE,"volcheck","ReadProperties",myproc);
+  (*prop)->masscheck = MPI_GetValue(DATAFILE,"masscheck","ReadProperties",myproc);
 }
 
 static void OpenFiles(propT *prop, int myproc)
