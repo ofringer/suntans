@@ -6,8 +6,19 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.8 2004-09-27 01:28:15 fringer Exp $
+ * $Id: boundaries.c,v 1.9 2004-09-30 21:01:14 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2004/09/27 01:28:15  fringer
+ * Changed the open boundary condition so that the user needs to specify c0 and
+ * c1, the surface and internal wave speeds at the boundary.  c0 is set to
+ * sqrt(gH), while c1 must be computed with a modal analysis function and
+ * extracting the speed of the first mode.
+ *
+ * In this boundary condition implementation, the barotropic velocity field
+ * is first updated and then the baroclinic velocity is updated.  As it
+ * stands the barotropic velocity is clamped (not clamped-free) while the
+ * baroclinic velocity is free.
+ *
  * Revision 1.7  2004/07/27 20:31:13  fringer
  * Added SetBoundaryScalars function, which allows the specification of
  * the salinity or temperature on the boundaries.
@@ -34,6 +45,49 @@
  */
 #include "boundaries.h"
 
+// Local functions
+static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp);
+
+/*
+ * Function: GetBoundaryVelocity
+ * Usage: GetBoundaryVelocity(&ub0,&forced,grid->xv[ib],grid->yv[ib],
+ *                            prop->rtime,phys->h[ib],grid->dv[ib],prop->omega,prop->amp);
+ * ---------------------------------------------------------------------------------------
+ * Set the boundary velocity based on the location.  If this is a partially-clamped-free bc, then
+ * set forced to 1, otherwise, if this is a free open bc, then set forced to 0.
+ *
+ */
+static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp) {
+
+  // For Monterey
+  /*
+  if(x<1000) {
+    *ub=0.002445*cos(omega*t)+.00182*cos(2*PI/(24*3600)*t+.656);
+    //*ub=-2.9377*sqrt(GRAV/d)*(cos(omega*t)+0.00182/.002445*cos(2*PI/(24*3600)*t+.656));
+    *forced=1;
+  } else 
+    *forced=0;
+  */
+
+  // New 3MS boundary forcing (cleaner) 9/27/2004 OBF/DAF
+  *forced=1; // always
+  
+  if(y>1500) // Northern boundary
+    if(cos(omega*t)>0) {
+      *ub = -h*sqrt(GRAV/d);
+    } else {
+      *ub = amp*fabs(cos(omega*t));
+    }
+  else
+    if(cos(omega*t)<0) {
+      *ub = -h*sqrt(GRAV/d);
+    } else {
+      *ub = amp*fabs(cos(omega*t));
+    }
+  // end 3MS new forcing
+  *forced = 1;
+}
+
 /*
  * Function: OpenBoundaryFluxes
  * Usage: OpenBoundaryFluxes(q,ubnew,ubn,grid,phys,prop);
@@ -57,14 +111,8 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 
     ib = grid->grad[2*j];
 
-    // For Monterey
-    if(grid->xv[ib]<1000) {
-      ub0=0.002445*cos(prop->omega*prop->rtime)+.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
-      //ub0=-2.9377*sqrt(GRAV/grid->dv[ib])*(cos(prop->omega*prop->rtime)+0.00182/.002445*cos(2*PI/(24*3600)*prop->rtime+.656));
-      forced=1;
-    } else 
-      forced=0;
-    
+    GetBoundaryVelocity(&ub0,&forced,grid->xv[ib],grid->yv[ib],prop->rtime,phys->h[ib],grid->dv[ib],prop->omega,prop->amp);
+
     c0 = sqrt(GRAV*grid->dv[ib]);
     c1 = 1.94;//0.5533; <- for openbc NH/pi
     
@@ -84,18 +132,18 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
     vc0old/=(grid->dv[ib]+phys->h[ib]);
 
     // Set the Courant numbers
-    C0=0*2.0*c0*dt/grid->dg[j];
+    C0=2.0*c0*dt/grid->dg[j];
     C1=2.0*c1*dt/grid->dg[j];
 
     // Now update u0 with c0 to get u0new
-    u0new=ub0;((1-C0/2-forced*dt/2/prop->timescale)*u0+0.5*C0*(3.0*(grid->n1[j]*uc0+grid->n2[j]*vc0)-
-						   (grid->n1[j]*uc0old+grid->n2[j]*vc0old))
-	   -forced*ub0/prop->timescale)/(1+C0/2+dt/2/prop->timescale);
+    u0new=((1-C0/2-forced*dt/2/prop->timescale)*u0+0.5*C0*(3.0*(grid->n1[j]*uc0+grid->n2[j]*vc0)-
+							   (grid->n1[j]*uc0old+grid->n2[j]*vc0old))
+	   +forced*ub0*prop->dt/prop->timescale)/(1+C0/2+dt/2/prop->timescale);
 
     // Now update u1 with c1 but internal waves are only radiated and not forced
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       ub[j][k]=u0new+((1-C1/2)*(ub[j][k]-u0)+0.5*C1*(3.0*(grid->n1[j]*(u[ib][k]-uc0)+grid->n2[j]*(v[ib][k]-vc0))-
-						     (grid->n1[j]*(uold[ib][k]-uc0old)+grid->n2[j]*(vold[ib][k]-vc0old))))
+					       (grid->n1[j]*(uold[ib][k]-uc0old)+grid->n2[j]*(vold[ib][k]-vc0old))))
 	/(1+C1/2);
   }
 }
