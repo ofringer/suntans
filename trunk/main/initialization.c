@@ -3,8 +3,11 @@
  * Description:  This file contains the functions that are used
  * to initialize the depth, free-surface, and salinity.
  *
- * $Id: initialization.c,v 1.3 2004-05-29 20:25:02 fringer Exp $
+ * $Id: initialization.c,v 1.4 2004-05-31 06:59:33 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2004/05/29 20:25:02  fringer
+ * Revision before converting to CVS.
+ *
  * Revision 1.2  2003/04/29 00:19:22  fringer
  * Added all initialization functions.
  *
@@ -71,10 +74,10 @@ REAL ReturnDepth(REAL x, REAL y) {
   int nc, np, Nc = 13;
   REAL length, xmid, *xc, *yc, R=0.025, shelfdepth=200;
 
-  return 1;
-  if(x<6 && x>4)
-    return 2;
-  return 1;
+  return 1-.5*exp(-pow(x/4,2));
+  if(x<6)
+    return .5;
+  return 2;
   /*
   if((x>4.556 && x<6 && y<1.73*(x-4.556)) | (x>6 && y<2.5))
     return 5;
@@ -180,9 +183,8 @@ REAL ReturnDepth(REAL x, REAL y) {
   * in phys.c in the InitializePhysicalVariables function.
   *
   */
- REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
-   //return 0*exp(-pow((x-50000)/5000,2));
-   //return -.75+.1*pow(1/cosh((x-10)/2),2);
+REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
+   return -d+.25;-.5+.6*cos(PI*x/10);
    return 0;
    if(x>4 && x<6)
      return 0;
@@ -289,11 +291,7 @@ REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
   REAL x0=7500, x1=5500, z0=-60, z1=-120, w=500, h=40,
     x2=7000, z2=-90;
   
-  if(x>2)
-    return 0;
-  return 1;
-
-  if(z<-.5)
+  if(x>5)
     return 1;
   return 0;
 

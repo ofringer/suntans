@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.62 2004-05-29 20:25:02 fringer Exp $
+ * $Id: phys.c,v 1.63 2004-05-31 06:59:33 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.62  2004/05/29 20:25:02  fringer
+ * Revision before converting to CVS.
+ *
  * Revision 1.61  2004/05/28 19:59:44  fringer
  * Fixed UpdateScalars so that it conserves mass with Adams Bashforth.
  *
@@ -2576,10 +2579,11 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
 {
   int i, iptr, k, nf, ktop;
   int Nc=grid->Nc, normal, nc1, nc2, ne;
-  REAL df, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, dznew, mass;
+  REAL df, dg, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, *bd, dznew, mass;
 
   ap = phys->ap;
   am = phys->am;
+  bd = phys->bp;
   a = phys->a;
   b = phys->b;
   c = phys->c;
@@ -2592,7 +2596,7 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
 	Cn[i][k]=0;
   } else
     fab=1.5;
-  
+
   for(i=0;i<Nc;i++) 
     for(k=0;k<grid->Nk[i];k++) 
       phys->stmp[i][k]=scal[i][k];
@@ -2624,15 +2628,37 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
       c[k-ktop]=-theta*dt*ap[k+1];
     }
 
-    // Top cell
+    // Top cell advection
     a[0]=0;
     b[0]=dznew-theta*dt*am[ktop+1];
     c[0]=-theta*dt*ap[ktop+1];
 
-    // Bottom cell no-flux boundary condition
+    // Bottom cell no-flux boundary condition for advection
     b[(grid->Nk[i]-1)-ktop]+=c[(grid->Nk[i]-1)-ktop];
 
-    // Explicit part into source term d[]
+    // Implicit vertical diffusion terms
+    for(k=ktop+1;k<grid->Nk[i];k++)
+      bd[k]=(2.0*kappa+kappa_tv[i][k-1]+kappa_tv[i][k])/
+	(grid->dzz[i][k-1]+grid->dzz[i][k]);
+
+    for(k=ktop+1;k<grid->Nk[i]-1;k++) {
+      a[k-ktop]-=theta*dt*bd[k];
+      b[k-ktop]+=theta*dt*(bd[k]+bd[k+1]);
+      c[k-ktop]-=theta*dt*bd[k+1];
+    }
+
+    // Diffusive fluxes only when more than 1 layer
+    if(ktop<grid->Nk[i]-1) {
+      // Top cell diffusion
+      b[0]+=theta*dt*bd[ktop+1];
+      c[0]-=theta*dt*bd[ktop+1];
+
+      // Bottom cell diffusion
+      a[(grid->Nk[i]-1)-ktop]-=theta*dt*bd[grid->Nk[i]-1];
+      b[(grid->Nk[i]-1)-ktop]+=theta*dt*bd[grid->Nk[i]-1];
+    }
+
+    // Explicit part into source term d[] 
     for(k=ktop+1;k<grid->Nk[i];k++) 
       d[k-ktop]=grid->dzzold[i][k]*phys->stmp[i][k];
 
@@ -2649,21 +2675,30 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
       ap[k] = 0.5*(phys->wtmp2[i][k]+fabs(phys->wtmp2[i][k]));
       am[k] = 0.5*(phys->wtmp2[i][k]-fabs(phys->wtmp2[i][k]));
     }
+
+    // Explicit advection and diffusion
     for(k=ktop+1;k<grid->Nk[i]-1;k++) 
       d[k-ktop]-=(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
 			       (ap[k]-am[k+1])*phys->stmp[i][k]-
-			       ap[k+1]*phys->stmp[i][k+1]);
+			       ap[k+1]*phys->stmp[i][k+1])+
+	(1-theta)*dt*(bd[k]*phys->stmp[i][k-1]
+		      -(bd[k]+bd[k+1])*phys->stmp[i][k]
+		      +bd[k+1]*phys->stmp[i][k+1]);
 
     if(ktop<grid->Nk[i]-1) {
       //Flux through bottom of top cell
       k=ktop;
       d[0]-=(1-theta)*dt*(-am[k+1]*phys->stmp[i][k]-
-			   ap[k+1]*phys->stmp[i][k+1]);
+			   ap[k+1]*phys->stmp[i][k+1])+
+	(1-theta)*dt*(-bd[k+1]*phys->stmp[i][k]+
+		      bd[k+1]*phys->stmp[i][k+1]);//+Ftop;
 
       // Through top of bottom cell
       k=grid->Nk[i]-1;
       d[k-ktop]-=(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
-			       ap[k]*phys->stmp[i][k]);
+			       ap[k]*phys->stmp[i][k])+
+	(1-theta)*dt*(bd[k]*phys->stmp[i][k-1]-
+		      bd[k]*phys->stmp[i][k]);//-Fbot
     }
 
     // First add on the source term from the previous time step.
@@ -2688,6 +2723,7 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
       ne = grid->face[i*NFACES+nf];
       normal = grid->normal[i*NFACES+nf];
       df = grid->df[ne];
+      dg = grid->dg[ne];
       nc1 = grid->grad[2*ne];
       nc2 = grid->grad[2*ne+1];
       if(nc1==-1) nc1=nc2;
