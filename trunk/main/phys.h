@@ -1,8 +1,11 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.11 2004-09-21 23:33:44 fringer Exp $
+ * $Id: phys.h,v 1.12 2004-09-22 06:30:47 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.11  2004/09/21 23:33:44  fringer
+ * Added prop->resnorm.  See log for rev 1.82 in phys.c
+ *
  * Revision 1.10  2004/09/16 20:17:45  fringer
  * Added z0T and z0B to propT, and also added lT[][], qT[][] (length
  * and turb velocity scales for MY25) and Cn_l, Cn_q for AB storage of
@@ -147,8 +150,8 @@ typedef struct _propT {
  *
  */
 void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
-void AllocatePhysicalVariables(gridT *grid, physT **phys);
-void FreePhysicalVariables(gridT *grid, physT *phys);
+void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop);
+void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop);
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop);
 void InitializeVerticalGrid(gridT **grid);
 void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc);
