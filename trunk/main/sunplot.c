@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.21 2003-05-01 00:28:30 fringer Exp $
+ * $Id: sunplot.c,v 1.22 2003-05-05 01:26:04 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.21  2003/05/01 00:28:30  fringer
+ * Changed quadsurf so that plots the upper k=1 cell when h>0.
+ *
  * Revision 1.20  2003/04/29 16:39:43  fringer
  * Added MPI_FOPen in place of fopen.
  *
@@ -158,6 +161,10 @@ typedef enum {
 } sliceT;
 
 typedef enum {
+  nomovie, forward, backward
+} goT;
+
+typedef enum {
   noplottype, freesurface, depth, h_d, salinity, saldiff, 
   salinity0, u_velocity, v_velocity, w_velocity
 } plottypeT;
@@ -292,7 +299,7 @@ int width=WIDTH, height=HEIGHT, newwidth, newheight,
 float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4],
   zoomratio, vlengthfactor=1.0;
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
-bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, go, goprocs,
+bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, goprocs,
   vertprofile, fromprofile, gridread, setdatalimitsslice, zooming;
 char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
@@ -313,6 +320,7 @@ int main(int argc, char *argv[]) {
   procplottype = allprocs;
   vertprofile = false;
   gridread = false;
+  goT go;
   
   ParseCommandLine(argc,argv,&numprocs);  
 
@@ -338,7 +346,7 @@ int main(int argc, char *argv[]) {
 
   XMaskEvent(dis, ExposureMask, &report);
   pressed=false;
-  go=false;
+  go=nomovie;
   goprocs=true;
   sprintf(message,"SUNPLOT v %s",VERSION);
 
@@ -346,15 +354,27 @@ int main(int argc, char *argv[]) {
     fromprofile=false;
     redraw=false;
     zoom=none;
-    if(go==true) {
-      if(n<data->nsteps) {
-	sprintf(message,"Stepping through...");
-	redraw=true;
-	n++;
-      } else {
-	redraw=false;
-	go=false;
-	sprintf(message,"Done!");
+    if(go!=nomovie) {
+      if(go==forward) {
+	if(n<data->nsteps) {
+	  sprintf(message,"Stepping through...");
+	  redraw=true;
+	  n++;
+	} else {
+	  redraw=false;
+	  go=nomovie;
+	  sprintf(message,"Done!");
+	}
+      } else if(go==backward) {
+	if(n>1) {
+	  sprintf(message,"Stepping backwards...");
+	  redraw=true;
+	  n--;
+       	} else {
+	  redraw=false;
+	  go=nomovie;
+	  sprintf(message,"Done!");
+	}
       }
     } else {
     XNextEvent(dis, &report);
@@ -392,7 +412,9 @@ int main(int argc, char *argv[]) {
 	  if(n!=1) { redraw = true ; n=1; }
       } else if(report.xany.window==controlButtons[gowin].butwin) {
 	if(mousebutton==left_button) {
-	  go=true;
+	  go=forward;
+	} else if(mousebutton==right_button) {
+	  go=backward;
 	}
       } else if(report.xany.window==controlButtons[nextwin].butwin) {
 	if(mousebutton==left_button) {
@@ -2269,8 +2291,8 @@ void FreeData(dataT *data, int numprocs) {
 }
 
 void ReadData(dataT *data, int nstep, int numprocs) {
-  int i, j, ik, proc, status, ind, ind0, nf;
-  float xind;
+  int i, j, ik, proc, status, ind, ind0, nf, count;
+  float xind, vel;
   double *dummy, *dummy2;
   char string[BUFFERLENGTH];
   FILE *fid;
@@ -2437,7 +2459,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	}
 	fclose(fid);
       }
-
       
       sprintf(string,"/home/fringer/research/SUNTANS/data/s.dat.%d",proc);
       fid = MyFOpen(string,"r","ReadData");
