@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.31 2004-05-29 20:25:02 fringer Exp $
+ * $Id: grid.c,v 1.32 2004-06-14 17:20:43 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.31  2004/05/29 20:25:02  fringer
+ * Revision before converting to CVS.
+ *
  * Revision 1.30  2004/05/17 19:00:20  fringer
  * Fixed a bug for realoading the grid with the -g flag.  The output
  * for EDGECENTEREDFILE was erroneously outputting grad[2*j],grad[2*j+1]
@@ -1502,10 +1505,6 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
 	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
 	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n]);
-    for(nf=0;nf<2*(NFACES-1);nf++)
-      fprintf(ofile,"%f ",grid->xi[2*(NFACES-1)*n+nf]);
-    for(nf=0;nf<2*(NFACES-1);nf++)
-      fprintf(ofile,"%d ",grid->eneigh[2*(NFACES-1)*n+nf]);
     fprintf(ofile,"\n");
   }
   fclose(ofile);
@@ -1711,9 +1710,6 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->gradf = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
 
-  (*grid)->xi = (REAL *)SunMalloc(2*(NFACES-1)*(*grid)->Ne*sizeof(REAL),"ReadGrid");
-  (*grid)->eneigh = (int *)SunMalloc(2*(NFACES-1)*(*grid)->Ne*sizeof(int),"ReadGrid");
-
   sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
   if(VERBOSE>2) printf("Reading %s...\n",str);
 
@@ -1732,10 +1728,6 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
       (*grid)->gradf[2*n] = (int)getfield(ifile,str);
       (*grid)->gradf[2*n+1] = (int)getfield(ifile,str);
       (*grid)->mark[n] = (int)getfield(ifile,str);
-      for(nf=0;nf<2*(NFACES-1);nf++)
-	(*grid)->xi[2*(NFACES-1)*n+nf]=getfield(ifile,str);
-      for(nf=0;nf<2*(NFACES-1);nf++)
-	(*grid)->eneigh[2*(NFACES-1)*n+nf]=(int)getfield(ifile,str);
   }
   fclose(ifile);
 
