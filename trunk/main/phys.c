@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.2 2002-11-03 02:09:56 fringer Exp $
+ * $Id: phys.c,v 1.3 2002-11-03 20:25:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2002/11/03 02:09:56  fringer
+ * Moved up to field-scale and stable!!
+ *
  * Revision 1.1  2002/11/03 00:18:49  fringer
  * Initial revision
  *
@@ -269,7 +272,7 @@ void InitializeVerticalGrid(gridT **grid)
 static void UpdateDZ(gridT *grid, physT *phys, int option)
 {
   int i, j, k, ne1, ne2, Nc=grid->Nc, Ne=grid->Ne, flag;
-  REAL z, zmin;
+  REAL z;
 
   if(!option) {
     for(j=0;j<Ne;j++)
@@ -294,56 +297,35 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
   if(grid->Nkmax>1) {
     for(i=0;i<Nc;i++) {
       z = 0;
-      zmin = 0;
       flag = 0;
-      for(k=0;k<grid->Nk[i];k++) 
-	zmin-=grid->dz[k];
 
-      if(phys->h[i]>=z) {
-	if(grid->Nk[i]==1)
-	  grid->dzz[i][0]=grid->dv[i]+phys->h[i];
-	else {
-	  grid->dzz[i][0]=grid->dz[0]+phys->h[i];
-	  for(k=1;k<grid->Nk[i];k++)
-	    grid->dzz[i][k]=grid->dz[k];
-	  grid->ctop[i]=0;
-	}
-      } else if (phys->h[i]<zmin) {
-	grid->dzz[i][grid->Nk[i]-1]=grid->dv[i]+phys->h[i];
-	grid->ctop[i]=grid->Nk[i]-1;
-	for(k=0;k<grid->ctop[i]-1;k++)
-	  grid->dzz[i][k]=0;
-      } else {
-	for(k=0;k<grid->Nk[i];k++) {
-	  z-=grid->dz[k];
-	  if(phys->h[i]>=z) 
-	    if(!flag) {
-	      if(k==grid->Nk[i]-1) {
-		grid->dzz[i][k]=phys->h[i]+grid->dv[i];
-		grid->ctop[i]=k;
-		flag=1;
-	      } else if(phys->h[i]!=z) {
-		grid->dzz[i][k]=phys->h[i]-z;
-		grid->ctop[i]=k;
-		flag=1;
-	      }
-	    } else {
-	      if(k==grid->Nk[i]-1) 
-		grid->dzz[i][k]=grid->dz[k]+grid->dv[i]+z;
+      for(k=0;k<grid->Nk[i];k++) {
+	z-=grid->dz[k];
+	if(phys->h[i]>z) 
+	  if(!flag) {
+	    if(k==grid->Nk[i]-1) 
+	      grid->dzz[i][k]=phys->h[i]+grid->dv[i];
+	    else 
+	      grid->dzz[i][k]=phys->h[i]-z;
+	    grid->ctop[i]=k;
+	    flag=1;
+	  } else {
+	    if(k==grid->Nk[i]-1) 
+	      grid->dzz[i][k]=grid->dz[k]+grid->dv[i]+z;
+	    else 
+	      if(z<-grid->dv[i])
+		grid->dzz[i][k]=0;
 	      else 
-		if(z<-grid->dv[i])
-		  grid->dzz[i][k]=0;
-		else 
-		  grid->dzz[i][k]=grid->dz[k];
-	    } else 
-	      grid->dzz[i][k]=0;
-	}
+		grid->dzz[i][k]=grid->dz[k];
+	  } 
+	else 
+	  grid->dzz[i][k]=0;
       }
     }
-  } else {
+  } else 
     for(i=0;i<Nc;i++) 
       grid->dzz[i][0]=grid->dv[i]+phys->h[i];
-  }
+
 
   //  for(k=grid->ctop[8];k<grid->Nk[8];k++)
   //    printf("dzz[8][%d]=%f\n",k,grid->dzz[8][k]);
