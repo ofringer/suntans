@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.22 2003-10-27 17:22:58 fringer Exp $
+ * $Id: phys.c,v 1.23 2003-10-27 21:44:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.22  2003/10/27 17:22:58  fringer
+ * Added spong layer and changed loops in momentum advection so that
+ * stmp and stmp2 are computed in the interprocessor ghost cells.
+ *
  * Revision 1.21  2003/10/25 02:04:08  fringer
  * Removed Kriging terms and added baroclinic and cariolis terms to AB vector
  * Cn[][][].
@@ -147,7 +151,7 @@ static void HydroW(gridT *grid, physT *phys);
 static void WtoVerticalFace(gridT *grid, physT *phys);
 static void UpdateScalars(gridT *grid, physT *phys, propT *prop);
 static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop);
-static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal);
+static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn);
 static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
 			  MPI_Comm comm);
 static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
@@ -193,9 +197,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->D = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->utmp = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->ut = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->Cn = (REAL ***)SunMalloc(3*sizeof(REAL **),"AllocatePhysicalVariables");
-  for(ci=0;ci<3;ci++)
-    (*phys)->Cn[ci] = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Cn_U = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
+
   (*phys)->wf = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
 
   for(j=0;j<Ne;j++) {
@@ -206,8 +209,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     (*phys)->u[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->utmp[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->ut[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
-    for(ci=0;ci<3;ci++)
-      (*phys)->Cn[ci][j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->Cn_U[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->wf[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
   }
   if(flag) {
@@ -225,6 +227,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->s = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s0 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Cn_R = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Cn_T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->stmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->stmp2 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->nu_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -242,6 +246,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     (*phys)->s[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s0[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->Cn_R[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->Cn_T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->stmp[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->stmp2[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->nu_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -265,8 +271,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
     free(phys->u[j]);
     free(phys->utmp[j]);
     free(phys->ut[j]);
-    for(ci=0;ci<3;ci++)
-      free(phys->Cn[ci][j]);
+    free(phys->Cn_U[j]);
     free(phys->wf[j]);
   }
 
@@ -279,6 +284,8 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
     free(phys->s[i]);
     free(phys->T[i]);
     free(phys->s0[i]);
+    free(phys->Cn_R[i]);
+    free(phys->Cn_T[i]);
     free(phys->stmp[i]);
     free(phys->stmp2[i]);
     free(phys->nu_tv[i]);
@@ -295,6 +302,8 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   free(phys->s);
   free(phys->T);
   free(phys->s0);
+  free(phys->Cn_R);
+  free(phys->Cn_T);
   free(phys->stmp);
   free(phys->stmp2);
   free(phys->nu_tv);
@@ -306,9 +315,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   free(phys->D);
   free(phys->utmp);
   free(phys->ut);
-  for(ci=0;ci<3;ci++)
-    free(phys->Cn[ci]);
-  free(phys->Cn);
+  free(phys->Cn_U);
 
   free(phys->ap);
   free(phys->am);
@@ -579,8 +586,9 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 
       HydroW(grid,phys);
 
-      UpdateScalarsImp(grid,phys,prop);
-      UpdateUImp(grid,phys,prop,phys->T);
+      //      UpdateScalarsImp(grid,phys,prop);
+      UpdateUImp(grid,phys,prop,phys->s,phys->Cn_R);
+      UpdateUImp(grid,phys,prop,phys->T,phys->Cn_T);
 
       // We need w on the vertical faces as well as the tangential
       // components of velocity on the faces in order to compute the
@@ -634,7 +642,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
     fab=1;
     for(j=0;j<grid->Ne;j++)
       for(k=0;k<grid->Nke[j];k++)
-	phys->Cn[0][j][k]=0;
+	phys->Cn_U[j][k]=0;
   } else
     fab=1.5;
 
@@ -667,11 +675,11 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=(1-fab)*phys->Cn[0][j][k]+
+	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+
 	  (1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
 	   prop->sponge_decay)*phys->u[j][k];
 
-	phys->Cn[0][j][k]=0;
+	phys->Cn_U[j][k]=0;
       }
     }
 
@@ -682,7 +690,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc1 = grid->grad[2*j];
       nc2 = grid->grad[2*j+1];
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	phys->Cn[0][j][k]+=prop->dt*prop->Coriolis_f*(0.5*(phys->vc[nc1][k]+phys->vc[nc2][k])*grid->n1[j]-
+	phys->Cn_U[j][k]+=prop->dt*prop->Coriolis_f*(0.5*(phys->vc[nc1][k]+phys->vc[nc2][k])*grid->n1[j]-
 						      0.5*(phys->uc[nc1][k]+phys->uc[nc2][k])*grid->n2[j]);
     }
     
@@ -695,7 +703,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	
 	for(k0=grid->etop[j];k0<k;k0++)
-	  phys->Cn[0][j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
+	  phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
 	    (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
       }
       
@@ -748,12 +756,12 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 
       if(nc1!=-1)
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	  phys->Cn[0][j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
+	  phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
       	    *prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
 
       if(nc2!=-1)
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	  phys->Cn[0][j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]*
+	  phys->Cn_U[j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]*
       	    prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
     }
 
@@ -817,12 +825,12 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 
       if(nc1!=-1) {
 	for(k=grid->ctop[nc1];k<grid->Nk[nc1];k++) 
-	  phys->Cn[0][j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
+	  phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
 	    *prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
 
       if(nc2!=-1)
 	for(k=grid->ctop[nc2];k<grid->Nk[nc2];k++) 
-	  phys->Cn[0][j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]
+	  phys->Cn_U[j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]
 	    *prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
       }
     }
@@ -831,7 +839,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       j = grid->edgep[jptr]; 
       
       for(k=grid->etop[j];k<grid->Nke[j];k++)
-	phys->utmp[j][k]+=fab*phys->Cn[0][j][k];
+	phys->utmp[j][k]+=fab*phys->Cn_U[j][k];
     }
   }
 }
@@ -1558,11 +1566,11 @@ static void UpdateScalarsImp(gridT *grid, physT *phys, propT *prop)
   }
 }
 
-static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal)
+static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn)
 {
   int i, j, jptr, iptr, k, nf, kp, km, kstart, kend, ktop;
   int Nc=grid->Nc, Ne=grid->Ne, normal, nc1, nc2, ne;
-  REAL wup, wum, wlp, wlm, df, Ac, dt=prop->dt, tmp;
+  REAL wup, wum, wlp, wlm, df, Ac, dt=prop->dt, tmp, fab;
   REAL *a, *b, *c, *d, *ap, *am, dznew, dzold, mass, rat;
 
   ap = phys->ap;
@@ -1571,6 +1579,14 @@ static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal)
   b = phys->b;
   c = phys->c;
   d = phys->d;
+
+  if(prop->n==1) {
+    fab=1;
+    for(i=0;i<grid->Nc;i++)
+      for(k=0;k<grid->Nk[i];k++)
+	Cn[i][k]=0;
+  } else
+    fab=1.5;
 
   for(i=0;i<Nc;i++) 
     for(k=0;k<grid->Nk[i];k++) 
@@ -1615,6 +1631,22 @@ static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal)
     else
       d[0]=grid->dzzold[i][ktop]*phys->stmp[i][ktop];
 
+    /* Comment this out for AB2 */
+    /*
+    for(k=0;k<grid->Nk[i];k++)
+      Cn[i][k]=0;
+    fab=1;
+    */
+
+    // Explicit part
+    // First add on the source term from the previous time step.
+    for(k=0;k<grid->Nk[i]-ktop;k++)
+      d[k]+=(1-fab)*Cn[i][k];
+
+    for(k=0;k<grid->Nk[i];k++)
+      Cn[i][k]=0;
+
+    // Now create the source term for the current time step
     for(nf=0;nf<NFACES;nf++) {
     
       ne = grid->face[i*NFACES+nf];
@@ -1626,15 +1658,19 @@ static void UpdateUImp(gridT *grid, physT *phys, propT *prop, REAL **scal)
       if(nc2==-1) nc2=nc1;
 
       for(k=0;k<grid->Nkc[ne];k++) 
-	ap[k] = 0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]))*phys->stmp[nc2][k]*grid->dzzold[nc2][k]
-	  +0.5*(phys->u[ne][k]-fabs(phys->u[ne][k]))*phys->stmp[nc1][k]*grid->dzzold[nc1][k];
+	ap[k] = dt*df*normal/Ac*(0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]))*phys->stmp[nc2][k]*grid->dzzold[nc2][k]
+	  +0.5*(phys->u[ne][k]-fabs(phys->u[ne][k]))*phys->stmp[nc1][k]*grid->dzzold[nc1][k]);
 
       for(k=ktop+1;k<grid->Nk[i];k++) 
-      	d[k-ktop]-=dt*ap[k]*df*normal/Ac;
+      	Cn[i][k-ktop]-=ap[k];
 
       for(k=0;k<=ktop;k++)
-	  d[0]-=dt*ap[k]*df*normal/Ac;
+	Cn[i][0]-=ap[k];
     }
+
+    // Add on the source from the current time step to the rhs.
+    for(k=0;k<grid->Nk[i]-ktop;k++)
+      d[k]+=fab*Cn[i][k];
 
     if(grid->Nk[i]-ktop>1) 
       TriSolve(a,b,c,d,&(scal[i][ktop]),grid->Nk[i]-ktop);
