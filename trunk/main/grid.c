@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.2 2002-11-03 00:51:42 fringer Exp $
+ * $Id: grid.c,v 1.3 2002-11-03 02:09:42 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2002/11/03 00:51:42  fringer
+ * Removed the filename read from ReadFileNames so that it reads the
+ * file names from the main datafile defined in suntans.h
+ *
  * Revision 1.1  2002/11/03 00:17:18  fringer
  * Initial revision
  *
@@ -592,10 +596,11 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
     InterpDepth(grid,myproc,numprocs,comm);
   else {
     for(n=0;n<grid->Nc;n++) {
-      //      grid->dv[n] = 5+0*5*.5*(1-tanh((grid->xv[n]-20)/5));
+      grid->dv[n] = 100;
+      //      grid->dv[n] = 5 - .5*(1-tanh((grid->xv[n]-20)/5));
       //      grid->dv[n] = 5 - 4*exp(-pow((grid->xv[n]-15)/2,2));
-      grid->dv[n] = 5;
-      if(grid->xv[n]<7.5) grid->dv[n]=1;
+      //      grid->dv[n] = 5;
+      if(grid->xv[n]<500) grid->dv[n]=20;
     }
   }
   for(n=0;n<grid->Nc;n++) {
