@@ -1,8 +1,14 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.9 2004-08-22 18:15:39 fringer Exp $
+ * $Id: phys.h,v 1.10 2004-09-16 20:17:45 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.9  2004/08/22 18:15:39  fringer
+ * Added readSalinity and readTemperature and initSalinityFile and
+ * initTemperatureFile variables to propT, as well as the file pointers
+ * initSalinityFID and initTemperatureFID to propT to enable initial
+ * temperature and salinity reads from profiles.
+ *
  * Revision 1.8  2004/07/27 20:37:05  fringer
  * Added boundary_s and boundary_T arrays to the physT struct to store
  * salinity and temperature values specified at the boundaries.
@@ -67,6 +73,8 @@ typedef struct _physT {
   REAL *tau_B;
   REAL *CdT;
   REAL *CdB;
+  REAL **qT;
+  REAL **lT;
 
   REAL mass;
   REAL mass0;
@@ -93,6 +101,8 @@ typedef struct _physT {
   REAL **Cn_T;
   REAL **Cn_U;
   REAL **Cn_W;
+  REAL **Cn_q;
+  REAL **Cn_l;
   REAL **wtmp;
   REAL **wtmp2;
   REAL **qtmp;
@@ -116,9 +126,10 @@ typedef struct _physT {
  */
 typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
-    thetaS, thetaB, nu, nu_H, tau_T, CdT, CdB, CdW, relax, epsilon, qepsilon, dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f;
+    thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, 
+    dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f;
   int ntout, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, qprecond, volcheck, masscheck,
-    nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature;
+    nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
     *SalinityFID, *BGSalinityFID, *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
     *StoreFID, *StartFID;
@@ -137,5 +148,8 @@ void InitializeVerticalGrid(gridT **grid);
 void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc);
 void OpenFiles(propT *prop, int myproc);
 void ReadProperties(propT **prop, int myproc);
+void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
+		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
+		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot);
 
 #endif
