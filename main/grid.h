@@ -1,8 +1,11 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.2 2002-11-05 01:31:17 fringer Exp $
+ * $Id: grid.h,v 1.3 2003-04-21 20:26:35 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2002/11/05 01:31:17  fringer
+ * Added baroclinic term
+ *
  * Revision 1.1  2002/11/03 00:18:19  fringer
  * Initial revision
  *
@@ -95,6 +98,12 @@ typedef struct _gridT {
   int Ne_comp;
   int Np;
   int Nge;
+
+  int Nnearestcells;
+  int Nnearestedges;
+  int **nearestcells;
+  int **nearestedges;
+
 } gridT;
 
 /*
