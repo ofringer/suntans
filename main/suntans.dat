@@ -2,8 +2,14 @@
 #
 #  Input file for SUNTANS.  This does not work with empty lines!!!
 #
-#  $Id: suntans.dat,v 1.5 2004-06-01 01:55:49 fringer Exp $
+#  $Id: suntans.dat,v 1.6 2004-06-23 06:27:33 fringer Exp $
 #  $Log: not supported by cvs2svn $
+#  Revision 1.5  2004/06/01 01:55:49  fringer
+#  Updated the suntans.dat file to contain all of the relevant
+#  variables.  This file is rarely used in its present location.
+#  Instead, it is more practical to copy it to a data directory and
+#  use it there with the --datadir= option to sun.
+#
 #  Revision 1.4  2004/05/29 20:25:02  fringer
 #   Revision before converting to CVS.
 #
@@ -18,36 +24,36 @@
 #  Parameters
 #
 ########################################################################
-Nkmax   		100	# Number of vertical grid points
+Nkmax   		200	# Number of vertical grid points
 stairstep		1	# 1 if stair-stepping, 0 if partial-stepping
-rstretch		1.0	# Stretching factor for vertical grid (1<=rstretch<1.1)
+rstretch		1.025	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		1	# Whether or not to correct Voronoi points
-VoronoiRatio		1 .25	# Adjust the voronoi points by this amount if 1 then = centroid.
+VoronoiRatio		1 	# Adjust the voronoi points by this amount if 1 then = centroid.
 vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
 IntDepth 		0	# 1 if interpdepth, 0 otherwise
 dzsmall			0.1	# Smallest grid spacing ratio before correction
 scaledepth 		0 	# Scale the depth by scalefactor
 scaledepthfactor 	.1 	# Depth scaling factor (to test deep grids with explicit methods)
-thetaramptime	        0 7200  # Timescale over which theta is ramped from 1 to theta (fs theta only)
+thetaramptime	        0       # Timescale over which theta is ramped from 1 to theta (fs theta only)
 theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
 beta 			0.007   # Coefficient of expansivity of salt.
-kappa_s                 0.0 1       # Vertical mass diffusivity
-kappa_sH                0.0 1      # Horizontal mass diffusivity
+kappa_s                 0.0     # Vertical mass diffusivity
+kappa_sH                0.0     # Horizontal mass diffusivity
 gamma 			1.0 	# Coefficient of expansivity of temperature.
-kappa_T                 0	    # Vertical thermal diffusivity
+kappa_T                 0	# Vertical thermal diffusivity
 kappa_TH                0.0     # thermal diffusivity
-nu 			1e-5  	# Vertical laminar viscosity of water (m^2 s^-1)
-nu_H 			1e-5   # Horizontal laminar viscosity of water (m^2 s^-1)
+nu 			1e-4  	# Vertical laminar viscosity of water (m^2 s^-1)
+nu_H 			1       # Horizontal laminar viscosity of water (m^2 s^-1)
 tau_T			0.0 	# Wind shear stress
 CdT	                0.0	# Drag coefficient at surface
 CdB	                0.01	# Drag coefficient at bottom
-CdW			0.01     # Drag coefficient at sidewalls
-dt 			.25 .0125 55.89 14.9040 	# Time step
+CdW			0.01    # Drag coefficient at sidewalls
+dt 			29.808  # Time step
 Cmax 			1  	# Maximum permissible Courant number
-nsteps 			4000 2000 500 2000 6400 48000    # Number of steps (3000 per M2 tide)
-ntout   		40 40 40 128 600  	# How often to output data
+nsteps 			8000    # Number of steps
+ntout   		250     # How often to output data
 ntprog   		5 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
 nonhydrostatic		1	# 0 = hydrostatic, 1 = nonhydrostatic
@@ -58,16 +64,16 @@ qprecond		1	# 1 = preconditioned, 0 = not preconditioned
 epsilon			1e-10 	# Tolerance for CG convergence
 qepsilon		1e-5	# Tolerance for CG convergence for nonhydrostatic pressure
 relax			1	# Relaxation parameter for GS solver.	
-amp 			0.005     # amplitude
+amp 			0.005   # amplitude
 omega 			1.40526e-4	# frequency
 flux 			1e-4	# flux
 timescale		1000	# timescale for open boundary condition
-volcheck		1	# Check for volume conservation
-masscheck		1	# Check for mass conservation
-nonlinear		2	# 1 if nonlinear advection for horizontal velocity, 0 for u^(n+1)=u^n
+volcheck		0	# Check for volume conservation
+masscheck		0	# Check for mass conservation
+nonlinear		2	# 1=upwind, 2=central, 0=no velocity advection
 newcells		1	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			0       # 1 if wetting and drying, 0 otherwise
-Coriolis_f              0 7.25e-5 # Coriolis frequency f=2*Omega*sin(phi)
+Coriolis_f              7.25e-5 # Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        1e3	# Decay distance scale for sponge layer
 sponge_decay	        1e3	# Decay time scale for sponge layer
 ########################################################################
@@ -75,14 +81,6 @@ sponge_decay	        1e3	# Decay time scale for sponge layer
 #  For sunplot
 #
 ########################################################################
-caxisminU		-2	# minimum caxis value for horizontal U velocity
-caxismaxU		2	# maximum caxis value for horizontal U velocity
-caxisminV		-2	# minimum caxis value for horizontal V velocity
-caxismaxV		2	# maximum caxis value for horizontal V velocity
-caxisminW		-2	# minimum caxis value for horizontal W velocity
-caxismaxW		2	# maximum caxis value for horizontal W velocity
-caxisminS		-2	# minimum caxis value for horizontal Salinity
-caxismaxS		2	# maximum caxis value for horizontal Salinity
 caxisminDefault		-.005	# default min
 caxismaxDefault		.01	# default max
 ########################################################################
@@ -90,30 +88,30 @@ caxismaxDefault		.01	# default max
 #  Grid Files
 #
 ########################################################################
-pslg  /home/data/suntans_data/oned.dat mbay_equilateral.dat 		# Planar straight line graph (input)
-points /home/data/suntans_data/points.dat	# Vertices file (input)
-edges /home/data/suntans_data/edges.dat		# Edge file (input)
-cells /home/data/suntans_data/cells.dat		# Cell centered file (input)
-depth /home/fringer/research/SUNTANS/data/simpledepth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
-celldata /home/data/suntans_data/celldata.dat	# Cell-centered output (output)
-edgedata /home/data/suntans_data/edgedata.dat	# Edge-centered output (output)
-vertspace /home/data/suntans_data/vertspace.dat	# Vertical grid spacing (output)
-topology /home/data/suntans_data/topology.dat	# Grid topology data
+pslg  			oned.dat 	# Planar straight line graph (input)
+points 			points.dat  	# Vertices file (input)
+edges 			edges.dat	# Edge file (input)
+cells 			cells.dat	# Cell centered file (input)
+depth			depth.dat 	# Depth file for interpolation (if INTERPDEPTH=1) (input)
+celldata 		celldata.dat	# Cell-centered output (output)
+edgedata 		edgedata.dat	# Edge-centered output (output)
+vertspace 		vertspace.dat	# Vertical grid spacing (output)
+topology 		topology.dat	# Grid topology data
 ########################################################################
 #
 #  Output Data Files
 #
 ########################################################################
-FreeSurfaceFile   	/home/data/suntans_data/fs.dat
-HorizontalVelocityFile 	/home/data/suntans_data/u.dat
-VerticalVelocityFile 	/home/data/suntans_data/w.dat
-SalinityFile 		/home/data/suntans_data/s.dat
-BGSalinityFile 		/home/data/suntans_data/s0.dat
-TemperatureFile		/home/data/suntans_data/T.dat
-PressureFile		/home/data/suntans_data/q.dat
-VerticalGridFile 	/home/data/suntans_data/g.dat
-ConserveFile		/home/data/suntans_data/e.dat
-ProgressFile	        /home/data/suntans_data/step.dat
-StoreFile		/home/data/suntans_data/store.dat
-StartFile		/home/data/suntans_data/start.dat
+FreeSurfaceFile   	fs.dat
+HorizontalVelocityFile 	u.dat
+VerticalVelocityFile 	w.dat
+SalinityFile 		s.dat
+BGSalinityFile 		s0.dat
+TemperatureFile		T.dat
+PressureFile		q.dat
+VerticalGridFile 	g.dat
+ConserveFile		e.dat
+ProgressFile	        step.dat
+StoreFile		store.dat
+StartFile		start.dat
 
