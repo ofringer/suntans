@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.2 2003-03-31 19:57:36 fringer Exp $
+ * $Id: sunplot.c,v 1.3 2003-03-31 20:23:21 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2003/03/31 19:57:36  fringer
+ * Added log and id lines.
+ *
  *
  */
 #include <stdio.h>
@@ -26,6 +29,7 @@
 #define EMPTY 99999
 #define INFTY 1e20
 #define BUFFER 256
+#define CMAPFILE "jet.cmap"
 
 void mydraw(char plottype, int procnum);
 void ReadGrid(int proc);
@@ -34,6 +38,9 @@ float Min(float *x, int N);
 float Max(float *x, int N);
 void AxisImage(float *axes, float *data);
 void Fill(XPoint *vertices, int N, int cindex, int edges);
+void CAxis(float *caxis, float *data, int Nc);
+void ReadColorMap(char *str);
+void UnSurf(float *xc, float *yc, int *cells, float *data, int N);
 
 /*Linux users will need to add -ldl to the Makefile to compile 
  *this example.
@@ -47,22 +54,17 @@ Screen *screen;
 Pixmap pix;
 Colormap colormap;
 
-int plottype='s',Np, Nc, n=1, nsteps=21, k=1, Nkmax=70;
+int plottype='s',Np, Nc, n=1, nsteps=21, k=1, Nkmax=20;
 int *cells;
-float cmap[64][3], *xc, *yc, *depth, *xp;
+float caxis[2], cmap[64][3], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4];
 int axisType, oldaxisType, edgelines, white, black, procnum=0;
 char str[BUFFER];
 
 int main() {
   int i, ind, redraw;
-  FILE *ifile = fopen("jet.cmap","r");
-  float cmap[64][3], caxis[2], val;
-  for(i=0;i<64;i++) {
-    fscanf(ifile,"%f %f %f\n",&cmap[i][0],&cmap[i][1],&cmap[i][2]);
-  }
-  fclose(ifile);
-  caxis[0] = 0;
-  caxis[1] = 1;
+  float val;
+
+  ReadColorMap(CMAPFILE);
 
   dis = XOpenDisplay(NULL);
   win = XCreateSimpleWindow(dis, RootWindow(dis, 0), 
@@ -74,7 +76,7 @@ int main() {
 
   colormap = DefaultColormap(dis, 0);
   gc = XCreateGC(dis, win, 0, 0);
-  //  black = BlackPixel(dis,screen);
+  black = BlackPixel(dis,0);
   white = WhitePixel(dis,0);
 
   XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask);
@@ -94,7 +96,7 @@ int main() {
     case Expose:   
       printf("Exposed...\n");
       mydraw(plottype,procnum);
-      XCopyArea(dis,win,pix,gc,0,0,WIDTH,HEIGHT,0,0);
+      XCopyArea(dis,pix,win,gc,0,0,WIDTH,HEIGHT,0,0);
       break;
     case KeyPress:
       switch(XLookupKeysym(&report.xkey, 0)) {
@@ -171,7 +173,7 @@ int main() {
       }
       if(redraw) {
 	mydraw(plottype,procnum);
-	XCopyArea(dis,win,pix,gc,0,0,WIDTH,HEIGHT,0,0);
+	XCopyArea(dis,pix,win,gc,0,0,WIDTH,HEIGHT,0,0);
       }
       break;
     }
@@ -283,8 +285,8 @@ void mydraw(char plottype, int procnum)
   XFontStruct *font_info;
   int i, ind, j;
   FILE *sfile, *hfile;
-  float caxis[2], val, dx, dy, xp, yp, xmax, xmin, ymax, ymin, zmax, zmin,
-    xp1, yp1, *salt, axesPosition[4], dataLimits[4];
+  float val, dx, dy, xp, yp, xmax, xmin, ymax, ymin, zmax, zmin,
+    xp1, yp1, *salt;
 
   sprintf(str1,"/home/fringer/research/SUNTANS/data/s.dat.%d",procnum);
   sfile = fopen(str1,"r");
@@ -306,26 +308,10 @@ void mydraw(char plottype, int procnum)
     break;
   }
 
-  caxis[0] = EMPTY;
-  caxis[1] = -EMPTY;
-
-  strcpy(str1,"RECTANGLE"); 
-
-  vertices[0].x = 50;
-  vertices[0].y = 50;
-  vertices[1].x = 200;
-  vertices[1].y = 50;
-  vertices[2].x = 75;
-  vertices[2].y = 100;
-
-  color.flags = DoRed | DoGreen | DoBlue;
-
   dataLimits[0] = Min(xc,Np);
   dataLimits[1] = Max(xc,Np);
   dataLimits[2] = Min(yc,Np);
   dataLimits[3] = Max(yc,Np);
-  //  printf("Xmin = %f, Xmax = %f, Ymin = %f, Ymax = %f\n",
-  //	 dataLimits[0],dataLimits[1],dataLimits[2],dataLimits[3]);
 
   axesPosition[0] = 0.1;
   axesPosition[1] = 0.1;
@@ -335,57 +321,13 @@ void mydraw(char plottype, int procnum)
   if(axisType=='i')
     AxisImage(axesPosition,dataLimits);
 
-  Nx = 500;
-  Ny = 500;
-  dx = (float)(xmax-xmin)/Ny;
-  dy = (float)(ymax-ymin)/Nx;
-  zmax = 0;
-  zmin = 0;
-  for(i=0;i<Nc;i++) {
-    //salt[i]=depth[i];
-    if(salt[i]<=caxis[0] && salt[i]!=0) caxis[0]=salt[i];
-    if(salt[i]>=caxis[1] && salt[i]!=0) caxis[1]=salt[i];
-  }
+  CAxis(caxis,salt,Nc);
 
-  //  printf("%f %f %f\n",caxis[0],caxis[1],caxis[0]-caxis[1]);
+  UnSurf(xc,yc,cells,salt,Nc);
 
-  color.red = 0;
-  color.green = 0;
-  color.blue = 0;
-  XAllocColor(dis, colormap, &color);
-  XSetForeground(dis,gc,color.pixel);
-  XFillRectangle(dis,win,gc,0,0,WIDTH,HEIGHT);
-  for(i=0;i<Nc;i++) {
-    for(j=0;j<3;j++) {
-      vertices[j].x = axesPosition[0]*WIDTH+
-	axesPosition[2]*WIDTH*(xc[cells[3*i+j]]-dataLimits[0])/
-	(dataLimits[1]-dataLimits[0]);
-      vertices[j].y = axesPosition[1]*HEIGHT+
-	axesPosition[3]*HEIGHT*(1-(yc[cells[3*i+j]]-dataLimits[2])/
-	(dataLimits[3]-dataLimits[2]));
-    }
-
-    vertices[3].x = vertices[0].x;
-    vertices[3].y = vertices[0].y;
-
-    ind = (salt[i]-caxis[0])/(caxis[1]-caxis[0])*64;
-    if(salt[i]==0)
-      ind = 0;
-    /*
-    color.red = cmap[ind][0] * 0xffff;
-    color.green = cmap[ind][1] * 0xffff;
-    color.blue = cmap[ind][2] * 0xffff;
-    XAllocColor(dis, colormap, &color);
-    XSetForeground(dis,gc,color.pixel);
-    */
-    Fill(vertices,3,ind,edgelines);
-    //XFillPolygon(dis,win,gc,vertices,3,Convex,CoordModeOrigin);
-    //XDrawLines(dis,win,gc,vertices,4,0);
-  }
-  
   sprintf(str1,"Time step: %d, K-level: %d",n,k); 
   XSetForeground(dis,gc,white);
-  XDrawString(dis,win,gc,WIDTH/4,HEIGHT-10,str1,strlen(str1));
+  XDrawString(dis,pix,gc,WIDTH/4,HEIGHT-10,str1,strlen(str1));
 
   XFlush(dis);
 }
@@ -432,7 +374,7 @@ void Fill(XPoint *vertices, int N,int cindex, int edges) {
     color.blue = cmap[cindex][2] * 0xffff;
     XAllocColor(dis, colormap,&color);
     XSetForeground(dis,gc,color.pixel);
-    XFillPolygon(dis,win,gc,vertices,3,Convex,CoordModeOrigin);
+    XFillPolygon(dis,pix,gc,vertices,3,Convex,CoordModeOrigin);
 
     if(edges) {
       color.red = 0;
@@ -440,7 +382,57 @@ void Fill(XPoint *vertices, int N,int cindex, int edges) {
       color.blue = 0;
       XAllocColor(dis, colormap,&color);
       XSetForeground(dis,gc,color.pixel);
-      XDrawLines(dis,win,gc,vertices,4,0);
+      XDrawLines(dis,pix,gc,vertices,4,0);
     }
 }
 
+void CAxis(float *caxis, float *data, int N) {
+  int i;
+
+  caxis[0] = EMPTY;
+  caxis[1] = -EMPTY;
+
+  for(i=0;i<N;i++) {
+    if(data[i]<=caxis[0] && data[i]!=0) caxis[0]=data[i];
+    if(data[i]>=caxis[1] && data[i]!=0) caxis[1]=data[i];
+  }
+}
+
+void ReadColorMap(char *str) {
+  int i;
+  FILE *ifile = fopen(str,"r");
+  
+  for(i=0;i<64;i++) {
+    fscanf(ifile,"%f %f %f\n",&cmap[i][0],&cmap[i][1],&cmap[i][2]);
+  }
+  fclose(ifile);
+}
+
+void UnSurf(float *xc, float *yc, int *cells, float *data, int N) {
+  int i, j, ind;
+  XPoint *vertices = (XPoint *)malloc(4*sizeof(XPoint));
+
+  XSetForeground(dis,gc,black);
+  XFillRectangle(dis,pix,gc,0,0,WIDTH,HEIGHT);
+
+  for(i=0;i<N;i++) {
+    for(j=0;j<3;j++) {
+      vertices[j].x = axesPosition[0]*WIDTH+
+	axesPosition[2]*WIDTH*(xc[cells[3*i+j]]-dataLimits[0])/
+	(dataLimits[1]-dataLimits[0]);
+      vertices[j].y = axesPosition[1]*HEIGHT+
+	axesPosition[3]*HEIGHT*(1-(yc[cells[3*i+j]]-dataLimits[2])/
+	(dataLimits[3]-dataLimits[2]));
+    }
+
+    vertices[3].x = vertices[0].x;
+    vertices[3].y = vertices[0].y;
+
+    ind = (data[i]-caxis[0])/(caxis[1]-caxis[0])*64;
+    if(data[i]==0)
+      ind = 0;
+
+    Fill(vertices,3,ind,edgelines);
+  }
+  
+}
