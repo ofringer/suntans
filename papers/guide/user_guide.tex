@@ -6,8 +6,11 @@
 % Stanford University
 % 10 June 2004
 %
-% $Id: user_guide.tex,v 1.3 2004-06-23 06:18:25 fringer Exp $
+% $Id: user_guide.tex,v 1.4 2004-06-24 08:37:27 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.3  2004/06/23 06:18:25  fringer
+% Added CVS section for anonymous updating (read-only).
+%
 % Revision 1.2  2004/06/14 07:51:30  fringer
 % Added to section on reading grids from file.
 %
@@ -41,7 +44,7 @@ Environmental Fluid Mechanics Laboratory,  \\
 Stanford University\\
 Stanford, CA 94305-4020
 \normalsize}
-\date{10 June 2004}
+\date{\today}
 
 \maketitle
 
@@ -229,7 +232,7 @@ Appendix \ref{app:params}.
 
 \section{Creating or Reading in Triangular Grids} \label{sec:grids}
 
-\subsection{Using the triangle libraries}
+\subsection{Using the triangle libraries} \label{sec:tri}
 
 Triangular grids can be created from a simple planar straight line
 graph which is specified as the \verb+pslg+ file in \verb+suntans.dat+.
@@ -275,7 +278,7 @@ the first two columns specify the indices of the points that make up
 the end points of each segment in C-style numbering, such that the indices
 go from 0 to one less than the number of points.  The third column in the
 segment list specifies the marker for each segment.  This is how the boundary
-conditions are specified, and is discussed in more detail in Section \ref{sec:initial}.
+conditions are specified, and is discussed in more detail in Section \ref{sec:boundary}.
 The number of holes is currently not used.
 
 Degenerate triangulations may arise when neighboring triangles are close to having
@@ -291,7 +294,7 @@ then the Voronoi points are adjusted so that the distance between them is half t
 distance between the cell centroids.  If \verb+VoronoiRatio+ is set to \verb+1+,
 then the Voronoi points correspond to the cell centroids.
 
-\subsection{Reading Triangular Grids from a File}
+\subsection{Reading Triangular Grids from a File} \label{sec:readgrid}
 
 Use of the \verb+-t+ flag creates three files specified in \verb+suntans.dat+: 
 \verb+points+, \verb+cells+, and \verb+edges+.  By default, these are specified
@@ -314,7 +317,7 @@ Point1 Point2 Marker Voronoi1 Voronoi2
 and make up the end points of the Delaunay edges.  Because Suntans uses C-style
 indexing, then $0\le$\verb+Point1,Point2+$<N_p$.  \verb+Marker+ specifies the type
 of edge.  If \verb+Marker=0+, then it is a computational edge, otherwise, it is
-a boundary edge, and the boundary condition is specified in Section \ref{sec:initial}.
+a boundary edge, and the boundary condition is specified in Section \ref{sec:boundary}.
 The last two entries, \verb+Voronoi1+ and \verb+Voronoi2+, are the indices to the Voronoi
 points which make up the end points of the Voronoi edge which intersects this Delaunay edge.
 As such, we must have $0\le$\verb+Voronoi1,Voronoi2+$<N_c$.
@@ -402,7 +405,7 @@ of the \verb+Edge{1-3}+ or \verb+def{1-3}+ arrays.  Each cell contains a pointer
 in its list of \verb+Edge{1-3}+ pointers.  The \verb+gradf{1,2}+ index is a number from 
 0 to 2 which determines which face number this edge is of a particular cell.
 \item \verb+mark+ Contains the marker type for this edge.  All edges with the value 0 are
-computational edges, while other values are described in Section \ref{sec:initial}.
+computational edges, while other values are described in Section \ref{sec:boundary}.
 \end{itemize}
 \item \verb+topology+
 \begin{verbatim}
@@ -430,15 +433,210 @@ edgedist[0] edgedist[1] edgedist[2] ... edgedist[MAXBCTYPES-1]
 cellp[0],...,cellp[Nc-1]
 edgep[0],...,edgep[Ne-1]
 \end{verbatim}
-\item \verb+vertspace+
-
+\item \verb+vertspace+ Contains the vertical grid spacings.  This file has \verb+Nkmax+ rows,
+where \verb+Nkmax+ is the number of z-levels.
 \end{itemize}
 
-\section{Specifying initial and boundary conditions} \label{sec:initial}
+\section{Specifying initial and boundary conditions} 
+
+Initial and boundary conditions are specified by editing the files \verb+initial.c+ and \verb+boundaries.c+.  When you
+edit either one of these files, you must recompile the Suntans executable in order for it to reflect changes made
+to the initial or boundary conditions.
+
+\subsection{Initial conditions}
+
+Initial conditions are set by altering the functions in the file \verb+initial.c+ so that they return the
+desired initial distributions.  There are five functions that specify the initial depth, free-surface,
+salinity, temperature, and velocity fields.  Each function takes as its argument the x,y,z coordinates of
+the desired initial condition.  You need to edit the function to return the desired initial value based on the
+given x,y,z coordinates.  The five functions are
+\begin{itemize}
+\item \verb+ReturnDepth+ This returns the depth as a function of the given x,y coordinate. 
+As an example, to set a linear slope that rises from 10 m depth to 1 m depth in 1000 m, the
+function would look like
+\begin{verbatim}
+REAL ReturnDepth(REAL x, REAL y) {
+  return 10 - 9*x/1000;
+}
+\end{verbatim}
+Note that the depth is specified as a positive quantity.  This function is only used when the \verb+IntDepth+ variable is
+set to \verb+0+ in \verb+suntans.dat+.  Otherwise, the depth is interpolated from the file specified by the \verb+depth+
+file in \verb+suntans.dat+.  This file must contain the depth data in three columns given by x, y, depth, where depth
+is specified as a negative quantity and elevation is positive.
+\item \verb+ReturnFreeSurface+ This returns the initial free surface distribution as a function of the x,y coordinate.
+As an example, to initialize the free surface with a 1 m cosine seiche in a 1000 m domain, the function would look like
+\begin{verbatim}
+REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
+  return cos(PI*x/1000);
+}
+\end{verbatim}
+Note that \verb+PI+ is a global variable defined in the file \verb+suntans.h+ as \verb+3.141592654+.  The depth
+is also supplied to the \verb+ReturnFreeSurface+ function in case the free surface is a function of the depth.
+\item \verb+ReturnSalinity+ and \verb+ReturnTemperature+  These are similar functions in that they return the
+specified scalar field as a function of the x, y, and z coordinates.  Note that if \verb+beta+ is 0 in \verb+suntans.dat+,
+then salinity transport is not computed, likewise if \verb+gamma+ is 0, then temperature transport is not computed.  
+As it is now, the code computes the temperature as a passive scalar while the density anomaly $\rho$ is computed solely as a function of 
+the salinity anomoly $s$, such that
+\[\frac{\rho}{\rho_0}=\beta s\,.\]
+\item \verb+ReturnHorizontalVelocity+ This returns the horizontal velocity defined at the faces of each cell.  The initial vertical velocity is
+computed by continuity from this initial velocity field.  Since this function returns the velocity normal to a cell face, then
+you must specify both velocity components \verb+u+ and \verb+v+ and then return the component normal to the face, which is
+defined by the vector with components \verb+n1+ and \verb+n2+.  As an example, to return an irrotational vortex with
+maximum velocity of 1, centered
+about (x,y)=(5,5), the function would appear as
+\begin{verbatim}
+REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
+  REAL u, v, umag=1;
+
+  u = -umag*(y-5)/5;
+  v = umag*(x-5)/5;
+
+  return u*n1+v*n2;
+}
+\end{verbatim}
+\end{itemize}
+
+\subsection{Specifying boundary conditions} \label{sec:boundary}
+
+Suntans allows the specification of the velocity at the open boundaries in the file
+\verb+boundaries.c+.  Boundary condition types on the velocity field can be specified in the \verb+pslg+ file
+which sets the marker as described in Sections \ref{sec:tri} and \ref{sec:readgrid}.  The marker type
+can be one of the following:
+\begin{itemize}
+\item \verb+1+ For closed boundaries.
+\item \verb+2+ For open or velocity-specified boundaries.
+\end{itemize}
+If the marker is set to \verb+1+, then the velocity is set to \verb+0+ at those edges.  If it is set to \verb+2+,
+then the velocity is specified in the file \verb+boundaries.c+.  This file loops through the edges whose edge
+markers are \verb+2+.  As an example, consider the flow in a channel that is 1000 m long in which two boundaries
+are specified as inflow and outflow and the other two are specified as solid walls, as shown in Figure 
+\ref{fig:boundaries}.  
+\insertfig{.5}{figures/boundaries}{Depiction of a channel with an inflow at $x=0$ m and outflow at $x=1000$ m with
+the inflow/outflow boundaries specified with 2 markers and the solid walls with 1 markers.  The indices of
+the cells adjacent to the boundaries are denoted by ib while the boundary cells have indices j.}{fig:boundaries}
+Suppose you would like to
+specify an incoming velocity that oscillates at a frequency $\omega$ due to an incoming wave at $x=0$ m and that
+you would like to use the linearized open boundary condition to specify the outflow at $x=1000$ m.  Since the
+edge markers at the inflow and outflow are the same, you need to set the boundary condition based on the x,y
+location of the specified edge.  To do so, you would set up the \verb+boundaries.c+ file as follows
+\begin{verbatim}
+  .
+  .
+  .
+
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j = grid->edgep[jptr];
+
+    ib = grid->grad[2*j];
+
+    if(grid->xv[ib]>500) {
+      forced=0;
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+        uboundary[k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
+    } else {
+      forced=1;
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+        uboundary[k] = prop->amp*cos(prop->omega*prop->rtime);
+    }
+    .
+    .
+    .
+\end{verbatim}
+The outermost \verb+j+ loop loops over the edges which have boundary markers specified as \verb+2+.
+The \verb+ib+ index is an index to the cell adjacent to the boundary edge.  Since the Voronoi points
+are specified at the \verb+ib+ indices, then we need to specify the boundary condition based on
+the location of the Voronoi points of the adjacent cell.  In this case the open boundary exists at x=1000, but since
+we know that this boundary exists for boundary edges for $x>500$, we use the if statement
+\verb+if(grid->xv[ib]>500)+ to specify these boundary edges.  The first part of the if statement
+sets the velocity at the open boundary over all the vertical levels with
+\begin{verbatim}
+      forced=0;
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+        uboundary[k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
+\end{verbatim}
+which is identical to 
+\[ u_b = -h_b\sqrt{\frac{g}{d}} \,,\]
+which is the linearized shallow-water free-surface boundary condition.  The variable \verb+forced+ is
+set to \verb+0+ for this boundary because it is used later when the velocity at the boundary is set
+to the value in the \verb+uboundary[k]+ array.  If \verb+forced+ is \verb+0+, then the velocity is nudged
+towards this value over a timescale specified by the \verb+timescale+ variable in \verb+suntans.dat+.  
+The boundary condition on the velocity $u_j$ is then effectively
+\[\D{u_j}{t} = \frac{u_j-u_b}{\tau}\,,\]
+where $u_b$ is specified by \verb+uboundary[k]+ and $\tau$ is specified by \verb+timescale+.  
+
+For the case in which the if-statement fails, then the edges for which $x<500$ are specified with
+\begin{verbatim}
+      forced=1;
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+        uboundary[k] = prop->amp*cos(prop->omega*prop->rtime);
+\end{verbatim}
+Here \verb+forced+ is set to zero so that the boundary condition is not nudged to this value over
+the specified timescale so that effectively
+\[u_j = u_b\,,\]
+where \verb+u_b+ is set by \verb+uboundary[k]+.  In the above code, the boundary value is set to
+\[u_b = a\cos(\omega t)\,,\]
+where the amplitude $a$ of the forcing is specified by the \verb+amp+ variable in \verb+suntans.dat+,
+the frequency $\omega$ is set by \verb+omega+, and the time is computed and set by the \verb+rtime+ 
+variable.  Each of these are accessed by the \verb+prop+ struct with \verb+prop->amp+, \verb+prop->omega+,
+and \verb+prop->rtime+.  Note that if the velocity is into the domain, then it must be positive, while
+if it is out of the domain, it must be negative.
 
 \section{Using the Sunplot GUI}
 
 \section{Restarting Runs} \label{sec:restart}
+
+It is always a good idea to design production-scale runs so that at any point in time if your
+job crashes you can restart it without having lost too much data.  At the end of a run, Suntans
+outputs the restart file specified by \verb+StoreFile+ in \verb+suntans.dat+.  To restart a run using
+this restart file, you need to copy this file into the file specified by \verb+StartFile+ in \verb+suntans.dat+.
+This reads the data required to continue a run.  For example, at the end of a two-processor run in which
+the \verb+StoreFile+ variable is set to \verb+store.dat+, two restart files are created for each processor, 
+namely \verb+store.dat.0+ and \verb+store.dat.1+.  To restart this run, set the entry for \verb+StartFile+ in
+\verb+suntans.dat+ to \verb+start.dat+ and copy \verb+StoreFile+ to \verb+StartFile+ for each processor, i.e.
+copy the contents of \verb+store.dat.0+ to \verb+start.dat.0+ and \verb+store.dat.1+ to \verb+start.dat.1+.
+
+Since the new output data from the restart run will overwrite any existing data from a previous run, it is
+a good idea to create a new directory for each restart run and copy the restart files into that directory.
+Each run requires the \verb+suntans.dat+ file as well as other files for the grid as well, but rather than
+copy these over to the new directory, it is best to create links to the already existing files in order
+to save disk space.  In order for the restart run to proceed, links must be created for each of these
+files (or copies):
+\begin{itemize}
+\item suntans.dat
+\item celldata.dat.np
+\item edgedata.dat.np
+\item topology.dat.np
+\item vertspace.dat
+\end{itemize}
+where \verb+np+ corresponds to each processor id.  Considering the previous example, to restart a run
+one might create a new directory called \verb+run2+.  Then links could be made to the existing files 
+with
+\begin{verbatim}
+ln -s suntans.dat run2/suntans.dat
+ln -s celldata.dat.0 run2/celldata.dat.0
+ln -s celldata.dat.1 run2/celldata.dat.1
+ln -s edgedata.dat.0 run2/edgedata.dat.0
+ln -s edgedata.dat.1 run2/edgedata.dat.1
+ln -s topology.dat.0 run2/topology.dat.0
+ln -s topology.dat.1 run2/topology.dat.1
+ln -s vertspace.dat run2/vertspace.dat
+\end{verbatim}
+and then restarting Suntans (after copying the store files into run2) with
+\begin{verbatim}
+mpirun -np 2 sun -s -r --datadir=./run2
+\end{verbatim}
+where the \verb+r+ flag indicates a restart run.  An alternative method to perform a restart
+is to create a new directory and then alter the entries in \verb+suntans.dat+ so that the
+output files are specified by their full rather than relative paths.  For example, to set
+the output directory so that Suntans outputs the free surface to the new directory \verb+run2+,
+the entry for \verb+FreeSurfaceFile+ in \verb+suntans.dat+ could be changed from
+\begin{verbatim}
+FreeSurfaceFile   	fs.dat
+\end{verbatim}
+to
+\begin{verbatim}
+FreeSurfaceFile   	run2/fs.dat
+\end{verbatim}
 
 \appendix
 
@@ -449,21 +647,7 @@ edgep[0],...,edgep[Ne-1]
 
 \end{document}
 
-\section{Specifying initial and boundary conditions} \label{sec:initial}
-
 \section{Using the Sunplot GUI}
-
-\section{Restarting Runs} \label{sec:restart}
-
-To restart, create a new directory and move the store.dat files into
-start.dat files in that directory, and create links to the following files:
-\begin{itemize}
-\item suntans.dat
-\item celldata.dat.np
-\item edgedata.dat.np
-\item topology.dat.np
-\item vertspace.dat
-\end{itemize}
 
 \section{Input/Output Files}
 
