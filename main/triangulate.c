@@ -3,8 +3,11 @@
  * --------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.1 2003-04-26 14:20:18 fringer Exp $
+ * $Id: triangulate.c,v 1.2 2003-04-29 00:16:27 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2003/04/26 14:20:18  fringer
+ * Initial revision
+ *
  *
  */
 #include "suntans.h"
@@ -15,7 +18,7 @@
 
 #define TRIANGLEFORMAT 0
 
-void GetTriangulation(gridT **grid);
+void GetTriangulation(gridT **grid, int myproc);
 void GetPoints(struct triangulateio *in, REAL *minarea);
 void InitializeTriangle(struct triangulateio *mid, struct triangulateio *vorout);
 
@@ -26,7 +29,7 @@ void InitializeTriangle(struct triangulateio *mid, struct triangulateio *vorout)
  * Creates a triangulation from a PLSG file using triangle libraries.
  *
  */
-void GetTriangulation(gridT **grid) {
+void GetTriangulation(gridT **grid, int myproc) {
   int n, j, nf, Np, Ne, Nc;
   struct triangulateio in, out, vorout;
   REAL minarea;
@@ -48,7 +51,8 @@ void GetTriangulation(gridT **grid) {
   Ne = out.numberofedges;
   Nc = out.numberoftriangles;
 
-  if(VERBOSE>0) printf("Created a triangulation with %d Cells, %d Edges, %d Delaunay points...\n",
+  if(VERBOSE>0 && myproc==0) 
+    printf("Created a triangulation with %d Cells, %d Edges, %d Delaunay points...\n",
 		       Nc, Ne, Np);
 
   InitMainGrid(grid,Np,Ne,Nc);
