@@ -6,8 +6,15 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.17 2003-06-10 02:30:23 fringer Exp $
+ * $Id: phys.c,v 1.18 2003-06-10 03:28:46 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.17  2003/06/10 02:30:23  fringer
+ * Changed ELM scheme so that kriging matrices are computed during the
+ * first time step.  Inverses are therefore not computed at each time
+ * step, but rather, they are stored in the 2d array grid->kriging[][]
+ *
+ * Also changed malloc/free to SunMalloc/SunFree.
+ *
  * Revision 1.16  2003/05/12 00:06:23  fringer
  * Added ComputeTangentialVelocity(gridT *grid, physT *phys), which
  * is needed for advection of horizontal velocity (used to be computed
@@ -501,7 +508,7 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
     InitializeKriging(grid,prop->kriging_cov);
   }
 
-  if(VERBOSE>1) printf("Processor %d,  Total memory: %d bytes\n",myproc,TotSpace);
+  if(VERBOSE>1) printf("Processor %d,  Total memory: %d Mb\n",myproc,(int)(TotSpace/(1024*1e3)));
 
   for(n=1;n<=prop->nsteps;n++) {
     prop->n = n;
@@ -2229,32 +2236,32 @@ static void OpenFiles(propT *prop, int myproc)
 {
   char str[BUFFERLENGTH], filename[BUFFERLENGTH];
 
-  MPI_GetString(filename,DATAFILE,"FreeSurfaceFile","OpenFiles",myproc);
+  MPI_GetFile(filename,DATAFILE,"FreeSurfaceFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->FreeSurfaceFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
-  MPI_GetString(filename,DATAFILE,"HorizontalVelocityFile","OpenFiles",myproc);
+  MPI_GetFile(filename,DATAFILE,"HorizontalVelocityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->HorizontalVelocityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
-  MPI_GetString(filename,DATAFILE,"VerticalVelocityFile","OpenFiles",myproc);
+  MPI_GetFile(filename,DATAFILE,"VerticalVelocityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->VerticalVelocityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
-  MPI_GetString(filename,DATAFILE,"SalinityFile","OpenFiles",myproc);
+  MPI_GetFile(filename,DATAFILE,"SalinityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->SalinityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
-  MPI_GetString(filename,DATAFILE,"BGSalinityFile","OpenFiles",myproc);
+  MPI_GetFile(filename,DATAFILE,"BGSalinityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->BGSalinityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
-  MPI_GetString(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
+  MPI_GetFile(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->VerticalGridFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   if(myproc==0) {
-    MPI_GetString(filename,DATAFILE,"ConserveFile","OpenFiles",myproc);
+    MPI_GetFile(filename,DATAFILE,"ConserveFile","OpenFiles",myproc);
     sprintf(str,"%s",filename);
     prop->ConserveFID = MPI_FOpen(str,"w","OpenFiles",myproc);
   }
