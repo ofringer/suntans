@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.11 2005-04-01 22:17:47 fringer Exp $
+ * $Id: boundaries.c,v 1.12 2005-04-01 22:38:33 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.11  2005/04/01 22:17:47  fringer
+ * Added functions to implement the open boundary condition via
+ * specification of the free-surface.
+ *
  * Revision 1.10  2004/11/20 22:28:40  fringer
  * Changed the GetBoundaryVelocity function so that the default is to
  * force the M2/K1 barotropic tides at x=0 (the Monterey Bay test case).
@@ -244,4 +248,21 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
   }
 }
 	
-      
+/*
+ * Function: WindStress
+ * Usage: WindStress(grid,phys,prop);
+ * ----------------------------------
+ * Set the wind stress as well as the bottom stress.
+ * tau_B is not currently in use (4/1/05).
+ *
+ */
+void WindStress(gridT *grid, physT *phys, propT *prop) {
+  int j, jptr;
+
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
+    j = grid->edgep[jptr];
+    
+    phys->tau_T[j]=grid->n2[j]*prop->tau_T;
+    phys->tau_B[j]=0;
+  }
+}
