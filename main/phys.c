@@ -6,8 +6,58 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.91 2005-04-01 20:50:47 fringer Exp $
+ * $Id: phys.c,v 1.92 2005-04-01 22:39:01 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.91  2005/04/01 20:50:47  fringer
+ * 1) Added the ability to specify the free-surface using a partially-clamped
+ * boundary condition (which includes fully clamped and fully radiative):
+ *
+ * -Added the boundary_(u,v,w,s,T,tmp,h,flag) arrays which store boundary
+ *  values.  These are specified in boundaries.c and used in the
+ *  specificaction of the boundary conditions.  Note that they are of
+ *  length edgedist[5]-edgedist[2] so that they can store values for
+ *  boundaries with markers 2,3,4.
+ *
+ * -Added BoundaryVelocities and BoundaryScalars functions which set the
+ *  values in boundaries.c
+ *
+ * -Removed the SetBoundaryScalars function from being called before the
+ *  udpatescalars function since it is now called at the beginning of the
+ *  time step.  The name of this function was also changed to
+ *  BoundaryScalars.
+ *
+ * -Added the scalar gradient at markers of type 4 in the
+ *  HorizontalSource function.  In order for these to have an effect the
+ *  values of the scalars must be set in boundaries.c
+ *
+ * 2) Fixed a bug associated with the turbulence model when used with the
+ * nonhydrostatic pressure solver
+ *
+ * -phys->uc and phys->vc were being used as temp. variables in cgsolveq
+ *  and this was leading to wrong calculations of the production term for
+ *  the turbulence model.  These temp variables were changed to
+ *  phys->stmp and phys->stmp3.
+ *
+ * 3) Other minor changes
+ *
+ * -Changed to use ReturnHorizontalVelocity to initialize u[j][k] in
+ *  InitializePhysicalVariables
+ *
+ * -phys->tau_T[j] and phys->tau_B[j] are now computed at all faces
+ *  (changed loop to go from edgedist[0] to edgedist[5] instead of only
+ *  to edgedist[1].
+ *
+ * -Moved the StoreVariables function back to beginning of time step.
+ *  This was erroneously moved to further down in the code for some
+ *  reason.
+ *
+ * -Removed the merging of the top two cells in the vertical advection of
+ *  horizontal momentum.
+ *
+ * -Removed the part of the cgsolver for the free surface that corrected
+ *  the source term for boundary markers of type 3.  This was no longer
+ *  being used.
+ *
  * Revision 1.90  2004/11/20 21:52:39  fringer
  * Changed the pressure method from the theta-method to the pressure-
  * correction method.
@@ -1113,13 +1163,6 @@ void SetDragCoefficients(gridT *grid, physT *phys, propT *prop) {
       
       phys->CdB[j]=pow(log(0.25*(grid->dzz[nc1][grid->Nke[j]-1]+grid->dzz[nc2][grid->Nke[j]-1])/prop->z0B)/KAPPA_VK,-2);
     }
-
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr];
-    
-    phys->tau_T[j]=grid->n2[j]*prop->tau_T;
-    phys->tau_B[j]=0;
-  }
 }
 
 /*
@@ -1285,6 +1328,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // Set boundary values
       BoundaryVelocities(grid,phys,prop);
       BoundaryScalars(grid,phys,prop);
+      WindStress(grid,phys,prop);
 
       // Ramp down theta from 1 to the value specified in suntans.dat over
       // the time thetaramptime specified in suntans.dat to damp out transient
