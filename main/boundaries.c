@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.2 2004-05-29 20:25:02 fringer Exp $
+ * $Id: boundaries.c,v 1.3 2004-06-13 07:08:57 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2004/05/29 20:25:02  fringer
+ * Revision before converting to CVS.
+ *
  * Revision 1.1  2004/03/12 06:21:56  fringer
  * Initial revision
  *
@@ -28,13 +31,13 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 
   int forced, ib, j, jptr, k, nf, nf0, ne, nc1, nc2, numneighs, neigh, nb;
   REAL z, uf, vf, cmax, *uboundary = phys->c, *c = phys->b, *phin = phys->a, xc, yc, width,
-    **u = phys->uc, **v = phys->vc, **uold = phys->uold, **vold = phys->vold;
+    **u = phys->uc, **v = phys->vc, **uold = phys->uold, **vold = phys->vold, flux, area;
 
   /*
   for(j=0;j<grid->Nc;j++) 
     for(k=0;k<grid->Nk[j];k++) {
-      uold[j][k]=grid->yv[j];
-      vold[j][k]=grid->yv[j];
+      uold[j][k]=10*grid->yv[j];
+      vold[j][k]=10*grid->yv[j];
       u[j][k]=10*grid->yv[j];
       v[j][k]=10*grid->yv[j];
     }
@@ -89,6 +92,20 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
     forced=1;
     */
 
+    // For Monterey
+    if(grid->xv[ib]<5000) {
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	if(k==grid->etop[j])
+	  z=-grid->dzz[ib][k]/2;
+	else
+	  z-=grid->dzz[ib][k];
+	uboundary[k]=prop->amp*cos(prop->omega*prop->rtime)*cos(PI*z/grid->dv[ib]);
+	//ub[j][k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
+      }
+      forced=1;
+    } else 
+      forced=0;
+
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
       c[k] = 0;
       phin[k] = 0;
@@ -102,7 +119,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	  c[k]+=(grid->n1[j]*(u[neigh][k]-uold[neigh][k])+
 		 grid->n2[j]*(v[neigh][k]-vold[neigh][k]))/prop->dt;
-	
+
 	for(nf=0;nf<NFACES;nf++) {
 	  ne=grid->face[neigh*NFACES+nf];
 	  nc1 = grid->grad[2*ne];
@@ -111,23 +128,20 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 	  if(nc2==-1) nc2=nc1;
 	  
 	  for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	    /*
 	      uf = u[nc1][k]*grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]+
-	      u[nc2][k]*(1-grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]);
+		u[nc2][k]*(1-grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]);
 	      vf = v[nc1][k]*grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]+
-	      v[nc2][k]*(1-grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]);
-	    */
-	    uf = 0.5*(u[nc1][k]+u[nc2][k]);
-	    vf = 0.5*(v[nc1][k]+v[nc2][k]);
-	    phin[k]+=(uf*grid->n1[j]+vf*grid->n2[j])*
-	      (grid->n1[ne]*grid->n1[j]+grid->n2[ne]*grid->n2[j])*
-	      grid->normal[neigh*NFACES+nf]*grid->df[ne]/grid->Ac[neigh];
+		v[nc2][k]*(1-grid->def[neigh*NFACES+grid->gradf[2*ne]]/grid->dg[ne]);
+
+	      phin[k]+=(uf*grid->n1[j]+vf*grid->n2[j])*
+		(grid->n1[ne]*grid->n1[j]+grid->n2[ne]*grid->n2[j])*
+		grid->normal[neigh*NFACES+nf]*grid->df[ne]/grid->Ac[neigh];
 	  }
-	}
+        }
 	numneighs++;
       }
     }
-    
+
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
       phin[k]/=numneighs;
       c[k]/=numneighs;
@@ -135,33 +149,36 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
     
     cmax=sqrt(GRAV*(grid->dv[ib]+phys->h[ib]));
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      
+
       if(phin[k]==0)
 	c[k]=0;
       else 
 	c[k]/=phin[k];
       
       if(c[k]<0)
-	c[k]=0;
+      	c[k]=0;
       
       if(c[k]>cmax)
-	c[k]=cmax;
+      	c[k]=cmax;
     }
-    
+    if(grid->xv[ib]>2500) printf("%e %e %e %e\n",prop->rtime,phin[4],c[4],phys->s[ib][4]);
+    //    for(k=grid->etop[j];k<grid->Nke[j];k++) c[k]=0;
+
     if(forced) 
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	ub[j][k]=uboundary[k];
     else {
-      for(k=grid->etop[j];k<grid->Nke[j];k++) 
-    	ub[j][k]=(1-prop->dt*(1-prop->theta)/prop->timescale)*ub[j][k]+prop->dt*uboundary[k]/prop->timescale
-    	  +2.0*0*prop->dt*c[k]*(u[ib][k]*grid->n1[j]+v[ib][k]*grid->n2[j]-ub[j][k])/
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	//    	ub[j][k]=(1-prop->dt*(1-prop->theta)/prop->timescale)*ub[j][k]+prop->dt*uboundary[k]/prop->timescale
+	ub[j][k]+=2.0*prop->dt*c[k]*(u[ib][k]*grid->n1[j]+v[ib][k]*grid->n2[j]-ub[j][k])/
     	  grid->dg[j];
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-    	ub[j][k]/=(1+prop->theta*prop->dt/prop->timescale);
+	flux+=ub[j][k]*grid->dzz[ib][k]*grid->df[j];
+	area+=grid->dzz[ib][k]*grid->df[j];
+      }
+      //      for(k=grid->etop[j];k<grid->Nke[j];k++)
+      //    	ub[j][k]/=(1+prop->theta*prop->dt/prop->timescale);
     }
 
-    for(k=grid->etop[j];k<grid->Nke[j];k++)
-      ub[j][k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
     /*
     if(grid->xv[ib]>2.5)
       for(k=grid->etop[j];k<grid->Nke[j];k++)
@@ -170,5 +187,14 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
       for(k=grid->etop[j];k<grid->Nke[j];k++)
 	ub[j][k] = .2*sin(3.14*prop->rtime);
     */
+  }
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j = grid->edgep[jptr];
+
+    ib = grid->grad[2*j];
+
+    if(grid->xv[ib]>2500)
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+      	ub[j][k]-=flux/area;
   }
 }
