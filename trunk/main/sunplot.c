@@ -6,8 +6,12 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.36 2004-06-10 10:41:28 fringer Exp $
+ * $Id: sunplot.c,v 1.37 2004-06-12 01:39:40 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.36  2004/06/10 10:41:28  fringer
+ * Added -ng flag, which allows viewing of grids without any physical
+ * data.
+ *
  * Revision 1.35  2004/05/29 20:25:02  fringer
  *  Revision before converting to CVS.
  *
@@ -174,7 +178,6 @@
 #define HEIGHT 500
 #define PI 3.141592654
 #define EMPTY 999999
-#define INFTY 1e20
 #define CMAPFILE "cmaps/jet.cmap"
 #define NUMCOLORS 66
 //#define DEFAULT_FONT "-adobe-helvetica-medium-o-normal--20-140-100-100-p-98-iso8859-9"
@@ -305,6 +308,9 @@ typedef struct {
   float umagmax, dmax, hmax, hmin, rx, ry, Emagmax;
 } dataT;
 
+int GetStep(dataT *data);
+void GetCAxes(REAL datamin, REAL datamax);
+int GetNumber(int min, int max);
 void AllButtonsFalse(void);
 void Sort(int *ind1, int *ind2, float *data, int N);
 void QuadSurf(float *h, float *D, 
@@ -399,7 +405,7 @@ float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4], cmapAxesP
   zoomratio, vlengthfactor=1.0, Evlengthfactor=1.0;
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
 bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, Evectorplot, goprocs,
-  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, cmaphold;
+  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, cmaphold, getcmap, raisewindow;
 char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
@@ -422,6 +428,8 @@ int main(int argc, char *argv[]) {
   vertprofile = false;
   gridread = false;
   cmaphold = false;
+  getcmap = false;
+  raisewindow = false;
   goT go;
   
   ParseCommandLine(argc,argv,&numprocs,&dims);  
@@ -535,6 +543,9 @@ int main(int argc, char *argv[]) {
 	  go=forward;
 	} else if(mousebutton==right_button) {
 	  go=backward;
+	} else if(mousebutton==middle_button) {
+	  n=GetStep(data);
+	  redraw=true;
 	}
       } else if(report.xany.window==controlButtons[nextwin].butwin) {
 	if(mousebutton==left_button) {
@@ -862,14 +873,21 @@ int main(int argc, char *argv[]) {
 	  sprintf(message,"Changing axis type to image...");
 	}
 	redraw=true;
-      } else if(report.xany.window==controlButtons[cmapholdwin].butwin 
-		&& mousebutton==left_button) {
-	if(cmaphold==false) {
-	  cmaphold=true;
-	  sprintf(message,"Keeping current color axes...");
-	} else {
-	  cmaphold=false;
-	  sprintf(message,"Color axes will be scaled with current data...");
+      } else if(report.xany.window==controlButtons[cmapholdwin].butwin) {
+	if(mousebutton==left_button) {
+	  if(cmaphold==false) {
+	    cmaphold=true;
+	    sprintf(message,"Color axes will be scaled with parameters in suntans.dat...");
+	  } else {
+	    cmaphold=false;
+	    sprintf(message,"Keeping current color axes...");
+	  }
+	  getcmap=false;
+	} else if(mousebutton==right_button) {
+	  GetCAxes(-EMPTY,EMPTY);
+	  sprintf(message,"Color axes changed to input values...");
+	  raisewindow=true;
+	  getcmap=true;
 	}
 	redraw=true;
       } else if(report.xany.window==controlButtons[reloadwin].butwin && mousebutton==left_button) {
@@ -1089,6 +1107,8 @@ int main(int argc, char *argv[]) {
       LoopDraw(data,plottype,procnum,numprocs);
     }
     ShowMessage();
+    if(raisewindow)
+      XRaiseWindow(dis,win);
   }
   FreeData(data,numprocs);
   CloseGraphics();
@@ -1118,7 +1138,7 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   if(sliceType==slice)
     GetSlice(data,xstart,ystart,xend,yend,procnum,numprocs,plottype);
 
-  if(plottype!=noplottype) {
+  if(plottype!=noplottype && !getcmap) {
     if(cmaphold==false)
       CAxis(data,plottype,k,procnum,numprocs);
     else
@@ -1809,6 +1829,7 @@ void CAxis(dataT *data, plottypeT plottype, int klevel, int procnum, int numproc
       }
     }
   }
+
   if(caxis[0]==caxis[1]) {
     caxis[0]=0;
     caxis[1]=1;
@@ -3519,3 +3540,35 @@ int LoadCAxis(void) {
   
   return status;
 }
+
+int GetStep(dataT *data) {
+  printf("Enter time step to plot: ");
+  return GetNumber(1,data->nsteps);
+}
+
+int GetNumber(int min, int max) {
+  int num;
+
+  fscanf(stdin,"%d",&num);
+  while(num<min || num>max) {
+    printf("Must be > %d and < %d\n",min-1,max+1);
+    printf("Please try again: ");
+    fscanf(stdin,"%d",&num);
+  }
+
+  return num;
+}
+    
+void GetCAxes(REAL datamin, REAL datamax) {
+  printf("Enter Color Axes: ");
+  fscanf(stdin,"%f %f",&caxis[0],&caxis[1]);
+
+  while((caxis[0]<datamin && caxis[1]>datamax) || caxis[0]==caxis[1]) {
+    if(caxis[0]==caxis[1])
+      printf("Color axes limits may not be equal.  Try again: ");
+    else if(caxis[0]<datamin && caxis[1]>datamax)
+      printf("Axes must be in the range [%.2e, %.2e].  Try again: ");
+    fscanf(stdin,"%f %f",&caxis[0],&caxis[1]);
+  }
+}
+
