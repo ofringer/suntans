@@ -3,8 +3,12 @@
  * --------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.8 2004-01-27 02:08:04 fringer Exp $
+ * $Id: triangulate.c,v 1.9 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2004/01/27 02:08:04  fringer
+ * Moved the *infile = MPI_FOpen command back to after the MPI_GetFile
+ * command but kept the declaration FILE *infile before i.
+ *
  * Revision 1.7  2004/01/27 01:43:27  fringer
  * Moved the FILE *infile=MPI_FOpen line to come before the MPI_GetFile line
  * so that the declaration for FILE * comes before the GetFile command.
@@ -41,10 +45,10 @@
 #include "grid.h"
 #include "fileio.h"
 #include "triangle.h"
+#include "triangulate.h"
 
 #define TRIANGLEFORMAT 0
 
-int GetTriangulation(gridT **grid, int myproc);
 void GetPoints(struct triangulateio *in, REAL *minarea, int myproc);
 void InitializeTriangle(struct triangulateio *mid, struct triangulateio *vorout);
 

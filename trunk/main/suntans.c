@@ -7,8 +7,12 @@
  * This file reads in and partitions the unstructured grid and 
  * writes files that contain grid information for each processor.
  *
- * $Id: suntans.c,v 1.3 2003-05-05 01:28:14 fringer Exp $
+ * $Id: suntans.c,v 1.4 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2003/05/05 01:28:14  fringer
+ * Added ReadGrid line to add functionality for use of -s flag without
+ * -g flag .
+ *
  * Revision 1.2  2002/11/05 01:31:17  fringer
  * Added baroclinic term
  *
@@ -29,6 +33,7 @@ main(int argc, char *argv[])
   MPI_Comm comm;
   gridT *grid;
   physT *phys;
+  propT *prop;
 
   StartMpi(&argc,&argv,&comm,&myproc,&numprocs);
 
@@ -42,9 +47,14 @@ main(int argc, char *argv[])
   if(SOLVE) {
     InitializeVerticalGrid(&grid);
     AllocatePhysicalVariables(grid,&phys);
-    InitializePhysicalVariables(grid,phys);
-    Solve(grid,phys,myproc,numprocs,comm);
-    FreePhysicalVariables(grid,phys);
+    ReadProperties(&prop,myproc);
+    OpenFiles(prop,myproc);
+    if(RESTART)
+      ReadPhysicalVariables(grid,phys,prop,myproc);
+    else
+      InitializePhysicalVariables(grid,phys,prop);
+    Solve(grid,phys,prop,myproc,numprocs,comm);
+    //    FreePhysicalVariables(grid,phys);
   }
 
   EndMpi(&comm);

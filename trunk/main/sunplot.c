@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.34 2004-02-10 22:11:48 fringer Exp $
+ * $Id: sunplot.c,v 1.35 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.34  2004/02/10 22:11:48  fringer
+ * Made arrowheads smaller and drew the edges rather than filled arrowheads.
+ *
  * Revision 1.33  2004/02/10 22:02:02  fringer
  * Version given to D. Fong 2/11/04
  *
@@ -193,6 +196,7 @@
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
 #define AXESBIGRATIO 1e5
+#define MINAXESASPECT 1e-2
 
 typedef enum {
   in, out, box, none
@@ -328,6 +332,7 @@ float Max(float *x, int N);
 void AxisImage(float *axes, float *data);
 void Fill(XPoint *vertices, int N, int cindex, int edges);
 void CAxis(dataT *data, plottypeT plottype, int klevel, int procnum, int numprocs);
+int LoadCAxis(void);
 void ReadColorMap(char *str);
 void UnSurf(float *xc, float *yc, int *cells, float *data, int N);
 void SetDataLimits(dataT *data);
@@ -383,7 +388,7 @@ XFontStruct *fontStruct;
 
 int width=WIDTH, height=HEIGHT, newwidth, newheight, 
   Np0, Nc0, Ne0, n=1, k=0, keysym,
-  xstart, ystart, xend, yend, lastgridread=0, iskip=1, kskip=1;
+  xstart, ystart, xend, yend, lastgridread=0, iskip=1, kskip=1, iskipmax=5;
 //int *cells, *edges;
 //float caxis[2], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4], buttonAxesPosition[4],
 //  zoomratio, *xv, *yv, vlengthfactor=1.0, Evlengthfactor=1.0;
@@ -409,7 +414,7 @@ int main(int argc, char *argv[]) {
   vectorplot = false;
   zoomratio = 1;
   zooming = true;
-  procplottype = allprocs;
+  procplottype = oneproc;
   vertprofile = false;
   gridread = false;
   cmaphold = false;
@@ -426,7 +431,7 @@ int main(int argc, char *argv[]) {
   XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask );
 
   k=data->Nkmax/2-1;
-  
+
   axisType='i';
   edgelines=false;
   voronoipoints=false;
@@ -657,10 +662,10 @@ int main(int argc, char *argv[]) {
 	    sprintf(message,"Vectors off...");
 	  } else if(mousebutton==middle_button) {
 	    vlengthfactor/=2;
-	    sprintf(message,"Halving the vector lengths...");
+	    sprintf(message,"Halving the vector lengths (%.3fX)...",vlengthfactor);
 	  } else if(mousebutton==right_button) {
 	    vlengthfactor*=2;
-	    sprintf(message,"Doubling the vector lengths...");
+	    sprintf(message,"Doubling the vector lengths (%.3fX)...",vlengthfactor);
 	  }	
 	}    
 	redraw=true;
@@ -871,22 +876,19 @@ int main(int argc, char *argv[]) {
       } else if(report.xany.window==controlButtons[quitwin].butwin && mousebutton==left_button) {
 	quit=true;
       } else if(report.xany.window==controlButtons[iskip_minus_win].butwin) {
-	if(vertprofile==true) {
-	  if(mousebutton==left_button) {
-	    if(iskip>1) {
-	      redraw=true;
-	      iskip--;
-	    } else 
-	      sprintf(message,"Already at iskip=1!");
-	  } else if(mousebutton==right_button) {
-	    if(iskip>1) {
-	      redraw=true;
-	      iskip=1;
-	    } else
-	      sprintf(message,"Already at iskip=1!");
-	  }
-	} else
-	  sprintf(message,"Need to be viewing a profile to change iskip...");
+	if(mousebutton==left_button) {
+	  if(iskip>1) {
+	    redraw=true;
+	    iskip--;
+	  } else 
+	    sprintf(message,"Already at iskip=1!");
+	} else if(mousebutton==right_button) {
+	  if(iskip>1) {
+	    redraw=true;
+	    iskip=1;
+	  } else
+	    sprintf(message,"Already at iskip=1!");
+	}
       } else if(report.xany.window==controlButtons[iskip_plus_win].butwin) {
 	if(vertprofile==true) {
 	  if(mousebutton==left_button) {
@@ -902,8 +904,21 @@ int main(int argc, char *argv[]) {
 	    } else
 	      sprintf(message,"Already at iskip=%d!",data->Nslice-1);
 	  }
-	} else
-	  sprintf(message,"Need to be viewing a profile to change iskip...");
+	} else {
+	  if(mousebutton==left_button) {
+	    if(iskip<iskipmax) {
+	      redraw=true;
+	      iskip++;
+	    } else 
+	      sprintf(message,"Already at iskip=iskipmax (%d)!",iskipmax);
+	  } else if(mousebutton==right_button) {
+	    if(iskip<iskipmax) {
+	      redraw=true;
+	      iskip=iskipmax;
+	    } else
+	      sprintf(message,"Already at iskip=iskipmax!",iskipmax);
+	  }
+	}
       } else if(report.xany.window==controlButtons[kskip_minus_win].butwin) {
 	if(vertprofile==true) {
 	  if(mousebutton==left_button) {
@@ -1073,7 +1088,6 @@ int main(int argc, char *argv[]) {
   }
   FreeData(data,numprocs);
   CloseGraphics();
-  return 0;
 }
 
 void ShowMessage(void) {
@@ -1100,8 +1114,13 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   if(sliceType==slice)
     GetSlice(data,xstart,ystart,xend,yend,procnum,numprocs,plottype);
 
-  if(plottype!=noplottype && cmaphold==false)
-    CAxis(data,plottype,k,procnum,numprocs);
+  if(plottype!=noplottype) {
+    if(cmaphold==false)
+      CAxis(data,plottype,k,procnum,numprocs);
+    else
+      if(!LoadCAxis())
+	CAxis(data,plottype,k,procnum,numprocs);
+  }
 
   if(vectorplot) 
     GetUMagMax(data,k,numprocs);
@@ -1505,7 +1524,7 @@ void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv,
     ic=red;
   }
 
-  for(j=0;j<Nc;j++) {
+  for(j=0;j<Nc;j+=iskip) {
     if(u[j]!=EMPTY) {
       xp = axesPosition[2]*width*(xv[j]-dataLimits[0])/
 	(dataLimits[1]-dataLimits[0]);
@@ -1682,6 +1701,9 @@ void AxisImage(float *axes, float *data) {
 
   dx = data[1]-data[0];
   dy = data[3]-data[2];
+
+  if(dy/dx<MINAXESASPECT)
+    dy=MINAXESASPECT*dx;
 
   densx = width*axes[2]/dx;
   densy = height*axes[3]/dy;
@@ -2785,6 +2807,7 @@ void CloseGraphics(void) {
   XFreePixmap(dis,controlspix);  
   XDestroyWindow(dis,win);
   XCloseDisplay(dis);
+  XFlush(dis);
 }
 
 void FreeData(dataT *data, int numprocs) {
@@ -3032,7 +3055,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       fclose(fid);
     }
     GetDMax(data,numprocs);
-    for(i=0;i<data->Nkmax+1;i++)
+    for(i=0;i<data->Nkmax+1;i++) 
       data->z[i]=-data->dmax*(float)i/(float)(data->Nkmax);
     sprintf(string,"%s",VERTSPACEFILE);
     fid = MyFOpen(string,"r","ReadData");
@@ -3047,7 +3070,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
     for(proc=0;proc<numprocs;proc++) {
 
-      //      printf("Reading salinity at step %d, proc %d\n",nstep,proc);
+      printf("Reading salinity at step %d, proc %d\n",nstep,proc);
 
       if(data->Ne[proc]>data->Nkmax)
 	dummy=(double *)malloc(data->Ne[proc]*sizeof(double));
@@ -3083,7 +3106,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      //      printf("Reading temperature at step %d, proc %d\n",nstep,proc);
+      printf("Reading temperature at step %d, proc %d\n",nstep,proc);
 
       GetFile(string,DATADIR,DATAFILE,"TemperatureFile",proc);
       fid = MyFOpen(string,"r","ReadData");
@@ -3105,7 +3128,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      //      printf("Reading u and v at step %d, proc %d\n",nstep,proc);
+      printf("Reading u and v at step %d, proc %d\n",nstep,proc);
 
       GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
@@ -3145,7 +3168,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  }
       }
 
-      //      printf("Reading w at step %d, proc %d\n",nstep,proc);
+      printf("Reading w at step %d, proc %d\n",nstep,proc);
 
       GetFile(string,DATADIR,DATAFILE,"VerticalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
@@ -3167,7 +3190,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      //      printf("Reading h at step %d, proc %d\n",nstep,proc);
+      printf("Reading h at step %d, proc %d\n",nstep,proc);
 
       GetFile(string,DATADIR,DATAFILE,"FreeSurfaceFile",proc);
       fid = MyFOpen(string,"r","ReadData");
@@ -3183,7 +3206,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  data->h_d[proc][i]=EMPTY;
       }
 
-      //      printf("Computing energy flux at step %d, proc %d\n",nstep,proc);
+      printf("Computing energy flux at step %d, proc %d\n",nstep,proc);
 
       dz = data->dmax/(float)data->Nkmax;
       beta=GetValue(DATAFILE,"beta",&status);
@@ -3195,9 +3218,11 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	    if(data->s[proc][ik][i]!=EMPTY) 
 	      dummy[ik0]+=1000*GRAV*beta*(data->s[proc][ik][i]-data->s0[proc][ik][i])*dz;
 	}
-
-	data->Eu[proc][i]=0;
-	data->Ev[proc][i]=0;
+	
+	if(nstep==1) {
+	  data->Eu[proc][i]=0;
+	  data->Ev[proc][i]=0;
+	}
 	for(ik0=0;ik0<data->Nkmax;ik0++) 
 	  if(data->s[proc][ik0][i]!=EMPTY) {
 	    data->Eu[proc][i]+=(data->u[proc][ik0][i]-data->ubar[proc][i])*dummy[ik0]*dz;
@@ -3472,3 +3497,19 @@ void AllButtonsFalse(void) {
   for(buttonnum=0;buttonnum<NUMBUTTONS;buttonnum++)
     controlButtons[buttonnum].status=false;
 }    
+
+int LoadCAxis(void) {
+  int status;
+  REAL caxis0,caxis1;
+
+  caxis0=GetValue(DATAFILE,"caxisminDefault",&status);  
+  caxis1=GetValue(DATAFILE,"caxismaxDefault",&status);  
+
+  if(!status) 
+    printf("Error! Could not find values for caxismin or caxismax in %s (using min and max from data).\n",DATAFILE);
+  else 
+    caxis[0]=caxis0;
+    caxis[1]=caxis1;
+  
+  return status;
+}
