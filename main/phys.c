@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.7 2002-12-01 10:39:39 fringer Exp $
+ * $Id: phys.c,v 1.8 2003-04-08 23:32:46 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.7  2002/12/01 10:39:39  fringer
+ * Added initial density vector s0 as well as Flux terms to compute internal
+ * wave energy fluxes at specified faces.
+ *
  * Revision 1.6  2002/11/30 13:44:26  fringer
  * Working version for the simplified Shelf bathymetry.
  *
@@ -197,10 +201,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
 	hfmax=hf;
     }
     //phys->h[i]=-grid->dv[i]+hfmax;
-    //    phys->h[i]=cos(PI*grid->xv[i]/100000);
+    phys->h[i]=cos(PI*grid->xv[i]/100000);
 
-    phys->h[i] = 0;
-    //    if(grid->xv[i]>50000)
+    //    phys->h[i] = 0;
     //      phys->h[i]=-grid->dv[i];
     //    phys->h[i]=-2.5+2.5*cos(PI*grid->xv[i]/15);
     //    if(grid->xv[i]>500)
@@ -1494,7 +1497,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
       if(fabs((phys->volume-phys->volume0)/phys->volume0)>CONSERVED && prop->volcheck)
 	printf("Warning! Not volume conservative! V(0)=%e, V(t)=%e\n",
 	       phys->volume0,phys->volume);
-      if(fabs((phys->mass-phys->mass0)/phys->volume0)>CONSERVED && prop->masscheck)
+      if(fabs((phys->mass-phys->mass0)/phys->volume0)>CONSERVED && prop->masscheck) 
 	printf("Warning! Not mass conservative! M(0)=%e, M(t)=%e\n",
 	       phys->mass0,phys->mass);
     }
@@ -1591,7 +1594,10 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
 static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, j, k;
+  int i, j, k, nwritten;
+  REAL *tmp = (REAL *)malloc(grid->Ne*sizeof(REAL));
+  if(tmp==NULL)
+    printf("Out of memory in OutPutData!\n");
 
   if(!(prop->n%prop->ntconserve)) {
     ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
@@ -1606,31 +1612,110 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 
     WtoVerticalFace(grid,phys);
     
-    for(i=0;i<grid->Nc;i++)
-      fprintf(prop->FreeSurfaceFID,"%f\n",phys->h[i]);
-    
-    for(j=0;j<grid->Ne;j++) {
-      for(k=0;k<grid->Nke[j];k++) 
-	fprintf(prop->HorizontalVelocityFID,"%e %e %e\n",phys->u[j][k]*grid->n1[j],
-		phys->u[j][k]*grid->n2[j],
-		phys->wf[j][k]);
-      for(k=grid->Nke[j];k<grid->Nkmax;k++)
-	fprintf(prop->HorizontalVelocityFID,"0.0 0.0 0.0\n");
+    if(ASCII) 
+      for(i=0;i<grid->Nc;i++)
+	fprintf(prop->FreeSurfaceFID,"%f\n",phys->h[i]);
+    else {
+      nwritten=fwrite(phys->h,sizeof(REAL),grid->Nc,prop->FreeSurfaceFID);
+      if(nwritten!=grid->Nc) {
+	printf("Error outputting free-surface data!\n");
+	exit(EXIT_WRITING);
+      }
     }
-    
-    for(i=0;i<grid->Nc;i++) {
-      for(k=0;k<grid->Nk[i]+1;k++)
-	fprintf(prop->VerticalVelocityFID,"%e\n",phys->w[i][k]);
-      for(k=grid->Nk[i]+1;k<grid->Nkmax+1;k++)
-	fprintf(prop->VerticalVelocityFID,"0.0\n");
+
+    if(ASCII) 
+      for(j=0;j<grid->Ne;j++) {
+	for(k=0;k<grid->Nke[j];k++) 
+	  fprintf(prop->HorizontalVelocityFID,"%e %e %e\n",phys->u[j][k]*grid->n1[j],
+		  phys->u[j][k]*grid->n2[j],
+		  phys->wf[j][k]);
+	for(k=grid->Nke[j];k<grid->Nkmax;k++)
+	  fprintf(prop->HorizontalVelocityFID,"0.0 0.0 0.0\n");
+      }
+    else 
+      for(k=0;k<grid->Nkmax;k++) {
+	for(j=0;j<grid->Ne;j++) {
+	  if(k<grid->Nke[j])
+	    tmp[j]=phys->u[j][k]*grid->n1[j];
+	  else
+	    tmp[j]=0;
+	}
+	nwritten=fwrite(tmp,sizeof(REAL),grid->Ne,prop->HorizontalVelocityFID);
+	if(nwritten!=grid->Ne) {
+	  printf("Error outputting Horizontal Velocity data!\n");
+	  exit(EXIT_WRITING);
+	}
+	for(j=0;j<grid->Ne;j++) {
+	  if(k<grid->Nke[j])
+	    tmp[j]=phys->u[j][k]*grid->n2[j];
+	  else
+	    tmp[j]=0;
+	}
+	nwritten=fwrite(tmp,sizeof(REAL),grid->Ne,prop->HorizontalVelocityFID);
+	if(nwritten!=grid->Ne) {
+	  printf("Error outputting Horizontal Velocity data!\n");
+	  exit(EXIT_WRITING);
+	}
+	for(j=0;j<grid->Ne;j++) {
+	  if(k<grid->Nke[j])
+	    tmp[j]=phys->wf[j][k];
+	  else
+	    tmp[j]=0;
+	}
+	nwritten=fwrite(tmp,sizeof(REAL),grid->Ne,prop->HorizontalVelocityFID);
+	if(nwritten!=grid->Ne) {
+	  printf("Error outputting Face Velocity data!\n");
+	  exit(EXIT_WRITING);
+	}
+      }
+
+    if(ASCII)
+      for(i=0;i<grid->Nc;i++) {
+	for(k=0;k<grid->Nk[i]+1;k++)
+	  fprintf(prop->VerticalVelocityFID,"%e\n",phys->w[i][k]);
+	for(k=grid->Nk[i]+1;k<grid->Nkmax+1;k++)
+	  fprintf(prop->VerticalVelocityFID,"0.0\n");
+      }
+    else {
+      for(k=0;k<grid->Nkmax;k++) {
+	for(i=0;i<grid->Nc;i++) {
+	  if(k<grid->Nk[i])
+	    phys->htmp[i]=phys->w[i][k];
+	  else
+	    phys->htmp[i]=0;
+	}
+	nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->VerticalVelocityFID);
+	if(nwritten!=grid->Nc) {
+	  printf("Error outputting vertical velocity data!\n");
+	  exit(EXIT_WRITING);
+	}
+      }
     }
-    
-    for(i=0;i<grid->Nc;i++) {
-      for(k=0;k<grid->Nk[i];k++)
-	fprintf(prop->SalinityFID,"%e\n",phys->s[i][k]-phys->s0[i][k]);
-      for(k=grid->Nk[i];k<grid->Nkmax;k++)
-	fprintf(prop->SalinityFID,"0.0\n");
+
+
+    if(ASCII) {
+      for(i=0;i<grid->Nc;i++) {
+	for(k=0;k<grid->Nk[i];k++)
+	  fprintf(prop->SalinityFID,"%e\n",phys->s[i][k]-phys->s0[i][k]);
+	for(k=grid->Nk[i];k<grid->Nkmax;k++)
+	  fprintf(prop->SalinityFID,"0.0\n");
+      }
+    } else {
+      for(k=0;k<grid->Nkmax;k++) {
+	for(i=0;i<grid->Nc;i++) {
+	  if(k<grid->Nk[i])
+	    phys->htmp[i]=phys->s[i][k]-phys->s0[i][k];
+	  else
+	    phys->htmp[i]=0;
+	}
+	nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->SalinityFID);
+	if(nwritten!=grid->Nc) {
+	  printf("Error outputting salinity data!\n");
+	  exit(EXIT_WRITING);
+	}
+      }
     }
+
     
     for(i=0;i<grid->Nc;i++) {
       for(k=0;k<grid->Nk[i];k++)
@@ -1648,6 +1733,8 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     fclose(prop->VerticalGridFID);
     if(myproc==0) fclose(prop->ConserveFID);
   }
+
+  free(tmp);
 }
 
 static void ReadProperties(propT **prop, int myproc)
