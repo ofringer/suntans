@@ -6,8 +6,15 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.59 2004-05-22 19:38:01 fringer Exp $
+ * $Id: phys.c,v 1.60 2004-05-22 23:07:00 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.59  2004/05/22 19:38:01  fringer
+ * Fixed bugs associated with horizontal diffusion with multiple processors.
+ * The horizontal diffusion step for horizontal momentum was updating
+ * itnerprocessor ghost cells that were in turn being used as the ghost
+ * variables for the initial guess for qc in CGSolveQ, which should be
+ * (have been) zero.
+ *
  * Revision 1.58  2004/05/20 02:32:10  fringer
  * Changed CGSOlveQ so that it uses phys->stmp3 instead of phys->uold
  * as the temporary variable, and also changed updatescalars so that it
@@ -813,7 +820,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	AdvectVerticalVelocity(grid,phys,prop,myproc,numprocs,comm);
 
 	ComputeQSource(phys->stmp,grid,phys,prop,myproc,numprocs);
-	//	GuessQ(phys->stmp2,phys->w,phys->uold,grid,phys,prop,myproc,numprocs,comm);
+	GuessQ(phys->stmp2,phys->w,phys->uold,grid,phys,prop,myproc,numprocs,comm);
 	CGSolveQ(phys->stmp2,phys->stmp,phys->stmp3,grid,phys,prop,myproc,numprocs,comm);
 	Corrector(phys->stmp2,grid,phys,prop,myproc,numprocs,comm);
 	ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
@@ -1627,11 +1634,6 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
   r = phys->vc;
   p = src;
 
-  // Set x to zero as the initial guess
-  for(i=0;i<grid->Nc;i++)
-    for(k=0;k<grid->Nk[i];k++)
-      x[i][k]=0;
-
   // Preconditioner
   if(prop->qprecond) {
     ConditionQ(c,grid,phys,prop,myproc,comm);
@@ -1640,10 +1642,11 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
       
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
 	p[i][k]/=c[i][k];
-	x[i][k]*=0*c[i][k];
+	x[i][k]*=c[i][k];
       }
     }
   }
+  ISendRecvCellData3D(x,grid,myproc,comm);
 
   niters = prop->qmaxiters;
 
@@ -1689,7 +1692,7 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
       for(k=grid->ctop[i];k<grid->Nk[i];k++) 
 	p[i][k] = r[i][k] + mu*p[i][k];
     }
-    //    printf("%e\n",sqrt(eps/eps0));
+    //    if(myproc==0) printf("%e\n",sqrt(eps/eps0));
     if(VERBOSE>3) printf("CGSolve Pressure Iteration: %d, resid=%e, proc=%d\n",n,sqrt(eps/eps0),myproc);
     if(sqrt(eps/eps0)<prop->qepsilon) 
       break;
@@ -2373,25 +2376,19 @@ static void GuessQ(REAL **q, REAL **wold, REAL **w, gridT *grid, physT *phys, pr
   int i, iptr, k;
   REAL qerror;
 
-  HydroW(phys->w,grid,phys,prop);
+  HydroW(w,grid,phys,prop);
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
   
-    q[i][grid->ctop[i]]=0;
+    q[i][grid->ctop[i]]=grid->dzz[i][grid->ctop[i]]/2/prop->dt/prop->theta*
+      (w[i][grid->ctop[i]]-wold[i][grid->ctop[i]]);
     for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-      q[i][k]=q[i][k-1]-(grid->dzz[i][k]+grid->dzz[i][k-1])/(2.0*prop->dt*prop->theta)*
-	(wold[i][k]-w[i][k]);
+      q[i][k]=q[i][k-1]+(grid->dzz[i][k]+grid->dzz[i][k-1])/(2.0*prop->dt*prop->theta)*
+	(w[i][k]-wold[i][k]);
     }
-    
-    // Adjust so that q[i][grid->ctop[i]]+q[i][grid->ctop[i]+1]=0;
-    qerror = 0.5*(q[i][grid->ctop[i]]+q[i][grid->ctop[i]+1]);
-    q[i][grid->ctop[i]]-=qerror;
-    for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
-      q[i][k]-=qerror;
-
-    for(k=grid->ctop[i];k<grid->Nk[i];k++) 
-      q[i][k]=-q[i][k];
+    //    for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+    //      q[i][k]=0;
   }
 }
 
