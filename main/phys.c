@@ -6,8 +6,16 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.79 2004-09-16 20:16:42 fringer Exp $
+ * $Id: phys.c,v 1.80 2004-09-16 21:06:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.79  2004/09/16 20:16:42  fringer
+ * Added ability to specify z0 for the upper and lower surfaces.  If either
+ * z0T or z0B are zero, then the drag coefficients are specified by
+ * CdT and CdB in suntans.dat.
+ *
+ * Also added the initialization of CdT[j] and CdB[j], as well as nu_tv,
+ * kappa_tv, qT, and lT to InitializePhysicalVariables
+ *
  * Revision 1.78  2004/09/16 19:44:32  fringer
  * Changed the drag law formulation so that now the boundary condition
  * is given by
@@ -750,12 +758,28 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc) {
     fread(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
   for(i=0;i<grid->Nc;i++) 
     fread(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+
+  for(i=0;i<grid->Nc;i++) 
+    fread(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+  for(i=0;i<grid->Nc;i++) 
+    fread(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+
+  for(i=0;i<grid->Nc;i++) 
+    fread(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+  for(i=0;i<grid->Nc;i++) 
+    fread(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+  for(i=0;i<grid->Nc;i++) 
+    fread(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+  for(i=0;i<grid->Nc;i++) 
+    fread(phys->kappa_tv[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+
   for(j=0;j<grid->Ne;j++) 
     fread(phys->u[j],sizeof(REAL),grid->Nke[j],prop->StartFID);
   for(i=0;i<grid->Nc;i++) 
     fread(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StartFID);
   for(i=0;i<grid->Nc;i++) 
     fread(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+
   for(i=0;i<grid->Nc;i++) 
     fread(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
   for(i=0;i<grid->Nc;i++) 
@@ -778,7 +802,7 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc) {
  */
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
 {
-  int i, j, k, Nc=grid->Nc, nc1, nc2;
+  int i, j, k, Nc=grid->Nc;
   REAL z, *stmp;
 
   prop->nstart=0;
@@ -879,7 +903,26 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
       if(phys->s[i][k]>phys->smax) phys->smax=phys->s[i][k];      
     }
 
-  // Initialize the eddy-viscosity and scalar diffusivity and the drag coefficients
+  // Initialize the eddy-viscosity and scalar diffusivity
+  for(i=0;i<grid->Nc;i++) 
+    for(k=0;k<grid->Nk[i];k++) {
+      phys->nu_tv[i][k]=0;
+      phys->kappa_tv[i][k]=0;
+      phys->qT[i][k]=0;
+      phys->lT[i][k]=0;
+    }
+}
+
+/*
+ * Function: SetDragCoefficients
+ * Usage: SetDragCoefficents(grid,phys,prop);
+ * ------------------------------------------
+ * Set the drag coefficients based on the log law as well as the applied shear stress.
+ *
+ */
+void SetDragCoefficients(gridT *grid, physT *phys, propT *prop) {
+  int i, j, jptr, nc1, nc2;
+
   if(prop->z0T==0) 
     for(j=0;j<grid->Ne;j++) 
       phys->CdT[j]=prop->CdT;
@@ -910,13 +953,12 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
       phys->CdB[j]=pow(log(0.25*(grid->dzz[nc1][grid->Nke[j]-1]+grid->dzz[nc2][grid->Nke[j]-1])/prop->z0B)/KAPPA_VK,-2);
     }
 
-  for(i=0;i<grid->Nc;i++) 
-    for(k=0;k<grid->Nk[i];k++) {
-      phys->nu_tv[i][k]=0;
-      phys->kappa_tv[i][k]=0;
-      phys->qT[i][k]=0;
-      phys->lT[i][k]=0;
-    }
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+    j = grid->edgep[jptr];
+    
+    phys->tau_T[j]=grid->n1[j]*prop->tau_T;
+    phys->tau_B[j]=0;
+  }
 }
 
 /*
@@ -2083,13 +2125,6 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
  */
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
 {
-  int i, j, jptr, k;
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-    j = grid->edgep[jptr];
-    
-    phys->tau_T[j]=grid->n1[j]*prop->tau_T;
-    phys->tau_B[j]=0;
-  }
   if(prop->turbmodel) 
     my25(grid,phys,prop,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv);
 }
@@ -3703,12 +3738,28 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       fwrite(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->kappa_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
     for(j=0;j<grid->Ne;j++) 
       fwrite(phys->u[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
