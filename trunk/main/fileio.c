@@ -3,17 +3,45 @@
  * --------------
  * Contains helper functions for opening and reading data from a file.
  *
- * $Id: fileio.c,v 1.1 2002-11-03 00:19:53 fringer Exp $
+ * $Id: fileio.c,v 1.2 2003-04-29 16:38:00 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:19:53  fringer
+ * Initial revision
+ *
  *
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "fileio.h"
+#include <errno.h>
 
 #define BUFFERLENGTH 256
+#define THISFILE "fileio.c"
 
+/*
+ * Function: MyFOpen
+ * Usage: fid = MyFOpen(string,"r","GetValue");
+ * --------------------------------------------
+ * Exits if the requested file does not exist.
+ * The third string is useful for determining which
+ * function the function was called from.
+ *
+ */
+FILE *MyFOpen(char *file, char *perms, char *caller) {
+  extern int errno;
+  char str[BUFFERLENGTH];
+  FILE *fid = fopen(file,perms);
+
+  if(errno) {
+    sprintf(str,"Error in Function %s while trying to open %s",caller,file);
+    perror(str);
+    exit(EXIT_FAILURE);
+  } else
+    return fid;
+}
+
+  
 /*
  * Function: getfile
  * Usage: infile = getfile();
