@@ -6,8 +6,14 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.23 2003-05-07 03:06:54 fringer Exp $
+ * $Id: sunplot.c,v 1.24 2003-05-12 00:16:28 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.23  2003/05/07 03:06:54  fringer
+ * Changed lines that correspond to reading in from the
+ * edgedata files since the output was updated in grid.c (i.e.
+ * mnptr no longer output and the 0 0 in the printf statements in
+ * grid.c were also removed).
+ *
  * Revision 1.22  2003/05/05 01:26:04  fringer
  * Added ability to play movie forwards or backwards.  If left mouse button depresses "M" button, forward;  right mouse button causes backwards stepping.
  *
@@ -95,7 +101,7 @@
 #include "suntans.h"
 #include "fileio.h"
 
-#define AXESSLICETOP 0.25
+#define AXESSLICETOP 1
 #define SMALLHEIGHT .001
 #define VERSION "0.0.0"
 #define WIDTH 500
@@ -2651,13 +2657,13 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
       ubar=0;
       for(ik=0;ik<data->Nkmax;ik++) {
 	data->sliceU[i][ik]=data->rx*data->u[data->sliceProc[i]][ik][data->sliceInd[i]]+
-	  data->ry*data->u[data->sliceProc[i]][ik][data->sliceInd[i]];
+	  data->ry*data->v[data->sliceProc[i]][ik][data->sliceInd[i]];
 	data->sliceW[i][ik]=data->w[data->sliceProc[i]][ik][data->sliceInd[i]];
 	if(data->u[data->sliceProc[i]][ik][data->sliceInd[i]]!=EMPTY)
 	  ubar+=data->sliceU[i][ik];
       }
-      for(ik=0;ik<data->Nkmax;ik++) 
-	data->sliceU[i][ik]-=ubar/data->sliceD[i];
+      //      for(ik=0;ik<data->Nkmax;ik++) 
+      //	data->sliceU[i][ik]-=ubar/data->sliceD[i];
     }
     
     switch(plottype) {
