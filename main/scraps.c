@@ -1,6 +1,9 @@
 /*
- * $Id: scraps.c,v 1.2 2004-05-29 20:28:50 fringer Exp $
+ * $Id: scraps.c,v 1.3 2004-06-15 18:25:10 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2004/05/29 20:28:50  fringer
+ *  Revision before converting to CVS.
+ *
  *
  */
 static void MakePointers0(gridT *maingrid, gridT **localgrid, int myproc);
@@ -846,3 +849,15 @@ static void UpdateScalars_new(gridT *grid, physT *phys, propT *prop, REAL **scal
   }
   */
 }
+
+// From sunplot.c
+      sprintf(string,"/home/data/suntans_data/flux.dat.%d",proc);
+      fid = fopen(string,"w");
+ 
+      for(i=0;i<data->Nc[proc];i++)
+	dummy[i]=data->Eu[proc][i];
+      fwrite(dummy,sizeof(REAL),data->Nc[proc],fid);
+      for(i=0;i<data->Nc[proc];i++)
+	dummy[i]=data->Ev[proc][i];
+      fwrite(dummy,sizeof(REAL),data->Nc[proc],fid);
+      fclose(fid);
