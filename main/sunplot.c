@@ -1,3 +1,15 @@
+/*
+ * File: sunplot.c
+ * ---------------
+ * Description: Plot the output of suntans.
+ *
+ * Oliver Fringer
+ * EFML Stanford University
+ *
+ * $Id: sunplot.c,v 1.2 2003-03-31 19:57:36 fringer Exp $
+ * $Log: not supported by cvs2svn $
+ *
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
