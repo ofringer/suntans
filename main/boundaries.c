@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.4 2004-06-15 18:24:23 fringer Exp $
+ * $Id: boundaries.c,v 1.5 2004-06-17 02:53:58 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2004/06/15 18:24:23  fringer
+ * Cleaned up and removed extraneous code used for testing.
+ *
  * Revision 1.3  2004/06/13 07:08:57  fringer
  * Changes after testing of open boundaries.  No physical breakthroughs...
  *
@@ -76,7 +79,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
     */
 
     // For Monterey
-    if(grid->xv[ib]<5000) {
+    if(grid->xv[ib]<1000) {
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	if(k==grid->etop[j])
 	  z=-grid->dzz[ib][k]/2;
@@ -88,6 +91,32 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
       forced=1;
     } else 
       forced=0;
+
+    // For river plume
+    /*
+    if(grid->xv[ib]<2400) {
+      if(grid->yv[ib]>177000 && grid->yv[ib]<180000) {
+	for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	  if(k==grid->etop[j])
+	    z=-grid->dzz[ib][k]/2;
+	  else
+	    z-=grid->dzz[ib][k];
+
+	  if(z>-15)
+	    uboundary[k]=prop->amp;
+	  else
+	    uboundary[k]=0;
+	}
+      } else 
+	for(k=grid->etop[j];k<grid->Nke[j];k++) 
+	  uboundary[k]=0;
+      forced=1;
+    } else {
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+	uboundary[k]=-phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
+      forced=0;
+    }
+    */
 
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
       c[k] = 0;
