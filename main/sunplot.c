@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.8 2003-04-08 17:18:44 fringer Exp $
+ * $Id: sunplot.c,v 1.9 2003-04-08 23:32:22 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2003/04/08 17:18:44  fringer
+ * Added loop for movie (the M button) and also fixed vector plots.
+ *
  * Revision 1.7  2003/04/07 15:26:18  fringer
  * Added array of buttons.
  *
@@ -295,6 +298,12 @@ int main() {
 	  printf("Vectors off...\n");
 	}
 	redraw=true;
+      } else if(report.xany.window==controlButtons[wwin].butwin && mousebutton==left_button) {
+	if(plottype!='w') {
+	  plottype='w';
+	  printf("Vertical velocity selected...\n");
+	  redraw=true;
+	}
       } else if(report.xany.window==controlButtons[depthwin].butwin && mousebutton==left_button) {
 	if(plottype!='d') {
 	  plottype='d';
@@ -576,6 +585,9 @@ void MyDraw(char plottype, int procnum)
     ReadVelocity(u,v,k,Nkmax,n,"/home/fringer/research/SUNTANS/data/u.dat.0");
 
   switch(plottype) {
+  case 'w':
+    ReadScalar(scal,k,Nkmax,n,"/home/fringer/research/SUNTANS/data/w.dat.0");
+    break;
   case 's':
     ReadScalar(scal,k,Nkmax,n,"/home/fringer/research/SUNTANS/data/s.dat.0");
     break;
@@ -1231,9 +1243,9 @@ Window NewButton(Window parent, char *name, int x, int y,
   attr.border_pixel = white;
   attr.backing_store = NotUseful;
   if(motion) 
-    attr.event_mask = ExposureMask | ButtonReleaseMask | ButtonPressMask | Button1MotionMask ;
+    attr.event_mask = ButtonReleaseMask | ButtonPressMask | Button1MotionMask ;
   else
-    attr.event_mask = ExposureMask | ButtonReleaseMask | ButtonPressMask;
+    attr.event_mask = ButtonReleaseMask | ButtonPressMask;
   attr.bit_gravity = SouthWestGravity;
   attr.win_gravity = SouthWestGravity;
   attr.save_under = False;
