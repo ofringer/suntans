@@ -6,8 +6,21 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.25 2003-05-14 11:23:15 fringer Exp $
+ * $Id: sunplot.c,v 1.26 2003-05-14 11:41:07 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.25  2003/05/14 11:23:15  fringer
+ * Changed ParseCommandLine so that it takes -2d as an argument, which
+ * plots the default vertical slice from xmin to xmax using
+ * ./sunplot -np 1 -2d
+ * Also removed the && fromprofile && line from the GetSlice function
+ * so that when data is reloaded and a slice is being viewed it
+ * does not display the message "Cannot plot this slice!"  which
+ * was originally intended to force the user to hit the middle mouse
+ * button on the profile button after the data is reloaded, but this
+ * isn't necessary.  But the fromprofile flag is useful since it
+ * tells getslice not to load the x,z and nearest points every time
+ * a slice is chosen.
+ *
  * Revision 1.24  2003/05/12 00:16:28  fringer
  * Fixed the v-component in the slice retrieval so that it
  * reads data->ry*data->v... instead of data->ry*data->u, since
@@ -710,6 +723,7 @@ int main(int argc, char *argv[]) {
       } else if(report.xany.window==controlButtons[reloadwin].butwin && mousebutton==left_button) {
 	ReadData(data,-1,numprocs);
 	sprintf(message,"Reloading data...");
+	fromprofile=true;
 	redraw=true;
       } else if(report.xany.window==controlButtons[quitwin].butwin && mousebutton==left_button) {
 	quit=true;
@@ -2630,7 +2644,7 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
   float dz, dmax, xstart, ystart, xend, yend, rx0, ry0, 
     rx, ry, dist, xcent, ycent, rad, mag, mag0, ubar;
 
-  if(!(xs==xe && ys==ye) && sliceType==slice) {
+  if(!(xs==xe && ys==ye) && fromprofile && sliceType==slice) {
 
     FindNearest(data,xs,ys,&istart,&pstart,procnum,numprocs);
     FindNearest(data,xe,ye,&iend,&pend,procnum,numprocs);
