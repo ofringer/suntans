@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.39 2004-03-12 06:24:41 fringer Exp $
+ * $Id: phys.c,v 1.40 2004-03-13 00:43:00 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.39  2004/03/12 06:24:41  fringer
+ * Removed OpenBoundaryFluxes function and added it to its own .c file
+ * boundaries.c, where all boundary values are defined.
+ *
  * Revision 1.38  2004/03/12 06:14:22  fringer
  * Working version for Huntington beach case.
  *
@@ -774,10 +778,10 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+0*phys->u[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
-	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-	    prop->sponge_decay)*phys->u[j][k];
+	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
+	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
+	  //	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	  //	  prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
       }
@@ -844,8 +848,8 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	  else
 	    phys->ut[j][k]=0;
 	  // Central
-	  //	phys->ut[j][k]=0.5*(phys->uc[nc1][k]*grid->dzz[nc1][k]+
-	  //			    phys->uc[nc2][k]*grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.5*(phys->uc[nc1][k]*grid->dzz[nc1][k]+
+			      phys->uc[nc2][k]*grid->dzz[nc2][k]);
 	}
       }
       
@@ -890,8 +894,8 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	  else
 	    phys->ut[j][k]=0;
 	  // Central
-	  //phys->ut[j][k]=0.5*(phys->vc[nc1][k]*grid->dzz[nc1][k]+
-	  //			    phys->vc[nc2][k]*grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.5*(phys->vc[nc1][k]*grid->dzz[nc1][k]+
+			      phys->vc[nc2][k]*grid->dzz[nc2][k]);
 	}
       }
       
@@ -920,22 +924,23 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       for(i=0;i<grid->Nc;i++) {
 	
 	// Central differencing
-	/*
+
 	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
 	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
 				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
 	  b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
 				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
 	}
-	*/
+
 	// Upwinding
+	/*
 	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
 	  a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
 		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
 	  b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
 		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
 	}
-
+	*/
 	for(k=grid->ctop[i]+2;k<grid->Nk[i]-1;k++) {
 	  phys->stmp[i][k]+=(a[k]-a[k+1])/grid->dzz[i][k];
 	  phys->stmp2[i][k]+=(b[k]-b[k+1])/grid->dzz[i][k];
@@ -1103,8 +1108,8 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=0;
 	
 	// Central
-	//phys->ut[j][k]=0.5*(0.5*(phys->w[nc1][k]+phys->w[nc1][k+1])*grid->dzz[nc1][k]+
-	//			  0.5*(phys->w[nc2][k]+phys->w[nc2][k+1])*grid->dzz[nc2][k]);
+	phys->ut[j][k]=0.5*(0.5*(phys->w[nc1][k]+phys->w[nc1][k+1])*grid->dzz[nc1][k]+
+			    0.5*(phys->w[nc2][k]+phys->w[nc2][k+1])*grid->dzz[nc2][k]);
       }
     }
     
@@ -1217,12 +1222,14 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
   int i, iptr, j, jptr, k, nf, ne, nc1, nc2;
   REAL *ap=phys->a, *am=phys->b;
 
+  /*
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr]; 
 
     for(k=grid->etop[j];k<grid->Nke[j];k++)
       phys->u[j][k]*=prop->theta/prop->thetaB;
   }
+  */
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -1252,12 +1259,14 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
       src[i][k]/=(prop->theta*prop->dt);
   }
 
+  /*
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr]; 
 
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       phys->u[j][k]/=(prop->theta/prop->thetaB);
   }
+  */
 
   // D[j] is used in OperatorQ, and it must be zero to ensure no gradient
   // at the hydrostatic faces.
@@ -1306,7 +1315,7 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
     i = grid->cellp[iptr];
     
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      r[i][k] = p[i][k]-0*z[i][k];
+      r[i][k] = p[i][k]-z[i][k];
       p[i][k] = r[i][k];
     }
   }
