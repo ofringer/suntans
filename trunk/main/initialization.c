@@ -3,8 +3,11 @@
  * Description:  This file contains the functions that are used
  * to initialize the depth, free-surface, and salinity.
  *
- * $Id: initialization.c,v 1.9 2004-06-23 05:24:44 fringer Exp $
+ * $Id: initialization.c,v 1.10 2004-07-22 20:24:52 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.9  2004/06/23 05:24:44  fringer
+ * Committing as a test since fringer is not a writer.
+ *
  * Revision 1.8  2004/06/17 02:54:53  fringer
  * Added new Monterey density field which uses the swstate m-file to obtain
  * the density from salinity and temperature.
@@ -41,6 +44,7 @@
 #include "suntans.h"
 #include "initialization.h"
 
+#define sech 1/cosh
 /*
  * Function: GetDZ
  * Usage: GetDZ(dz,depth,Nkmax,myproc);
@@ -94,6 +98,8 @@ REAL ReturnDepth(REAL x, REAL y) {
   int nc, np, Nc = 13;
   REAL length, xmid, *xc, *yc, R=0.025, shelfdepth=200;
 
+  return 1000-0*975*exp(-pow((x-70000)/10000,2)-pow((y-60000)/10000,2));
+
   // Huntington beach continental shelf
   /*
   if(x<6418)
@@ -131,7 +137,25 @@ REAL ReturnDepth(REAL x, REAL y) {
   *
   */
 REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
-  return 0;
+  REAL r, rp, zeta, zetav, s=tan(PI/3), x0, y0, sig;
+  
+  return 0*cos(PI*x/100000);
+  sig = 3000;
+  x0 = 40000;
+  y0 = 65000;
+  r = s*(x-x0)-(y-y0);
+  rp = (x-x0)+s*(y-y0);
+  zeta = .5*(-tanh((rp-40000)/sig)+tanh((rp+40000)/sig));
+  zeta = pow(sech(-(r/sig)),2)*zeta;
+  //  zeta = exp(-fabs(r/sig))*zeta;
+
+  x0 = 50000;
+  y0 = 40000;
+  zetav = .5*(-tanh((y-y0-20000)/sig)+tanh((y-y0+20000)/sig));
+  zetav = zetav*pow(sech(-s*(x-x0)/sig),2);
+  //  zetav = zetav*exp(-s*fabs(x-50000)/sig);
+
+  return 1000*(zeta+zetav);
 }
 
 /*
@@ -143,11 +167,29 @@ REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
  *
  */
 REAL ReturnSalinity(REAL x, REAL y, REAL z) {
-  REAL delta_s, thermocline_depth=20, z0;
+  REAL delta_s, thermocline_depth=20, z0, zeta, r, rp, zetav, x0, y0, sig, s=tan(PI/3);
   REAL power, factor,dmax=120,dshelf=60;//dmax=3000,dshelf=500;//dmax=120,dshelf=60;//dmax = 3000;
   thermocline_depth=35;
   dmax = 120;
   dshelf = 60;
+
+  sig = 3000;
+  x0 = 40000;
+  y0 = 65000;
+  r = s*(x-x0)-(y-y0);
+  rp = (x-x0)+s*(y-y0);
+  zeta = .5*(-tanh((rp-40000)/sig)+tanh((rp+40000)/sig));
+  zeta = pow(sech(-(r/sig)),2)*zeta;
+  //  zeta = exp(-fabs(r/sig))*zeta;
+
+  x0 = 50000;
+  y0 = 40000;
+  zetav = .5*(-tanh((y-y0-20000)/sig)+tanh((y-y0+20000)/sig));
+  zetav = zetav*pow(sech(-s*(x-x0)/sig),2);
+  //  zetav = zetav*exp(-s*fabs(x-50000)/sig);
+
+  return -.5*.04286*tanh((z+50+100*(zeta+zetav))/10);
+  //  return -.0728*tanh(-(x-.4)/.001);
 
   thermocline_depth=25;
   dmax = 3000;
