@@ -6,8 +6,14 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.52 2004-05-17 19:02:10 fringer Exp $
+ * $Id: phys.c,v 1.53 2004-05-17 19:09:41 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.52  2004/05/17 19:02:10  fringer
+ * Added the baroclinic term at the bottom cell when integrating the
+ * r term.  The integral goes to k0<grid->etop[j], and only half
+ * of the k0=grid->etop[j] term is added since the integral should
+ * starts half way up this cell, and not at its bottom face.
+ *
  * Revision 1.51  2004/05/15 00:18:35  fringer
  * Changed the advection scheme for scalars so that the velocities to
  * compute advection at time step n are all at the new time level.
@@ -1015,21 +1021,20 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	  ne = grid->face[i*NFACES+nf];
 	  nc = grid->neigh[i*NFACES+nf];
 
-	  if(grid->Nk[nc]<grid->Nk[i])
-	    kmax = grid->Nk[nc];
-	  else
-	    kmax = grid->Nk[i];
-
-	  if(grid->ctop[nc]>grid->ctop[i])
-	    kmin = grid->ctop[nc];
-	  else
-	    kmin = grid->ctop[i];
-
 	  for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
 	    phys->stmp[i][k]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	      (grid->Ac[i]*grid->dzz[i][k]);
 	  
 	  if(nc!=-1) {
+	    if(grid->Nk[nc]<grid->Nk[i])
+	      kmax = grid->Nk[nc];
+	    else
+	      kmax = grid->Nk[i];
+	    
+	    if(grid->ctop[nc]>grid->ctop[i])
+	      kmin = grid->ctop[nc];
+	    else
+	      kmin = grid->ctop[i];
 	    for(k=kmin;k<kmax;k++)
 	      phys->stmp[i][k]-=prop->nu_H*(phys->uc[nc][k]-phys->uc[i][k])*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
 	    for(k=kmax;k<grid->Nkc[ne];k++)
