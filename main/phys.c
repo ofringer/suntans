@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.37 2004-03-05 19:47:01 fringer Exp $
+ * $Id: phys.c,v 1.38 2004-03-12 06:14:22 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.37  2004/03/05 19:47:01  fringer
+ * Vertical advection not working for estuarine case.
+ *
  * Revision 1.36  2004/01/27 05:25:49  fringer
  * Working version for Monterey Bay case.  OpenBoundaryFluxes still not working.
  * Had to add send/recv routines in advecthorizvelocity so that stmp/2 terms were
@@ -674,7 +677,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       BarotropicPredictor(grid,phys,prop,myproc,numprocs,comm);
       ISendRecvCellData2D(phys->h,grid,myproc,comm);
 
-      //      NewCells(grid,phys,prop);
+      if(prop->newcells) NewCells(grid,phys,prop);
       ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
 
       if(prop->nonhydrostatic) {
@@ -769,10 +772,10 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
-	  //	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-	  //	    prop->sponge_decay)*phys->u[j][k];
+	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+0*phys->u[j][k]
+	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
+	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	    prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
       }
@@ -2948,6 +2951,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->volcheck = MPI_GetValue(DATAFILE,"volcheck","ReadProperties",myproc);
   (*prop)->masscheck = MPI_GetValue(DATAFILE,"masscheck","ReadProperties",myproc);
   (*prop)->nonlinear = MPI_GetValue(DATAFILE,"nonlinear","ReadProperties",myproc);
+  (*prop)->newcells = MPI_GetValue(DATAFILE,"newcells","ReadProperties",myproc);
   (*prop)->Coriolis_f = MPI_GetValue(DATAFILE,"Coriolis_f","ReadProperties",myproc);
   (*prop)->sponge_distance = MPI_GetValue(DATAFILE,"sponge_distance","ReadProperties",myproc);
   (*prop)->sponge_decay = MPI_GetValue(DATAFILE,"sponge_decay","ReadProperties",myproc);
@@ -3052,6 +3056,7 @@ static void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, phy
 
     ib = grid->grad[2*j];
     
+    // For Three-mile slough
     if(grid->yv[ib]>2500) {
       if(cos(prop->omega*prop->rtime)>0) {
 	forced=0;
@@ -3074,6 +3079,10 @@ static void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, phy
       }
     }
     forced=1;
+
+    // For Huntington Beach
+    for(k=grid->etop[j];k<grid->Nke[j];k++) 
+      uboundary[k] = prop->amp*cos(prop->omega*prop->rtime);
 
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
       c[k] = 0;
@@ -3156,6 +3165,9 @@ static void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, phy
       //	ub[j][k]+=2.0*prop->dt*c[k]*(phys->uc[ib][k]*grid->n1[j]+phys->vc[ib][k]*grid->n2[j]-ub[j][k])/
       //	  grid->dg[j];
      }
+
+    for(k=grid->etop[j];k<grid->Nke[j];k++) 
+      ub[j][k]=prop->amp*cos(prop->omega*prop->rtime);
   }
 }
 
