@@ -3,8 +3,13 @@
  * Description:  This file contains the functions that are used
  * to initialize the depth, free-surface, and salinity.
  *
- * $Id: initialization.c,v 1.5 2004-06-01 04:31:29 fringer Exp $
+ * $Id: initialization.c,v 1.6 2004-06-14 07:56:41 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2004/06/01 04:31:29  fringer
+ * Initialization for entrainment problem:
+ * D = 2 m when x>4 & x<7, 1 m otherwise
+ * s -> -.005*tanh((x-3)/.01), +.01 for s<-1
+ *
  * Revision 1.4  2004/05/31 06:59:33  fringer
  * Added vertical diffusion of scalar.  Left in Ftop and Fbot
  * as commented out terms.  These are where top and bottom diffusive
@@ -79,11 +84,14 @@ REAL ReturnDepth(REAL x, REAL y) {
   int nc, np, Nc = 13;
   REAL length, xmid, *xc, *yc, R=0.025, shelfdepth=200;
 
+  return 3000;
   //  return 1-.5*exp(-pow(x/4,2));
   //  return .1+1.9*x/10;
+  /*
   if(x<7 && x>4)
     return 2;
   return 1;
+  */
   /*
   if((x>4.556 && x<6 && y<1.73*(x-4.556)) | (x>6 && y<2.5))
     return 5;
@@ -190,7 +198,7 @@ REAL ReturnDepth(REAL x, REAL y) {
   *
   */
 REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
-   return 0;
+   return 0*cos(PI*x/100000);
    if(x>4 && x<6)
      return 0;
    return
@@ -213,14 +221,16 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
   dmax = 120;
   dshelf = 60;
 
-  //  thermocline_depth=180;
-  //  dmax = 3000;
+  thermocline_depth=50; // Was 180 for elnino winter '97!
+  dmax = 3000;
 
+  return 0.005*(1+tanh(-(x-7500)));
+  /*
   if(z>-1)
     return -0.005*tanh((x-3)/.01);
   else
     return 0.01;
-
+  */
   // Monterey (critical when length=10000 slope=2500/10000)
   delta_s = 0.0147;
   // Huntington (critical when length=2000 slope=60/2000)
@@ -257,7 +267,7 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
     return 0.09*fabs(z/dmax);
   } else {
     //    printf("%f %f\n",z,delta_s*pow(fabs(z/dmax),0.35));
-    return delta_s*pow(fabs(z/dmax),0.35);
+    return 0.09*thermocline_depth/dmax+delta_s*pow(fabs((z+thermocline_depth)/dmax),0.35);
   }
     //    return factor*delta_s*pow(fabs((z+thermocline_depth)/(dmax-thermocline_depth)),power);
   //phys->s[i][k]=-1.07*0*(z+1500+0*cos(PI*(grid->xv[i]-10000)/10000))/1500;
@@ -291,7 +301,7 @@ REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
   REAL x0=7500, x1=5500, z0=-60, z1=-120, w=500, h=40,
     x2=7000, z2=-90;
   
-  if(z<-1)
+  if(z<-depth+100)
     return 1;
   return 0;
 
