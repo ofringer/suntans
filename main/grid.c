@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.15 2003-06-10 02:15:47 fringer Exp $
+ * $Id: grid.c,v 1.16 2003-06-10 03:23:23 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.15  2003/06/10 02:15:47  fringer
+ * Changed all malloc to SunMalloc and all free to SunFree.
+ *
  * Revision 1.14  2003/05/12 00:04:43  fringer
  * Added R/W of (*grid)->xe,ye, which are needed for the interpolation
  * onto the edges (otherwise we could store xp, but this is easier).
@@ -964,14 +967,14 @@ void ReadFileNames(int myproc)
 {
   char str[BUFFERLENGTH];
 
-  MPI_GetString(POINTSFILE,DATAFILE,"points","OpenFiles",myproc);
-  MPI_GetString(EDGEFILE,DATAFILE,"edges","OpenFiles",myproc);
-  MPI_GetString(CELLSFILE,DATAFILE,"cells","OpenFiles",myproc);
-  MPI_GetString(INPUTDEPTHFILE,DATAFILE,"depth","OpenFiles",myproc);
-  MPI_GetString(CELLCENTEREDFILE,DATAFILE,"celldata","OpenFiles",myproc);
-  MPI_GetString(EDGECENTEREDFILE,DATAFILE,"edgedata","OpenFiles",myproc);
-  MPI_GetString(VERTSPACEFILE,DATAFILE,"vertspace","OpenFiles",myproc);
-  MPI_GetString(TOPOLOGYFILE,DATAFILE,"topology","OpenFiles",myproc);
+  MPI_GetFile(POINTSFILE,DATAFILE,"points","OpenFiles",myproc);
+  MPI_GetFile(EDGEFILE,DATAFILE,"edges","OpenFiles",myproc);
+  MPI_GetFile(CELLSFILE,DATAFILE,"cells","OpenFiles",myproc);
+  MPI_GetFile(INPUTDEPTHFILE,DATAFILE,"depth","OpenFiles",myproc);
+  MPI_GetFile(CELLCENTEREDFILE,DATAFILE,"celldata","OpenFiles",myproc);
+  MPI_GetFile(EDGECENTEREDFILE,DATAFILE,"edgedata","OpenFiles",myproc);
+  MPI_GetFile(VERTSPACEFILE,DATAFILE,"vertspace","OpenFiles",myproc);
+  MPI_GetFile(TOPOLOGYFILE,DATAFILE,"topology","OpenFiles",myproc);
 }
 
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
