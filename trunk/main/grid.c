@@ -6,8 +6,14 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.9 2003-04-29 00:15:06 fringer Exp $
+ * $Id: grid.c,v 1.10 2003-04-29 16:39:18 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.9  2003/04/29 00:15:06  fringer
+ * Changed VERBOSE lines to include if(myproc==0) so that they only
+ * print from 1st processor.
+ * Changed VERBOSE>2 to print more relevant information.  VERBOSE>3 prints
+ * information in loops.  VERBOSE>3 prints on all processors as well.
+ *
  * Revision 1.8  2003/04/26 14:16:37  fringer
  * Added initialization function ReturnDepth .
  *
@@ -99,9 +105,12 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   ReadFileNames(myproc);
 
   if(!TRIANGULATE) {
-    Np = getsize(POINTSFILE);
-    Ne = getsize(EDGEFILE);
-    Nc = getsize(CELLSFILE);
+    Np = MPI_GetSize(POINTSFILE,"GetGrid",myproc);
+    Ne = MPI_GetSize(EDGEFILE,"GetGrid",myproc);
+    Nc = MPI_GetSize(CELLSFILE,"GetGrid",myproc);
+    //    Np = getsize(POINTSFILE);
+    //    Ne = getsize(EDGEFILE);
+    //    Nc = getsize(CELLSFILE);
 
     // Every processor will know about data read in from
     // triangle as well as the depth.
@@ -109,7 +118,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
     InitMainGrid(&maingrid,Np,Ne,Nc);
 
     if(myproc==0 && VERBOSE>0) printf("Reading Grid...\n");
-    ReadMainGrid(maingrid);
+    ReadMainGrid(maingrid,myproc);
   } else {
     if(myproc==0 && VERBOSE>0) printf("Triangulating the point set...\n");
     GetTriangulation(&maingrid,myproc);
@@ -132,7 +141,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   if(myproc==0 && VERBOSE>0) printf("Partitioning...\n");
   Partition(maingrid,localgrid,comm);
 
-  //  CheckCommunicateCells(maingrid,*localgrid,myproc,comm);
+  //CheckCommunicateCells(maingrid,*localgrid,myproc,comm);
   //  CheckCommunicateEdges(maingrid,*localgrid,myproc,comm);
   //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm);
 
@@ -661,8 +670,8 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc)
 
 /*
  * Function: ReadMainGrid
- * Usage: ReadmainGrid(grid);
- * --------------------------
+ * Usage: ReadmainGrid(grid,myproc);
+ * ---------------------------------
  * Read in the cell data. If the CORRECTVORONOI
  * flag is set to 1 then the voronoi points are set to be the centroids of
  * the cells.
@@ -674,13 +683,13 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc)
  * EDGEFILE list of indices to points in POINTSFILE (always 2 columns + edge markers = 3 columns)
  *
  */
-void ReadMainGrid(gridT *grid)
+void ReadMainGrid(gridT *grid, int myproc)
 {
   int j, n, nei, nf, numprocs;
   char str[BUFFERLENGTH];
   FILE *ifile, *fid;
 
-  ifile = fopen(POINTSFILE,"r");
+  ifile = MPI_FOpen(POINTSFILE,"r","ReadMainGrid",myproc);
   for(n=0;n<grid->Np;n++) {
     grid->xp[n]=getfield(ifile,str);
     grid->yp[n]=getfield(ifile,str);
@@ -688,7 +697,7 @@ void ReadMainGrid(gridT *grid)
   }
   fclose(ifile);
   
-  ifile = fopen(EDGEFILE,"r");
+  ifile = MPI_FOpen(EDGEFILE,"r","ReadMainGrid",myproc);
   for(n=0;n<grid->Ne;n++) {
     for(j=0;j<NUMEDGECOLUMNS-1;j++) 
       grid->edges[NUMEDGECOLUMNS*n+j]=(int)getfield(ifile,str);
@@ -698,7 +707,7 @@ void ReadMainGrid(gridT *grid)
   }
   fclose(ifile);
 
-  ifile = fopen(CELLSFILE,"r");
+  ifile = MPI_FOpen(CELLSFILE,"r","ReadMainGrid",myproc);
   for(n=0;n<grid->Nc;n++) {
     grid->xv[n] = getfield(ifile,str);
     grid->yv[n] = getfield(ifile,str);
@@ -973,16 +982,37 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
 
   if(TRIANGULATE && myproc==0) {
     if(myproc==0 && VERBOSE>2) printf("Outputting Delaunay points...\n");
-    sprintf(str,"%s",POINTSFILE);
-    ofile = fopen(str,"w");
+    ofile = MPI_FOpen(POINTSFILE,"w","OutputData",myproc);
     for(j=0;j<Np;j++)
       fprintf(ofile,"%f %f 0\n",maingrid->xp[j],maingrid->yp[j]);
+    fclose(ofile);
+  
+    ofile = MPI_FOpen(EDGEFILE,"w","ReadMainGrid",myproc);
+    for(n=0;n<maingrid->Ne;n++) {
+      for(j=0;j<NUMEDGECOLUMNS-1;j++) 
+	fprintf(ofile,"%d ",maingrid->edges[NUMEDGECOLUMNS*n+j]);
+      fprintf(ofile,"%d ",maingrid->mark[n]);
+      for(j=0;j<2;j++) 
+	fprintf(ofile,"%d ",maingrid->grad[2*n+j]);
+      fprintf(ofile,"\n");
+    }
+    fclose(ofile);
+    
+    ofile = MPI_FOpen(CELLSFILE,"w","ReadMainGrid",myproc);
+    for(n=0;n<maingrid->Nc;n++) {
+      fprintf(ofile,"%f %f ",maingrid->xv[n],maingrid->yv[n]);
+      for(nf=0;nf<NFACES;nf++)
+	fprintf(ofile,"%d ",maingrid->cells[n*NFACES+nf]);
+      for(nf=0;nf<NFACES;nf++) 
+	fprintf(ofile,"%d ",maingrid->neigh[n*NFACES+nf]);
+      fprintf(ofile,"\n");
+    }
     fclose(ofile);
   }
 
   if(myproc==0 && VERBOSE>2) printf("Outputting cells.dat...\n");
   sprintf(str,"%s.%d",CELLSFILE,myproc);
-  ofile = fopen(str,"w");
+  ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(j=0;j<grid->Nc;j++) {
     fprintf(ofile,"%f %f ",grid->xv[j],grid->yv[j]);
     for(nf=0;nf<NFACES;nf++)
@@ -995,7 +1025,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
 
   if(myproc==0 && VERBOSE>2) printf("Outputting edges.dat...\n");
   sprintf(str,"%s.%d",EDGEFILE,myproc);
-  ofile = fopen(str,"w");
+  ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(j=0;j<grid->Ne;j++) {
     for(nf=0;nf<2;nf++)
       fprintf(ofile,"%d ",grid->edges[j*NUMEDGECOLUMNS+nf]);
@@ -1008,7 +1038,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
 
   if(myproc==0 && VERBOSE>2) printf("Outputting celldata.dat...\n");
   sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
-  ofile = fopen(str,"w");
+  ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(n=0;n<Nc;n++) {
     fprintf(ofile,"%f %f %f %f %d ",grid->xv[n],grid->yv[n],
 	    grid->Ac[n],grid->dv[n],grid->Nk[n]);
@@ -1025,7 +1055,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
 
   if(myproc==0 && VERBOSE>2) printf("Outputting edgedata.dat...\n");
   sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
-  ofile = fopen(str,"w");
+  ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(n=0;n<Ne;n++) {
     fprintf(ofile,"%f %f 0 0 %f %f %d %d %d %d ",
 	    grid->df[n],grid->dg[n],grid->n1[n],
@@ -1041,7 +1071,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
 
   if(myproc==0 && VERBOSE>2) printf("Outputting topology and boundary pointers...\n");
   sprintf(str,"%s.%d",TOPOLOGYFILE,myproc);
-  ofile = fopen(str,"w");
+  ofile = MPI_FOpen(str,"w","OutputData",myproc);
   fprintf(ofile,"%d\n",grid->Nneighs);
   for(neigh=0;neigh<grid->Nneighs;neigh++) 
     fprintf(ofile,"%d ",grid->myneighs[neigh]);
@@ -1371,6 +1401,12 @@ static void GetGraph(GraphType *graph, gridT *grid, MPI_Comm comm)
 }
 
 
+/*
+ * Function: ResortBoundaries
+ * Usage: ResortBoundaries(grid,myproc);
+ * -------------------------------------
+ *
+ */
 static void ResortBoundaries(gridT *localgrid, int myproc)
 {
   int neigh, n, *tmp;
@@ -1406,7 +1442,8 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
 {
   int i, n, nf, ne, neigh, neighproc, nc, j, k, mark, bctype, count;
   int **cell_send, **cell_recv, **edge_send, **edge_recv;
-  int *num_cells_send, *num_cells_recv, *num_edges_send, *num_edges_recv;
+  int *num_cells_send, *num_cells_recv, *num_cells_send_first, *num_cells_recv_first,
+    *num_edges_send, *num_edges_recv;
   int *cellp, *edgep, *celldist, *edgedist, *lcptr, *leptr;
   int kcellsend, kcellrecv, kedgesend, kedgerecv;
   unsigned short *flagged;
@@ -1481,6 +1518,8 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
   edge_recv = (int **)malloc((*localgrid)->Nneighs*sizeof(int *));
   num_cells_send = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
   num_cells_recv = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
+  num_cells_send_first = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
+  num_cells_recv_first = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
   num_edges_send = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
   num_edges_recv = (int *)malloc((*localgrid)->Nneighs*sizeof(int));
 
@@ -2544,12 +2583,12 @@ static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   scaledepth=(int)MPI_GetValue(DATAFILE,"scaledepth","InterpDepth",myproc);
   scaledepthfactor=MPI_GetValue(DATAFILE,"scaledepthfactor","InterpDepth",myproc);
 
-  Nd = getsize(INPUTDEPTHFILE);
+  Nd = MPI_GetSize(INPUTDEPTHFILE,"InterpDepth",myproc);
   xd = (REAL *)malloc(Nd*sizeof(REAL));
   yd = (REAL *)malloc(Nd*sizeof(REAL));
   d = (REAL *)malloc(Nd*sizeof(REAL));
 
-  ifile = fopen(INPUTDEPTHFILE,"r");
+  ifile = MPI_FOpen(INPUTDEPTHFILE,"r","InterpDepth",myproc);
   for(n=0;n<Nd;n++) {
     xd[n]=getfield(ifile,str);
     yd[n]=getfield(ifile,str);

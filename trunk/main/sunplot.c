@@ -6,8 +6,15 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.19 2003-04-29 00:17:22 fringer Exp $
+ * $Id: sunplot.c,v 1.20 2003-04-29 16:39:43 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.19  2003/04/29 00:17:22  fringer
+ * Removed some unnecessary code which was commented out.
+ * Added abiilty to select s,s-s0, or s0 by clicking on the salinity
+ * button with the left, middle, or right mouse buttons, respectively.
+ * Fixed CAxis so that it allows for caxis[0,1]==0.
+ * Need to read physical file names from suntans.dat!
+ *
  * Revision 1.18  2003/04/26 14:17:48  fringer
  * Fixed grid lines when drawing free surface and bottom.  They are
  * always drawn in white.
@@ -87,7 +94,7 @@
 #define PI 3.141592654
 #define EMPTY 999999
 #define INFTY 1e20
-#define CMAPFILE "/home/fringer/research/SUNTANS/data/jet.cmap"
+#define CMAPFILE "cmaps/jet.cmap"
 #define NUMCOLORS 66
 //#define DEFAULT_FONT "-adobe-helvetica-medium-o-normal--20-140-100-100-p-98-iso8859-9"
 #define DEFAULT_FONT "9x15"
@@ -1380,7 +1387,7 @@ void CAxis(dataT *data, plottypeT plottype, int klevel, int procnum, int numproc
 
 void ReadColorMap(char *str) {
   int i;
-  FILE *ifile = fopen(str,"r");
+  FILE *ifile = MyFOpen(str,"r","ReadColorMap");
   float r, g, b;
 
   for(i=0;i<NUMCOLORS-2;i++) {
@@ -2353,7 +2360,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       data->w[proc][data->Nkmax]=(float *)malloc(data->Nc[proc]*sizeof(float));
     }
 
-    fid = fopen(POINTSFILE,"r");
+    fid = MyFOpen(POINTSFILE,"r","ReadData");
     for(i=0;i<data->Np;i++) 
       fscanf(fid,"%f %f %d",&(data->xc[i]),&(data->yc[i]),&ind);
     fclose(fid);  
@@ -2361,7 +2368,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     for(proc=0;proc<numprocs;proc++) {
 
       sprintf(string,"%s.%d",CELLSFILE,proc);
-      fid = fopen(string,"r");
+      fid = MyFOpen(string,"r","ReadData");
       for(i=0;i<data->Nc[proc];i++) 
 	fscanf(fid,"%f %f %d %d %d %d %d %d",&xind,&xind,
 	       &(data->cells[proc][3*i]),
@@ -2371,7 +2378,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       fclose(fid);
 
       sprintf(string,"%s.%d",EDGEFILE,proc);
-      fid = fopen(string,"r");
+      fid = MyFOpen(string,"r","ReadData");
       for(i=0;i<data->Ne[proc];i++) {
 	fscanf(fid,"%d %d %d %d %d",
 	       &(data->edges[proc][2*i]),
@@ -2381,7 +2388,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       fclose(fid);
       
       sprintf(string,"%s.%d",CELLCENTEREDFILE,proc);
-      fid = fopen(string,"r");
+      fid = MyFOpen(string,"r","ReadData");
       for(i=0;i<data->Nc[proc];i++) {
 	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
 	       &(data->xv[proc][i]),
@@ -2408,7 +2415,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
       if(data->timestep==1) {
 	sprintf(string,"/home/fringer/research/SUNTANS/data/s0.dat.%d",proc);
-	fid = fopen(string,"r");
+	fid = MyFOpen(string,"r","ReadData");
 	for(i=0;i<data->Nkmax;i++) {
 	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
 	  for(j=0;j<data->Nc[proc];j++) 
@@ -2422,7 +2429,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
       
       sprintf(string,"/home/fringer/research/SUNTANS/data/s.dat.%d",proc);
-      fid = fopen(string,"r");
+      fid = MyFOpen(string,"r","ReadData");
       fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
       for(i=0;i<data->Nkmax;i++) {
 	fread(dummy,sizeof(double),data->Nc[proc],fid);      
@@ -2437,7 +2444,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       fclose(fid);
 
       sprintf(string,"/home/fringer/research/SUNTANS/data/u.dat.%d",proc);
-      fid = fopen(string,"r");
+      fid = MyFOpen(string,"r","ReadData");
       fseek(fid,3*(nstep-1)*data->Ne[proc]*data->Nkmax*sizeof(double),0);
       for(i=0;i<data->Nkmax;i++) {
 	fread(dummy,sizeof(double),data->Ne[proc],fid);      
@@ -2464,7 +2471,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       fclose(fid);
 
       sprintf(string,"/home/fringer/research/SUNTANS/data/w.dat.%d",proc);
-      fid = fopen(string,"r");
+      fid = MyFOpen(string,"r","ReadData");
       for(i=0;i<data->Nkmax;i++) {
 	for(j=0;j<data->Nc[proc];j++) 
 	  data->w[proc][i][j]=0;
@@ -2484,7 +2491,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       fclose(fid);
 
       sprintf(string,"/home/fringer/research/SUNTANS/data/fs.dat.%d",proc);
-      fid = fopen(string,"r");
+      fid = MyFOpen(string,"r","ReadData");
       fseek(fid,(nstep-1)*data->Nc[proc]*sizeof(double),0);
       fread(dummy,sizeof(double),data->Nc[proc],fid);      
       for(i=0;i<data->Nc[proc];i++)

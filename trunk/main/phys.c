@@ -6,8 +6,17 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.12 2003-04-29 00:12:10 fringer Exp $
+ * $Id: phys.c,v 1.13 2003-04-29 16:39:29 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.12  2003/04/29 00:12:10  fringer
+ * Added ReturnSalinity function and removed salinity initialization from this file.
+ * Added BGSalinityFID file pointer to store background salinity in a file.
+ * Fixed baroclinic term so that horizontal density gradients do not
+ * induce a flow.
+ * Removed no-grad boundary condition from ScalarsImp function becuase it
+ * was causing unphysical flow at the boundaries.  For now the salinity
+ * values in cells neighboring the boundary are not updated.
+ *
  * Revision 1.11  2003/04/26 14:16:22  fringer
  * Added initialization function ReturnFreeSurface
  *
@@ -1808,32 +1817,32 @@ static void OpenFiles(propT *prop, int myproc)
 
   MPI_GetString(filename,DATAFILE,"FreeSurfaceFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
-  prop->FreeSurfaceFID = fopen(str,"w");
+  prop->FreeSurfaceFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   MPI_GetString(filename,DATAFILE,"HorizontalVelocityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
-  prop->HorizontalVelocityFID = fopen(str,"w");
+  prop->HorizontalVelocityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   MPI_GetString(filename,DATAFILE,"VerticalVelocityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
-  prop->VerticalVelocityFID = fopen(str,"w");
+  prop->VerticalVelocityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   MPI_GetString(filename,DATAFILE,"SalinityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
-  prop->SalinityFID = fopen(str,"w");
+  prop->SalinityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   MPI_GetString(filename,DATAFILE,"BGSalinityFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
-  prop->BGSalinityFID = fopen(str,"w");
+  prop->BGSalinityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   MPI_GetString(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
-  prop->VerticalGridFID = fopen(str,"w");
+  prop->VerticalGridFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   if(myproc==0) {
     MPI_GetString(filename,DATAFILE,"ConserveFile","OpenFiles",myproc);
     sprintf(str,"%s",filename);
-    prop->ConserveFID = fopen(str,"w");
+    prop->ConserveFID = MPI_FOpen(str,"w","OpenFiles",myproc);
   }
 }
 

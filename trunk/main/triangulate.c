@@ -3,8 +3,12 @@
  * --------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.2 2003-04-29 00:16:27 fringer Exp $
+ * $Id: triangulate.c,v 1.3 2003-04-29 16:39:07 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2003/04/29 00:16:27  fringer
+ * Fixed VERBOSE>0 line to include myproc==0, which required a redefinition
+ * of the function prototype for triangulate.
+ *
  * Revision 1.1  2003/04/26 14:20:18  fringer
  * Initial revision
  *
@@ -19,7 +23,7 @@
 #define TRIANGLEFORMAT 0
 
 void GetTriangulation(gridT **grid, int myproc);
-void GetPoints(struct triangulateio *in, REAL *minarea);
+void GetPoints(struct triangulateio *in, REAL *minarea, int myproc);
 void InitializeTriangle(struct triangulateio *mid, struct triangulateio *vorout);
 
 /*
@@ -35,7 +39,7 @@ void GetTriangulation(gridT **grid, int myproc) {
   REAL minarea;
   char str[BUFFERLENGTH];
 
-  GetPoints(&in,&minarea);
+  GetPoints(&in,&minarea,myproc);
   InitializeTriangle(&out,&vorout);
 
   //  triangulate("pzAevnqa10", &in, &out, &vorout);
@@ -86,18 +90,13 @@ void GetTriangulation(gridT **grid, int myproc) {
   free(in.holelist);
 }
 
-void GetPoints(struct triangulateio *in, REAL *minarea)
+void GetPoints(struct triangulateio *in, REAL *minarea, int myproc)
 {
   int i, dummy, dimensions;
   char str[BUFFERLENGTH], c;
   REAL num;
   MPI_GetString(PSLGFILE,DATAFILE,"pslg","GetPoints",0);
-  FILE *infile = fopen(PSLGFILE,"r");
-  if(infile==NULL) {
-    printf("Error in getting points for triangulation.  PSLG file %s does not exist!\n",
-	   PSLGFILE);
-    //    EndMPI();
-  }
+  FILE *infile = MPI_FOpen(PSLGFILE,"r","GetPoints",myproc);
 
   in->numberofpoints = (int)getfield(infile,str);
 
