@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.13 2003-04-29 16:39:29 fringer Exp $
+ * $Id: phys.c,v 1.14 2003-05-01 00:29:05 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.13  2003/04/29 16:39:29  fringer
+ * Added MPI_FOPen in place of fopen.
+ *
  * Revision 1.12  2003/04/29 00:12:10  fringer
  * Added ReturnSalinity function and removed salinity initialization from this file.
  * Added BGSalinityFID file pointer to store background salinity in a file.
@@ -422,12 +425,12 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
       EddyViscosity(grid,phys,prop);
 
       BarotropicPredictor(grid,phys,prop,myproc,numprocs,comm);
-      SendRecvCellData2D(phys->h,grid,myproc,comm);
+      SendRecvCellData2D(phys->h,grid,myproc,comm,first);
 
       HydroW(grid,phys);
 
       UpdateScalarsImp(grid,phys,prop);
-      SendRecvCellData3D(phys->s,grid,myproc,comm);
+      SendRecvCellData3D(phys->s,grid,myproc,comm,first);
 
       //      UpdateU(grid,phys,prop);
     }
@@ -856,7 +859,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   }
   */
 
-  SendRecvCellData2D(h,grid,myproc,comm);
+  SendRecvCellData2D(h,grid,myproc,comm,first);
 
   relax = prop->relax;
   niters = prop->maxiters;
@@ -928,7 +931,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
     //    printf("Proc %d: %e\n",myproc,resid);
 
-    SendRecvCellData2D(h,grid,myproc,comm);
+    SendRecvCellData2D(h,grid,myproc,comm,first);
     MPI_Barrier(comm);
 
     if(fabs(resid)<prop->epsilon)
@@ -1613,6 +1616,12 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
   if(!(prop->n%prop->ntout) || prop->n==1) {
 
     if(myproc==0 && VERBOSE>1) printf("Outputting data at step %d of %d\n",prop->n,prop->nsteps);
+
+    // Transfer back and forth all the data to all of the ghost points.
+    // This is mostly so that ghost cells do not have empty values in the data.
+    // It is NOT necessarily required for the computation!
+    SendRecvCellData2D(phys->h,grid,myproc,comm,all);
+    SendRecvCellData3D(phys->s,grid,myproc,comm,all);
 
     WtoVerticalFace(grid,phys);
     
