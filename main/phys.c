@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.30 2003-12-02 23:33:57 fringer Exp $
+ * $Id: phys.c,v 1.31 2003-12-03 02:07:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.30  2003/12/02 23:33:57  fringer
+ * Added error checking code in updatedz and also updated cgsolve (q and h)
+ * so that the iteration stops if eps0=0.
+ *
  * Revision 1.29  2003/12/02 04:38:27  fringer
  * Changed send/recv routines to be nonblocking.
  *
@@ -1028,7 +1032,7 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
   // Correct the horizontal velocity
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr]; 
-
+    if(phys->D[j]!=0)
     for(k=grid->etop[j];k<grid->Nke[j];k++)
       phys->u[j][k]-=prop->theta*prop->dt/grid->dg[j]*
 	(qc[grid->grad[2*j]][k]-qc[grid->grad[2*j+1]][k]);
@@ -1090,7 +1094,8 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
       src[i][k]/=(prop->theta*prop->dt);
   }
 
-  /*
+  // D[j] is used in OperatorQ, and it must be zero to ensure no gradient
+  // at the hydrostatic faces.
   for(j=0;j<grid->Ne;j++) {
     phys->D[j]=grid->df[j]/grid->dg[j];
   }
@@ -1101,7 +1106,6 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
     for(nf=0;nf<NFACES;nf++)
       phys->D[grid->face[i*NFACES+nf]]=0;
   }
-  */
 }
 
 static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm) {
@@ -1118,38 +1122,6 @@ static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop
   niters = prop->qmaxiters;
 
   // Initialization for CG
-  // First need to adjust the source term for the cells just inside
-  // the forced boundary.  This is done only if there are forced boundary
-  // points, i.e. if celldist[2]!=celldist[1].
-  if(grid->celldist[2]!=grid->celldist[1]) {
-    for(i=0;i<grid->Nc;i++) {
-      for(k=grid->ctop[i];k<grid->Nk[i];k++)
-	z[i][k] = 0;
-    }
-    
-    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-      i = grid->cellp[iptr];
-     
-      for(k=grid->ctop[i];k<grid->Nk[i];k++)
-	z[i][k] = x[i][k];
-    }
-    OperatorQ(z,r,grid,phys,prop);
-    
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i = grid->cellp[iptr];
-      
-      for(k=grid->ctop[i];k<grid->Nk[i];k++)
-	p[i][k]-=r[i][k];
-    }
-
-    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-      i = grid->cellp[iptr];
-      
-      for(k=grid->ctop[i];k<grid->Nk[i];k++)
-	p[i][k]=0;
-    }
-  }
-
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
 
@@ -1159,7 +1131,7 @@ static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop
     }
   }
   eps0 = eps = InnerProduct3(r,r,grid,myproc,numprocs,comm);
-
+  
   for(n=0;n<niters && eps0!=0;n++) {
 
     ISendRecvCellData3D(p,grid,myproc,comm);
@@ -1230,13 +1202,14 @@ static void UpdateU(gridT *grid, physT *phys, propT *prop)
       phys->u[j][k]-=GRAV*dt*(phys->h[grid->grad[2*j]]-phys->h[grid->grad[2*j+1]])/grid->dg[j];
     }
   }
+  /*
   for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
-    for(k=0;k<grid->Nke[j];k++) 
+    for(k=grid->etop[j];k<grid->Nke[j];k++) 
       phys->u[j][k]=prop->flux*cos(prop->omega*prop->rtime);
 
   }
-
+  */
   HydroW(grid,phys);
 }    
 
@@ -1565,12 +1538,21 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
       (grid->dzz[nc1][grid->etop[j]]*grid->Ac[nc1]+grid->dzz[nc2][grid->etop[j]]*grid->Ac[nc2]);
   }
 
-  // Set the flux values at boundary cells if specified
+  // Set the flux values at boundary cells if specified (marker=4)
   for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
 
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       phys->u[j][k]=prop->flux*cos(prop->omega*prop->rtime);
+  }
+
+  // Set the flux values at the open boundary (marker=2)
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j = grid->edgep[jptr];
+
+    for(k=grid->etop[j];k<grid->Nke[j];k++) 
+      phys->u[j][k] = -phys->h[grid->grad[2*j]]*
+	sqrt(GRAV/(grid->dv[grid->grad[2*j]]+phys->h[grid->grad[2*j]]));
   }
 
   // Now set the fluxes at the free-surface boundary by assuming dw/dz = 0
@@ -1748,8 +1730,7 @@ static void OperatorQ(REAL **x, REAL **y, gridT *grid, physT *phys, propT *prop)
 
 	  for(k=grid->ctop[i];k<grid->Nke[ne];k++) 
 	    y[i][k]+=(x[grid->grad[2*ne]][k]-x[grid->grad[2*ne+1]][k])*
-	      grid->dzz[i][k]*grid->normal[i*NFACES+nf]*grid->df[ne]/
-	      grid->dg[ne];
+	      grid->dzz[i][k]*grid->normal[i*NFACES+nf]*phys->D[ne];
 	}
 
       a[grid->ctop[i]]=grid->Ac[i]/grid->dzz[i][grid->ctop[i]];
@@ -3069,6 +3050,18 @@ static void OpenFiles(propT *prop, int myproc)
 static void Progress(propT *prop, int myproc) 
 {
   int progout, prog;
+  char filename[BUFFERLENGTH];
+  FILE *fid;
+  
+  MPI_GetFile(filename,DATAFILE,"ProgressFile","Progress",myproc);
+  
+  if(myproc==0) {
+    fid = fopen(filename,"w");
+    fprintf(fid,"On %d of %d, t=%.2f (%d%% Complete, %d output)",
+	    prop->n,prop->nsteps,prop->rtime,100*prop->n/prop->nsteps,
+	    1+prop->n/prop->ntout);
+    fclose(fid);
+  }
 
   if(myproc==0 && prop->ntprog>0 && VERBOSE>0) {
     progout = (int)(prop->nsteps*(double)prop->ntprog/100);
