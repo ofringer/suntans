@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.53 2004-05-17 19:09:41 fringer Exp $
+ * $Id: phys.c,v 1.54 2004-05-19 20:15:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.53  2004/05/17 19:09:41  fringer
+ * Placed the kmin and kmax if statements inside the if(nc!=-1) for
+ * the horizontal diffusion term.
+ *
  * Revision 1.52  2004/05/17 19:02:10  fringer
  * Added the baroclinic term at the bottom cell when integrating the
  * r term.  The integral goes to k0<grid->etop[j], and only half
@@ -2529,8 +2533,8 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
     // These are the advective components of the tridiagonal
     // that use the new velocity
     for(k=0;k<grid->Nk[i]+1;k++) {
-      ap[k] = 0.5*(phys->w[i][k]+fabs(phys->w[i][k]));
-      am[k] = 0.5*(phys->w[i][k]-fabs(phys->w[i][k]));
+      ap[k] = 0.5*(phys->wtmp2[i][k]+fabs(phys->wtmp2[i][k]));
+      am[k] = 0.5*(phys->wtmp2[i][k]-fabs(phys->wtmp2[i][k]));
     }
     for(k=ktop+1;k<grid->Nk[i]-1;k++) 
       d[k-ktop]-=(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
@@ -2575,9 +2579,9 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scalold,
       if(nc2==-1) nc2=nc1;
 
       for(k=0;k<grid->Nkc[ne];k++) 
-	ap[k] = dt*df*normal/Ac*(0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]))*
+	ap[k] = dt*df*normal/Ac*(0.5*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
 				 phys->stmp[nc2][k]*grid->dzzold[nc2][k]
-	  +0.5*(phys->utmp2[ne][k]-fabs(phys->u[ne][k]))*
+	  +0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
 				 phys->stmp[nc1][k]*grid->dzzold[nc1][k]);
 
       for(k=ktop+1;k<grid->Nk[i];k++) 
