@@ -6,8 +6,14 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.26 2003-05-14 11:41:07 fringer Exp $
+ * $Id: sunplot.c,v 1.27 2003-05-14 11:53:18 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.26  2003/05/14 11:41:07  fringer
+ * Need to keep the && fromprofile && test after all so that zooming
+ * functions work!  But to fix the "Cannot plot this slice!" problem,
+ * just added fromprofile=true line when then reload data button
+ * is pressed.
+ *
  * Revision 1.25  2003/05/14 11:23:15  fringer
  * Changed ParseCommandLine so that it takes -2d as an argument, which
  * plots the default vertical slice from xmin to xmax using
@@ -341,7 +347,7 @@ char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
 sliceT sliceType;
-plottypeT plottype = freesurface;
+plottypeT plottype = salinity;
 
 int main(int argc, char *argv[]) {
   int procnum=0, numprocs;
@@ -397,7 +403,13 @@ int main(int argc, char *argv[]) {
   }
 
   while(true) {
-    fromprofile=false;
+
+    if(dims==two_d) {
+      fromprofile=true;
+      dims=three_d;
+    } else
+      fromprofile=false;
+
     redraw=false;
     zoom=none;
     if(go!=nomovie) {
@@ -2230,7 +2242,7 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions)
     for(i=1;i<N;i++) {
       if(argv[i][0]=='-') {
 	if(!strcmp(argv[i],"-np"))
-	  *numprocs = (int)atof(argv[i++]);
+	  *numprocs = (int)atof(argv[++i]);
 	else if(!strcmp(argv[i],"-2d"))
 	  *dimensions=two_d;
 	else
