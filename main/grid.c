@@ -6,8 +6,20 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.7 2003-04-22 02:43:42 fringer Exp $
+ * $Id: grid.c,v 1.8 2003-04-26 14:16:37 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.7  2003/04/22 02:43:42  fringer
+ * Changed makepointers() in grid.c so that the ghost points include
+ * extra points for the ELM interpolation.  Only the number of neihbors is
+ * specified.  This may not guarantee that there are at least 3 neighbors for
+ * each cell.
+ *
+ * Also, had to change send/recvs in 2d data transfer functions because
+ * sends/recvs would hang on processor with more than 2 neighbors...
+ *
+ * Removed code containing jflux terms because they were causing code to
+ * crash with certain number of procs.
+ *
  * Revision 1.6  2003/04/21 20:25:46  fringer
  * Working version before addition of ghost cells for Kriging.
  *
@@ -31,6 +43,7 @@
  */
 #include "grid.h"
 #include "util.h"
+#include "initialization.h"
 
 /*
  * Private function declarations.
@@ -56,10 +69,10 @@ static void MakePointers0(gridT *maingrid, gridT **localgrid, int myproc);
 static void ResortBoundaries(gridT *localgrid, int myproc);
 static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 static void FreeGrid(gridT *grid, int numprocs);
-static void OutputData(gridT *grid, int myproc);
+static void OutputData(gridT *maingrid, gridT *grid, int myproc);
 static void CreateFaceArray(int *grad, int *neigh, int *face, int Nc, int Ne);
 static void CreateNormalArray(int *grad, int *face, int *normal, int Nc);
-void CorrectVoronoi(int n, gridT *grid);
+void CorrectVoronoi(gridT *grid);
 static void CreateNearestPointers(gridT *maingrid, gridT *localgrid, int myproc);
 
 /************************************************************************/
@@ -77,17 +90,32 @@ static void CreateNearestPointers(gridT *maingrid, gridT *localgrid, int myproc)
  */
 void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
 {
+  int Np, Ne, Nc;
   gridT *maingrid;
 
   ReadFileNames(myproc);
 
-  // Every processor will know about data read in from
-  // triangle as well as the depth.
-  if(myproc==0 && VERBOSE>0) printf("Initializing Main Grid...\n");
-  InitMainGrid(&maingrid);
+  if(!TRIANGULATE) {
+    Np = getsize(POINTSFILE);
+    Ne = getsize(EDGEFILE);
+    Nc = getsize(CELLSFILE);
 
-  if(myproc==0 && VERBOSE>0) printf("Reading Grid...\n");
-  ReadMainGrid(maingrid);
+    // Every processor will know about data read in from
+    // triangle as well as the depth.
+    if(myproc==0 && VERBOSE>0) printf("Initializing Main Grid...\n");
+    InitMainGrid(&maingrid,Np,Ne,Nc);
+
+    if(myproc==0 && VERBOSE>0) printf("Reading Grid...\n");
+    ReadMainGrid(maingrid);
+  } else {
+    if(VERBOSE>0) printf("Triangulating the point set...\n");
+    GetTriangulation(&maingrid);
+  }
+
+  // Set the voronoi points to be the centroids of the
+  // cells if the CORRECTVORONOI flag is 1.
+  if((int)MPI_GetValue(DATAFILE,"CorrectVoronoi","ReadMainGrid",0))
+    CorrectVoronoi(maingrid);
 
   if(myproc==0 && VERBOSE>0) printf("Getting the depth for graph weights...\n");
   GetDepth(maingrid,myproc,numprocs,comm);
@@ -105,7 +133,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   //  CheckCommunicateEdges(maingrid,*localgrid,myproc,comm);
   //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm);
 
-  OutputData(*localgrid,myproc);
+  OutputData(maingrid,*localgrid,myproc);
   FreeGrid(maingrid,numprocs);
 }
 
@@ -569,16 +597,19 @@ void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Co
  * Initialize the main grid struct.
  *
  */
-void InitMainGrid(gridT **grid)
+void InitMainGrid(gridT **grid, int Np, int Ne, int Nc)
 {
   *grid = (gridT *)malloc(sizeof(gridT));
   
   // Number of cells
-  (*grid)->Nc = getsize(CELLSFILE);
+  //  (*grid)->Nc = getsize(CELLSFILE);
+  (*grid)->Nc = Nc;
   // Number of edges
-  (*grid)->Ne = getsize(EDGEFILE);
+  //(*grid)->Ne = getsize(EDGEFILE);
+  (*grid)->Ne = Ne;
   // Number of points defining the vertices of the polygons
-  (*grid)->Np = getsize(POINTSFILE);
+  //(*grid)->Np = getsize(POINTSFILE);
+  (*grid)->Np = Np;
 
   // (x,y) coordinates of vertices
   (*grid)->xp = (REAL *)malloc((*grid)->Np*sizeof(REAL));
@@ -673,11 +704,6 @@ void ReadMainGrid(gridT *grid)
     }
   }
   
-  // Set the voronoi points to be the centroids of the
-  // cells if the CORRECTVORONOI flag is 1.
-  if((int)MPI_GetValue(DATAFILE,"CorrectVoronoi","ReadMainGrid",0))
-    for(n=0;n<grid->Ne;n++)
-      CorrectVoronoi(n,grid);
 }
 
 /*
@@ -717,26 +743,7 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
     InterpDepth(grid,myproc,numprocs,comm);
   else {
     for(n=0;n<grid->Nc;n++) {
-      //      grid->dv[n] = 3000 - 0*500*exp(-pow((grid->xv[n]-50000)/10000,2)
-      //				   -pow((grid->yv[n]-25000)/10000,2));
-				   
-	//2500*.5*(1+tanh((grid->xv[n]-60000)/5000))
-	//	- 250*exp(-pow((grid->xv[n]-30000)/500,2));
-
-      if(grid->xv[n]<=70000)
-	grid->dv[n]=3000;
-      else if(grid->xv[n]>70000 && grid->xv[n]<80000)
-	grid->dv[n]=3000-2500*(grid->xv[n]-70000)/10000;
-      else
-	grid->dv[n]=500;
-
-      grid->dv[n]=1;//-.75*exp(-pow((grid->xv[n]-10)/3,2));
-      //			    -pow((grid->yv[n]-5)/2,2));
-      //grid->dv[n]=1;
-      //grid->dv[n] = 3000 - 1000*exp(-pow((grid->xv[n]-50000)/5000,2));
-      //      grid->dv[n] = 5;
-      //      if(grid->xv[n]<500) grid->dv[n]=20;
-      //      grid->dv[n]=1;
+      grid->dv[n]=ReturnDepth(grid->xv[n],grid->yv[n]);
     }
   }
   for(n=0;n<grid->Nc;n++) {
@@ -945,16 +952,25 @@ int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
 
 /*
  * Function: OutputData
- * Usage: OutputData(localgrid,myproc);
- * ------------------------------------
+ * Usage: OutputData(maingrid,localgrid,myproc);
+ * ---------------------------------------------
  * Outputs the required grid data.
  *
  */
-static void OutputData(gridT *grid, int myproc)
+static void OutputData(gridT *maingrid, gridT *grid, int myproc)
 {
-  int j, n, nf, neigh, Nc=grid->Nc, Ne=grid->Ne;
+  int j, n, nf, neigh, Np=maingrid->Np, Nc=grid->Nc, Ne=grid->Ne;
   char str[BUFFERLENGTH];
   FILE *ofile;
+
+  if(TRIANGULATE && myproc==0) {
+    if(VERBOSE>2) printf("Outputting Delaunay points...\n");
+    sprintf(str,"%s",POINTSFILE);
+    ofile = fopen(str,"w");
+    for(j=0;j<Np;j++)
+      fprintf(ofile,"%f %f 0\n",maingrid->xp[j],maingrid->yp[j]);
+    fclose(ofile);
+  }
 
   if(VERBOSE>2) printf("Outputting cells.dat...\n");
   sprintf(str,"%s.%d",CELLSFILE,myproc);
@@ -2564,42 +2580,43 @@ static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   free(d);
 }
 
-void CorrectVoronoi(int n, gridT *grid)
+void CorrectVoronoi(gridT *grid)
 {
-  int nf, nc1, nc2;
+  int n, nf, nc1, nc2;
   REAL xc, yc, xv1, xv2, yv1, yv2, xc1, xc2, yc1, yc2, dg, dg0;
   REAL VoronoiRatio=MPI_GetValue(DATAFILE,"VoronoiRatio","CorrectVoronoi",0);
 
-  nc1 = grid->grad[2*n];
-  nc2 = grid->grad[2*n+1];
-
-  if(nc1 != -1 && nc2 != -1) {
-    xv1 = grid->xv[nc1];
-    xv2 = grid->xv[nc2];
-    yv1 = grid->yv[nc1];
-    yv2 = grid->yv[nc2];
-    xc1 = 0;
-    xc2 = 0;
-    yc1 = 0;
-    yc2 = 0;
-    for(nf=0;nf<NFACES;nf++) {
-      xc1 += grid->xp[grid->cells[nc1*NFACES+nf]]/NFACES;
-      xc2 += grid->xp[grid->cells[nc2*NFACES+nf]]/NFACES;
-      yc1 += grid->yp[grid->cells[nc1*NFACES+nf]]/NFACES;
-      yc2 += grid->yp[grid->cells[nc2*NFACES+nf]]/NFACES;
-    }
-    xc = 0.5*(xc1+xc2);
-    yc = 0.5*(yc1+yc2);
-    dg0 = sqrt(pow(xc2-xc1,2)+pow(yc2-yc1,2));
-    dg = sqrt(pow(xv2-xv1,2)+pow(yv2-yv1,2));
-    if(dg < VoronoiRatio*dg0) {
-      if(VERBOSE>2) printf("Correcting Voronoi points %d and %d.\n",nc1,nc2);
-      grid->xv[nc1]=xc+VoronoiRatio*(xc1-xc);
-      grid->xv[nc2]=xc+VoronoiRatio*(xc2-xc);
-      grid->yv[nc1]=yc+VoronoiRatio*(yc1-yc);
-      grid->yv[nc2]=yc+VoronoiRatio*(yc2-yc);
-    }
-  } else {
+  for(n=0;n<grid->Ne;n++) {
+    nc1 = grid->grad[2*n];
+    nc2 = grid->grad[2*n+1];
+    
+    if(nc1 != -1 && nc2 != -1) {
+      xv1 = grid->xv[nc1];
+      xv2 = grid->xv[nc2];
+      yv1 = grid->yv[nc1];
+      yv2 = grid->yv[nc2];
+      xc1 = 0;
+      xc2 = 0;
+      yc1 = 0;
+      yc2 = 0;
+      for(nf=0;nf<NFACES;nf++) {
+	xc1 += grid->xp[grid->cells[nc1*NFACES+nf]]/NFACES;
+	xc2 += grid->xp[grid->cells[nc2*NFACES+nf]]/NFACES;
+	yc1 += grid->yp[grid->cells[nc1*NFACES+nf]]/NFACES;
+	yc2 += grid->yp[grid->cells[nc2*NFACES+nf]]/NFACES;
+      }
+      xc = 0.5*(xc1+xc2);
+      yc = 0.5*(yc1+yc2);
+      dg0 = sqrt(pow(xc2-xc1,2)+pow(yc2-yc1,2));
+      dg = sqrt(pow(xv2-xv1,2)+pow(yv2-yv1,2));
+      if(dg < VoronoiRatio*dg0) {
+	if(VERBOSE>2) printf("Correcting Voronoi points %d and %d.\n",nc1,nc2);
+	grid->xv[nc1]=xc+VoronoiRatio*(xc1-xc);
+	grid->xv[nc2]=xc+VoronoiRatio*(xc2-xc);
+	grid->yv[nc1]=yc+VoronoiRatio*(yc1-yc);
+	grid->yv[nc2]=yc+VoronoiRatio*(yc2-yc);
+      }
+    } else {
       xc = 0.5*(grid->xp[grid->edges[NUMEDGECOLUMNS*n]]+
 		grid->xp[grid->edges[NUMEDGECOLUMNS*n+1]]);
       yc = 0.5*(grid->yp[grid->edges[NUMEDGECOLUMNS*n]]+
@@ -2637,5 +2654,6 @@ void CorrectVoronoi(int n, gridT *grid)
 	  grid->yv[nc1]=yc+VoronoiRatio*(yc1-yc);
 	}
       }
+    }
   }
 }
