@@ -7,8 +7,13 @@
  * This file contains functions that print out data into
  * files as well as printing for debugging.
  *
- * $Id: report.c,v 1.3 2003-04-23 03:23:54 fringer Exp $
+ * $Id: report.c,v 1.4 2003-04-26 14:18:20 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2003/04/23 03:23:54  fringer
+ * Added option to change a variable and override what's in the input file.
+ * For example, --nsteps=2, but coding for this is much more difficult than I
+ * had thought...
+ *
  * Revision 1.2  2003/03/28 11:36:28  fringer
  * Added the ability to use the -a flag, which tells the output data to
  * be printed in ASCII form.
@@ -24,6 +29,7 @@ void ParseFlags(int argc, char *argv[], int myproc)
 {
   int i, j, js, done=0, status;
   char str[BUFFERLENGTH], val[BUFFERLENGTH];
+  TRIANGULATE=0;
   GRID=0;
   SOLVE=0;
   VERBOSE=0;
@@ -33,7 +39,9 @@ void ParseFlags(int argc, char *argv[], int myproc)
   if(argc>1) {
     for(i=1;i<argc;i++) {
       if(argv[i][0]=='-') {
-	if(argv[i][1]=='g' && strlen(argv[i])==2)
+	if(argv[i][1]=='t' && strlen(argv[i])==2)
+	    TRIANGULATE=1;
+	else if(argv[i][1]=='g' && strlen(argv[i])==2)
 	    GRID=1;
 	else if(argv[i][1]=='s' && strlen(argv[i])==2)
 	  SOLVE=1;
