@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.35 2004-05-29 20:25:02 fringer Exp $
+ * $Id: sunplot.c,v 1.36 2004-06-10 10:41:28 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.35  2004/05/29 20:25:02  fringer
+ *  Revision before converting to CVS.
+ *
  * Revision 1.34  2004/02/10 22:11:48  fringer
  * Made arrowheads smaller and drew the edges rather than filled arrowheads.
  *
@@ -402,6 +405,7 @@ zoomT zoom;
 plotProcT procplottype;
 sliceT sliceType;
 plottypeT plottype = salinity;
+int plotGrid = false;
 
 int main(int argc, char *argv[]) {
   int procnum=0, numprocs;
@@ -2735,6 +2739,8 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, dimT *dimensions)
 	  *numprocs = (int)atof(argv[++i]);
 	else if(!strcmp(argv[i],"-2d"))
 	  *dimensions=two_d;
+	else if(!strcmp(argv[i],"-ng"))
+	  plotGrid=true;
 	else if(argv[i][1]=='-') {
 	  if(!strncmp(argv[i],"--datadir=",strlen("--datadir="))) {
 	    js=strlen("--datadir=");
@@ -3064,7 +3070,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       fscanf(fid,"%f",&dz);
       data->z[i]=data->z[i-1]-dz;
     }
-  } else if(data->timestep != nstep) {
+  } else if(data->timestep != nstep && plotGrid != true) {
 
     data->timestep=nstep;
 
