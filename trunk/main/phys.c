@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.26 2003-12-02 01:05:54 fringer Exp $
+ * $Id: phys.c,v 1.27 2003-12-02 02:15:54 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.26  2003/12/02 01:05:54  fringer
+ * Working nonhydrostatic version.  FreeGrid and FreePhysicalVariables are
+ * causing problems.
+ *
  * Revision 1.25  2003/10/29 18:11:11  fringer
  * Changed boundary condition adjustment for free-surface flux so
  * that it computes fluxes for mark=3 edges as opposed to grad!=-1
@@ -198,7 +202,6 @@ static void ComputeTraceBack(REAL x0, REAL y0, REAL z0,
 			     REAL *xd, REAL *yd, REAL *zd, 
 			     REAL un, REAL ut, 
 			     REAL W, REAL n1, REAL n2, REAL dt);
-static int FindNearestEdge(int j0, REAL xd, REAL yd, REAL zd, gridT *grid, physT *phys);
 static void InterpolateEdge(REAL *ui, REAL *vi, REAL *wi,
 			    REAL xd, REAL yd, REAL zd,  
 			    int j0, int k0, REAL z0,  
@@ -206,9 +209,6 @@ static void InterpolateEdge(REAL *ui, REAL *vi, REAL *wi,
 			    gridT *grid, physT *phys, propT *prop, REAL Cab);
 static REAL Quadratic(REAL f1, REAL f2, REAL f3, REAL r);
 static REAL Bilinear(REAL f1, REAL f2, REAL f3, REAL r);
-
-static void FindNearestPlane(REAL zd, REAL *dz, REAL *znear, int *knear, int Nkmax);
-static void InitializeKriging(gridT *grid, int pow);
 
 void AllocatePhysicalVariables(gridT *grid, physT **phys)
 {
@@ -1180,72 +1180,6 @@ static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop
     if(VERBOSE>2 && myproc==0) printf("Time step %d, CGSolve pressure converged after %d iterations, res=%e\n",prop->n,n,sqrt(eps/eps0));
 
   SendRecvCellData3D(x,grid,myproc,comm,first);
-}
-
-static int FindNearestEdge(int j0, REAL xd, REAL yd, REAL zd, gridT *grid, physT *phys) {
-
-  int j, je, jnearest, departurecell;
-  REAL dot, dist, dist0;
-
-  dist0 = INFTY;
-
-  for(j=0;j<grid->Nnearestedges;j++) {
-    je = grid->nearestedges[j0][j];
-    if(je==-1) { 
-      printf("Error! jnearest[%d][%d]=-1\n",j0,j,je);
-      exit(0);
-    }
-    dist = pow(grid->xe[je]-xd,2)+pow(grid->ye[je]-yd,2);
-    if(dist<dist0) {
-      jnearest=je;
-      dist0=dist;
-    }
-  }
-
-  // This is the dot product of the normal vector with the position vector
-  // of the departure point relative to the center of the edge.  Since
-  // the normal vector always points towards grad[2*jnearest] then if the dot product
-  // is positive then this is its cell.
-  dot = 
-    (xd-grid->xe[jnearest])*grid->n1[jnearest]+
-    (yd-grid->ye[jnearest])*grid->n2[jnearest];
-
-  if(dot>0)
-    departurecell=grid->grad[2*jnearest];
-  else
-    departurecell=grid->grad[2*jnearest+1];
-  
-  // If the grad pointer is a ghost cell then the departure point is outside
-  // the boundary at the top-most cell.
-  if(departurecell==-1) 
-    return -1;
-  
-  // If it is within the boundary at the top-most cell, now make sure it
-  // is within the upper and lower bounds of the domain.
-  if(zd>=phys->h[departurecell] || zd<=-grid->dv[departurecell]) 
-    return -1;
-
-  // Otherwise it is a valid edge so return it!
-  return jnearest;
-}
-
-static void FindNearestPlane(REAL zd, REAL *dz, REAL *znear, int *knear, int Nkmax) {
-  int k;
-  REAL ztop=0, zbot=-dz[0];
-  
-  *knear=0;
-  *znear=0.5*(zbot+ztop);
-  for(k=0;k<Nkmax;k++) {
-    if(zd<ztop && zd>zbot) {
-      *knear=k;
-      *znear=0.5*(zbot+ztop);
-      break;
-    }
-    if(k<Nkmax-1) {
-      ztop=zbot;
-      zbot-=dz[k+1];
-    }
-  }
 }
 
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
