@@ -3,8 +3,11 @@
  * --------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.5 2003-05-05 01:27:48 fringer Exp $
+ * $Id: triangulate.c,v 1.6 2003-05-12 00:15:07 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2003/05/05 01:27:48  fringer
+ * Added verbose line to be compatible with grid.c.
+ *
  * Revision 1.4  2003/05/02 23:07:39  fringer
  * Cleaned up options passed to triangle function and also allowed
  * for input PSLG file without any segments, which requires the c
@@ -60,10 +63,10 @@ int GetTriangulation(gridT **grid, int myproc) {
   // a maximum triangle area
   // q (from README triangle):
   //    Adds points to the mesh to ensure that no angles smaller than 20 degrees occur.
-  if(in.numberofsegments==0)
+  if(in.numberofsegments==0) 
     sprintf(str,"Qznevc"); 
   else
-    sprintf(str,"Qzqnev");
+    sprintf(str,"Qpzqnev");
   if(minarea>0)
     sprintf(str,"%sa%.5f",str,minarea);
   else
