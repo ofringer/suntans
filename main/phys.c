@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.15 2003-05-05 01:27:01 fringer Exp $
+ * $Id: phys.c,v 1.16 2003-05-12 00:06:23 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.15  2003/05/05 01:27:01  fringer
+ * Added AdvectHorizontalVelocity which only sets phys->utmp[i]=0.
+ * Changed SendRecvCellData2D to ISendRecvCellData2D (non-blocking send/recv)
+ *
  * Revision 1.14  2003/05/01 00:29:05  fringer
  * Changed SendRecvCellData2D/3D so that only the first cells are
  * transferred in the CG solver while all of them are transferred only
@@ -96,6 +100,20 @@ static void ReadProperties(propT **prop, int myproc);
 static void OpenFiles(propT *prop, int myproc);
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs);
+static void ComputeTangentialVelocity(gridT *grid, physT *phys);
+static void ComputeTraceBack(REAL x0, REAL y0, REAL z0, 
+			     REAL *xd, REAL *yd, REAL *zd, 
+			     REAL un, REAL ut, 
+			     REAL W, REAL n1, REAL n2, REAL dt);
+static int FindNearestEdge(int j0, REAL xd, REAL yd, REAL zd, gridT *grid, physT *phys);
+static REAL InterpolateEdge(REAL xd, REAL yd, REAL zd,  
+			    int j0, int k0, REAL z0, int jnear, int knear,  
+			    gridT *grid, physT *phys, propT *prop);
+static REAL Quadratic(REAL f1, REAL f2, REAL f3, REAL r);
+static REAL Kriging(REAL *h, REAL *f, gridT *grid, int N);
+
+static int FindNearestPlane(REAL zd, REAL *dz, int Nkmax);
+
 
 void AllocatePhysicalVariables(gridT *grid, physT **phys)
 {
@@ -106,7 +124,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->u = (REAL **)malloc(Ne*sizeof(REAL *));
   (*phys)->D = (REAL *)malloc(Ne*sizeof(REAL));
   (*phys)->utmp = (REAL **)malloc(Ne*sizeof(REAL *));
-  (*phys)->utmp2 = (REAL **)malloc(Ne*sizeof(REAL *));
+  (*phys)->ut = (REAL **)malloc(Ne*sizeof(REAL *));
   (*phys)->wf = (REAL **)malloc(Ne*sizeof(REAL *));
 
   for(j=0;j<Ne;j++) {
@@ -116,7 +134,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     }
     (*phys)->u[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
     (*phys)->utmp[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
-    (*phys)->utmp2[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
+    (*phys)->ut[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
     (*phys)->wf[j] = (REAL *)malloc(grid->Nkc[j]*sizeof(REAL));
   }
   if(flag) {
@@ -167,7 +185,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   for(j=0;j<Ne;j++) {
     free(phys->u[j]);
     free(phys->utmp[j]);
-    free(phys->utmp2[j]);
+    free(phys->ut[j]);
     free(phys->wf[j]);
   }
 
@@ -198,7 +216,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   free(phys->u);
   free(phys->D);
   free(phys->utmp);
-  free(phys->utmp2);
+  free(phys->ut);
 
   free(phys->ap);
   free(phys->am);
@@ -218,7 +236,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
   REAL r, u, v, xc, yc, hf, hfmax, z;
 
   for(i=0;i<Nc;i++) {
-    phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i]);
+    phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
     if(phys->h[i]<-grid->dv[i])
       phys->h[i]=-grid->dv[i];
   }
@@ -440,7 +458,12 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
       UpdateScalarsImp(grid,phys,prop);
       SendRecvCellData3D(phys->s,grid,myproc,comm,first);
 
-      //      UpdateU(grid,phys,prop);
+      // We need w on the vertical faces as well as the tangential
+      // components of velocity on the faces in order to compute the
+      // tracebacks and interpolation for the advection of the horizontal velocity
+      // at the faces.
+      WtoVerticalFace(grid,phys);
+      ComputeTangentialVelocity(grid,phys);
     }
 
     Progress(prop,myproc);
@@ -461,11 +484,12 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
  */
 static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 				     int myproc, int numprocs) {
-  int j, jptr, k;
+  int j, jptr, k, nc1, nc2, jnear, knear;
+  REAL x0, y0, z0, xd, yd, zd, h0, dv0, utmp;
 
   // Set utmp to zero for all Nke.
   for(j=0;j<grid->Ne;j++) {
-    for(k=grid->etop[j];k<grid->Nke[j];k++)
+    for(k=0;k<grid->Nke[j];k++)
       phys->utmp[j][k]=0;
   }
 
@@ -475,11 +499,172 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
+    nc1 = grid->grad[2*j];
+    nc2 = grid->grad[2*j+1];
+
+    if(nc1==-1 || nc2==-1) { 
+      printf("Error!  Trying to compute advection on a boundary edge!\n");
+      exit(1);
+    }
+
+    // Assume face center is half-way between voronoi points.
+    h0 = 0.5*(phys->h[nc1]+phys->h[nc2]);
+    dv0 = 0.5*(grid->dv[nc1]+grid->dv[nc2]);
+    x0 = 0.5*(grid->xv[nc1]+grid->xv[nc2]);
+    y0 = 0.5*(grid->yv[nc1]+grid->yv[nc2]);
+    z0 = h0;
+
     for(k=0;k<grid->etop[j];k++)
       phys->utmp[j][k]=0;
-    for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      phys->utmp[j][k]=phys->u[j][k];
+    for(k=grid->etop[j];k<grid->Nke[j];k++) {
+      z0-=0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+
+      ComputeTraceBack(x0,y0,z0,&xd,&yd,&zd,phys->u[j][k],
+		       phys->ut[j][k],phys->wf[j][k],
+		       grid->n1[j],grid->n2[j],prop->dt);
+
+      if(prop->nonlinear) {
+	if((jnear=FindNearestEdge(j,xd,yd,zd,grid,phys))>=0) {
+	  //	if(jnear=j>=0) {
+	  //knear = FindNearestPlane(zd,grid->dz,grid->Nkmax);
+	  jnear = j;
+	  knear = k;
+	  //	  utmp=phys->u[j][k];
+	  phys->utmp[j][k]=InterpolateEdge(xd,yd,zd,j,k,z0,jnear,knear,grid,phys,prop);
+	  //	  if(prop->n==100 && k==3)
+	  //	    printf("%f %f %f %f %f %f\n",grid->xe[j],grid->ye[j],utmp,
+	  //		   xd,yd,phys->utmp[j][k]);
+	} else {
+	  phys->utmp[j][k]=0;
+	}
+      } else 
+	phys->utmp[j][k]=phys->u[j][k];
+    }
   }
+}
+
+static REAL InterpolateEdge(REAL xd, REAL yd, REAL zd,  
+			    int j0, int k0, REAL z0, int jnear, int knear,  
+			    gridT *grid, physT *phys, propT *prop) {
+  int n, j, k, je, nk, status;
+  REAL U, V, un[3], ui, 
+    *uf = (REAL *)malloc(grid->Nnearestedges*sizeof(REAL)), 
+    *x = (REAL *)malloc(grid->Nnearestedges*sizeof(REAL)), 
+    *y = (REAL *)malloc(grid->Nnearestedges*sizeof(REAL));
+
+  // U is the x component of velocity at the face
+  // V is the y component of velocity at the face.
+  // U^2 + V^2 = un^2 + ut^2
+  if(knear==grid->etop[jnear]) 
+    nk=-2;
+  else if(knear==grid->Nke[jnear]-1)
+    nk=2;
+  else
+    nk=-1;
+
+  for(n=0;n<grid->Nnearestedges;n++) {
+    je = grid->nearestedges[jnear][n];
+    for(k=0;k<3;k++) {
+      U=phys->u[je][knear+(k-nk)]*grid->n1[je];-phys->ut[je][knear+(k-nk)]*grid->n2[je];
+      V=phys->u[je][knear+(k-nk)]*grid->n2[je];+phys->ut[je][knear+(k-nk)]*grid->n1[je];
+      un[k]=U*grid->n1[j0]+V*grid->n2[j0];
+    }
+    uf[n] = Quadratic(un[0],un[1],un[2],(zd-z0)/grid->dz[knear]);
+    x[n] = grid->xe[je];
+    y[n] = grid->ye[je];
+  }
+
+
+  kriging(xd,yd,&ui,x,y,uf,prop->kriging_cov,grid->Nnearestedges,&status);
+
+  //  if(prop->n==100)
+    //  printf("Interp from (%e,%e,%e) %.2f\n",
+    //	 grid->xe[j0]-xd,grid->ye[j0]-yd,z0-zd,phys->u[j0][k0]/ui);
+
+  free(x);
+  free(y);
+  free(uf);
+
+  return ui;
+}
+    
+static REAL Quadratic(REAL f1, REAL f2, REAL f3, REAL r) {
+  return f1 + 0.5*r*(f3-f2) + 0.5*pow(r,2)*(f3-2*f2+f1);
+}
+
+static void ComputeTraceBack(REAL x0, REAL y0, REAL z0, 
+			     REAL *xd, REAL *yd, REAL *zd, 
+			     REAL un, REAL ut, 
+			     REAL W, REAL n1, REAL n2, REAL dt) {
+
+  REAL U, V;
+
+  // U is the x component of velocity at the face
+  // V is the y component of velocity at the face.
+  // U^2 + V^2 = un^2 + ut^2
+  U = un*n1-ut*n2;
+  V = un*n2+ut*n1;
+
+  *xd=x0-dt*U;
+  *yd=y0-dt*V;
+  *zd=z0-dt*W;
+}
+  
+static int FindNearestEdge(int j0, REAL xd, REAL yd, REAL zd, gridT *grid, physT *phys) {
+
+  int j, je, jnearest, departurecell;
+  REAL dot, dist, dist0;
+
+  dist0 = INFTY;
+
+  for(j=0;j<grid->Nnearestedges;j++) {
+    je = grid->nearestedges[j0][j];
+    if(je==-1) { 
+      printf("Error! jnearest[%d][%d]=-1\n",j0,j,je);
+      exit(0);
+    }
+    dist = pow(grid->xe[je]-xd,2)+pow(grid->ye[je]-yd,2);
+    if(dist<dist0) {
+      jnearest=je;
+      dist0=dist;
+    }
+  }
+
+  // This is the dot product of the normal vector with the position vector
+  // of the departure point relative to the center of the edge.  Since
+  // the normal vector always points towards grad[2*jnearest] then if the dot product
+  // is positive then this is its cell.
+  dot = 
+    (xd-grid->xe[jnearest])*grid->n1[jnearest]+
+    (yd-grid->ye[jnearest])*grid->n2[jnearest];
+
+  if(dot>0)
+    departurecell=grid->grad[2*jnearest];
+  else
+    departurecell=grid->grad[2*jnearest+1];
+  
+  // If the grad pointer is a ghost cell then the departure point is outside
+  // the boundary at the top-most cell.
+  if(departurecell==-1) 
+    return -1;
+  
+  // If it is within the boundary at the top-most cell, now make sure it
+  // is within the upper and lower bounds of the domain.
+  if(zd>=phys->h[departurecell] || zd<=-grid->dv[departurecell]) 
+    return -1;
+
+  // Otherwise it is a valid edge so return it!
+  return jnearest;
+}
+
+static int FindNearestPlane(REAL zd, REAL *dz, int Nkmax) {
+  int k;
+  REAL ztop=0, zbot=-dz[0];
+
+  for(k=0;k<Nkmax-1;k++) 
+    if(zd<(ztop-=dz[k]) && zd>(zbot-=dz[k+1]))
+      return k;
+  return k;
 }
 
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
@@ -543,7 +728,7 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
   c = phys->c;
   d = phys->d;
   e1 = phys->ap;
-  E = phys->utmp2;
+  E = phys->ut;
 
   for(j=0;j<grid->Ne;j++) {
     phys->D[j]=0;
@@ -1645,6 +1830,27 @@ static void Check(gridT *grid, physT *phys, propT *prop, int myproc, int numproc
   }
 }
 
+static void ComputeTangentialVelocity(gridT *grid, physT *phys) {
+  
+  int eneigh, j, k, ne;
+  // ut will store the tangential component of velocity on each face
+  for(j=0;j<grid->Ne;j++) {
+    for(k=0;k<grid->Nke[j];k++) 
+      phys->ut[j][k]=0;
+    for(ne=0;ne<2*(NFACES-1);ne++) {
+      eneigh=grid->eneigh[2*(NFACES-1)*j+ne];
+      if(eneigh!=-1)
+	for(k=0;k<grid->Nke[j];k++)
+	  phys->ut[j][k] += grid->xi[2*(NFACES-1)*j+ne]*
+	    phys->u[grid->eneigh[2*(NFACES-1)*j+ne]][k];
+    }
+    if(grid->grad[2*j]!=-1 && grid->grad[2*j+1]!=-1)
+      for(k=0;k<grid->Nke[j];k++)
+	phys->ut[j][k]*=0.5;
+  }
+  
+}
+
 static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, MPI_Comm comm)
 {
@@ -1670,8 +1876,6 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     ISendRecvCellData2D(phys->h,grid,myproc,comm,all);
     SendRecvCellData3D(phys->s,grid,myproc,comm,all);
 
-    WtoVerticalFace(grid,phys);
-    
     if(ASCII) 
       for(i=0;i<grid->Nc;i++)
 	fprintf(prop->FreeSurfaceFID,"%f\n",phys->h[i]);
@@ -1683,28 +1887,13 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       }
     }
 
-    // utmp will store the tangential component of velocity on each face
-    for(j=0;j<grid->Ne;j++) {
-      for(k=0;k<grid->Nke[j];k++) 
-	phys->utmp[j][k]=0;
-      for(ne=0;ne<2*(NFACES-1);ne++) {
-	eneigh=grid->eneigh[2*(NFACES-1)*j+ne];
-	if(eneigh!=-1)
-	  for(k=0;k<grid->Nke[j];k++)
-	    phys->utmp[j][k] += grid->xi[2*(NFACES-1)*j+ne]*
-	      phys->u[grid->eneigh[2*(NFACES-1)*j+ne]][k];
-      }
-      if(grid->grad[2*j]!=-1 && grid->grad[2*j+1]!=-1)
-	for(k=0;k<grid->Nke[j];k++)
-	  phys->utmp[j][k]*=0.5;
-    }
-
+    // ut stores the tangential component of velocity on the faces.
     if(ASCII) 
       for(j=0;j<grid->Ne;j++) {
 	for(k=0;k<grid->Nke[j];k++) 
 	  fprintf(prop->HorizontalVelocityFID,"%e %e %e\n",
-		  phys->u[j][k]*grid->n1[j]-phys->utmp[j][k]*grid->n2[j],
-		  phys->u[j][k]*grid->n2[j]+phys->utmp[j][k]*grid->n1[j],
+		  phys->u[j][k]*grid->n1[j]-phys->ut[j][k]*grid->n2[j],
+		  phys->u[j][k]*grid->n2[j]+phys->ut[j][k]*grid->n1[j],
 		  phys->wf[j][k]);
 	for(k=grid->Nke[j];k<grid->Nkmax;k++)
 	  fprintf(prop->HorizontalVelocityFID,"0.0 0.0 0.0\n");
@@ -1713,7 +1902,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       for(k=0;k<grid->Nkmax;k++) {
 	for(j=0;j<grid->Ne;j++) {
 	  if(k<grid->Nke[j]) 
-	    tmp[j]=phys->u[j][k]*grid->n1[j]-phys->utmp[j][k]*grid->n2[j];
+	    tmp[j]=phys->u[j][k]*grid->n1[j]-0*phys->ut[j][k]*grid->n2[j];
 	  else
 	    tmp[j]=0;
 	}
@@ -1724,7 +1913,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	}
 	for(j=0;j<grid->Ne;j++) {
 	  if(k<grid->Nke[j])
-	    tmp[j]=phys->u[j][k]*grid->n2[j]+phys->utmp[j][k]*grid->n1[j];
+	    tmp[j]=phys->u[j][k]*grid->n2[j]+0*phys->ut[j][k]*grid->n1[j];
 	  else
 	    tmp[j]=0;
 	}
@@ -1865,6 +2054,8 @@ static void ReadProperties(propT **prop, int myproc)
   (*prop)->flux = MPI_GetValue(DATAFILE,"flux","ReadProperties",myproc);
   (*prop)->volcheck = MPI_GetValue(DATAFILE,"volcheck","ReadProperties",myproc);
   (*prop)->masscheck = MPI_GetValue(DATAFILE,"masscheck","ReadProperties",myproc);
+  (*prop)->kriging_cov = MPI_GetValue(DATAFILE,"kriging_cov","ReadProperties",myproc);
+  (*prop)->nonlinear = MPI_GetValue(DATAFILE,"nonlinear","ReadProperties",myproc);
 }
 
 static void OpenFiles(propT *prop, int myproc)
@@ -1914,3 +2105,4 @@ static void Progress(propT *prop, int myproc)
 	printf("%d%% Complete.\n",prog);
   }
 }
+
