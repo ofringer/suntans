@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.68 2004-06-30 23:48:55 fringer Exp $
+ * $Id: phys.c,v 1.69 2004-07-27 20:33:40 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.68  2004/06/30 23:48:55  fringer
+ * Added lines to specify kappa_tv in EddyViscosity() since kappa_tv was
+ * not being specified (presumably was initialized to zero upon malloc).
+ *
  * Revision 1.67  2004/06/24 08:35:46  fringer
  * Changed continuity so that the grid->dzz values are not being
  * accessed beneath grid->dv.  i.e. added if(k<grid->Nk[nc1,2]) before
@@ -405,7 +409,7 @@ static void OperatorQC(REAL **coef, REAL **fcoef, REAL **x, REAL **y, REAL **c, 
 static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid, physT *phys, propT *prop);
 static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
 static void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop);
-static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn, 
+static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
 			  REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta);
 static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
 			  MPI_Comm comm);
@@ -432,7 +436,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
  */
 void AllocatePhysicalVariables(gridT *grid, physT **phys)
 {
-  int flag=0, i, j, Nc=grid->Nc, Ne=grid->Ne, nf;
+  int flag=0, i, j, jptr, ib, Nc=grid->Nc, Ne=grid->Ne, nf;
 
   *phys = (physT *)SunMalloc(sizeof(physT),"AllocatePhysicalVariables");
 
@@ -477,7 +481,9 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->qtmp = (REAL **)SunMalloc(NFACES*Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_s = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_T = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s0 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_R = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -513,6 +519,13 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     (*phys)->stmp3[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->nu_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->kappa_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+  }
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j=grid->edgep[jptr];
+    ib=grid->grad[2*j];
+
+    (*phys)->boundary_s[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nk[ib]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->boundary_T[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nk[ib]*sizeof(REAL),"AllocatePhysicalVariables");
   }
 
   (*phys)->ap = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
@@ -958,13 +971,15 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
       // Update the salinity only if beta is nonzero in suntans.dat
       if(prop->beta) {
-	UpdateScalars(grid,phys,prop,phys->s,phys->Cn_R,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->thetaS);
+	SetBoundaryScalars(phys->boundary_s,grid,phys,prop,"salt");
+	UpdateScalars(grid,phys,prop,phys->s,phys->boundary_s,phys->Cn_R,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->thetaS);
 	ISendRecvCellData3D(phys->s,grid,myproc,comm);
       }
 
       // Update the temperature only if gamma is nonzero in suntans.dat
       if(prop->gamma) {
-	UpdateScalars(grid,phys,prop,phys->T,phys->Cn_T,prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->thetaS);
+	SetBoundaryScalars(phys->boundary_T,grid,phys,prop,"temperature");
+	UpdateScalars(grid,phys,prop,phys->T,phys->boundary_T,phys->Cn_T,prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->thetaS);
 	ISendRecvCellData3D(phys->T,grid,myproc,comm);
       }
 
@@ -2761,10 +2776,10 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
  * kappa_tv denotes the vertical turbulent scalar diffusivity
  *
  */
-static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **Cn, 
+static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
 			  REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta) 
 {
-  int i, iptr, k, nf, ktop;
+  int i, iptr, j, jptr, ib, k, nf, ktop;
   int Nc=grid->Nc, normal, nc1, nc2, ne;
   REAL df, dg, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, *bd, dznew, mass;
 
@@ -2788,6 +2803,29 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
     for(k=0;k<grid->Nk[i];k++) 
       phys->stmp[i][k]=scal[i][k];
 
+  // Add on boundary fluxes, using stmp2 as the temporary storage
+  // variable
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+    
+    for(k=grid->ctop[i];k<grid->Nk[i];k++)
+      phys->stmp2[i][k]=0;
+  }
+
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j = grid->edgep[jptr];
+    
+    ib = grid->grad[2*j];
+    
+    if(grid->n1[j]>0) {
+      // First take off the no-gradient term which is added on below
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++)
+	phys->stmp2[ib][k]-=dt/grid->Ac[ib]*phys->utmp[j][k]*phys->stmp[ib][k]*grid->df[j];
+      // Now add on the flux term 
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++)
+	phys->stmp2[ib][k]+=dt/grid->Ac[ib]*phys->utmp[j][k]*grid->df[j]*boundary_scal[jptr-grid->edgedist[2]][k];
+    }
+  }
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -2901,8 +2939,10 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
 	d[k-grid->ctop[i]]+=(1-fab)*Cn[i][k];
     }
 
-    for(k=0;k<grid->Nk[i];k++)
+    for(k=0;k<grid->ctop[i];k++)
       Cn[i][k]=0;
+    for(k=grid->ctop[i];k<grid->Nk[i];k++)
+      Cn[i][k]=phys->stmp2[i][k];
 
     // Now create the source term for the current time step
     for(nf=0;nf<NFACES;nf++) {
