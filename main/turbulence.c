@@ -2,8 +2,12 @@
  * File: turbulence.c
  * Description:  Contains the Mellor-Yamad level 2.5 turbulence model.
  *
- * $Id: turbulence.c,v 1.3 2004-09-22 06:29:33 fringer Exp $
+ * $Id: turbulence.c,v 1.4 2004-09-27 01:04:31 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.3  2004/09/22 06:29:33  fringer
+ * Latest version of my25 function with several changes.  The previous
+ * version was checked in too soon and was not yet working properly.
+ *
  * Revision 1.2  2004/09/15 01:10:47  fringer
  * Added MY25 but it seems to have problems predicting the log layer
  * correctly for a channel flow.  For some reason the velocity is
@@ -26,8 +30,6 @@
 // Local function
 static void StabilityFunctions(REAL *Sm, REAL *Sh, REAL Gh, REAL A1, REAL A2, REAL B1, REAL B2, REAL C1);
 
-FILE *fid; 
-
 /*
  * Function: my25
  * Usage: my25(grid,phys,prop,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv);
@@ -37,12 +39,9 @@ FILE *fid;
  *
  */
 void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q, REAL **Cn_l, REAL **nuT, REAL **kappaT, MPI_Comm comm, int myproc) {
-  int i, j, iptr, k, nf, iplot=10, nc1, nc2;
+  int i, j, iptr, k, nf, nc1, nc2;
   REAL thetaQ=0.75, CdAvgT, CdAvgB, *dudz, *dvdz, *drdz, z, *N, *Gh;
   REAL A1, A2, B1, B2, C1, E1, E2, E3, Sq, Sm, Sh;
-
-  if(prop->n==prop->nstart+1)
-    fid=fopen("/tmp/turb.dat","w");
 
   N = dudz = phys->a;
   dvdz = phys->b;
@@ -61,8 +60,7 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
   Sq = 0.2;
   
   // First solve for q^2 and store its old value in stmp3
-  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-    i=grid->cellp[iptr];
+  for(i=0;i<grid->Nc;i++) {
 
     // dudz, dvdz, and drdz store gradients at k-1/2
     for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
@@ -110,12 +108,11 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
   UpdateScalars(grid,phys,prop,q,NULL,phys->Cn_q,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
 
   // q now contains q^2
-  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-    i=grid->cellp[iptr];
+  for(i=0;i<grid->Nc;i++) {
 
     // uold will store src1 for q^2 l, which is the q/B1 l*(1+E2(l/kz)^2+E3(l/k(H-z))^2) term
     // wtmp will store src2 for q^2 l, which is the l E1 (Ps+Pb) term
-    z = phys->h[iplot];
+    z = phys->h[i];
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       z-=grid->dzz[i][k]/2;
       phys->uold[i][k]*=0.5*(1+E2*pow(l[i][k]/KAPPA_VK/(z-phys->h[i]),2)+E3*pow(l[i][k]/KAPPA_VK/(grid->dv[i]+z),2));
@@ -175,16 +172,6 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
       nuT[i][k]=Sm*q[i][k]*l[i][k];
       kappaT[i][k]=Sh*q[i][k]*l[i][k];
     }
-  }
-
-  if(!(prop->n%prop->ntout) || prop->n==1) {
-    z=phys->h[iplot];
-    for(k=grid->ctop[iplot];k<grid->Nk[iplot];k++) {
-      z-=grid->dzz[iplot][k]/2;
-      fprintf(fid,"%f %e %e %e %e %e\n",z,phys->uc[iplot][k],nuT[iplot][k],kappaT[iplot][k],q[iplot][k],l[iplot][k]);
-      z-=grid->dzz[iplot][k]/2;
-    }
-    fflush(fid);
   }
 }
 
