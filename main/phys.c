@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.58 2004-05-20 02:32:10 fringer Exp $
+ * $Id: phys.c,v 1.59 2004-05-22 19:38:01 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.58  2004/05/20 02:32:10  fringer
+ * Changed CGSOlveQ so that it uses phys->stmp3 instead of phys->uold
+ * as the temporary variable, and also changed updatescalars so that it
+ * uses phys->s instead of phys->stmp3.
+ *
  * Revision 1.57  2004/05/20 02:10:10  fringer
  * Changed horizontal diffusion of horizontal momentum so that
  * it updates from a per-edge basis rather than a per-cell basis,
@@ -354,7 +359,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 static void StoreVariables(gridT *grid, physT *phys);
 static void NewCells(gridT *grid, physT *phys, propT *prop);
 static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
-				   int myproc, int numprocs);
+				   int myproc, int numprocs, MPI_Comm comm);
 static void ComputeTangentialVelocity(REAL **u, REAL **ut, gridT *grid);
 static void AdjustBoundaryFluxes(REAL **u, REAL **uc, REAL **vc, gridT *grid);
 static void ComputeNormalVelocity(REAL **u, REAL **uc, REAL **vc, gridT *grid);
@@ -768,7 +773,7 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
 
 void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
-  int n;
+  int i, k, n;
   extern int TotSpace;
   FILE *fid = fopen("/tmp/fs.dat","w");
 
@@ -805,12 +810,13 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
       if(prop->nonhydrostatic) {
 	//	  WtoVerticalFace(grid,phys);
-	AdvectVerticalVelocity(grid,phys,prop,myproc,numprocs);
+	AdvectVerticalVelocity(grid,phys,prop,myproc,numprocs,comm);
 
 	ComputeQSource(phys->stmp,grid,phys,prop,myproc,numprocs);
 	//	GuessQ(phys->stmp2,phys->w,phys->uold,grid,phys,prop,myproc,numprocs,comm);
 	CGSolveQ(phys->stmp2,phys->stmp,phys->stmp3,grid,phys,prop,myproc,numprocs,comm);
 	Corrector(phys->stmp2,grid,phys,prop,myproc,numprocs,comm);
+	ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
       }
 
       HydroW(phys->w,grid,phys,prop);
@@ -919,10 +925,10 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       nc2 = grid->grad[2*j+1];
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+0*phys->u[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
-	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
-	    prop->sponge_decay)*phys->u[j][k];
+	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
+	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
+	  //	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
+	  //	    prop->sponge_decay)*phys->u[j][k];
 
 	phys->Cn_U[j][k]=0;
       }
@@ -976,6 +982,12 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	}
       */
     }
+
+    // Set stmp and stmp2 to zero since these are used as temporary variables for advection and
+    // diffusion.
+    for(i=0;i<grid->Nc;i++)
+      for(k=0;k<grid->Nk[i];k++) 
+	phys->stmp[i][k]=phys->stmp2[i][k]=0;
 
     // Compute Eulerian advection of momentum (nonlinear!=0)
     if(prop->nonlinear) {
@@ -1031,12 +1043,9 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	    phys->ut[j][k]=0.5*(phys->uc[nc1][k]*grid->dzz[nc1][k]+
 				phys->uc[nc2][k]*grid->dzz[nc2][k]);
 	}
-      
+
       // Now compute the cell-centered source terms and put them into stmp
       for(i=0;i<grid->Nc;i++) {
-	
-	for(k=0;k<grid->Nk[i];k++) 
-	  phys->stmp[i][k]=0;
 	
 	for(nf=0;nf<NFACES;nf++) {
 	  
@@ -1124,7 +1133,7 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	      (grid->Ac[i]*grid->dzz[i][grid->ctop[i]]);
 	}
       }
-      
+
       // Now do vertical advection
       for(i=0;i<grid->Nc;i++) {
 	
@@ -1172,81 +1181,82 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
 	  phys->stmp2[i][grid->Nk[i]-1]+=b[grid->Nk[i]-1]/grid->dzz[i][grid->Nk[i]-1];
 	}
       }
+    }
 
-      // Now add on horizontal diffusion to stmp and stmp2
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-	j = grid->edgep[jptr];
-
-	nc1 = grid->grad[2*j];
-	nc2 = grid->grad[2*j+1];
-	if(grid->ctop[nc1]>grid->ctop[nc2])
-	  kmin = grid->ctop[nc1];
-	else
-	  kmin = grid->ctop[nc2];
-
-	for(k=kmin;k<grid->Nke[j];k++) {
-	  a[k]=prop->nu_H*(phys->uc[nc2][k]-phys->uc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
-	  b[k]=prop->nu_H*(phys->vc[nc2][k]-phys->vc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
-	  phys->stmp[nc1][k]-=a[k];
-	  phys->stmp[nc2][k]+=a[k];
-	  phys->stmp2[nc1][k]-=b[k];
-	  phys->stmp2[nc2][k]+=b[k];
-	  //	  phys->stmp[nc1][k]-=prop->nu_H*(phys->uc[nc2][k]-phys->uc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
-	  //	  phys->stmp[nc2][k]-=prop->nu_H*(phys->uc[nc1][k]-phys->uc[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
-	  //	  phys->stmp2[nc1][k]-=prop->nu_H*(phys->vc[nc2][k]-phys->vc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
-	  //	  phys->stmp2[nc2][k]-=prop->nu_H*(phys->vc[nc1][k]-phys->vc[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
-	}
-	for(k=grid->Nke[j]+1;k<grid->Nk[nc1];k++) {
-	  phys->stmp[nc1][k]+=prop->CdW*fabs(phys->uc[nc1][k])*phys->uc[nc1][k]*grid->df[j]/grid->Ac[nc1];
-	  phys->stmp2[nc1][k]+=prop->CdW*fabs(phys->vc[nc1][k])*phys->vc[nc1][k]*grid->df[j]/grid->Ac[nc1];
-	}
-	for(k=grid->Nke[j]+1;k<grid->Nk[nc2];k++) {
-	  phys->stmp[nc2][k]+=prop->CdW*fabs(phys->uc[nc2][k])*phys->vc[nc2][k]*grid->df[j]/grid->Ac[nc2];
-	  phys->stmp2[nc2][k]+=prop->CdW*fabs(phys->vc[nc2][k])*phys->vc[nc2][k]*grid->df[j]/grid->Ac[nc2];
-	}
-      }
-
-      // Check to make sure integrated fluxes are 0 for conservation
-      sum=0;
-      for(i=0;i<grid->Nc;i++) {
-	for(k=grid->ctop[i];k<grid->Nk[i];k++)
-	  sum+=grid->Ac[i]*phys->stmp[i][k]*grid->dzz[i][k];
-      }
-      if(fabs(sum)>1e-5 && WARNING) printf("Warning, not U-momentum conservative!\n");
+    // Now add on horizontal diffusion to stmp and stmp2
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr];
       
-      sum=0;
-      for(i=0;i<grid->Nc;i++) {
-	for(k=grid->ctop[i];k<grid->Nk[i];k++)
-	  sum+=grid->Ac[i]*phys->stmp2[i][k]*grid->dzz[i][k];
-      }
-      if(fabs(sum)>1e-5 && WARNING) printf("Warning, not V-momentum conservative!\n");
+      nc1 = grid->grad[2*j];
+      nc2 = grid->grad[2*j+1];
+      if(grid->ctop[nc1]>grid->ctop[nc2])
+	kmin = grid->ctop[nc1];
+      else
+	kmin = grid->ctop[nc2];
       
-      // Send/recv stmp and stmp2 to account for advective fluxes in ghost cells at
-      // interproc boundaries.
-      ISendRecvCellData3D(phys->stmp,grid,myproc,comm);
-      ISendRecvCellData3D(phys->stmp2,grid,myproc,comm);
-      
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-	j = grid->edgep[jptr]; 
-
-	nc1 = grid->grad[2*j];
-	nc2 = grid->grad[2*j+1];
-	if(nc1==-1) nc1=nc2;
-	if(nc2==-1) nc2=nc1;
-
-	if(grid->ctop[nc1]>grid->ctop[nc2])
-	  k0=grid->ctop[nc1]+wetdry_offset;
-	else
-	  k0=grid->ctop[nc2]+wetdry_offset;
-
-	for(k=k0;k<grid->Nk[nc1];k++) 
-	  phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
-	    *prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
-	
-	for(k=k0;k<grid->Nk[nc2];k++) 
-	  phys->Cn_U[j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]
-	    *prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
+      for(k=kmin;k<grid->Nke[j];k++) {
+	a[k]=prop->nu_H*(phys->uc[nc2][k]-phys->uc[nc1][k])*grid->df[j]/grid->dg[j];
+	b[k]=prop->nu_H*(phys->vc[nc2][k]-phys->vc[nc1][k])*grid->df[j]/grid->dg[j];
+	phys->stmp[nc1][k]-=a[k]/grid->Ac[nc1];
+	phys->stmp[nc2][k]+=a[k]/grid->Ac[nc2];
+	phys->stmp2[nc1][k]-=b[k]/grid->Ac[nc1];
+	phys->stmp2[nc2][k]+=b[k]/grid->Ac[nc2];
+	//	  phys->stmp[nc1][k]-=prop->nu_H*(phys->uc[nc2][k]-phys->uc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
+	//	  phys->stmp[nc2][k]-=prop->nu_H*(phys->uc[nc1][k]-phys->uc[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
+	//	  phys->stmp2[nc1][k]-=prop->nu_H*(phys->vc[nc2][k]-phys->vc[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
+	//	  phys->stmp2[nc2][k]-=prop->nu_H*(phys->vc[nc1][k]-phys->vc[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
       }
+
+      for(k=grid->Nke[j]+1;k<grid->Nk[nc1];k++) {
+	phys->stmp[nc1][k]+=prop->CdW*fabs(phys->uc[nc1][k])*phys->uc[nc1][k]*grid->df[j]/grid->Ac[nc1];
+	phys->stmp2[nc1][k]+=prop->CdW*fabs(phys->vc[nc1][k])*phys->vc[nc1][k]*grid->df[j]/grid->Ac[nc1];
+      }
+      for(k=grid->Nke[j]+1;k<grid->Nk[nc2];k++) {
+	phys->stmp[nc2][k]+=prop->CdW*fabs(phys->uc[nc2][k])*phys->vc[nc2][k]*grid->df[j]/grid->Ac[nc2];
+	phys->stmp2[nc2][k]+=prop->CdW*fabs(phys->vc[nc2][k])*phys->vc[nc2][k]*grid->df[j]/grid->Ac[nc2];
+      }
+    }
+
+    // Check to make sure integrated fluxes are 0 for conservation
+    sum=0;
+    for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	sum+=grid->Ac[i]*phys->stmp[i][k]*grid->dzz[i][k];
+    }
+    if(fabs(sum)>1e-5 && WARNING) printf("Warning, not U-momentum conservative!\n");
+    
+    sum=0;
+    for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	sum+=grid->Ac[i]*phys->stmp2[i][k]*grid->dzz[i][k];
+    }
+    if(fabs(sum)>1e-5 && WARNING) printf("Warning, not V-momentum conservative!\n");
+    
+    // Send/recv stmp and stmp2 to account for advective fluxes in ghost cells at
+    // interproc boundaries.
+    ISendRecvCellData3D(phys->stmp,grid,myproc,comm);
+    ISendRecvCellData3D(phys->stmp2,grid,myproc,comm);
+
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr]; 
+      
+      nc1 = grid->grad[2*j];
+      nc2 = grid->grad[2*j+1];
+      if(nc1==-1) nc1=nc2;
+      if(nc2==-1) nc2=nc1;
+      
+      if(grid->ctop[nc1]>grid->ctop[nc2])
+	k0=grid->ctop[nc1]+wetdry_offset;
+      else
+	k0=grid->ctop[nc2]+wetdry_offset;
+      
+      for(k=k0;k<grid->Nk[nc1];k++) 
+	phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
+	  *prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
+      
+      for(k=k0;k<grid->Nk[nc2];k++) 
+	phys->Cn_U[j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]
+	  *prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
     }
 
     for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
@@ -1283,7 +1293,7 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
 }
 
 static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
-				     int myproc, int numprocs) {
+				     int myproc, int numprocs, MPI_Comm comm) {
   int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin, wetdry_offset;
   REAL fab, sum, *a, *b, *c;
 
@@ -1320,6 +1330,10 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
     phys->wtmp[i][grid->ctop[i]]+=2.0*(1-prop->theta)*prop->dt/grid->dzz[i][grid->ctop[i]]*
       phys->q[i][grid->ctop[i]];
   }
+
+  for(i=0;i<grid->Nc;i++)
+    for(k=0;k<grid->Nk[i];k++) 
+      phys->stmp[i][k]=0;
 
   // Compute Eulerian advection (nonlinear!=0)
   if(prop->nonlinear) {
@@ -1370,9 +1384,6 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
     
     for(i=0;i<grid->Nc;i++) {
       
-      for(k=0;k<grid->Nk[i];k++) 
-	phys->stmp[i][k]=0;
-      
       for(nf=0;nf<NFACES;nf++) {
 	
 	ne = grid->face[i*NFACES+nf];
@@ -1402,41 +1413,46 @@ static void AdvectVerticalVelocity(gridT *grid, physT *phys, propT *prop,
 	sum+=grid->Ac[i]*phys->stmp[i][k]*grid->dzz[i][k];
     }
     if(fabs(sum)>1e-5 && WARNING) printf("Warning, not W-momentum conservative!\n");
+  }
+
+  // Add horizontal diffusion to stmp
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+    j = grid->edgep[jptr];
     
-    // Add horizontal diffusion to stmp
-    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-      j = grid->edgep[jptr];
+    nc1 = grid->grad[2*j];
+    nc2 = grid->grad[2*j+1];
+    if(grid->ctop[nc1]>grid->ctop[nc2])
+      kmin = grid->ctop[nc1];
+    else
+      kmin = grid->ctop[nc2];
 
-      nc1 = grid->grad[2*j];
-      nc2 = grid->grad[2*j+1];
-      if(grid->ctop[nc1]>grid->ctop[nc2])
-	kmin = grid->ctop[nc1];
-      else
-	kmin = grid->ctop[nc2];
-
-      for(k=kmin;k<grid->Nke[j];k++) {
-	phys->stmp[nc1][k]-=prop->nu_H*(phys->w[nc2][k]-phys->w[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
-	phys->stmp[nc2][k]-=prop->nu_H*(phys->w[nc1][k]-phys->w[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
-      }
-      for(k=grid->Nke[j]+1;k<grid->Nk[nc1];k++) 
-	phys->stmp[nc1][k]+=prop->CdW*fabs(phys->w[nc1][k])*phys->w[nc1][k]*grid->df[j]/grid->Ac[nc1];
-      for(k=grid->Nke[j]+1;k<grid->Nk[nc2];k++) 
-	phys->stmp[nc2][k]+=prop->CdW*fabs(phys->w[nc2][k])*phys->w[nc2][k]*grid->df[j]/grid->Ac[nc2];
+    for(k=kmin;k<grid->Nke[j];k++) {
+      a[k]=.5*prop->nu_H*(phys->w[nc2][k]-phys->w[nc1][k]+phys->w[nc2][k+1]-phys->w[nc1][k+1])*grid->df[j]/grid->dg[j];
+      phys->stmp[nc1][k]-=a[k]/grid->Ac[nc1];
+      phys->stmp[nc2][k]+=a[k]/grid->Ac[nc2];
+      //      phys->stmp[nc1][k]-=prop->nu_H*(phys->w[nc2][k]-phys->w[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
+      //      phys->stmp[nc2][k]-=prop->nu_H*(phys->w[nc1][k]-phys->w[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
     }
+    for(k=grid->Nke[j]+1;k<grid->Nk[nc1];k++) 
+      phys->stmp[nc1][k]+=0.25*prop->CdW*fabs(phys->w[nc1][k]+phys->w[nc1][k+1])*
+	(phys->w[nc1][k]+phys->w[nc1][k+1])*grid->df[j]/grid->Ac[nc1];
+    for(k=grid->Nke[j]+1;k<grid->Nk[nc2];k++) 
+      phys->stmp[nc2][k]+=0.25*prop->CdW*fabs(phys->w[nc2][k]+phys->w[nc2][k+1])*
+	(phys->w[nc2][k]+phys->w[nc2][k+1])*grid->df[j]/grid->Ac[nc2];
+  }
 
-    //Now use the cell-centered advection terms to update the advection at the faces
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i = grid->cellp[iptr]; 
-      
-      for(k=grid->ctop[i]+1+wetdry_offset;k<grid->Nk[i];k++) 
-	phys->Cn_W[i][k]-=prop->dt*(grid->dzz[i][k-1]*phys->stmp[i][k-1]+grid->dzz[i][k]*phys->stmp[i][k])/
-	  (grid->dzz[i][k-1]+grid->dzz[i][k]);
-      
-      // Top flux advection consists only of top cell
-      if(!prop->wetdry) {
-	k=grid->ctop[i];
-	phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
-      }
+  //Now use the cell-centered advection terms to update the advection at the faces
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr]; 
+    
+    for(k=grid->ctop[i]+1+wetdry_offset;k<grid->Nk[i];k++) 
+      phys->Cn_W[i][k]-=prop->dt*(grid->dzz[i][k-1]*phys->stmp[i][k-1]+grid->dzz[i][k]*phys->stmp[i][k])/
+	(grid->dzz[i][k-1]+grid->dzz[i][k]);
+    
+    // Top flux advection consists only of top cell
+    if(!prop->wetdry) {
+      k=grid->ctop[i];
+      phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
     }
   }
 
@@ -1610,6 +1626,11 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
   x = q;
   r = phys->vc;
   p = src;
+
+  // Set x to zero as the initial guess
+  for(i=0;i<grid->Nc;i++)
+    for(k=0;k<grid->Nk[i];k++)
+      x[i][k]=0;
 
   // Preconditioner
   if(prop->qprecond) {
@@ -2944,7 +2965,6 @@ static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
       }
       uc[n][k]/=grid->Ac[n];
       vc[n][k]/=grid->Ac[n];
-      ne = grid->face[n*NFACES+1];
     }
   }
 }
