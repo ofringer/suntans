@@ -6,8 +6,26 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.76 2004-09-15 01:13:11 fringer Exp $
+ * $Id: phys.c,v 1.77 2004-09-15 01:16:29 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.76  2004/09/15 01:13:11  fringer
+ * Changed updatescalars so that it can compute transport of the
+ * turbulent quantities q^2 and q^2l in turbulence.c.  Also moved
+ * eddyviscosity so that it computes turbulence quantities after
+ * momentum because the old and new velocities are needed for the
+ * theta method.  Still need to add the turbulent quantities to the
+ * restart files.
+ *
+ * Revision 1.75  2004/09/13 04:13:25  fringer
+ * Added Ftop and Fbot terms to UpdateScalars in order to allow for
+ * Neumann or Dirichlet BC on the scalar equation.  If alpha_top=0,
+ * then Ftop represents a flux specified at the top, whereas if
+ * alpha_top=1, Ftop represents a value specified at the top.  Same
+ * for alpha_bot and Fbot.  The purpose of this is to enable the use
+ * of UpdateScalars for implementation of the turbulence model, since
+ * it requires the use of the Dirichlet condition on the surface for
+ * both q^2 and q^2 l (and the bottom).
+ *
  * Revision 1.74  2004/08/24 22:39:08  fringer
  * Removed Cn[i][k] from the face loop in UpdateScalars for the right hand
  * side since this was causing problems after fixing the bounds errors fixed
