@@ -7,8 +7,12 @@
  * This file contains functions that print out data into
  * files as well as printing for debugging.
  *
- * $Id: report.c,v 1.2 2003-03-28 11:36:28 fringer Exp $
+ * $Id: report.c,v 1.3 2003-04-23 03:23:54 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2003/03/28 11:36:28  fringer
+ * Added the ability to use the -a flag, which tells the output data to
+ * be printed in ASCII form.
+ *
  * Revision 1.1  2002/11/03 00:22:22  fringer
  * Initial revision
  *
@@ -18,7 +22,8 @@
 
 void ParseFlags(int argc, char *argv[], int myproc)
 {
-  int i, j, done=0;
+  int i, j, js, done=0, status;
+  char str[BUFFERLENGTH], val[BUFFERLENGTH];
   GRID=0;
   SOLVE=0;
   VERBOSE=0;
@@ -42,9 +47,26 @@ void ParseFlags(int argc, char *argv[], int myproc)
 	      VERBOSE++;
 	    else
 	      done=1;
-	else
+	else if(argv[i][1]=='-') {
+	  j=js=2;
+	  while(argv[i][j]!='=')
+	    str[j-js]=argv[i][j++];
+	  str[j-js]='\0';
+	  j++;
+	  js=j;
+	  for(j=js;j<strlen(argv[i]);j++)
+	    val[j-js]=argv[i][j];
+	  val[j-js]='\0';
+	  GetValue(DATAFILE,str,&status);
+	  if(!status) {
+	    printf("Error in GetValue (called from %s) while reading %s.\n",
+		   "ParseFlags",DATAFILE);
+	    printf("Variable %s does not exist!\n",str);
 	    done=1;
-      } else 
+	  }
+	} else
+	  done=1;
+      } else
 	done=1;
     }
   }
@@ -58,7 +80,7 @@ void ParseFlags(int argc, char *argv[], int myproc)
 
 void Usage(char *str)
 {
-  printf("Usage: %s {-g,-s,-v[vv]}\n",str);
+  printf("Usage: %s {-g,-s,-v[vv],--variablename=value}\n",str);
 }
 
 /*
