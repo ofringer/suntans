@@ -1,8 +1,11 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.7 2003-12-02 02:05:46 fringer Exp $
+ * $Id: grid.h,v 1.8 2003-12-02 02:32:07 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.7  2003/12/02 02:05:46  fringer
+ * Removed all traces of nearest edge/cell indices.
+ *
  * Revision 1.6  2003/05/12 00:20:25  fringer
  * Added ReadGrid and ISendRecvCellData2D, as well as xe and ye to
  * the gridT struct.
@@ -123,10 +126,6 @@ typedef struct _gridT {
 
 } gridT;
 
-typedef enum {
-  first, all
-} transferType;
-
 /*
  * Public function declarations.
  *
@@ -134,13 +133,13 @@ typedef enum {
 void GetGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm);
 void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
-			MPI_Comm comm, transferType type);
+			MPI_Comm comm);
 void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
-			MPI_Comm comm, transferType type);
+			 MPI_Comm comm);
 void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
-			MPI_Comm comm, transferType type);
+			MPI_Comm comm);
 void SendRecvWData(REAL **celldata, gridT *grid, int myproc, 
-		   MPI_Comm comm, transferType type);
+		   MPI_Comm comm);
 void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
 			MPI_Comm comm);
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);

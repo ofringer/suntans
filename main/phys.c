@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.27 2003-12-02 02:15:54 fringer Exp $
+ * $Id: phys.c,v 1.28 2003-12-02 02:31:44 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.27  2003/12/02 02:15:54  fringer
+ * Removed all traces of kriging, including findnearestplane and
+ * findnearestedges.
+ *
  * Revision 1.26  2003/12/02 01:05:54  fringer
  * Working nonhydrostatic version.  FreeGrid and FreePhysicalVariables are
  * causing problems.
@@ -602,7 +606,7 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 
       AdvectHorizontalVelocity(grid,phys,prop,myproc,numprocs);
       BarotropicPredictor(grid,phys,prop,myproc,numprocs,comm);
-      ISendRecvCellData2D(phys->h,grid,myproc,comm,first);
+      ISendRecvCellData2D(phys->h,grid,myproc,comm);
 
       if(prop->nonhydrostatic) {
 	if(prop->nonlinear) {
@@ -635,12 +639,12 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
       }
       */
 
-      SendRecvCellData3D(phys->s,grid,myproc,comm,all);
-      SendRecvCellData3D(phys->T,grid,myproc,comm,first);
+      SendRecvCellData3D(phys->s,grid,myproc,comm);
+      SendRecvCellData3D(phys->T,grid,myproc,comm);
       SendRecvEdgeData3D(phys->u,grid,myproc,comm);
-      SendRecvCellData3D(phys->uc,grid,myproc,comm,all);
-      SendRecvCellData3D(phys->vc,grid,myproc,comm,all);
-      SendRecvWData(phys->w,grid,myproc,comm,first);
+      SendRecvCellData3D(phys->uc,grid,myproc,comm);
+      SendRecvCellData3D(phys->vc,grid,myproc,comm);
+      SendRecvWData(phys->w,grid,myproc,comm);
     }
 
     Progress(prop,myproc);
@@ -1027,7 +1031,7 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
   }
 
   // Send q to the boundary cells now that it has been updated with qc
-  SendRecvCellData3D(phys->q,grid,myproc,comm,all);
+  SendRecvCellData3D(phys->q,grid,myproc,comm);
 
   /*
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
@@ -1146,7 +1150,7 @@ static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop
 
   for(n=0;n<niters;n++) {
 
-    SendRecvCellData3D(p,grid,myproc,comm,first);
+    SendRecvCellData3D(p,grid,myproc,comm);
     OperatorQ(p,z,grid,phys,prop);
 
     mu = 1/eps;
@@ -1179,7 +1183,7 @@ static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop
   else
     if(VERBOSE>2 && myproc==0) printf("Time step %d, CGSolve pressure converged after %d iterations, res=%e\n",prop->n,n,sqrt(eps/eps0));
 
-  SendRecvCellData3D(x,grid,myproc,comm,first);
+  SendRecvCellData3D(x,grid,myproc,comm);
 }
 
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
@@ -1628,7 +1632,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
   for(n=0;n<niters;n++) {
 
-    ISendRecvCellData2D(p,grid,myproc,comm,first);
+    ISendRecvCellData2D(p,grid,myproc,comm);
     OperatorH(p,z,grid,phys,prop);
 
     mu = 1/eps;
@@ -1658,7 +1662,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   else
     if(VERBOSE>2 && myproc==0) printf("Time step %d, CGSolve converged after %d iterations, res=%e\n",prop->n,n,sqrt(eps/eps0));
 
-  ISendRecvCellData2D(x,grid,myproc,comm,first);
+  ISendRecvCellData2D(x,grid,myproc,comm);
   SunFree(z,grid->Nc*sizeof(REAL),"CGSolve");
 }
 
@@ -1767,7 +1771,7 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
   tmp = GRAV*pow(prop->theta*prop->dt,2);
 
-  ISendRecvCellData2D(h,grid,myproc,comm,first);
+  ISendRecvCellData2D(h,grid,myproc,comm);
 
   relax = prop->relax;
   niters = prop->maxiters;
@@ -1830,7 +1834,7 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
     //printf("Proc %d: %e\n",myproc,resid);
 
-    ISendRecvCellData2D(h,grid,myproc,comm,first);
+    ISendRecvCellData2D(h,grid,myproc,comm);
     MPI_Barrier(comm);
 
     if(fabs(resid)<prop->epsilon)
