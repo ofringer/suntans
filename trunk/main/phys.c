@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.66 2004-06-24 03:57:41 fringer Exp $
+ * $Id: phys.c,v 1.67 2004-06-24 08:35:46 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.66  2004/06/24 03:57:41  fringer
+ * Moved the Ep/=vol; line outside the loop in ComputeConservatives.  This
+ * line was causing a floating exception on baywulf which was not caught
+ * on intel P4 with gcc.
+ *
  * Revision 1.65  2004/06/09 03:22:29  fringer
  * Cleaned up by removing commented code and changed function names as follows:
  * AdvectHorizontalVelocity->HorizontaSource
@@ -2967,11 +2972,15 @@ static void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop)
 	if(nc1==-1) nc1=nc2;
 	if(nc2==-1) nc2=nc1;
 
-	ap = 0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]));
-	am = 0.5*(phys->u[ne][k]-fabs(phys->u[ne][k]));
+	ap=0;
+	if(k<grid->Nk[nc2])
+	  ap=0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]))*grid->dzz[nc2][k];
 
-	w[i][k]-=(ap*grid->dzz[nc2][k]+am*grid->dzz[nc1][k])*
-	  grid->df[ne]*grid->normal[i*NFACES+nf]/grid->Ac[i];
+	am=0;
+	if(k<grid->Nk[nc1])
+	  am=0.5*(phys->u[ne][k]-fabs(phys->u[ne][k]))*grid->dzz[nc1][k];
+
+	w[i][k]-=(ap+am)*grid->df[ne]*grid->normal[i*NFACES+nf]/grid->Ac[i];
       }
     }
   }
@@ -3007,14 +3016,13 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
     i = grid->cellp[iptr];
     height = 0;
     volh+=grid->Ac[i]*(grid->dv[i]+phys->h[i]);
-    Ep+=0.5*grid->Ac[i]*(pow(phys->h[i],2)-pow(grid->dv[i],2));
+    Ep+=0.5*GRAV*grid->Ac[i]*(phys->h[i]+grid->dv[i])*(phys->h[i]-grid->dv[i]);
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       height += grid->dzz[i][k];
       volume+=grid->Ac[i]*grid->dzz[i][k];
       mass+=phys->s[i][k]*grid->Ac[i]*grid->dzz[i][k];
     }
   }
-  Ep/=volume;
 
   // Comment out the volh reduce if that integral is desired.  The
   // volume integral is used since the volh integral is useful
