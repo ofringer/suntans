@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.8 2003-04-26 14:16:37 fringer Exp $
+ * $Id: grid.c,v 1.9 2003-04-29 00:15:06 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2003/04/26 14:16:37  fringer
+ * Added initialization function ReturnDepth .
+ *
  * Revision 1.7  2003/04/22 02:43:42  fringer
  * Changed makepointers() in grid.c so that the ghost points include
  * extra points for the ELM interpolation.  Only the number of neihbors is
@@ -55,7 +58,7 @@ void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs);
 static int GetNumCells(gridT *grid, int proc);
 static void TransferData(gridT *maingrid, gridT **localgrid, int myproc);
 static int GetNumEdges(gridT *grid);
-static void Geometry(gridT *maingrid, gridT **grid);
+static void Geometry(gridT *maingrid, gridT **grid, int myproc);
 static REAL GetArea(REAL *xt, REAL *yt, int Nf);
 static void EdgeMarkers(gridT *maingrid, gridT **localgrid, int myproc);
 static void ReOrder0(gridT *maingrid, gridT **localgrid, int myproc);
@@ -108,8 +111,8 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
     if(myproc==0 && VERBOSE>0) printf("Reading Grid...\n");
     ReadMainGrid(maingrid);
   } else {
-    if(VERBOSE>0) printf("Triangulating the point set...\n");
-    GetTriangulation(&maingrid);
+    if(myproc==0 && VERBOSE>0) printf("Triangulating the point set...\n");
+    GetTriangulation(&maingrid,myproc);
   }
 
   // Set the voronoi points to be the centroids of the
@@ -124,7 +127,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   CreateCellGraph(maingrid);
 
   if(myproc==0 && VERBOSE>0) printf("Computing Connectivity...\n");
-  Connectivity(maingrid);
+  Connectivity(maingrid,myproc);
 
   if(myproc==0 && VERBOSE>0) printf("Partitioning...\n");
   Partition(maingrid,localgrid,comm);
@@ -160,10 +163,12 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   /*
    * Partition the graph and create the part array.
    */
+  if(myproc==0 && VERBOSE>2) printf("Partitioning with ParMETIS_PartKway...\n");
   ParMETIS_PartKway(graph.vtxdist,graph.xadj,graph.adjncy,graph.vwgt,NULL,
 		    &wgtflag,&numflag,&numprocs,options,&edgecut,
 		    (*localgrid)->part,&comm);
 
+  if(myproc==0 && VERBOSE>2) printf("Redistributing the partition arrays...\n");
   if(myproc!=0) 
     MPI_Send((void *)(*localgrid)->part,graph.nvtxs,MPI_INT,0,1,comm); 
   else {
@@ -177,24 +182,26 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
   Topology(&maingrid,localgrid,myproc,numprocs);
 
+  if(myproc==0 && VERBOSE>2) printf("Creating nearest neighbor arrays...\n");
   CreateNearestPointers(maingrid,*localgrid,myproc);
 
+  if(myproc==0 && VERBOSE>2) printf("Transferring data...\n");
   TransferData(maingrid,localgrid,myproc);
 
-  if(VERBOSE>2) printf("Creating edge markers...\n");
+  if(myproc==0 && VERBOSE>2) printf("Creating edge markers...\n");
   EdgeMarkers(maingrid,localgrid,myproc);
 
-  if(VERBOSE>2) printf("Geometry...\n");
-  Geometry(maingrid,localgrid);
+  if(myproc==0 && VERBOSE>2) printf("Computing edge and voronoi distances and areas...\n");
+  Geometry(maingrid,localgrid,myproc);
 
-  if(VERBOSE>2) printf("Vert grid...\n");
+  if(myproc==0 && VERBOSE>2) printf("Vert grid...\n");
   VertGrid(maingrid,localgrid,comm);
 
-  if(VERBOSE>2) printf("Reordering...\n");
+  if(myproc==0 && VERBOSE>2) printf("Reordering...\n");
   //  ReOrder0(maingrid,localgrid,myproc);
   //  ReOrder(*localgrid);
 
-  if(VERBOSE>2) printf("Making pointers...\n");
+  if(myproc==0 && VERBOSE>2) printf("Making pointers...\n");
   MakePointers(maingrid,localgrid,myproc,comm);
 
   // NEED THIS!
@@ -234,7 +241,7 @@ static void CreateNearestPointers(gridT *maingrid, gridT *localgrid, int myproc)
   
   k=0;
   Nclocal=0;
-  for(i=0;i<maingrid->Nc;i++)
+  for(i=0;i<maingrid->Nc;i++) {
     if(maingrid->part[i]==myproc) {
       FindNearest(localgrid->nearestcells[k],maingrid->xv,maingrid->yv,
       		  maingrid->Nc,Nnearestcells,maingrid->xv[i],maingrid->yv[i]);
@@ -245,6 +252,7 @@ static void CreateNearestPointers(gridT *maingrid, gridT *localgrid, int myproc)
 	}
       k++;
     }
+  }
   localgrid->Nc = Nclocal;
 
   localgrid->mnptr = (int *)malloc(localgrid->Nc*sizeof(int));
@@ -880,19 +888,19 @@ static void CreateNormalArray(int *grad, int *face, int *normal, int Nc)
   }
 }
 
-void Connectivity(gridT *grid)
+void Connectivity(gridT *grid, int myproc)
 {
   int j, n, nf, ng, ne, neigh, nc, nc1, nc2, Nge, pcnt, *faceind;
 
   /* Create the face array, which contains indexes to the edges of
      each cell */
-  if(VERBOSE>3) printf("Creating face array and normals\n");
+  if(myproc==0 && VERBOSE>2) printf("Creating face array and normals\n");
   CreateFaceArray(grid->grad,grid->neigh,grid->face,grid->Nc,grid->Ne);
   CreateNormalArray(grid->grad,grid->face,grid->normal,grid->Nc);
 
   /* Create the edge connectivity array eneigh, which points to the 2(NFACES-1)
      neighbors that comprise the edges for the momentum control volume */
-  if(VERBOSE>3) printf("Creating edge connectivity array...\n");
+  if(myproc==0 && VERBOSE>2) printf("Creating edge connectivity array...\n");
   for(n=0;n<grid->Ne;n++) {
     for(ne=0;ne<2*(NFACES-1);ne++)
       grid->eneigh[2*(NFACES-1)*n+ne]=-1;
@@ -964,7 +972,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
   FILE *ofile;
 
   if(TRIANGULATE && myproc==0) {
-    if(VERBOSE>2) printf("Outputting Delaunay points...\n");
+    if(myproc==0 && VERBOSE>2) printf("Outputting Delaunay points...\n");
     sprintf(str,"%s",POINTSFILE);
     ofile = fopen(str,"w");
     for(j=0;j<Np;j++)
@@ -972,7 +980,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
     fclose(ofile);
   }
 
-  if(VERBOSE>2) printf("Outputting cells.dat...\n");
+  if(myproc==0 && VERBOSE>2) printf("Outputting cells.dat...\n");
   sprintf(str,"%s.%d",CELLSFILE,myproc);
   ofile = fopen(str,"w");
   for(j=0;j<grid->Nc;j++) {
@@ -985,7 +993,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
   }
   fclose(ofile);
 
-  if(VERBOSE>2) printf("Outputting edges.dat...\n");
+  if(myproc==0 && VERBOSE>2) printf("Outputting edges.dat...\n");
   sprintf(str,"%s.%d",EDGEFILE,myproc);
   ofile = fopen(str,"w");
   for(j=0;j<grid->Ne;j++) {
@@ -998,7 +1006,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
   }
   fclose(ofile);
 
-  if(VERBOSE>2) printf("Outputting celldata.dat...\n");
+  if(myproc==0 && VERBOSE>2) printf("Outputting celldata.dat...\n");
   sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
   ofile = fopen(str,"w");
   for(n=0;n<Nc;n++) {
@@ -1015,7 +1023,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
   }
   fclose(ofile);
 
-  if(VERBOSE>2) printf("Outputting edgedata.dat...\n");
+  if(myproc==0 && VERBOSE>2) printf("Outputting edgedata.dat...\n");
   sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
   ofile = fopen(str,"w");
   for(n=0;n<Ne;n++) {
@@ -1031,7 +1039,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc)
   }
   fclose(ofile);
 
-  if(VERBOSE>2) printf("Outputting topology and boundary pointers...\n");
+  if(myproc==0 && VERBOSE>2) printf("Outputting topology and boundary pointers...\n");
   sprintf(str,"%s.%d",TOPOLOGYFILE,myproc);
   ofile = fopen(str,"w");
   fprintf(ofile,"%d\n",grid->Nneighs);
@@ -1578,7 +1586,7 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
       edge_recv[neigh][j]=leptr[edge_recv[neigh][j]];
   }
 
-  if(VERBOSE>2) {
+  if(VERBOSE>3) {
     printf("CELLS: \n");
     for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
       neighproc=(*localgrid)->myneighs[neigh];
@@ -2230,12 +2238,13 @@ void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs)
 
   (*localgrid)->Nneighs=(*maingrid)->numneighs[myproc];
   (*localgrid)->myneighs=(int *)malloc((*localgrid)->Nneighs*sizeof(int));
-  printf("Proc %d, neighs: ",myproc);
+
+  //  printf("Proc %d, neighs: ",myproc);
   for(j=0;j<(*localgrid)->Nneighs;j++) {
     (*localgrid)->myneighs[j]=(*maingrid)->neighs[myproc][j];
-    printf("%d ",(*localgrid)->myneighs[j]);
+    //    printf("%d ",(*localgrid)->myneighs[j]);
   }
-  printf("\n");
+  //  printf("\n");
 }
 
 /*
@@ -2392,7 +2401,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
   free(leptr);
 }
 
-static void Geometry(gridT *maingrid, gridT **grid)
+static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 {
   int n, nf, k, j, Nc=(*grid)->Nc, Ne=(*grid)->Ne;
   REAL xt[NFACES], yt[NFACES], xc, yc, den;
@@ -2406,7 +2415,7 @@ static void Geometry(gridT *maingrid, gridT **grid)
   (*grid)->xi = (REAL *)malloc(2*(NFACES-1)*Ne*sizeof(REAL));
 
   /* Compute the area of each cell.*/
-  if(VERBOSE>2) printf("Computing areas...\n");
+  if(myproc==0 && VERBOSE>2) printf("Computing areas...\n");
   for(n=0;n<Nc;n++) {
     for(nf=0;nf<NFACES;nf++) {
       xt[nf]=maingrid->xp[(*grid)->cells[n*NFACES+nf]];
@@ -2416,7 +2425,7 @@ static void Geometry(gridT *maingrid, gridT **grid)
   }
   
   /* Compute the length of each edge */
-  if(VERBOSE>2) printf("Computing lengths...\n");
+  if(myproc==0 && VERBOSE>2) printf("Computing lengths...\n");
   for(n=0;n<Ne;n++) 
     (*grid)->df[n]=
       sqrt(pow(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]-
@@ -2427,7 +2436,7 @@ static void Geometry(gridT *maingrid, gridT **grid)
   /* Compute the normal distances between Voronoi points to compute the 
      gradients and then output the lengths to a data file. Also, compute 
      n1 and n2 which make up the normal vector components. */
-  if(VERBOSE>2) printf("Computing n1, n2, and dg..\n");
+  if(myproc==0 && VERBOSE>2) printf("Computing n1, n2, and dg..\n");
   for(n=0;n<Ne;n++) {
     if((*grid)->grad[2*n]!=-1 && (*grid)->grad[2*n+1]!=-1) {
       (*grid)->n1[n] = (*grid)->xv[(*grid)->grad[2*n]]-(*grid)->xv[(*grid)->grad[2*n+1]];
@@ -2466,7 +2475,7 @@ static void Geometry(gridT *maingrid, gridT **grid)
   }
 
   /* Now compute the coefficients that make up the tangents to compute advection */
-  if(VERBOSE>2) printf("Computing xi coefficients...\n");
+  if(myproc==0 && VERBOSE>2) printf("Computing xi coefficients...\n");
   for(n=0;n<Ne;n++) 
     if((*grid)->n1[n]==0 || (*grid)->n2[n]==0)
       for(nf=0;nf<2*(NFACES-1);nf++) 
@@ -2610,7 +2619,7 @@ void CorrectVoronoi(gridT *grid)
       dg0 = sqrt(pow(xc2-xc1,2)+pow(yc2-yc1,2));
       dg = sqrt(pow(xv2-xv1,2)+pow(yv2-yv1,2));
       if(dg < VoronoiRatio*dg0) {
-	if(VERBOSE>2) printf("Correcting Voronoi points %d and %d.\n",nc1,nc2);
+	if(VERBOSE>3) printf("Correcting Voronoi points %d and %d.\n",nc1,nc2);
 	grid->xv[nc1]=xc+VoronoiRatio*(xc1-xc);
 	grid->xv[nc2]=xc+VoronoiRatio*(xc2-xc);
 	grid->yv[nc1]=yc+VoronoiRatio*(yc1-yc);
@@ -2633,7 +2642,7 @@ void CorrectVoronoi(gridT *grid)
 	dg0 = sqrt(pow(xc2-xc,2)+pow(yc2-yc,2));
 	dg = sqrt(pow(xv2-xc,2)+pow(yv2-yc,2));
 	if(dg < VoronoiRatio*dg0) {
-	  if(VERBOSE>2) printf("Correcting Voronoi point %d.\n",nc2);
+	  if(VERBOSE>3) printf("Correcting Voronoi point %d.\n",nc2);
 	  grid->xv[nc2]=xc+VoronoiRatio*(xc2-xc);
 	  grid->yv[nc2]=yc+VoronoiRatio*(yc2-yc);
 	}
@@ -2649,7 +2658,7 @@ void CorrectVoronoi(gridT *grid)
 	dg0 = sqrt(pow(xc1-xc,2)+pow(yc1-yc,2));
 	dg = sqrt(pow(xv1-xc,2)+pow(yv1-yc,2));
 	if(dg < VoronoiRatio*dg0) {
-	  if(VERBOSE>2) printf("Correcting Voronoi point %d.\n",nc1);
+	  if(VERBOSE>3) printf("Correcting Voronoi point %d.\n",nc1);
 	  grid->xv[nc1]=xc+VoronoiRatio*(xc1-xc);
 	  grid->yv[nc1]=yc+VoronoiRatio*(yc1-yc);
 	}
