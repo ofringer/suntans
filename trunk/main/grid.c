@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.28 2004-03-18 17:18:03 fringer Exp $
+ * $Id: grid.c,v 1.29 2004-03-18 17:20:55 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.28  2004/03/18 17:18:03  fringer
+ * Removed unused ints and REALS.
+ *
  * Revision 1.27  2004/01/27 05:28:11  fringer
  * Working version for Monterey Bay case.  For the vwgt, the number of grid
  * cells in the vertical is used as the weighting function rather than the
@@ -2894,8 +2897,8 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
     R0 = GetCircumcircleRadius(xt,yt,NFACES);
     for(nf=0;nf<NFACES;nf++) {
       (*grid)->def[n*NFACES+nf]=sqrt(R0*R0-pow((*grid)->df[(*grid)->face[n*NFACES+nf]]/2,2));
-      if(IsNan((*grid)->def[n*NFACES+nf]))
-	(*grid)->def[n*NFACES+nf]=0;
+      if(IsNan((*grid)->def[n*NFACES+nf]) || (*grid)->def[n*NFACES+nf]==0)
+	(*grid)->def[n*NFACES+nf]=(*grid)->dg[(*grid)->face[n*NFACES+nf]]/2;
     }
   }
 
