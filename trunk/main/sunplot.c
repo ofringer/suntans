@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.33 2004-02-10 22:02:02 fringer Exp $
+ * $Id: sunplot.c,v 1.34 2004-02-10 22:11:48 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.33  2004/02/10 22:02:02  fringer
+ * Version given to D. Fong 2/11/04
+ *
  * Revision 1.32  2003/11/20 18:02:33  fringer
  * Added ubar and vbar which contain the barotropic horizontal velocity
  * fields.
@@ -425,7 +428,7 @@ int main(int argc, char *argv[]) {
   k=data->Nkmax/2-1;
   
   axisType='i';
-  edgelines=true;
+  edgelines=false;
   voronoipoints=false;
   delaunaypoints=false;
 
@@ -801,7 +804,7 @@ int main(int argc, char *argv[]) {
 	    sprintf(message,"Profile off...");
 	    controlButtons[profwin].status=false;
 	    vertprofile=false;
-	    edgelines=true;
+	    edgelines=false;
 	  }
 	  else {
 	    if(data->Nslice==0) 
@@ -1571,7 +1574,7 @@ void Quiver(float *x, float *z, float *D, float *H,
 
 void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic) {
   int i, mag;
-  float r=0.5, angle=20, arrowlength=10;
+  float r=0.25, angle=20, arrowlength=10;
   XPoint points[4];
 
   mag = (int)sqrt(ue*ue+ve*ve);
@@ -1605,7 +1608,9 @@ void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic) {
   
   XSetForeground(dis,gc,ic);
   XDrawLine(dis,mywin,gc,xp,yp,xp+ue,yp-ve);
-  XFillPolygon(dis,mywin,gc,points,4,Convex,CoordModeOrigin);
+  XDrawLine(dis,mywin,gc,points[0].x,points[0].y,points[1].x,points[1].y);
+  XDrawLine(dis,mywin,gc,points[0].x,points[0].y,points[2].x,points[2].y);
+  //XFillPolygon(dis,mywin,gc,points,4,Convex,CoordModeOrigin);
 }
 
 void Rotate(XPoint *points, int N, int ue, int ve, int mag) {
