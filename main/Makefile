@@ -5,8 +5,11 @@
 # Stanford University
 # fringer@stanford.edu
 #
-# $Id: Makefile,v 1.8 2004-06-10 08:29:11 fringer Exp $
+# $Id: Makefile,v 1.9 2004-09-12 22:12:00 fringer Exp $
 # $Log: not supported by cvs2svn $
+# Revision 1.8  2004/06/10 08:29:11  fringer
+# Added PI* to the superclean command.
+#
 # Revision 1.7  2004/06/10 08:20:51  fringer
 # Removed lapack and added MPIHOME to specify mpi main directory.
 #
@@ -40,11 +43,12 @@ TRIANGLEHOME = /home/fringer/research/SUNTANS/packages/triangle
 BACKUP = /home/data
 
 CC = $(MPIHOME)/bin/mpicc
-OPTFLAGS = -O3
-LD = $(CC) -p -pg
+OPTFLAGS = 
+#LD = $(CC) -p -pg -fbounds-checking -B/usr/local/gcc-3.3.3
+LD = $(CC) -p -pg 
 LIBDIR =  
 INCLUDES = -I$(PARMETISHOME)/ParMETISLib
-CFLAGS = $(OPTFLAGS) $(INCLUDES)
+CFLAGS = $(OPTFLAGS) $(INCLUDES) 
 XLIB=-lX11 -lm
 XINC=/usr/X11R6/include
 XLIBDIR = /usr/X11R6/lib
@@ -84,7 +88,7 @@ $(PEXEC): sunplot.o suntans.h
 tarball: 
 	-tar czvf $(BACKUP)/suntans.`date +%m%d%y`.tgz -C .. main
 
-initialization.o:	initialization.h
+initialization.o:	initialization.h 
 grid.o:	grid.h initialization.h
 mympi.o: mympi.h
 phys.o:	phys.h initialization.h
