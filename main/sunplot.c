@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.13 2003-04-18 21:22:17 fringer Exp $
+ * $Id: sunplot.c,v 1.14 2003-04-21 01:56:24 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.13  2003/04/18 21:22:17  fringer
+ * Added horizontal and vertical slice option -- press center or right button on profile window.
+ *
  * Revision 1.12  2003/04/15 10:42:10  fringer
  * Added ability to create a view a slice with the mouse.  Only works for salinity.  Does not give the right axes position unless axis type is set to normal when a slice over a large area is chosen.
  *
@@ -74,7 +77,7 @@
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
 #define MAXZOOMRATIO 100.0
-#define NUMBUTTONS 22
+#define NUMBUTTONS 27
 #define POINTSIZE 2
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
@@ -107,7 +110,8 @@ typedef enum {
   uwin, vwin, wwin, vecwin,
   depthwin, nonewin,
   edgewin, voronoiwin, delaunaywin,
-  zoomwin, profwin, quitwin
+  zoomwin, profwin, quitwin, axisimagewin,
+  iskip_plus_win,iskip_minus_win,kskip_plus_win,kskip_minus_win
 } buttonName;
 
 typedef enum {
@@ -153,6 +157,7 @@ typedef struct {
   float **sliceU;
   float **sliceW;
   float *sliceH;
+  float *sliceD;
   float *z;
   float *sliceX;
   int *sliceInd;
@@ -164,7 +169,7 @@ typedef struct {
 } dataT;
 
 void Sort(int *ind1, int *ind2, float *data, int N);
-void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk);
+void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk,plottypeT plotType);
 void GetSlice(dataT *data, int xs, int ys, int xe, int ye, 
 	      int procnum, int numprocs, plottypeT plottype);
 void GetDMax(dataT *data, int numprocs);
@@ -209,7 +214,8 @@ void DrawVoronoiPoints(float *xv, float *yv, int Nc);
 void FillCircle(int xp, int yp, int r, int ic, Window mywin);
 void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv, 
 	      float *u, float *v, float umagmax, int Ne, int Nc);
-void Quiver(float *x, float *z, float **u, float **v, float umagmax, int Nk, int Nc);
+void Quiver(float *x, float *z, float *D, float *H,
+	    float **u, float **v, float umagmax, int Nk, int Nc);
 void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic);
 void Rotate(XPoint *points, int N, int ue, int ve, int mag);
 void ParseCommandLine(int N, char *str[], int *numprocs);
@@ -238,7 +244,7 @@ XFontStruct *fontStruct;
 
 int width=WIDTH, height=HEIGHT, newwidth, newheight, 
   Np0, Nc0, Ne0, n=1, k=0, keysym,
-  xstart, ystart, xend, yend, lastgridread=0;
+  xstart, ystart, xend, yend, lastgridread=0, iskip=1, kskip=1;
 //int *cells, *edges;
 //float caxis[2], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4], buttonAxesPosition[4],
 //  zoomratio, *xv, *yv, vlengthfactor=1.0;
@@ -573,8 +579,86 @@ int main(int argc, char *argv[]) {
 	setdatalimits=false;
 	setdatalimitsslice=false;
 	redraw=true;
+      } else if(report.xany.window==controlButtons[axisimagewin].butwin 
+		&& mousebutton==left_button) {
+	if(axisType=='i') {
+	  axisType='n';
+	  sprintf(message,"Changing axis type to normal...");
+	} else {
+	  axisType='i';
+	  sprintf(message,"Changing axis type to image...");
+	}
+	redraw=true;
       } else if(report.xany.window==controlButtons[quitwin].butwin && mousebutton==left_button) {
 	quit=true;
+      } else if(report.xany.window==controlButtons[iskip_minus_win].butwin) {
+	if(vertprofile==true) {
+	  if(mousebutton==left_button) {
+	    if(iskip>1) {
+	      redraw=true;
+	      iskip--;
+	    } else 
+	      sprintf(message,"Already at iskip=1!");
+	  } else if(mousebutton==right_button) {
+	    if(iskip>1) {
+	      redraw=true;
+	      iskip=1;
+	    } else
+	      sprintf(message,"Already at iskip=1!");
+	  }
+	} else
+	  sprintf(message,"Need to be viewing a profile to change iskip...");
+      } else if(report.xany.window==controlButtons[iskip_plus_win].butwin) {
+	if(vertprofile==true) {
+	  if(mousebutton==left_button) {
+	    if(iskip<data->Nslice-1) {
+	      redraw=true;
+	      iskip++;
+	    } else 
+	      sprintf(message,"Already at iskip=%d!",data->Nslice-1);
+	  } else if(mousebutton==right_button) {
+	    if(iskip<data->Nslice-1) {
+	      redraw=true;
+	      iskip=data->Nslice-1;
+	    } else
+	      sprintf(message,"Already at iskip=%d!",data->Nslice-1);
+	  }
+	} else
+	  sprintf(message,"Need to be viewing a profile to change iskip...");
+      } else if(report.xany.window==controlButtons[kskip_minus_win].butwin) {
+	if(vertprofile==true) {
+	  if(mousebutton==left_button) {
+	    if(kskip>1) {
+	      redraw=true;
+	      kskip--;
+	    } else 
+	      sprintf(message,"Already at kskip=1!");
+	  } else if(mousebutton==right_button) {
+	    if(kskip>1) {
+	      redraw=true;
+	      kskip=1;
+	    } else
+	      sprintf(message,"Already at kskip=1!");
+	  }
+	} else
+	  sprintf(message,"Need to be viewing a profile to change kskip...");
+      } else if(report.xany.window==controlButtons[kskip_plus_win].butwin) {
+	if(vertprofile==true) {
+	  if(mousebutton==left_button) {
+	    if(kskip<data->Nkmax-1) {
+	      redraw=true;
+	      kskip++;
+	    } else 
+	      sprintf(message,"Already at kskip=%d!",data->Nkmax-1);
+	  } else if(mousebutton==right_button) {
+	    if(kskip<data->Nkmax-1) {
+	      redraw=true;
+	      kskip=data->Nkmax-1;
+	    } else
+	      sprintf(message,"Already at kskip=%d!",data->Nkmax-1);
+	  }
+	} else
+	  sprintf(message,"Need to be viewing a profile to change kskip...");
       } else if(report.xany.window==axeswin) {
 	xend=report.xbutton.x;
 	yend=report.xbutton.y;
@@ -872,7 +956,7 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
 
   if(vectorplot) {
     if(vertprofile && sliceType==slice) 
-      Quiver(data->sliceX,data->z,data->sliceU,data->sliceW,
+      Quiver(data->sliceX,data->z,data->sliceD,data->sliceH,data->sliceU,data->sliceW,
 	     data->umagmax,data->Nkmax,data->Nslice);
     else {
       if(procplottype==allprocs) 
@@ -924,7 +1008,7 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
     }
 
   if(vertprofile==true && sliceType==slice) 
-    QuadSurf(data->sliceH,data->sliceData,data->sliceX,data->z,data->Nslice,data->Nkmax);
+    QuadSurf(data->sliceH,data->sliceData,data->sliceX,data->z,data->Nslice,data->Nkmax,plottype);
   else {
     if(plottype!=noplottype)
       UnSurf(data->xc,data->yc,data->cells[procnum],scal,data->Nc[procnum]);
@@ -941,7 +1025,7 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
   DrawControls(data,procnum,numprocs);
 }
 
-void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk) {
+void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk,plottypeT plottype) {
   int i, j, xp1, xp2, yp1, yp2, w, ind;
   float xs, xe, zs, dataval;
   XPoint points[5];
@@ -989,11 +1073,17 @@ void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk) {
       if(dataval==EMPTY || (plottype=='D' && dataval==0))
 	ind = NUMCOLORS-1;
 
-      XSetForeground(dis,gc,colors[ind]);
-      XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
+      if(plottype!=noplottype) {
+	XSetForeground(dis,gc,colors[ind]);
+	XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
+      } 
+	
 
-      if(edgelines) {
-	XSetForeground(dis,gc,black);
+      if(edgelines && dataval!=EMPTY) {
+	if(plottype==noplottype)
+	  XSetForeground(dis,gc,white);
+	else
+	  XSetForeground(dis,gc,black);
 	XDrawLines(dis,pix,gc,points,5,0);
       }
     }
@@ -1060,7 +1150,8 @@ void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv,
   
 }
 
-void Quiver(float *x, float *z, float **u, float **v, float umagmax, int Nk, int Nc) { 
+void Quiver(float *x, float *z, float *D, float *H, 
+	    float **u, float **v, float umagmax, int Nk, int Nc) { 
   int i, j, ic;
   float xe, ye, umag, l, lmax=0, n1, n2;
   int xp, yp, ue, ve, vlength;
@@ -1077,8 +1168,8 @@ void Quiver(float *x, float *z, float **u, float **v, float umagmax, int Nk, int
   vlength = vlengthfactor*(int)(lmax/(dataLimits[1]-dataLimits[0])*
 		  axesPosition[2]*width);
 
-  for(i=0;i<Nc;i++) 
-     for(j=0;j<Nk;j++) {
+  for(i=0;i<Nc;i+=iskip) 
+     for(j=0;j<Nk;j+=kskip) {
        if(u[i][j]!=EMPTY) {
 	 xp = axesPosition[2]*width*(x[i]-dataLimits[0])/
 	   (dataLimits[1]-dataLimits[0]);
@@ -1095,8 +1186,9 @@ void Quiver(float *x, float *z, float **u, float **v, float umagmax, int Nk, int
 	 
 	 ue = vlength*u[i][j]/umagmax;
 	 ve = vlength*v[i][j]/umagmax;
-
-	 DrawArrow(xp,yp,ue,ve,pix,ic);
+	 
+	 if(0.5*(z[j]+z[j+1])>=-D[i] && 0.5*(z[j]+z[j+1])<=H[i])
+	   DrawArrow(xp,yp,ue,ve,pix,ic);
        }
      }
 }
@@ -1704,6 +1796,12 @@ void DrawControls(dataT *data, int procnum, int numprocs) {
     sprintf(str,"Processor: %d of %d",procnum+1,numprocs);
 
   DrawHeader(controlButtons[prevprocwin].butwin,controlButtons[nextprocwin].butwin,str);
+
+  sprintf(str,"iskip: %d",iskip);
+  DrawHeader(controlButtons[iskip_minus_win].butwin,controlButtons[iskip_plus_win].butwin,str);
+
+  sprintf(str,"kskip: %d",kskip);
+  DrawHeader(controlButtons[kskip_minus_win].butwin,controlButtons[kskip_plus_win].butwin,str);
 }
 
 Window NewButton(Window parent, char *name, int x, int y, 
@@ -1954,10 +2052,45 @@ void SetUpButtons(void) {
   controlButtons[profwin].w=0.9;
   controlButtons[profwin].h=(float)BUTTONHEIGHT;
 
+  controlButtons[iskip_minus_win].string="<";
+  controlButtons[iskip_minus_win].mapstring="iskip_minus_win";
+  controlButtons[iskip_minus_win].l=0.05;
+  controlButtons[iskip_minus_win].b=controlButtons[nextwin].b+9*dist;
+  controlButtons[iskip_minus_win].w=0.2;
+  controlButtons[iskip_minus_win].h=(float)BUTTONHEIGHT;
+
+  controlButtons[iskip_plus_win].string=">";
+  controlButtons[iskip_plus_win].mapstring="iskip_plus_win";
+  controlButtons[iskip_plus_win].l=0.27;
+  controlButtons[iskip_plus_win].b=controlButtons[nextwin].b+9*dist;
+  controlButtons[iskip_plus_win].w=0.2;
+  controlButtons[iskip_plus_win].h=(float)BUTTONHEIGHT;
+
+  controlButtons[kskip_minus_win].string="<";
+  controlButtons[kskip_minus_win].mapstring="kskip_minus_win";
+  controlButtons[kskip_minus_win].l=0.53;
+  controlButtons[kskip_minus_win].b=controlButtons[nextwin].b+9*dist;
+  controlButtons[kskip_minus_win].w=0.2;
+  controlButtons[kskip_minus_win].h=(float)BUTTONHEIGHT;
+
+  controlButtons[kskip_plus_win].string=">";
+  controlButtons[kskip_plus_win].mapstring="kskip_plus_win";
+  controlButtons[kskip_plus_win].l=0.75;
+  controlButtons[kskip_plus_win].b=controlButtons[nextwin].b+9*dist;
+  controlButtons[kskip_plus_win].w=0.2;
+  controlButtons[kskip_plus_win].h=(float)BUTTONHEIGHT;
+
+  controlButtons[axisimagewin].string="Axis";
+  controlButtons[axisimagewin].mapstring="axisimagewin";
+  controlButtons[axisimagewin].l=0.05;
+  controlButtons[axisimagewin].b=controlButtons[nextwin].b+10*dist;
+  controlButtons[axisimagewin].w=0.4;
+  controlButtons[axisimagewin].h=(float)BUTTONHEIGHT;
+
   controlButtons[quitwin].string="QUIT";
   controlButtons[quitwin].mapstring="quitwin";
   controlButtons[quitwin].l=0.05;
-  controlButtons[quitwin].b=controlButtons[nextwin].b+9*dist;
+  controlButtons[quitwin].b=controlButtons[nextwin].b+11*dist;
   controlButtons[quitwin].w=0.9;
   controlButtons[quitwin].h=(float)BUTTONHEIGHT;
 }
@@ -2129,6 +2262,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->sliceU = (float **)malloc(NSLICEMAX*sizeof(float *));
     data->sliceW = (float **)malloc(NSLICEMAX*sizeof(float *));
     data->sliceH = (float *)malloc(NSLICEMAX*sizeof(float));
+    data->sliceD = (float *)malloc(NSLICEMAX*sizeof(float));
     for(i=0;i<NSLICEMAX;i++) {
       data->sliceData[i] = (float *)malloc(data->Nkmax*sizeof(float));
       data->sliceU[i] = (float *)malloc(data->Nkmax*sizeof(float));
@@ -2388,8 +2522,10 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
   } 
 
   if(data->Nslice>=NSLICEMIN) {
-    for(i=0;i<data->Nslice;i++) 
+    for(i=0;i<data->Nslice;i++) {
       data->sliceH[i]=data->h[data->sliceProc[i]][data->sliceInd[i]];
+      data->sliceD[i]=data->depth[data->sliceProc[i]][data->sliceInd[i]];
+    }
 
     for(i=0;i<data->Nslice;i++) 
       for(ik=0;ik<data->Nkmax;ik++) {
