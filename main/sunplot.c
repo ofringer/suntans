@@ -6,8 +6,12 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.31 2003-10-02 17:39:22 fringer Exp $
+ * $Id: sunplot.c,v 1.32 2003-11-20 18:02:33 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.31  2003/10/02 17:39:22  fringer
+ * Added ability to plot baroclinic u and v velocity fields and loading
+ * of uc and vc velocity fields which are cell-centered.
+ *
  * Revision 1.30  2003/06/10 04:17:57  fringer
  * Added ability to use --datadir= to specify location of data and data
  * file suntans.dat
@@ -177,7 +181,7 @@
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
 #define MAXZOOMRATIO 100.0
-#define NUMBUTTONS 32
+#define NUMBUTTONS 33
 #define POINTSIZE 2
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
@@ -206,7 +210,7 @@ typedef enum {
   prevwin, gowin, nextwin,
   kupwin, kdownwin,
   prevprocwin, allprocswin, nextprocwin,
-  saltwin, fswin,
+  saltwin, tempwin, fswin,
   uwin, vwin, wwin, vecwin, Euwin, Evwin, Evecwin, 
   depthwin, nonewin,
   edgewin, voronoiwin, delaunaywin,
@@ -227,7 +231,7 @@ typedef enum {
 } goT;
 
 typedef enum {
-  noplottype, freesurface, depth, h_d, salinity, saldiff, 
+  noplottype, freesurface, depth, h_d, salinity, temperature, saldiff, 
   salinity0, u_velocity, v_velocity, w_velocity, u_baroclinic, v_baroclinic, Eu_velocity, Ev_velocity
 } plottypeT;
 
@@ -256,8 +260,11 @@ typedef struct {
   float ***s;
   float ***sd;
   float ***s0;
+  float ***T;
   float ***u;
   float ***v;
+  float **ubar;
+  float **vbar;
   float ***wf;
   float ***w;
   float **h;
@@ -601,6 +608,15 @@ int main(int argc, char *argv[]) {
 	    redraw=true;
 	  } else 
 	    sprintf(message,"Background salinity is already being displayed...");
+	}
+      } else if(report.xany.window==controlButtons[tempwin].butwin) {
+	if(mousebutton==left_button) {
+	  if(plottype!=temperature) {
+	    plottype=temperature;
+	    sprintf(message,"Temperature selected...");
+	    redraw=true;
+	  } else 
+	    sprintf(message,"Temperature is already being displayed...");
 	}
       } else if(report.xany.window==controlButtons[fswin].butwin && mousebutton==left_button) {
 	if(plottype!=freesurface) {
@@ -1551,6 +1567,9 @@ float *GetScalarPointer(dataT *data, plottypeT plottype, int klevel, int proc) {
   case salinity0:
     return data->s0[proc][klevel];
     break;
+  case temperature:
+    return data->T[proc][klevel];
+    break;
   case u_velocity: case u_baroclinic:
     return data->u[proc][klevel];
     break;
@@ -2133,6 +2152,9 @@ void DrawColorBar(dataT *data, int procnum, int numprocs, plottypeT plottype) {
     case salinity0: 
       sprintf(str,"s0");
       break;
+    case temperature: 
+      sprintf(str,"T");
+      break;
     default:
       sprintf(str,"");
       break;
@@ -2311,12 +2333,19 @@ void SetUpButtons(void) {
   controlButtons[nextprocwin].w=0.25;
   controlButtons[nextprocwin].h=(float)BUTTONHEIGHT;
 
-  controlButtons[saltwin].string="Salinity";
+  controlButtons[saltwin].string="S";
   controlButtons[saltwin].mapstring="saltwin";
   controlButtons[saltwin].l=0.05;
   controlButtons[saltwin].b=controlButtons[nextwin].b+3*dist;
-  controlButtons[saltwin].w=0.4;
+  controlButtons[saltwin].w=0.1;
   controlButtons[saltwin].h=(float)BUTTONHEIGHT;
+
+  controlButtons[tempwin].string="T";
+  controlButtons[tempwin].mapstring="tempwin";
+  controlButtons[tempwin].l=0.2;
+  controlButtons[tempwin].b=controlButtons[nextwin].b+3*dist;
+  controlButtons[tempwin].w=0.1;
+  controlButtons[tempwin].h=(float)BUTTONHEIGHT;
 
   controlButtons[fswin].string="Surface";
   controlButtons[fswin].mapstring="saltwin";
@@ -2590,6 +2619,7 @@ void FreeData(dataT *data, int numprocs) {
 	free(data->s[proc][j]);
 	free(data->sd[proc][j]);
 	free(data->s0[proc][j]);
+	free(data->T[proc][j]);
 	free(data->u[proc][j]);
 	free(data->v[proc][j]);
 	free(data->wf[proc][j]);
@@ -2600,6 +2630,7 @@ void FreeData(dataT *data, int numprocs) {
       free(data->s[proc]);
       free(data->sd[proc]);
       free(data->s0[proc]);
+      free(data->T[proc]);
       free(data->u[proc]);
       free(data->v[proc]);
       free(data->wf[proc]);
@@ -2616,6 +2647,7 @@ void FreeData(dataT *data, int numprocs) {
     free(data->s);
     free(data->sd);
     free(data->s0);
+    free(data->T);
     free(data->u);
     free(data->v);
     free(data->wf);
@@ -2646,7 +2678,7 @@ void GetFile(char *string, char *datadir, char *datafile, char *name, int proc) 
 
 void ReadData(dataT *data, int nstep, int numprocs) {
   int i, j, ik, ik0, proc, status, ind, ind0, nf, count, nsteps, ntout, nk;
-  float xind, vel, ubar, vbar, dz, beta;
+  float xind, vel, ubar, vbar, dz, beta, dmax;
   double *dummy, *dummy2;
   char string[BUFFERLENGTH];
   FILE *fid;
@@ -2674,8 +2706,11 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->s = (float ***)malloc(numprocs*sizeof(float **));
     data->sd = (float ***)malloc(numprocs*sizeof(float **));
     data->s0 = (float ***)malloc(numprocs*sizeof(float **));
+    data->T = (float ***)malloc(numprocs*sizeof(float **));
     data->u = (float ***)malloc(numprocs*sizeof(float **));
     data->v = (float ***)malloc(numprocs*sizeof(float **));
+    data->ubar = (float **)malloc(numprocs*sizeof(float *));
+    data->vbar = (float **)malloc(numprocs*sizeof(float *));
     data->wf = (float ***)malloc(numprocs*sizeof(float **));
     data->w = (float ***)malloc(numprocs*sizeof(float **));
 
@@ -2738,8 +2773,11 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       data->s[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->sd[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->s0[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
+      data->T[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->u[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->v[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
+      data->ubar[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
+      data->vbar[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->wf[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->w[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
 
@@ -2747,6 +2785,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	data->s[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->sd[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->s0[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
+	data->T[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->u[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->v[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->wf[proc][i]=(float *)malloc(data->Ne[proc]*sizeof(float));
@@ -2842,6 +2881,16 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
+      GetFile(string,DATADIR,DATAFILE,"TemperatureFile",proc);
+      fid = MyFOpen(string,"r","ReadData");
+      fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+      for(i=0;i<data->Nkmax;i++) {
+	fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	for(j=0;j<data->Nc[proc];j++) 
+	  data->T[proc][i][j]=dummy[j];
+      }
+      fclose(fid);
+
       GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       fseek(fid,3*(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
@@ -2866,6 +2915,17 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  }
       }
       fclose(fid);
+
+      dz = data->dmax/data->Nkmax;
+      for(j=0;j<data->Nc[proc];j++) {
+	data->ubar[proc][j]=0;
+	data->vbar[proc][j]=0;
+	for(i=0;i<data->Nkmax;i++)
+	  if(data->s0[proc][i][j]!=EMPTY) {
+	    data->ubar[proc][j]+=data->u[proc][i][j]*dz/data->depth[proc][j];
+	    data->vbar[proc][j]+=data->v[proc][i][j]*dz/data->depth[proc][j];
+	  }
+      }
 
       GetFile(string,DATADIR,DATAFILE,"VerticalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
@@ -2903,37 +2963,27 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
       dz = data->dmax/(float)data->Nkmax;
       beta=GetValue(DATAFILE,"beta",&status);
-
       for(i=0;i<data->Nc[proc];i++) {
-	ubar=0;
-	vbar=0;
-	nk=0;
 
 	for(ik0=0;ik0<data->Nkmax;ik0++) {
-	  if(data->s[proc][ik0][i]!=EMPTY) {
-	    nk++;
-	    ubar+=data->u[proc][ik0][i];
-	    vbar+=data->v[proc][ik0][i];
-	  }
-	  ubar/=nk;
-	  vbar/=nk;
-
 	  dummy[ik0]=0;
 	  for(ik=ik0;ik>=0;ik--) 
 	    if(data->s[proc][ik][i]!=EMPTY) 
-	      dummy[ik0]+=RHO0*GRAV*beta*(data->s[proc][ik][i]-data->s0[proc][ik][i])*dz;
+	      dummy[ik0]+=1000*GRAV*beta*(data->s[proc][ik][i]-data->s0[proc][ik][i])*dz;
 	}
 
 	data->Eu[proc][i]=0;
 	data->Ev[proc][i]=0;
 	for(ik0=0;ik0<data->Nkmax;ik0++) 
 	  if(data->s[proc][ik0][i]!=EMPTY) {
-	    data->Eu[proc][i]+=(data->u[proc][ik0][i]-ubar)*dummy[ik0]*dz;
-	    data->Ev[proc][i]+=(data->v[proc][ik0][i]-vbar)*dummy[ik0]*dz;
+	    data->Eu[proc][i]+=(data->u[proc][ik0][i]-data->ubar[proc][i])*dummy[ik0]*dz;
+	    data->Ev[proc][i]+=(data->v[proc][ik0][i]-data->vbar[proc][i])*dummy[ik0]*dz;
+	    //	    data->u[proc][ik0][i]=data->u[proc][ik0][i]-data->ubar[proc][i];
+	    //	    data->v[proc][ik0][i]=data->v[proc][ik0][i]-data->vbar[proc][i];
 	  }
       }
 
-      free(dummy);
+      //      free(dummy);
     }
   }
 }
@@ -3085,6 +3135,11 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
       for(i=0;i<data->Nslice;i++) 
 	for(ik=0;ik<data->Nkmax;ik++) 
 	  data->sliceData[i][ik]=data->s0[data->sliceProc[i]][ik][data->sliceInd[i]];
+      break;
+    case temperature:
+      for(i=0;i<data->Nslice;i++) 
+	for(ik=0;ik<data->Nkmax;ik++) 
+	  data->sliceData[i][ik]=data->T[data->sliceProc[i]][ik][data->sliceInd[i]];
       break;
     case u_velocity: 
       for(i=0;i<data->Nslice;i++) 
