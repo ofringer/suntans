@@ -1,8 +1,11 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.12 2004-09-22 06:30:47 fringer Exp $
+ * $Id: phys.h,v 1.13 2005-04-01 20:51:28 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.12  2004/09/22 06:30:47  fringer
+ * Added propT to Allocate and Free PhysicalVariables.
+ *
  * Revision 1.11  2004/09/21 23:33:44  fringer
  * Added prop->resnorm.  See log for rev 1.82 in phys.c
  *
@@ -70,11 +73,18 @@ typedef struct _physT {
   REAL **q;
   REAL **qc;
   REAL **s;
-  REAL **boundary_s;
   REAL **T;
-  REAL **boundary_T;
   REAL **s0;
   REAL *h;
+
+  REAL **boundary_u;
+  REAL **boundary_v;
+  REAL **boundary_w;
+  REAL **boundary_s;
+  REAL **boundary_T;
+  REAL **boundary_tmp;
+  REAL *boundary_h;
+  REAL *boundary_flag;
 
   REAL **nu_tv;
   REAL **kappa_tv;
