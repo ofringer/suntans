@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.24 2003-12-02 04:38:46 fringer Exp $
+ * $Id: grid.c,v 1.25 2003-12-02 20:37:48 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.24  2003/12/02 04:38:46  fringer
+ * Added nonblocking send/recv routines for wdata and edgedata3d.
+ *
  * Revision 1.23  2003/12/02 02:36:43  fringer
  * Removed ability to transfer first or all in send/recv routines.
  *
@@ -1459,6 +1462,8 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
       fprintf(ofile,"%d ",grid->neigh[NFACES*n+nf]);
     for(nf=0;nf<NFACES;nf++) 
       fprintf(ofile,"%d ",grid->normal[NFACES*n+nf]);
+    for(nf=0;nf<NFACES;nf++) 
+      fprintf(ofile,"%f ",grid->def[NFACES*n+nf]);
     // Removed this line since it is never reloaded...
     //fprintf(ofile,"%d ",grid->mnptr[n]);
     fprintf(ofile,"\n");
@@ -1472,10 +1477,10 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   for(n=0;n<Ne;n++) {
     // Removed the two zeros because they are redundant
     // fprintf(ofile,"%f %f 0 0 %f %f %d %d %d %d ",
-    fprintf(ofile,"%f %f %f %f %f %f %d %d %d %d %d ",
+    fprintf(ofile,"%f %f %f %f %f %f %d %d %d %d %d %d %d ",
 	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
 	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
-	    grid->mark[n]);
+	    grid->grad[2*n],grid->grad[2*n+1],grid->mark[n]);
     for(nf=0;nf<2*(NFACES-1);nf++)
       fprintf(ofile,"%f ",grid->xi[2*(NFACES-1)*n+nf]);
     for(nf=0;nf<2*(NFACES-1);nf++)
@@ -1493,7 +1498,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     fprintf(ofile,"%d ",grid->myneighs[neigh]);
   fprintf(ofile,"\n");
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    fprintf(ofile,"%d %d %d %d %d %d\n",
+    fprintf(ofile,"%d %d %d %d\n",
 	    grid->num_cells_send[neigh],
 	    grid->num_cells_recv[neigh],
 	    grid->num_edges_send[neigh],
@@ -1646,6 +1651,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->neigh = (int *)SunMalloc(NFACES*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->face = (int *)SunMalloc(NFACES*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->normal = (int *)SunMalloc(NFACES*(*grid)->Nc*sizeof(int),"ReadGrid");
+  (*grid)->def = (REAL *)SunMalloc(NFACES*(*grid)->Nc*sizeof(REAL),"ReadGrid");
 
   sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
   if(VERBOSE>2) printf("Reading %s...\n",str);
@@ -1663,6 +1669,8 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
       (*grid)->neigh[NFACES*n+nf]=(int)getfield(ifile,str);
     for(nf=0;nf<NFACES;nf++)
       (*grid)->normal[NFACES*n+nf]=(int)getfield(ifile,str);
+    for(nf=0;nf<NFACES;nf++)
+      (*grid)->def[NFACES*n+nf]=getfield(ifile,str);
   }
   fclose(ifile);
 
@@ -1680,6 +1688,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->Nke = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->Nkc = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->grad = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
+  (*grid)->gradf = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
 
   (*grid)->xi = (REAL *)SunMalloc(2*(NFACES-1)*(*grid)->Ne*sizeof(REAL),"ReadGrid");
@@ -1700,6 +1709,8 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
       (*grid)->Nkc[n] = (int)getfield(ifile,str);
       (*grid)->grad[2*n] = (int)getfield(ifile,str);
       (*grid)->grad[2*n+1] = (int)getfield(ifile,str);
+      (*grid)->gradf[2*n] = (int)getfield(ifile,str);
+      (*grid)->gradf[2*n+1] = (int)getfield(ifile,str);
       (*grid)->mark[n] = (int)getfield(ifile,str);
       for(nf=0;nf<2*(NFACES-1);nf++)
 	(*grid)->xi[2*(NFACES-1)*n+nf]=getfield(ifile,str);
