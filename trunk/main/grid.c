@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.20 2003-12-02 01:48:32 fringer Exp $
+ * $Id: grid.c,v 1.21 2003-12-02 02:00:59 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.20  2003/12/02 01:48:32  fringer
+ * Commented out FreeGrid since it needs to be fixed.
+ *
  * Revision 1.19  2003/10/27 17:21:41  fringer
  * Added SendRecvEdgeData3D which sends/receives edge (U-velocity) data
  * as well as SendRecvWData which sends/receives w data
@@ -140,8 +143,6 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs);
 static void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int Nc, int Ne);
 static void CreateNormalArray(int *grad, int *face, int *normal, int Nc);
 void CorrectVoronoi(gridT *grid);
-static void CreateNearestCellPointers(gridT *maingrid, gridT *localgrid, int myproc);
-static void CreateNearestEdgePointers(gridT *maingrid, gridT *localgrid, int myproc);
 
 /************************************************************************/
 /*                                                                      */
@@ -256,9 +257,6 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
   Topology(&maingrid,localgrid,myproc,numprocs);
 
-  if(myproc==0 && VERBOSE>2) printf("Creating nearest neighbor arrays...\n");
-  CreateNearestCellPointers(maingrid,*localgrid,myproc);
-
   if(myproc==0 && VERBOSE>2) printf("Transferring data...\n");
   TransferData(maingrid,localgrid,myproc);
 
@@ -278,205 +276,13 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   MakePointers(maingrid,localgrid,myproc,comm);
 
   if(myproc==0 && VERBOSE>2) printf("Creating nearest edge pointers...\n");
-  CreateNearestEdgePointers(maingrid,*localgrid,myproc);
+  //  CreateNearestEdgePointers(maingrid,*localgrid,myproc);
 
   // NEED THIS?
   //  ResortBoundaries(*localgrid,myproc);
 
   if(VERBOSE>3) ReportConnectivity(*localgrid,maingrid,myproc);
   if(VERBOSE>1) ReportPartition(maingrid,*localgrid,myproc,comm);
-}
-
-/*
- * Function: CreateNearestEdgePointers
- * Usage: CreateNearestEdgePointers(maingrid,grid);
- * ------------------------------------------------
- * This function uses the nearestcells array to determine the
- * nearest edges and puts them into the nearestedges array.  It
- * also uses the edgep pointer array to determine which edges
- * are computational edges, since they are the only edges which
- * need nearest neighbors for the ELM interpolation.  This
- * function assumes that the nearest edges are a subset of the
- * edges which belong to each of the nearest cells on a grid.
- * All of these edges are communcated between processors, as opposed
- * to only the ones that are needed by the nearestedges arrays.
- *
- */
-static void CreateNearestEdgePointers(gridT *maingrid, gridT *localgrid, int myproc) {
-  int i, j, ne, nf, k, m, jptr, nc, ncell, jmin;
-  int Nnearestedges=(int)MPI_GetValue(DATAFILE,"Nnearestedges","CreateNearestEdgePointers",0);
-  unsigned char *found;
-  REAL dist, mindist, xc0, yc0, xc, yc;
-
-  found = (unsigned char *)SunMalloc(localgrid->Ne*sizeof(unsigned char),"CreateNearestEdgePointers");
-
-  maingrid->Nnearestedges=Nnearestedges;
-  localgrid->Nnearestedges=Nnearestedges;
-
-  // We only need to store the nearest edges for edges that belong to
-  // the current processor, omitting the ghost edges.  We can use the
-  // edgedist arrays created in MakePointers to find out how many we need
-  // and only store nearest edges for the ones in edgep[0,...,edgedist[1]-1]
-  localgrid->nearestedges=
-    (int **)SunMalloc(localgrid->Ne*sizeof(int *),"CreateNearestEdgePointers");
-  for(jptr=localgrid->edgedist[0];jptr<localgrid->edgedist[1];jptr++) {
-    j = localgrid->edgep[jptr];
-    localgrid->nearestedges[j]=
-      (int *)SunMalloc(Nnearestedges*sizeof(int),"CreateNearestEdgePointers");
-  }
-
-  // Now we can find the nearest edges for the edges in the edgep pointer.
-  // It is important to note that the jptr index must be used in the 
-  // nearestedges array since it only contains edgedist[1] elements, not
-  // localgrid->Ne elements!  We assume here that the nearest edges
-  // can only be located on the processors as they have been arranged,
-  // in that the edges must correspond to the cells that were chosen as
-  // nearest cells in the CreateNearestCellPointers function.  The search
-  // process can be speeded up a great deal by using the nearest cell
-  // pointer to search edges that belong to the nearest cells.
-  for(jptr=localgrid->edgedist[0];jptr<localgrid->edgedist[1];jptr++) {
-    j = localgrid->edgep[jptr];
-
-    xc0 = 0.5*(maingrid->xp[localgrid->edges[NUMEDGECOLUMNS*j]]+
-	       maingrid->xp[localgrid->edges[NUMEDGECOLUMNS*j+1]]);
-    yc0 = 0.5*(maingrid->yp[localgrid->edges[NUMEDGECOLUMNS*j]]+
-	       maingrid->yp[localgrid->edges[NUMEDGECOLUMNS*j+1]]);
-
-    for(k=0;k<localgrid->Ne;k++)
-      found[k]=0;
-    for(m=0;m<localgrid->Nnearestedges;m++) {
-      mindist=INFTY;
-      for(nc=0;nc<2;nc++)
-	for(i=0;i<localgrid->Nnearestcells;i++) {
-	  if(localgrid->grad[2*j+nc]<localgrid->celldist[1]) {
-	    ncell = localgrid->nearestcells[localgrid->grad[2*j+nc]][i];
-	    for(nf=0;nf<NFACES;nf++) {
-	      ne = localgrid->face[ncell*NFACES+nf];
-	      xc = 0.5*(maingrid->xp[localgrid->edges[NUMEDGECOLUMNS*ne]]+
-			maingrid->xp[localgrid->edges[NUMEDGECOLUMNS*ne+1]]);
-	      yc = 0.5*(maingrid->yp[localgrid->edges[NUMEDGECOLUMNS*ne]]+
-			maingrid->yp[localgrid->edges[NUMEDGECOLUMNS*ne+1]]);
-	      dist = pow(xc-xc0,2)+pow(yc-yc0,2);
-	      if(dist<=mindist && !found[ne] && localgrid->mark[ne]!=1) {
-		mindist=dist;
-		jmin=ne;
-	      }
-	    }
-	  }
-	}
-      localgrid->nearestedges[j][m]=jmin;
-      found[jmin]=1;
-    }
-    
-    if(VERBOSE>3) {
-      printf("Nearest neighbors to edge %d:",j);
-      for(m=0;m<localgrid->Nnearestedges;m++) 
-	printf("%d ",localgrid->nearestedges[jptr][m]);
-      printf("\n");
-    }
-  }
-  SunFree(found,localgrid->Ne*sizeof(unsigned char),"CreateNearestEdgePointers");
-}
-
-/*
- * Function: CreateNearestCellPointers
- * Usage: CreateNearestCellPointers(maingrid,grid,myproc);
- * -------------------------------------------------------
- * This function first determines the nearest neighbors to each cell that
- * are on the given processor.  Then each of these neighbors is added to
- * that given processor's list of cells.  If a nearest neighbor cell is
- * on another processor then it is added to the list of cells that must be
- * transferred from another processor.  As a result, this function determines
- * both the nearest cell neighbors as well as the number of total cells on
- * a given processor, since the partitioning does not take ghost cells into
- * account.
- *
- */
-static void CreateNearestCellPointers(gridT *maingrid, gridT *localgrid, int myproc) {
-  int i, j, k, m, nf, Ncpart, Nepart, Nclocal, Nelocal;
-  int Nnearestcells=(int)MPI_GetValue(DATAFILE,"Nnearestcells","CreateNearestCellPointers",0);
-  int *lcptr;
-  unsigned char *found;
-
-  lcptr = (int *)SunMalloc(maingrid->Nc*sizeof(int),"CreateNearestCellPointers");
-  found = (unsigned char *)SunMalloc(maingrid->Nc*sizeof(unsigned char),"CreateNearestCellPointers");
-
-  maingrid->Nnearestcells=Nnearestcells;
-  localgrid->Nnearestcells=Nnearestcells;
-
-  // This will count the number of cells (Ncpart) that match the given processor ID (myproc).
-  Ncpart=0;
-  for(i=0;i<maingrid->Nc;i++) 
-    if(maingrid->part[i]==myproc) 
-      Ncpart++;
-
-  localgrid->nearestcells=(int **)SunMalloc(Ncpart*sizeof(int *),"CreateNearestCellPointers");
-  for(i=0;i<Ncpart;i++)
-    localgrid->nearestcells[i]=(int *)SunMalloc(Nnearestcells*sizeof(int),"CreateNearestCellPointers");
-
-  // Now the FindNearest routine finds the nearest cells and puts them
-  // into the nearestcells array.  It then puts a 1 in the found array
-  // which will contain both interprocessor cells as well as local cells.
-  // The total cell count, including interprocessor cells, is then Nclocal,
-  // which ends up being Nc, the number of cells on a given processor.
-  k=0;
-  Nclocal=0;
-  for(i=0;i<maingrid->Nc;i++) 
-    found[i]=0;
-
-  for(i=0;i<maingrid->Nc;i++) {
-    if(maingrid->part[i]==myproc) {
-      FindNearest(localgrid->nearestcells[k],maingrid->xv,maingrid->yv,
-		  maingrid->Nc,Nnearestcells,maingrid->xv[i],maingrid->yv[i]);
-      for(j=0;j<Nnearestcells;j++)
-	if(!found[localgrid->nearestcells[k][j]]) {
-	  found[localgrid->nearestcells[k][j]]=1;
-	  Nclocal++;
-	}
-      k++;
-    }
-  }
-  localgrid->Nc = Nclocal;
-
-  // Set up the lcptr and mnptr arrays.  The mnptr array contains indices to the main
-  // grid from the local grid, while the lcptr array contains indices from the
-  // main grid to the local grid.  The mnptr array is important for interprocessor
-  // cell transfer routines, since the mnptr array of interprocessor cells on different
-  // processors must be the same.  For example, if cell i1 on processor 1
-  // is a ghost point that obtains its value from processor 2, on which the
-  // local index of that cell is i2, then on processor 1 mnptr[i1] is the same
-  // as mnptr[i2] on processor 2.
-  localgrid->mnptr = (int *)SunMalloc(localgrid->Nc*sizeof(int),"CreateNearestCellPointers");
-  for(i=0;i<maingrid->Nc;i++)
-    found[i]=0;
-  
-  m=0;
-  for(i=0;i<maingrid->Nc;i++) 
-    if(maingrid->part[i]==myproc) {
-      found[i]=1;
-      lcptr[i]=m;
-      localgrid->mnptr[m++]=i;
-    }
-  k=0;
-  for(i=0;i<maingrid->Nc;i++) 
-    if(maingrid->part[i]==myproc) {
-      for(j=0;j<Nnearestcells;j++)
-	if(!found[localgrid->nearestcells[k][j]]) {
-	  found[localgrid->nearestcells[k][j]]=1;
-	  lcptr[localgrid->nearestcells[k][j]]=m;
-	  localgrid->mnptr[m++]=localgrid->nearestcells[k][j];
-	}
-      k++;
-    }
-
-  // Now transfer the indices of the nearestcell arrays to that of the
-  // local grid.
-  for(i=0;i<Ncpart;i++) 
-    for(j=0;j<Nnearestcells;j++) 
-      localgrid->nearestcells[i][j]=lcptr[localgrid->nearestcells[i][j]];
-
-  SunFree(found,maingrid->Nc*sizeof(unsigned char),"CreateNearestCellPointers");
-  SunFree(lcptr,maingrid->Nc*sizeof(int),"CreateNearestCellPointers");
 }
 
 /*
@@ -2744,9 +2550,8 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
   lcptr = (int *)SunMalloc(maingrid->Nc*sizeof(int),"TransferData");
   leptr = (int *)SunMalloc(maingrid->Ne*sizeof(int),"TransferData");
 
-  // Removed since set in CreateNearestPointers
-  //    (*localgrid)->Nc = GetNumCells(maingrid,myproc);
-  //    (*localgrid)->mnptr = (int *)SunMalloc((*localgrid)->Nc*sizeof(int),"TransferData");
+  (*localgrid)->Nc = GetNumCells(maingrid,myproc);
+  (*localgrid)->mnptr = (int *)SunMalloc((*localgrid)->Nc*sizeof(int),"TransferData");
   (*localgrid)->vwgt = (int *)SunMalloc((*localgrid)->Nc*sizeof(int),"TransferData");
   (*localgrid)->cells = (int *)SunMalloc(NFACES*(*localgrid)->Nc*sizeof(int),"TransferData");
   (*localgrid)->xv = (REAL *)SunMalloc((*localgrid)->Nc*sizeof(REAL),"TransferData");
@@ -2759,10 +2564,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
     lcptr[j]=-1;
   for(j=0;j<maingrid->Ne;j++) 
     leptr[j]=-1;
-  
 
-  // Removed since set in CreateNearestPointers
-  /*
   k=0;
   for(bctype=0;bctype<MAXBCTYPES;bctype++)
     for(j=0;j<maingrid->Nc;j++) 
@@ -2786,8 +2588,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
 	  k++;
 	}
       }
-  */
-
+  /*
   for(i=0;i<(*localgrid)->Nc;i++) {
     j = (*localgrid)->mnptr[i];
     lcptr[j]=i;
@@ -2798,7 +2599,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
     for(nf=0;nf<NFACES;nf++)
       (*localgrid)->cells[i*NFACES+nf]=maingrid->cells[j*NFACES+nf];
   }
-
+  */
   for(j=0;j<(*localgrid)->Nc;j++) 
     for(nf=0;nf<NFACES;nf++) {
       mgptr = maingrid->neigh[(*localgrid)->mnptr[j]*NFACES+nf];
