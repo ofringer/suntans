@@ -6,8 +6,19 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.31 2003-12-03 02:07:02 fringer Exp $
+ * $Id: phys.c,v 1.32 2003-12-03 04:05:52 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.31  2003/12/03 02:07:02  fringer
+ * Added output to a progress file that shows the current time step.
+ * This file is specified as the ProgressFile in suntans.dat
+ *
+ * Also added lines for open boundary types (marker=2) and forced
+ * flux types (marker=4).
+ *
+ * Also set the boundary condition for the cgsolveq to no gradient
+ * by setting D[j]=df[j]/dg[j] and setting D[j] to 0 on faces wehre
+ * there should be no q gradient.
+ *
  * Revision 1.30  2003/12/02 23:33:57  fringer
  * Added error checking code in updatedz and also updated cgsolve (q and h)
  * so that the iteration stops if eps0=0.
@@ -596,17 +607,8 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
   prop->n=0;
   ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
 
-  /*
-  if(myproc==1) {
-    nprofs=4;
-    is = (int *)SunMalloc(nprofs*sizeof(int),"Solve");
-    is[0] = 5574;
-    is[1] = 7276;
-    is[2] = 7821;
-    is[3] = 7812;
-    fid = fopen("/tmp/fs.1.dat","w");
-  } 
-  */
+  if(myproc==0) 
+    fid = fopen("/tmp/fs.dat","w");
 
   if(VERBOSE>1) printf("Processor %d,  Total memory: %d Mb\n",myproc,(int)(TotSpace/(1024*1e3)));
   
@@ -655,6 +657,11 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
       }
       */
       
+      if(myproc==0) {
+	fprintf(fid,"%f %f %f\n",prop->rtime,phys->h[0],phys->u[1][0]);
+	fflush(fid);
+      }      
+
       // Exchange interprocessor boundary data.
       ISendRecvCellData3D(phys->s,grid,myproc,comm);
       ISendRecvCellData3D(phys->T,grid,myproc,comm);
@@ -1059,6 +1066,19 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
     }
   }
   */
+
+  // Correct the velocity resulting from changes in volume
+  // Does not work with wetting and drying!
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+    j = grid->edgep[jptr];
+
+    nc1 = grid->grad[2*j];
+    nc2 = grid->grad[2*j+1];
+
+    phys->u[j][grid->etop[j]]=phys->u[j][grid->etop[j]]*
+      (grid->dzzold[nc1][grid->etop[j]]*grid->Ac[nc1]+grid->dzzold[nc2][grid->etop[j]]*grid->Ac[nc2])/
+      (grid->dzz[nc1][grid->etop[j]]*grid->Ac[nc1]+grid->dzz[nc2][grid->etop[j]]*grid->Ac[nc2]);
+  }
 }
 
 static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, int myproc, int numprocs) {
@@ -1523,19 +1543,6 @@ static void BarotropicPredictor(gridT *grid, physT *phys,
 	       grid->grad[2*j],phys->h[grid->grad[2*j]],
 	       grid->grad[2*j+1],phys->h[grid->grad[2*j+1]],
 	       j,k,grid->etop[j],grid->etopold[j],grid->Nke[j]);
-  }
-
-  // Correct the velocity resulting from changes in volume
-  // Does not work with wetting and drying!
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-    j = grid->edgep[jptr];
-
-    nc1 = grid->grad[2*j];
-    nc2 = grid->grad[2*j+1];
-
-    phys->u[j][grid->etop[j]]=phys->u[j][grid->etop[j]]*
-      (grid->dzzold[nc1][grid->etop[j]]*grid->Ac[nc1]+grid->dzzold[nc2][grid->etop[j]]*grid->Ac[nc2])/
-      (grid->dzz[nc1][grid->etop[j]]*grid->Ac[nc1]+grid->dzz[nc2][grid->etop[j]]*grid->Ac[nc2]);
   }
 
   // Set the flux values at boundary cells if specified (marker=4)
