@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.22 2003-05-05 01:26:04 fringer Exp $
+ * $Id: sunplot.c,v 1.23 2003-05-07 03:06:54 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.22  2003/05/05 01:26:04  fringer
+ * Added ability to play movie forwards or backwards.  If left mouse button depresses "M" button, forward;  right mouse button causes backwards stepping.
+ *
  * Revision 1.21  2003/05/01 00:28:30  fringer
  * Changed quadsurf so that plots the upper k=1 cell when h>0.
  *
@@ -2423,7 +2426,10 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       sprintf(string,"%s.%d",CELLCENTEREDFILE,proc);
       fid = MyFOpen(string,"r","ReadData");
       for(i=0;i<data->Nc[proc];i++) {
-	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
+	// This line was removed since 1 less int is printed to this file
+	// in grid.c (mnptr is no longer printed).
+	//	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
+	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d",
 	       &(data->xv[proc][i]),
 	       &(data->yv[proc][i]),
 	       &xind,
@@ -2432,7 +2438,9 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	       &(data->face[proc][NFACES*i]),
 	       &(data->face[proc][NFACES*i+1]),
 	       &(data->face[proc][NFACES*i+2]),
-	       &ind,&ind,&ind,&ind,&ind,&ind,&ind);
+	       // Same for this line
+	       //	       &ind,&ind,&ind,&ind,&ind,&ind,&ind);
+	       &ind,&ind,&ind,&ind,&ind,&ind);
       }
       fclose(fid);
     }
