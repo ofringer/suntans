@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.61 2004-05-28 19:59:44 fringer Exp $
+ * $Id: phys.c,v 1.62 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.61  2004/05/28 19:59:44  fringer
+ * Fixed UpdateScalars so that it conserves mass with Adams Bashforth.
+ *
  * Revision 1.60  2004/05/22 23:07:00  fringer
  * Fixed the GuessQ function, which reduces the number of iterations
  * by approximating the initial pressure correction to be that required to

@@ -6,8 +6,17 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.30 2004-05-17 19:00:20 fringer Exp $
+ * $Id: grid.c,v 1.31 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.30  2004/05/17 19:00:20  fringer
+ * Fixed a bug for realoading the grid with the -g flag.  The output
+ * for EDGECENTEREDFILE was erroneously outputting grad[2*j],grad[2*j+1]
+ * instead of gradf[2*j],gradf[2*j+1] so that upon reading without the
+ * -g flag there were errors at interprocessor boundaries.
+ *
+ * The code can now be run without the -g flag so that the grid is
+ * loaded in from a file.
+ *
  * Revision 1.29  2004/03/18 17:20:55  fringer
  * Fixed bug associated with setting def to 0 for right triangles.
  *

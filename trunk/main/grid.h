@@ -1,8 +1,11 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.8 2003-12-02 02:32:07 fringer Exp $
+ * $Id: grid.h,v 1.9 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2003/12/02 02:32:07  fringer
+ * Removed ability to transfer first or all in send/recv routines.
+ *
  * Revision 1.7  2003/12/02 02:05:46  fringer
  * Removed all traces of nearest edge/cell indices.
  *
@@ -138,14 +141,19 @@ void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc,
 			 MPI_Comm comm);
 void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
 			MPI_Comm comm);
+void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
+			MPI_Comm comm);
 void SendRecvWData(REAL **celldata, gridT *grid, int myproc, 
 		   MPI_Comm comm);
+void ISendRecvWData(REAL **celldata, gridT *grid, int myproc, 
+		    MPI_Comm comm);
 void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
 			MPI_Comm comm);
+void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
+			 MPI_Comm comm);
 void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
 void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
 void InitMainGrid(gridT **grid, int Np, int Ne, int Nc);
-//void InitMainGrid(gridT **grid);
 void ReadMainGrid(gridT *grid, int myproc);
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 void CreateCellGraph(gridT *grid);

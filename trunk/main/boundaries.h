@@ -1,8 +1,11 @@
 /*
  * Header file for boundaries.c
  *
- * $Id: boundaries.h,v 1.1 2004-03-12 06:22:13 fringer Exp $
+ * $Id: boundaries.h,v 1.2 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2004/03/12 06:22:13  fringer
+ * Initial revision
+ *
  *
  */
 #ifndef _boundaries_h

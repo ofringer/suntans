@@ -2,8 +2,12 @@
  * File: kriging.c
  * ---------------
  *
- * $Id: kriging.c,v 1.2 2003-06-10 02:23:27 fringer Exp $
+ * $Id: kriging.c,v 1.3 2004-05-29 20:25:02 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.2  2003/06/10 02:23:27  fringer
+ * Added functions to precompute inverse of kriging matrices that are
+ * stored during the first step of computation in phys.c
+ *
  * Revision 1.1  2003/05/12 00:14:18  fringer
  * Initial revision
  *
