@@ -6,8 +6,71 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.86 2004-09-27 01:21:02 fringer Exp $
+ * $Id: phys.c,v 1.87 2004-09-27 04:42:54 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.86  2004/09/27 01:21:02  fringer
+ * Made several changes, including:
+ *
+ * 1) Added a fast preconditioner which approximates the Poisson equation
+ * as p_zz = S^* since p_xx is approximately zero.  This requires that
+ * the preconditioner perform tridiagonal inversions in order to obtain
+ * the approximate solution.  The approximate solution can actually be
+ * obtained by using the preconditioner as
+ * Preconditioner(source,q,coefs,grid,phys,prop);
+ * since this function performs the operation
+ * q = M^(-1) src
+ * This preconditioner can be found in the paper by Marshall, et al. (JGR 102,C3,pp5753-5766)
+ *
+ * To use this preconditioner, set qprecond=2 in suntans.dat.  If qprecond=1, then
+ * the preconditioner is a diagonal preconditioner, while if qprecond=0, then
+ * no preconditioner is used.  qprecond=2 is roughly 5 times faster than qprecond=1.
+ *
+ * 2) Using the turbmodel variable, space is allocated for qT,lT,Cn_q,Cn_l only if
+ * turbmodel is set to 1. Note that these variables are only written to the
+ * restart file if turbmodel=1, so if a run is restarted it must have the same
+ * turbmodel value set otherwise it will read past EOF and crash.
+ *
+ * Note that the if statement "if(prop->turbmodel)" is used in:
+ * AllocatePhysicalVariables
+ * FreePhysicalVariables
+ * InitializePhysicalVariables
+ * ReadPhysicalVariables (from restart file)
+ * OutputData
+ * EddyViscosity
+ *
+ * 3) Fixed a bug in ComputeQSource which was originally fetching out-of-bounds
+ * memory for variable bathymetry.  Original code fragment:
+ *       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+ * 	ap[k] = 0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]));
+ * 	am[k] = 0.5*(phys->u[ne][k]-fabs(phys->u[ne][k]));
+ *       }
+ *
+ * New code fragment:
+ *       for(k=grid->ctop[i];k<grid->Nke[ne];k++) {
+ * 	ap[k] = 0.5*(phys->u[ne][k]+fabs(phys->u[ne][k]));
+ * 	am[k] = 0.5*(phys->u[ne][k]-fabs(phys->u[ne][k]));
+ *       }
+ *       for(k=grid->Nke[ne];k<grid->Nkc[ne];k++) {
+ * 	ap[k] = 0;
+ * 	am[k] = 0;
+ *       }
+ *
+ * The old code fragment fetched out-of-bounds data since u[ne][grid->Nk[i]-1]
+ * will be out-of-bounds if grid->Nk[ne]<grid->Nk[i] which it usually is
+ * on at least one column edge for variable bathymetry.
+ *
+ * 4) Fixed the reporting of residual convergence so that a warning is reported if
+ * residual>epsilon after both the pressure and free-surface iterations.  This will
+ * only be printed out if VERBOSE>2.
+ *
+ * 5) In the ConditionQ function changed the i loop to be from celldist[0] to celldist[1]
+ * rather than to celldist[2] since this is not necessary.  Also removed the kmax
+ * variable in the k loop since the k loop only needs to go to Nke[ne] on each face.
+ *
+ * Added the if statement  if(grid->ctop[i]<grid->Nk[i]-1) in several areas of
+ * the pressure solution to prevent out-of-bounds errors from appearing when only
+ * 1 vertical layer is present.
+ *
  * Revision 1.85  2004/09/23 01:19:03  fringer
  * Changed the corrector step so that w is updated with the vertical nonhydrostatic
  * pressure gradient instead of continuity.  This appears to remove the grid-scale
@@ -2142,12 +2205,12 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
   if(!prop->resnorm) alpha0 = 1;
 
   if(prop->qprecond==2)
-    eps0=InnerProduct3(r,r,grid,myproc,numprocs,comm);
+    eps=eps0=InnerProduct3(r,r,grid,myproc,numprocs,comm);
   else
-    eps0=alpha0;
+    eps=eps0=alpha0;
   
   // Iterate until residual is less than prop->qepsilon
-  for(n=0;n<niters && eps0!=0 && !IsNan(eps0);n++) {
+  for(n=0;n<niters && eps!=0;n++) {
 
     ISendRecvCellData3D(p,grid,myproc,comm);
     if(prop->qprecond==1) OperatorQC(phys->wtmp,phys->qtmp,p,z,c,grid,phys,prop);
@@ -2196,10 +2259,13 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
       break;
   }
   if(myproc==0 && VERBOSE>2) 
-    if(n==niters)  printf("Warning... Time step %d, Pressure iteration not converging after %d steps! RES=%e > %.2e\n",
-			  prop->n,n,sqrt(eps/eps0),prop->qepsilon);
-    else printf("Time step %d, CGSolve pressure converged after %d iterations, res=%e < %.2e\n",
-		prop->n,n,sqrt(eps/eps0),prop->qepsilon);
+    if(eps==0)
+      printf("Warning...Time step %d, norm of pressure source is 0.\n",prop->n);
+    else
+      if(n==niters)  printf("Warning... Time step %d, Pressure iteration not converging after %d steps! RES=%e > %.2e\n",
+			    prop->n,n,sqrt(eps/eps0),prop->qepsilon);
+      else printf("Time step %d, CGSolve pressure converged after %d iterations, res=%e < %.2e\n",
+		  prop->n,n,sqrt(eps/eps0),prop->qepsilon);
 
   // Rescale the preconditioned solution 
   if(prop->qprecond==1) {
@@ -2632,7 +2698,7 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   eps0 = eps = InnerProduct(r,r,grid,myproc,numprocs,comm);
   if(!prop->resnorm) eps0 = 1;
 
-  for(n=0;n<niters && eps0!=0;n++) {
+  for(n=0;n<niters && eps!=0;n++) {
 
     ISendRecvCellData2D(p,grid,myproc,comm);
     OperatorH(p,z,grid,phys,prop);
@@ -2660,10 +2726,13 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
       break;
   }
   if(myproc==0 && VERBOSE>2) 
-    if(n==niters)  printf("Warning... Time step %d, Free-surface iteration not converging after %d steps! RES=%e > %.2e\n",
-			  prop->n,n,sqrt(eps/eps0),prop->epsilon);
-    else printf("Time step %d, CGSolve surface converged after %d iterations, res=%e < %.2e\n",
-		prop->n,n,sqrt(eps/eps0),prop->epsilon);
+    if(eps==0)
+      printf("Warning...Time step %d, norm of free-surface source is 0.\n",prop->n);
+    else
+      if(n==niters)  printf("Warning... Time step %d, Free-surface iteration not converging after %d steps! RES=%e > %.2e\n",
+			    prop->n,n,sqrt(eps/eps0),prop->epsilon);
+      else printf("Time step %d, CGSolve surface converged after %d iterations, res=%e < %.2e\n",
+		  prop->n,n,sqrt(eps/eps0),prop->epsilon);
 
   ISendRecvCellData2D(x,grid,myproc,comm);
   SunFree(z,grid->Nc*sizeof(REAL),"CGSolve");
