@@ -6,8 +6,31 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.71 2004-08-22 23:53:32 fringer Exp $
+ * $Id: phys.c,v 1.72 2004-08-23 02:05:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.71  2004/08/22 23:53:32  fringer
+ * Fixed out-of-bounds errors in phys.c:
+ *
+ * 1) Changed phys->uold to phys->wtmp in GuessQ since Nk+1 vertical levels
+ * are allocated in w variables but only Nk in u variables
+ *
+ * 2) Changed the k limit from grid->Nk[i] to grid->Nke[ne] in
+ * ComputeQSource since the fluxes below nke are zero anyway and do not
+ * contribute to the source term
+ *
+ * 3) In OperatorQ added the if statement:
+ * if(grid->ctop[i]<grid->Nk[i]-1) {
+ * which ensures that no out-of-bounds references are made when there is
+ * only 1 vertical level.
+ *
+ * 4) In UpdateScalars changed the line
+ * for(k=0;k<grid->Nkc[ne];k++)
+ * to
+ * for(k=0;k<grid->Nke[ne];k++)
+ * since it produces an out-of-bounds error.  Going to Nkc looks for
+ * scalar values beneath the bottom in neighboring cells and is not
+ * necessary.  These fluxes are zero anyway.
+ *
  * Revision 1.70  2004/08/22 18:14:06  fringer
  * Added ability to read vertical salinity and temperature profiles in
  * from data.  The flags are given by readSalinity and readTemperature
@@ -3006,10 +3029,12 @@ static void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, RE
       if(nc1==-1) nc1=nc2;
       if(nc2==-1) nc2=nc1;
 
-      for(k=0;k<grid->Nke[ne];k++) 
+      for(k=0;k<grid->Nk[nc2];k++) 
 	ap[k] = dt*df*normal/Ac*(0.5*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
-				 phys->stmp[nc2][k]*grid->dzzold[nc2][k]
-				 +0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
+				 phys->stmp[nc2][k]*grid->dzzold[nc2][k]);
+
+      for(k=0;k<grid->Nk[nc1];k++) 
+	ap[k] = dt*df*normal/Ac*(0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
 				 phys->stmp[nc1][k]*grid->dzzold[nc1][k]);
 
       for(k=ktop+1;k<grid->Nk[i];k++) 
