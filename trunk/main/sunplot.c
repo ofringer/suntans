@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.5 2003-04-01 16:18:08 fringer Exp $
+ * $Id: sunplot.c,v 1.6 2003-04-06 23:48:51 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2003/04/01 16:18:08  fringer
+ * Added button functionality...
+ *
  * Revision 1.4  2003/03/31 20:41:05  fringer
  * Still cleaning up...
  *
@@ -44,6 +47,13 @@
 #define WINWIDTH .6
 #define WINHEIGHT .7
 #define BUTTONHEIGHT 20
+#define ZOOMFACTOR 2.0
+#define MINZOOMRATIO 1/32.0
+#define MAXZOOMRATIO 32.0
+
+typedef enum {
+  in, out, box, none
+} zoomT;
 
 typedef enum {
   false, true
@@ -56,6 +66,10 @@ typedef enum {
 typedef enum {
   bottom, middle, top
 } vjustifyT;
+
+typedef enum {
+  left_button=1, middle_button=2, right_button=3
+} buttonnumT;
 
 void InitializeGraphics(void);
 void MyDraw(char plottype, int procnum);
@@ -77,7 +91,8 @@ void Text(float x, float y, char *str, int fontsize, int color,
 void DrawControls(void);
 Window NewButton(char *name, int x, int y, int buttonwidth, int buttonheight);
 void DrawButton(Window button, char *str);
-
+void MapWindows(void);
+void RedrawWindows(void);
 
 /*
  * Linux users will need to add -ldl to the Makefile to compile 
@@ -85,7 +100,7 @@ void DrawButton(Window button, char *str);
  *
  */
 Display *dis;
-Window win, prevwin, nextwin, kupwin, kdownwin;
+Window win, axeswin, prevwin, nextwin, kupwin, kdownwin;
 XEvent report;
 GC gc, fontgc;
 XColor color;
@@ -97,15 +112,21 @@ XWindowAttributes windowAttributes;
 XFontStruct *fontStruct;
 
 int width=WIDTH, height=HEIGHT, newwidth, newheight, 
-  plottype='s',Np, Nc, n=1, nsteps=21, k=1, Nkmax=20, keysym;
+  plottype='s',Np, Nc, n=1, nsteps=21, k=1, Nkmax=20, keysym,
+  xstart, ystart, xend, yend;
 int *cells;
-float caxis[2], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4], buttonAxesPosition[4];
+float caxis[2], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4], buttonAxesPosition[4],
+  zoomratio;
 int axisType, oldaxisType, white, black, procnum=0, colors[NUMCOLORS];
-bool edgelines;
+bool edgelines, setdatalimits;
 char str[BUFFER];
+zoomT zoom;
 
 int main() {
   bool redraw;
+  buttonnumT mousebutton;
+  setdatalimits = false;
+  zoomratio = 1;
 
   InitializeGraphics();
 
@@ -119,18 +140,54 @@ int main() {
   edgelines=false;
   ReadGrid(procnum);
 
+  MapWindows();
   MyDraw(plottype,procnum);
-  XCopyArea(dis,pix,win,gc,0,0,width,height,0,0);
 
   XMaskEvent(dis, ExposureMask, &report);
   while(true) {
     redraw=false;
+    zoom=none;
     XNextEvent(dis, &report);
     switch  (report.type) {
+    case ButtonPress:
+      if(report.xany.window==axeswin) {
+	xstart=report.xbutton.x;
+	ystart=report.xbutton.y;
+      }
+      break;
     case ButtonRelease:
-      printf("Button release!\n");
-      if ( report.xany.window == prevwin )
-	printf("Previous\n");
+      mousebutton = report.xbutton.button;
+      if(report.xany.window==prevwin) {
+	if(mousebutton==left_button) {
+	  if(n>1) { redraw = true; n--; }
+	  else { redraw = false ; printf("At n=1!\n"); }
+	} else if(mousebutton==right_button)
+	  if(n!=1) { redraw = true ; n=1; }
+      } else if(report.xany.window==nextwin) {
+	if(mousebutton==left_button) {
+	  if(n<nsteps) { redraw = true; n++; }
+	  else { redraw = false ; printf("At n=nsteps!\n"); }
+	} else if(mousebutton==right_button) 
+	  if(n!=nsteps) { redraw = true; n=nsteps; }
+      } else if(report.xany.window==axeswin) {
+	xend=report.xbutton.x;
+	yend=report.xbutton.y;
+	if(report.xbutton.button==left_button) {
+	  if(xend==xstart && yend==ystart) 
+	    zoom=in;
+	  else 
+	    zoom=box;
+	  redraw=true;
+	} else if(report.xbutton.button==right_button) {
+	  zoom=out;
+	  redraw=true;
+	} else if(report.xbutton.button==middle_button) {
+	  zoom=none;
+	  zoomratio=1;
+	  redraw=true;
+	  setdatalimits=false;
+	}
+      }
       break;
     case Expose:   
       XGetWindowAttributes(dis,win,&windowAttributes);
@@ -141,10 +198,11 @@ int main() {
 	height=newheight;
 	XResizeWindow(dis,win,width,height);
 	XFreePixmap(dis,pix);
-	pix = XCreatePixmap(dis,win,width,height,DefaultDepthOfScreen(screen));
+	pix = XCreatePixmap(dis,axeswin,axesPosition[2]*width,
+			    axesPosition[3]*height,DefaultDepthOfScreen(screen));
       }
+      RedrawWindows();
       MyDraw(plottype,procnum);
-      XCopyArea(dis,pix,win,gc,0,0,width,height,0,0);
       break;
     case KeyPress:
       switch(keysym=XLookupKeysym(&report.xkey, 0)) {
@@ -219,12 +277,9 @@ int main() {
 	}
 	break;
       }
-      if(redraw) {
-	MyDraw(plottype,procnum);
-	XCopyArea(dis,pix,win,gc,0,0,width,height,0,0);
-      }
-      break;
     }
+    if(redraw) 
+      MyDraw(plottype,procnum);
   }
   return 0;
 }
@@ -318,6 +373,7 @@ void MyDraw(char plottype, int procnum)
   }
 
   SetDataLimits();
+
   SetAxesPosition();
 
   CAxis(caxis,scal,Nc);
@@ -329,6 +385,10 @@ void MyDraw(char plottype, int procnum)
 
   DrawControls();
   XFlush(dis);
+
+  XCopyArea(dis,pix,axeswin,gc,0,0,
+	    axesPosition[2]*width,
+	    axesPosition[3]*height,0,0);
 }
 
 float Min(float *x, int N) {
@@ -350,20 +410,22 @@ float Max(float *x, int N) {
 }
 
 void AxisImage(float *axes, float *data) {
-  float height, width, dx, dy;
-  height = axes[3];
-  width = axes[2];
+  float h, w, dx, dy, densx, densy;
+
   dx = data[1]-data[0];
   dy = data[3]-data[2];
+  
+  densx = width*axes[2]/dx;
+  densy = height*axes[3]/dy;
 
-  if(dx>dy) {
-    height=width*dy/dx;
-    axes[1] = axes[1]+0.5*(axes[3]-height);
-    axes[3] = height;
+  if(densx>densy) {
+    w = axes[2]*densy/densx;
+    axes[0] = axes[0]+0.5*(axes[2]-w);
+    axes[2] = w;
   } else {
-    width=height*dx/dy;
-    axes[0] = axes[0]+0.5*(axes[2]-width);
-    axes[2] = width;
+    h = axes[3]*densx/densy;
+    axes[1] = axes[1]+0.5*(axes[3]-h);
+    axes[3] = h;
   }
 }
 
@@ -413,12 +475,20 @@ void UnSurf(float *xc, float *yc, int *cells, float *data, int N) {
 
   for(i=0;i<N;i++) {
     for(j=0;j<3;j++) {
+      vertices[j].x = 
+	axesPosition[2]*width*(xc[cells[3*i+j]]-dataLimits[0])/
+	(dataLimits[1]-dataLimits[0]);
+      vertices[j].y = 
+	axesPosition[3]*height*(1-(yc[cells[3*i+j]]-dataLimits[2])/
+	(dataLimits[3]-dataLimits[2]));
+      /*
       vertices[j].x = axesPosition[0]*width+
 	axesPosition[2]*width*(xc[cells[3*i+j]]-dataLimits[0])/
 	(dataLimits[1]-dataLimits[0]);
       vertices[j].y = axesPosition[1]*height+
 	axesPosition[3]*height*(1-(yc[cells[3*i+j]]-dataLimits[2])/
 	(dataLimits[3]-dataLimits[2]));
+      */
     }
 
     vertices[3].x = vertices[0].x;
@@ -455,7 +525,7 @@ void InitializeGraphics(void) {
   width = WINWIDTH*width;
   height = WINHEIGHT*height;
 
-  pix = XCreatePixmap(dis,win,width,height,DefaultDepthOfScreen(screen));
+  //  pix = XCreatePixmap(dis,win,width,height,DefaultDepthOfScreen(screen));
 
   XMapWindow(dis, win);
 
@@ -475,13 +545,88 @@ void InitializeGraphics(void) {
 		       GCFont | GCLineWidth | GCFillStyle, &fontvalues);
   }
 
+  axesPosition[0] = 0.25;
+  axesPosition[1] = 0.05;
+  axesPosition[2] = 0.7;
+  axesPosition[3] = 0.9;
+
+  buttonAxesPosition[0]=.1*axesPosition[0];
+  buttonAxesPosition[1]=axesPosition[1];
+  buttonAxesPosition[2]=.8*axesPosition[0];
+  buttonAxesPosition[3]=axesPosition[3];
 }
 
 void SetDataLimits(void) {
-  dataLimits[0] = Min(xc,Np);
-  dataLimits[1] = Max(xc,Np);
-  dataLimits[2] = Min(yc,Np);
-  dataLimits[3] = Max(yc,Np);
+  float dx, dy, Xc, Yc, x1, y1, x2, y2, a1, a2, xmin, xmax, ymin, ymax;
+  dx = dataLimits[1]-dataLimits[0];
+  dy = dataLimits[3]-dataLimits[2];
+  printf("%f %f\n",dx,dy);
+  if(!setdatalimits) {
+    dataLimits[0] = Min(xc,Np);
+    dataLimits[1] = Max(xc,Np);
+    dataLimits[2] = Min(yc,Np);
+    dataLimits[3] = Max(yc,Np);
+    setdatalimits=true;
+  } else {
+    switch(zoom) {
+    case in:
+      if(zoomratio>=MINZOOMRATIO) {
+	Xc = dataLimits[0]+(float)xstart/((float)axesPosition[2]*width)*dx;
+	Yc = dataLimits[3]-(float)ystart/((float)axesPosition[3]*height)*dy;
+	dataLimits[0]=Xc-dx/ZOOMFACTOR/2;
+	dataLimits[1]=Xc+dx/ZOOMFACTOR/2;
+	dataLimits[2]=Yc-dy/ZOOMFACTOR/2;
+	dataLimits[3]=Yc+dy/ZOOMFACTOR/2;
+	zoomratio/=2;
+      } else 
+	printf("Cannot zoom further.  Beyond zoom limits!\n");
+      break;
+    case out:
+      if(zoomratio<=MAXZOOMRATIO) {
+	Xc = dataLimits[0]+(float)xstart/((float)axesPosition[2]*width)*dx;
+	Yc = dataLimits[3]-(float)ystart/((float)axesPosition[3]*height)*dy;
+	dataLimits[0]=Xc-dx*ZOOMFACTOR/2;
+	dataLimits[1]=Xc+dx*ZOOMFACTOR/2;
+	dataLimits[2]=Yc-dy*ZOOMFACTOR/2;
+	dataLimits[3]=Yc+dy*ZOOMFACTOR/2;
+	zoomratio*=2;
+      } else 
+	printf("Cannot zoom further.  Beyond zoom limits!\n");
+      break;
+    case box:
+      printf("ZOOM=box\n");
+      a1 = dx*dy;
+      x1 = (float)xstart/((float)axesPosition[2]*width)*dx;
+      x2 = (float)xend/((float)axesPosition[2]*width)*dx;
+      y1 = (1-(float)ystart/((float)axesPosition[3]*height))*dy;
+      y2 = (1-(float)yend/((float)axesPosition[3]*height))*dy;
+      a2 = abs(x2-x1)*abs(y2-y1);
+      if(x2>x1) {
+	xmin = x1;
+	xmax = x2;
+      }	else {
+	xmin = x2;
+	xmax = x1;
+      }
+
+      if(y2>y1) {
+	ymin = y1;
+	ymax = y2;
+      }	else {
+	ymin = y2;
+	ymax = y1;
+      }
+      zoomratio*=sqrt(a1/a2);
+      if(zoomratio>=MINZOOMRATIO) {
+	dataLimits[0]=xmin;
+	dataLimits[1]=xmax;
+	dataLimits[2]=ymin;
+	dataLimits[3]=ymax;
+      } else 
+	printf("Too fine a zooming area.  Please try again!\n");
+      break;
+    }
+  }
 }
 
 void SetAxesPosition(void) {
@@ -490,20 +635,28 @@ void SetAxesPosition(void) {
   axesPosition[2] = 0.7;
   axesPosition[3] = 0.9;
 
-  if(axisType=='i')
+  if(axisType=='i') 
     AxisImage(axesPosition,dataLimits);
+
+  XMoveResizeWindow(dis,axeswin,
+		    axesPosition[0]*width,
+		    axesPosition[1]*height,
+		    axesPosition[2]*width,
+		    axesPosition[3]*height);
+  XFreePixmap(dis,pix);
+  pix = XCreatePixmap(dis,axeswin,axesPosition[2]*width,
+		      axesPosition[3]*height,DefaultDepthOfScreen(screen));
 }
 
 void Clf(void) {
   XSetForeground(dis,gc,black);
-  XFillRectangle(dis,pix,gc,0,0,width,height);
+  XFillRectangle(dis,pix,gc,0,0,width*axesPosition[2],height*axesPosition[3]);
 }
 
 void Cla(void) {
   XSetForeground(dis,gc,black);
   XFillRectangle(dis,pix,gc,
-		 axesPosition[0]*width,
-		 axesPosition[1]*height,
+		 0,0,
 		 axesPosition[2]*width,
 		 axesPosition[3]*height);
 }
@@ -548,9 +701,6 @@ void Text(float x, float y, char *str, int fontsize, int color,
     break;
   }
 
-  XSetForeground(dis,fontgc,color);
-  XDrawString(dis,pix,fontgc,xf,(1-y)*height,str,strlen(str));
-
   /*
   fonts = XListFontsWithInfo(dis,"*cour*",200,&numfonts,fontsReturn);
   for(i=0;i<numfonts;i++)
@@ -559,45 +709,81 @@ void Text(float x, float y, char *str, int fontsize, int color,
   */
 }
 
+void RedrawWindows(void) {
+  XMoveResizeWindow(dis,axeswin,
+		      axesPosition[0]*width,
+		      axesPosition[1]*height,
+		      axesPosition[2]*width,
+		      axesPosition[3]*height);
+
+  XMoveResizeWindow(dis,prevwin,
+		    (buttonAxesPosition[0]+.05*buttonAxesPosition[2])*width,
+		    (buttonAxesPosition[1]+.1*buttonAxesPosition[2])*height,
+		    buttonAxesPosition[2]*.4*width,
+		    BUTTONHEIGHT);
+  XMoveResizeWindow(dis,nextwin,
+		    (buttonAxesPosition[0]+.55*buttonAxesPosition[2])*width,
+		    (buttonAxesPosition[1]+.1*buttonAxesPosition[2])*height,
+		    buttonAxesPosition[2]*.4*width,
+		    BUTTONHEIGHT);
+}
+  
+void MapWindows(void) {
+  axeswin = NewButton("axes",
+		      axesPosition[0]*width,
+		      axesPosition[1]*height,
+		      axesPosition[2]*width,
+		      axesPosition[3]*height);
+  pix = XCreatePixmap(dis,axeswin,
+		      axesPosition[2]*width,
+		      axesPosition[3]*height,DefaultDepthOfScreen(screen));
+  XMapWindow(dis,axeswin);
+
+  prevwin = NewButton("prev",
+		      (buttonAxesPosition[0]+.05*buttonAxesPosition[2])*width,
+		      (buttonAxesPosition[1]+.1*buttonAxesPosition[2])*height,
+		      buttonAxesPosition[2]*.4*width,
+		      BUTTONHEIGHT);
+  XMapWindow(dis,prevwin);
+
+  nextwin = NewButton("next",
+		      (buttonAxesPosition[0]+.55*buttonAxesPosition[2])*width,
+		      (buttonAxesPosition[1]+.1*buttonAxesPosition[2])*height,
+		      buttonAxesPosition[2]*.4*width,
+		      BUTTONHEIGHT);
+  XMapWindow(dis,nextwin);
+  /*
+  kupwin = NewButton("kup",
+		      (buttonAxesPosition[0]+.1*buttonAxesPosition[2])*width,
+		      (buttonAxesPosition[1]+.1*buttonAxesPosition[2])*height,
+		      buttonAxesPosition[2]*.4*width,
+		      BUTTONHEIGHT);
+  XMapWindow(dis,kupwin);
+
+  kdownwin = NewButton("kdown",
+		      (buttonAxesPosition[0]+.1*buttonAxesPosition[2])*width,
+		      (buttonAxesPosition[1]+.1*buttonAxesPosition[2])*height,
+		      buttonAxesPosition[2]*.4*width,
+		      BUTTONHEIGHT);
+  XMapWindow(dis,kdownwin);
+  */
+}
+
 void DrawControls(void) {
   XPoint *vertices = (XPoint *)malloc(5*sizeof(XPoint));
   
-  axesPosition[0] = 0.25;
-  axesPosition[1] = 0.05;
-  axesPosition[2] = 0.7;
-  axesPosition[3] = 0.9;
-
-  buttonAxesPosition[0]=.1*axesPosition[0];
-  buttonAxesPosition[1]=axesPosition[1];
-  buttonAxesPosition[2]=.8*axesPosition[0];
-  buttonAxesPosition[3]=axesPosition[3];
-
   XSetForeground(dis,gc,white);
-  XDrawRectangle(dis,pix,gc,
+  XDrawRectangle(dis,win,gc,
 		 buttonAxesPosition[0]*width,
 		 buttonAxesPosition[1]*height,
 		 buttonAxesPosition[2]*width,
 		 buttonAxesPosition[3]*height);
 
-  prevwin = NewButton("prev",
-		      (buttonAxesPosition[0]+.1*buttonAxesPosition[2])*width,
-		      (buttonAxesPosition[1]+.1*buttonAxesPosition[2])*height,
-		      buttonAxesPosition[2]*.4*width,
-		      BUTTONHEIGHT);
-  XMapWindow(dis,prevwin);
   DrawButton(prevwin,"<<");
+  DrawButton(nextwin,">>");
   /*
-  nextwin = NewButton("next",0,0,100,100);
-  XMapWindow(dis,nextwin);
-  DrawButton(nextwin);
-
-  kupwin = NewButton("kup",0,0,100,100);
-  XMapWindow(dis,kupwin);
-  DrawButton(kupwin);
-
-  kdownwin = NewButton("kdown",0,0,100,100);
-  XMapWindow(dis,kdownwin);
-  DrawButton(kdownwin);
+  DrawButton(kupwin,"k++");
+  DrawButton(kdownwin,"k--");
   */
 }
 
@@ -639,7 +825,6 @@ void DrawButton(Window button, char *str) {
   Window root;
 
   XGetGeometry(dis,button,&root, &x, &y, &w, &h, &d, &b);
-  printf("w = %d, h= %d\n",w,h);
 
   XSetForeground(dis,gc,white);  
   XFillRectangle(dis,button, gc, 0, 0,w,h);
