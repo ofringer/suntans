@@ -7,8 +7,12 @@
  * This file reads in and partitions the unstructured grid and 
  * writes files that contain grid information for each processor.
  *
- * $Id: suntans.c,v 1.6 2004-09-27 00:48:31 fringer Exp $
+ * $Id: suntans.c,v 1.7 2004-11-20 22:18:50 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.6  2004/09/27 00:48:31  fringer
+ * Moved ReadProperties to before InitializeVerticalGrid and AllocatePhysicalVariables
+ * because prop->turbmodel is needed by AllocatePhysicalVariables
+ *
  * Revision 1.5  2004/09/22 06:29:54  fringer
  * Added the prop variable to AllocatePhysicalVariables.
  *
@@ -54,6 +58,7 @@ main(int argc, char *argv[])
     ReadProperties(&prop,myproc);
     InitializeVerticalGrid(&grid);
     AllocatePhysicalVariables(grid,&phys,prop);
+    AllocateTransferArrays(&grid,myproc,numprocs,comm);
     OpenFiles(prop,myproc);
     if(RESTART)
       ReadPhysicalVariables(grid,phys,prop,myproc);
@@ -62,6 +67,7 @@ main(int argc, char *argv[])
     SetDragCoefficients(grid,phys,prop);
     Solve(grid,phys,prop,myproc,numprocs,comm);
     //    FreePhysicalVariables(grid,phys,prop);
+    //    FreeTransferArrays(grid,myproc,numprocs,comm);
   }
 
   EndMpi(&comm);
