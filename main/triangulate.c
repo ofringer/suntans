@@ -3,8 +3,12 @@
  * --------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.7 2004-01-27 01:43:27 fringer Exp $
+ * $Id: triangulate.c,v 1.8 2004-01-27 02:08:04 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.7  2004/01/27 01:43:27  fringer
+ * Moved the FILE *infile=MPI_FOpen line to come before the MPI_GetFile line
+ * so that the declaration for FILE * comes before the GetFile command.
+ *
  * Revision 1.6  2003/05/12 00:15:07  fringer
  * Changed the string that is passed to triangle when segments are
  * specified in the pslg to include the "p" flag, which tells
@@ -131,8 +135,9 @@ void GetPoints(struct triangulateio *in, REAL *minarea, int myproc)
   int i, dummy, dimensions;
   char str[BUFFERLENGTH], c;
   REAL num;
-  FILE *infile = MPI_FOpen(PSLGFILE,"r","GetPoints",myproc);
+  FILE *infile;
   MPI_GetFile(PSLGFILE,DATAFILE,"pslg","GetPoints",0);
+  infile = MPI_FOpen(PSLGFILE,"r","GetPoints",myproc);
 
   in->numberofpoints = (int)getfield(infile,str);
 
