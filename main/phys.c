@@ -6,8 +6,16 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.82 2004-09-21 23:33:10 fringer Exp $
+ * $Id: phys.c,v 1.83 2004-09-22 06:28:36 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.82  2004/09/21 23:33:10  fringer
+ * Added a variable to store qc, since if this is used as an initial guess in the
+ * pressure solver then it vastly reduces the number of iterations required over
+ * time.  As a result, the GuessQ function was removed as now qc is the initial
+ * guess.  Also added the prop->resnorm variable, which distinguishes between
+ * normalized and non-normalized residual calculations in the CG solvers for both
+ * h and q.
+ *
  * Revision 1.81  2004/09/16 21:32:23  fringer
  * Added MPI_Comm comm and int myproc to my25 and EddyViscosity functions
  * in order to send/recv lT and qT data to the ghost points for advection
@@ -528,13 +536,13 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 
 /*
  * Function: AllocatePhysicalVariables
- * Usage: AllocatePhysicalVariables(grid,phys);
- * --------------------------------------------
+ * Usage: AllocatePhysicalVariables(grid,phys,prop);
+ * -------------------------------------------------
  * This function allocates space for the physical arrays but does not
  * allocate space for the grid as this has already been allocated.
  *
  */
-void AllocatePhysicalVariables(gridT *grid, physT **phys)
+void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
 {
   int flag=0, i, j, jptr, ib, Nc=grid->Nc, Ne=grid->Ne, nf;
 
@@ -588,15 +596,17 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
   (*phys)->s0 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_R = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->Cn_q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->Cn_l = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->stmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->stmp2 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->stmp3 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->nu_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->kappa_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->qT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->lT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  if(prop->turbmodel) {
+    (*phys)->qT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+    (*phys)->lT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+    (*phys)->Cn_q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+    (*phys)->Cn_l = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  }
   (*phys)->tau_T = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->tau_B = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->CdT = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
@@ -620,15 +630,17 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
     (*phys)->s0[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_R[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-    (*phys)->Cn_q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-    (*phys)->Cn_l[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    if(prop->turbmodel) {
+      (*phys)->Cn_q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+      (*phys)->Cn_l[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+      (*phys)->qT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+      (*phys)->lT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    }
     (*phys)->stmp[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->stmp2[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->stmp3[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->nu_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->kappa_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-    (*phys)->qT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-    (*phys)->lT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
   }
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j=grid->edgep[jptr];
@@ -650,12 +662,12 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys)
 
 /*
  * Function: FreePhysicalVariables
- * Usage: FreePhysicalVariables(grid,phys);
- * ----------------------------------------
+ * Usage: FreePhysicalVariables(grid,phys,prop);
+ * ---------------------------------------------
  * This function frees all space allocated in AllocatePhysicalVariables
  *
  */
-void FreePhysicalVariables(gridT *grid, physT *phys)
+void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
 {
   int i, j, Nc=grid->Nc, Ne=grid->Ne, nf;
   
@@ -686,15 +698,17 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
     free(phys->s0[i]);
     free(phys->Cn_R[i]);
     free(phys->Cn_T[i]);
-    free(phys->Cn_q[i]);
-    free(phys->Cn_l[i]);
+    if(prop->turbmodel) {
+      free(phys->Cn_q[i]);
+      free(phys->Cn_l[i]);
+      free(phys->qT[i]);
+      free(phys->lT[i]);
+    }
     free(phys->stmp[i]);
     free(phys->stmp2[i]);
     free(phys->stmp3[i]);
     free(phys->nu_tv[i]);
     free(phys->kappa_tv[i]);
-    free(phys->qT[i]);
-    free(phys->lT[i]);
   }
 
   free(phys->h);
@@ -713,15 +727,17 @@ void FreePhysicalVariables(gridT *grid, physT *phys)
   free(phys->s0);
   free(phys->Cn_R);
   free(phys->Cn_T);
-  free(phys->Cn_q);
-  free(phys->Cn_l);
+  if(prop->turbmodel) {
+    free(phys->Cn_q);
+    free(phys->Cn_l);
+    free(phys->qT);
+    free(phys->lT);
+  }  
   free(phys->stmp);
   free(phys->stmp2);
   free(phys->stmp3);
   free(phys->nu_tv);
   free(phys->kappa_tv);
-  free(phys->qT);
-  free(phys->lT);
   free(phys->tau_T);
   free(phys->tau_B);
   free(phys->CdT);
@@ -2102,7 +2118,6 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
     if(sqrt(eps/eps0)<prop->qepsilon) 
       break;
   }
-  printf("%d\n",n);
 
   if(n==niters && myproc==0 && WARNING) 
     printf("Warning... Time step %d, Pressure iteration not converging after %d steps! RES=%e\n",prop->n,n,sqrt(eps/eps0));
