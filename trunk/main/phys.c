@@ -6,8 +6,17 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.89 2004-09-30 20:58:27 fringer Exp $
+ * $Id: phys.c,v 1.90 2004-11-20 21:52:39 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.89  2004/09/30 20:58:27  fringer
+ * Fixed the Check routine so that the code exits more cleanly upon
+ * blowing up.  This was done by adding the blowup flag so that
+ * conservatives are not computed if the run is blowing up.  This
+ * is what was causing the MPI_Reduce - "message truncated" error.
+ *
+ * Now data is output at the time step upon crashing, including to
+ * the restart file for debugging.
+ *
  * Revision 1.88  2004/09/28 23:16:33  fringer
  * Added the following lines of code to OperatorQ and Preconditioner:
  *
@@ -1446,7 +1455,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
+	  -prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
 	
 	phys->Cn_U[j][k]=0;
       }
@@ -1460,7 +1469,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]
-	  -(1-prop->theta)*prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
+	  -prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k])
 	  +(1.0-prop->dt*exp(-0.5*(grid->xv[nc1]+grid->xv[nc2])/prop->sponge_distance)/
 	    prop->sponge_decay)*phys->u[j][k];
 	
@@ -1868,9 +1877,9 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     }
     
     for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
-      phys->wtmp[i][k]-=2.0*(1-prop->theta)*prop->dt/(grid->dzz[i][k-1]+grid->dzz[i][k])*
+      phys->wtmp[i][k]-=2.0*prop->dt/(grid->dzz[i][k-1]+grid->dzz[i][k])*
 	(phys->q[i][k-1]-phys->q[i][k]);
-    phys->wtmp[i][grid->ctop[i]]+=2.0*(1-prop->theta)*prop->dt/grid->dzz[i][grid->ctop[i]]*
+    phys->wtmp[i][grid->ctop[i]]+=2.0*prop->dt/grid->dzz[i][grid->ctop[i]]*
       phys->q[i][grid->ctop[i]];
   }
 
@@ -1881,6 +1890,14 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
   // Compute Eulerian advection (nonlinear!=0)
   if(prop->nonlinear) {
     // Compute the w-component fluxes at the faces
+
+    // Fluxes at boundary faces
+    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+      j = grid->edgep[jptr];
+      
+      for(k=grid->etop[j];k<grid->Nke[j];k++)
+	phys->ut[j][k]=phys->w[grid->grad[2*j]][k]*grid->dzz[grid->grad[2*j]][k];
+    }
 
     if(prop->nonlinear==1) // Upwind
       for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
@@ -2069,7 +2086,7 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
     j = grid->edgep[jptr]; 
     if(phys->D[j]!=0 && grid->etop[j]<grid->Nke[j]-1)
       for(k=grid->etop[j];k<grid->Nke[j];k++)
-	phys->u[j][k]-=prop->theta*prop->dt/grid->dg[j]*
+	phys->u[j][k]-=prop->dt/grid->dg[j]*
 	  (qc[grid->grad[2*j]][k]-qc[grid->grad[2*j+1]][k]);
   }
 
@@ -2077,9 +2094,9 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr]; 
     for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
-      phys->w[i][k]-=2.0*prop->theta*prop->dt/(grid->dzz[i][k-1]+grid->dzz[i][k])*
+      phys->w[i][k]-=2.0*prop->dt/(grid->dzz[i][k-1]+grid->dzz[i][k])*
 	(qc[i][k-1]-qc[i][k]);
-    phys->w[i][grid->ctop[i]]+=2.0*prop->theta*prop->dt/grid->dzz[i][grid->ctop[i]]*
+    phys->w[i][grid->ctop[i]]+=2.0*prop->dt/grid->dzz[i][grid->ctop[i]]*
       qc[i][grid->ctop[i]];
   }
 
@@ -2137,7 +2154,7 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
     }
 
     for(k=grid->ctop[i];k<grid->Nk[i];k++) 
-      src[i][k]/=(prop->theta*prop->dt);
+      src[i][k]/=prop->dt;
   }
 
   // D[j] is used in OperatorQ, and it must be zero to ensure no gradient
@@ -4169,7 +4186,7 @@ static void Progress(propT *prop, int myproc)
   FILE *fid;
   
   MPI_GetFile(filename,DATAFILE,"ProgressFile","Progress",myproc);
-  
+
   if(myproc==0) {
     fid = fopen(filename,"w");
     fprintf(fid,"On %d of %d, t=%.2f (%d%% Complete, %d output)",
