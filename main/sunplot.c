@@ -6,8 +6,16 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.37 2004-06-12 01:39:40 fringer Exp $
+ * $Id: sunplot.c,v 1.38 2004-06-16 18:59:37 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.37  2004/06/12 01:39:40  fringer
+ * Added ability to get input from user for:
+ *
+ * Time step to plot.  Use middle mouse button on movie or "M" button.
+ * Color axes.  Use right mouse button on Caxis button.
+ *
+ * Gets input from user at the terminal.
+ *
  * Revision 1.36  2004/06/10 10:41:28  fringer
  * Added -ng flag, which allows viewing of grids without any physical
  * data.
@@ -443,6 +451,7 @@ int main(int argc, char *argv[]) {
   XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask );
 
   k=data->Nkmax/2-1;
+  if(k<0) k=0;
 
   axisType='i';
   edgelines=false;
