@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.6 2004-06-23 06:20:36 fringer Exp $
+ * $Id: boundaries.c,v 1.7 2004-07-27 20:31:13 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.6  2004/06/23 06:20:36  fringer
+ * This is the form of boundaries.c used to force the Monterey Bay run
+ * over the Spring-Neap cycle.
+ *
  * Revision 1.5  2004/06/17 02:53:58  fringer
  * Added river plume forcing code.
  *
@@ -96,9 +100,8 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
       forced=0;
 
     // For river plume
-    /*
-    if(grid->xv[ib]<2400) {
-      if(grid->yv[ib]>177000 && grid->yv[ib]<180000) {
+    if(grid->n1[j]>0) {
+      if(grid->yv[ib]>166500 && grid->yv[ib]<170000) {
 	for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	  if(k==grid->etop[j])
 	    z=-grid->dzz[ib][k]/2;
@@ -107,7 +110,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 
 	  if(z>-15)
 	    uboundary[k]=prop->amp;
-	  else
+	  else 
 	    uboundary[k]=0;
 	}
       } else 
@@ -119,7 +122,6 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 	uboundary[k]=-phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
       forced=0;
     }
-    */
 
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
       c[k] = 0;
@@ -192,7 +194,33 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 	ub[j][k]/=(1+prop->theta*prop->dt/prop->timescale);
     }
 
-    for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      ub[j][k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
+    //    for(k=grid->etop[j];k<grid->Nke[j];k++) 
+    //      ub[j][k]=0.002445*cos(prop->omega*prop->rtime)+0.00182*cos(2*PI/(24*3600)*prop->rtime+.656);
   }
 }
+
+/*
+ * Function: SetBoundaryScalars
+ * Usage: SetBoundaryScalars(boundary_s,grid,phys,prop,"salt");
+ * ------------------------------------------------------------
+ * This will set the values of the scalars at the open boundaries.
+ * 
+ */
+void SetBoundaryScalars(REAL **boundary_scal, gridT *grid, physT *phys, propT *prop, char *type) {
+  int jptr, j, ib, k;
+
+  if(!strcmp(type,"salt")) {
+    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+      j=grid->edgep[jptr];
+      ib=grid->grad[2*j];
+
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++)
+	boundary_scal[jptr-grid->edgedist[2]][k]=-0.4;
+    }
+  } else if(!strcmp(type,"temperature")) {
+    // Set the temperature here!
+  } else if(WARNING)
+    printf("Warning! Invalid boundary scalar specification in SetBoundaryScalars.\n");  
+}
+	
+      
