@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.14 2003-04-21 01:56:24 fringer Exp $
+ * $Id: sunplot.c,v 1.15 2003-04-21 20:27:09 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.14  2003/04/21 01:56:24  fringer
+ * Added iskip and kskip buttons.  Also removed vectors below depth and above fs.  Still need to draw edges for cells beneath surface.  This is not working.
+ *
  * Revision 1.13  2003/04/18 21:22:17  fringer
  * Added horizontal and vertical slice option -- press center or right button on profile window.
  *
@@ -77,7 +80,7 @@
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
 #define MAXZOOMRATIO 100.0
-#define NUMBUTTONS 27
+#define NUMBUTTONS 28
 #define POINTSIZE 2
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
@@ -110,7 +113,7 @@ typedef enum {
   uwin, vwin, wwin, vecwin,
   depthwin, nonewin,
   edgewin, voronoiwin, delaunaywin,
-  zoomwin, profwin, quitwin, axisimagewin,
+  zoomwin, profwin, quitwin, reloadwin, axisimagewin,
   iskip_plus_win,iskip_minus_win,kskip_plus_win,kskip_minus_win
 } buttonName;
 
@@ -131,6 +134,7 @@ typedef struct {
   char *mapstring;
   float l,b,w,h;
   Window butwin;
+  bool status;
 } myButtonT;
 
 typedef struct {
@@ -168,8 +172,10 @@ typedef struct {
   float umagmax, dmax, rx, ry;
 } dataT;
 
+void AllButtonsFalse(void);
 void Sort(int *ind1, int *ind2, float *data, int N);
-void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk,plottypeT plotType);
+void QuadSurf(float *h, float *D, 
+	      float **data, float *x, float *z, int N, int Nk,plottypeT plottype);
 void GetSlice(dataT *data, int xs, int ys, int xe, int ye, 
 	      int procnum, int numprocs, plottypeT plottype);
 void GetDMax(dataT *data, int numprocs);
@@ -203,7 +209,7 @@ void Text(Window window, float x, float y, int boxwidth, int boxheight,
 void DrawControls(dataT *data, int procnum, int numprocs);
 Window NewButton(Window parent, char *name, int x, int y, 
 		 int buttonwidth, int buttonheight, bool motion, int bordercolor);
-void DrawButton(Window button, char *str);
+void DrawButton(Window button, char *str, int bcolor);
 void MapWindows(void);
 void RedrawWindows(void);
 void DrawZoomBox(void);
@@ -530,9 +536,11 @@ int main(int argc, char *argv[]) {
 	if(vertprofile==false) {
 	  if(zooming==false) {
 	    sprintf(message,"Zooming on...");
+	    controlButtons[zoomwin].status=true;
 	    zooming=true;
 	  } else {
 	    sprintf(message,"Zooming off: ready for profile points...");
+	    controlButtons[zoomwin].status=false;
 	    zooming=false;
 	  }
 	} else {
@@ -542,6 +550,7 @@ int main(int argc, char *argv[]) {
 	if(mousebutton==left_button) {
 	  if(vertprofile==true) {
 	    sprintf(message,"Profile off...");
+	    controlButtons[profwin].status=false;
 	    vertprofile=false;
 	    edgelines=true;
 	  }
@@ -550,6 +559,7 @@ int main(int argc, char *argv[]) {
 	      sprintf(message,"Need two points for a profile first!");
 	    else {
 	      sprintf(message,"Profile on...");
+	      controlButtons[profwin].status=true;
 	      vertprofile=true;
 	      sliceType=slice;
 	      edgelines=false;
@@ -561,6 +571,7 @@ int main(int argc, char *argv[]) {
 	  ystart=height/2*axesPosition[3];
 	  xend=width*axesPosition[2];
 	  yend=height/2*axesPosition[3];
+	  controlButtons[profwin].status=true;
 	  vertprofile=true;
 	  sliceType=slice;
 	  edgelines=false;
@@ -571,6 +582,7 @@ int main(int argc, char *argv[]) {
 	  ystart=height*axesPosition[3];
 	  xend=width/2*axesPosition[2];
 	  yend=0;
+	  controlButtons[profwin].status=true;
 	  vertprofile=true;
 	  sliceType=slice;
 	  edgelines=false;
@@ -588,6 +600,10 @@ int main(int argc, char *argv[]) {
 	  axisType='i';
 	  sprintf(message,"Changing axis type to image...");
 	}
+	redraw=true;
+      } else if(report.xany.window==controlButtons[reloadwin].butwin && mousebutton==left_button) {
+	ReadData(data,-1,numprocs);
+	sprintf(message,"Reloading data...");
 	redraw=true;
       } else if(report.xany.window==controlButtons[quitwin].butwin && mousebutton==left_button) {
 	quit=true;
@@ -683,6 +699,7 @@ int main(int argc, char *argv[]) {
 	  if(report.xbutton.button==left_button) {
 	    sliceType=slice;
 	    zooming=true;
+	    controlButtons[zoomwin].status=true;
 	    edgelines=false;
 	  } else if(report.xbutton.button==middle_button) {
 	    sliceType=vertp;
@@ -786,8 +803,9 @@ int main(int argc, char *argv[]) {
     }
     if(quit)
       break;
-    if(redraw) 
+    if(redraw) {
       LoopDraw(data,plottype,procnum,numprocs);
+    }
     ShowMessage();
   }
   FreeData(data,numprocs);
@@ -1008,7 +1026,8 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
     }
 
   if(vertprofile==true && sliceType==slice) 
-    QuadSurf(data->sliceH,data->sliceData,data->sliceX,data->z,data->Nslice,data->Nkmax,plottype);
+    QuadSurf(data->sliceH,data->sliceD,
+	     data->sliceData,data->sliceX,data->z,data->Nslice,data->Nkmax,plottype);
   else {
     if(plottype!=noplottype)
       UnSurf(data->xc,data->yc,data->cells[procnum],scal,data->Nc[procnum]);
@@ -1025,7 +1044,8 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
   DrawControls(data,procnum,numprocs);
 }
 
-void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk,plottypeT plottype) {
+void QuadSurf(float *h, float *D, 
+	      float **data, float *x, float *z, int N, int Nk,plottypeT plottype) {
   int i, j, xp1, xp2, yp1, yp2, w, ind;
   float xs, xe, zs, dataval;
   XPoint points[5];
@@ -1070,16 +1090,15 @@ void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk,plottype
       dataval = data[i][j];
       ind = (dataval-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
 
-      if(dataval==EMPTY || (plottype=='D' && dataval==0))
+      if(dataval==EMPTY || (plottype=='D' && dataval==0) || 0.5*(z[j]+z[j+1])<-D[i])
 	ind = NUMCOLORS-1;
 
       if(plottype!=noplottype) {
 	XSetForeground(dis,gc,colors[ind]);
 	XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
       } 
-	
 
-      if(edgelines && dataval!=EMPTY) {
+      if(edgelines && dataval!=EMPTY && 0.5*(z[j]+z[j+1])>-D[i]) {
 	if(plottype==noplottype)
 	  XSetForeground(dis,gc,white);
 	else
@@ -1101,6 +1120,10 @@ void QuadSurf(float *h, float **data, float *x, float *z, int N, int Nk,plottype
 	
 	XSetForeground(dis,gc,black);
 	XFillPolygon(dis,pix,gc,points,5,Convex,CoordModeOrigin);
+      }
+      if(edgelines && plottype==noplottype) {
+	XSetForeground(dis,gc,white);
+	XDrawLine(dis,pix,gc,points[0].x,yp1,points[1].x,yp1);
       }
     }
   }
@@ -1153,7 +1176,7 @@ void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv,
 void Quiver(float *x, float *z, float *D, float *H, 
 	    float **u, float **v, float umagmax, int Nk, int Nc) { 
   int i, j, ic;
-  float xe, ye, umag, l, lmax=0, n1, n2;
+  float xe, ye, umag, len, len_max=0, n1, n2;
   int xp, yp, ue, ve, vlength;
 
   if(plottype==noplottype)
@@ -1161,11 +1184,11 @@ void Quiver(float *x, float *z, float *D, float *H,
   else
     ic = black;
 
-  for(i=0;i<Nc;i++) {
-    l=abs(x[i+1]-x[i]);
-    if(l>lmax) lmax=l;
+  for(i=0;i<Nc-1;i++) {
+    len=fabs(x[i+1]-x[i]);
+    if(len>=len_max) len_max=len;
   }
-  vlength = vlengthfactor*(int)(lmax/(dataLimits[1]-dataLimits[0])*
+  vlength = vlengthfactor*(int)(len_max/(dataLimits[1]-dataLimits[0])*
 		  axesPosition[2]*width);
 
   for(i=0;i<Nc;i+=iskip) 
@@ -1196,10 +1219,11 @@ void Quiver(float *x, float *z, float *D, float *H,
 
 void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic) {
   int i, mag;
-  float r=0.5, angle=30;
+  float r=0.5, angle=20, arrowlength=10;
   XPoint points[4];
 
   mag = (int)sqrt(ue*ue+ve*ve);
+
 
   points[0].x = r*mag;
   points[1].x = 0;
@@ -1209,8 +1233,19 @@ void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic) {
   points[1].y = -r*mag*sin(angle*M_PI/180);
   points[2].y = r*mag*sin(angle*M_PI/180);
   points[3].y = 0;
+
+  /*
+  points[0].x = arrowlength;
+  points[1].x = 0;
+  points[2].x = 0;
+  points[3].x = arrowlength;
+  points[0].y = 0;
+  points[1].y = -arrowlength*sin(angle*M_PI/180);
+  points[2].y = arrowlength*sin(angle*M_PI/180);
+  points[3].y = 0;
+  */
+
   Rotate(points,4,ue,-ve,mag);
-  
   for(i=0;i<4;i++) {
     points[i].x+=(xp+(1-r)*ue);
     points[i].y+=(yp-(1-r)*ve);
@@ -1767,7 +1802,7 @@ void MapWindows(void) {
 }
 
 void DrawControls(dataT *data, int procnum, int numprocs) {
-  int buttonnum;
+  int buttonnum, bcolor;
   XPoint *vertices = (XPoint *)malloc(5*sizeof(XPoint));
   
   XSetForeground(dis,gc,black);
@@ -1781,8 +1816,13 @@ void DrawControls(dataT *data, int procnum, int numprocs) {
 		 buttonAxesPosition[2]*width,
 		 buttonAxesPosition[3]*height);
 
-  for(buttonnum=0;buttonnum<NUMBUTTONS;buttonnum++) 
-    DrawButton(controlButtons[buttonnum].butwin,controlButtons[buttonnum].string);
+  for(buttonnum=0;buttonnum<NUMBUTTONS;buttonnum++) {
+    if(controlButtons[buttonnum].status)
+      bcolor=red;
+    else
+      bcolor=white;
+    DrawButton(controlButtons[buttonnum].butwin,controlButtons[buttonnum].string,bcolor);
+  }
 
   sprintf(str,"Step: %d of %d",n,data->nsteps);
   DrawHeader(controlButtons[prevwin].butwin,controlButtons[nextwin].butwin,str);
@@ -1841,7 +1881,7 @@ Window NewButton(Window parent, char *name, int x, int y,
   return button;
 }
 
-void DrawButton(Window button, char *str) {
+void DrawButton(Window button, char *str, int bcolor) {
   int x, y, w, h, d, b, font_width, font_height, border=3;
   Window root;
 
@@ -1850,7 +1890,7 @@ void DrawButton(Window button, char *str) {
 
   XGetGeometry(dis,button,&root, &x, &y, &w, &h, &d, &b);
 
-  XSetForeground(dis,gc,white);  
+  XSetForeground(dis,gc,bcolor);  
   XFillRectangle(dis,button, gc, 0, 0,w,h);
 
   XSetForeground(dis,gc,black);  
@@ -1904,6 +1944,8 @@ void DrawSliceLine(void) {
 void SetUpButtons(void) {
   int buttonnum;
   float dist=0.25;
+
+  AllButtonsFalse();
 
   controlButtons[prevwin].string="<--";
   controlButtons[prevwin].mapstring="prev";
@@ -2044,6 +2086,7 @@ void SetUpButtons(void) {
   controlButtons[zoomwin].b=controlButtons[nextwin].b+7*dist;
   controlButtons[zoomwin].w=0.9;
   controlButtons[zoomwin].h=(float)BUTTONHEIGHT;
+  controlButtons[zoomwin].status=true;
 
   controlButtons[profwin].string="Profile";
   controlButtons[profwin].mapstring="profwin";
@@ -2087,12 +2130,20 @@ void SetUpButtons(void) {
   controlButtons[axisimagewin].w=0.4;
   controlButtons[axisimagewin].h=(float)BUTTONHEIGHT;
 
+  controlButtons[reloadwin].string="Reload";
+  controlButtons[reloadwin].mapstring="reloadwin";
+  controlButtons[reloadwin].l=0.05;
+  controlButtons[reloadwin].b=controlButtons[nextwin].b+11*dist;
+  controlButtons[reloadwin].w=0.9;
+  controlButtons[reloadwin].h=(float)BUTTONHEIGHT;
+
   controlButtons[quitwin].string="QUIT";
   controlButtons[quitwin].mapstring="quitwin";
   controlButtons[quitwin].l=0.05;
-  controlButtons[quitwin].b=controlButtons[nextwin].b+11*dist;
+  controlButtons[quitwin].b=controlButtons[nextwin].b+12*dist;
   controlButtons[quitwin].w=0.9;
   controlButtons[quitwin].h=(float)BUTTONHEIGHT;
+
 }
 
 void ParseCommandLine(int N, char *str[], int *numprocs) {
@@ -2594,5 +2645,8 @@ void Sort(int *ind1, int *ind2, float *data, int N) {
       }
 }
 
-
-    
+void AllButtonsFalse(void) {
+  int buttonnum;
+  for(buttonnum=0;buttonnum<NUMBUTTONS;buttonnum++)
+    controlButtons[buttonnum].status=false;
+}    
