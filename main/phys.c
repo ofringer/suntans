@@ -6,8 +6,21 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.78 2004-09-16 19:44:32 fringer Exp $
+ * $Id: phys.c,v 1.79 2004-09-16 20:16:42 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.78  2004/09/16 19:44:32  fringer
+ * Changed the drag law formulation so that now the boundary condition
+ * is given by
+ *
+ * nu dU/dz = Cd sqrt(uc^2 + vc^2) U,
+ *
+ * where uc are the cell-centered values (taken as averages at the
+ * faces) and U is the face value.  This used to be
+ *
+ * nu dU/dz = Cd fabs(U) U,
+ *
+ * which is equivalent, but results in a lower effective shear.
+ *
  * Revision 1.77  2004/09/15 01:16:29  fringer
  * Added comments from rev 1.75 since they were removed when creating
  * revision 1.76.
@@ -765,7 +778,7 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc) {
  */
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
 {
-  int i, j, k, Nc=grid->Nc;
+  int i, j, k, Nc=grid->Nc, nc1, nc2;
   REAL z, *stmp;
 
   prop->nstart=0;
@@ -866,13 +879,44 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
       if(phys->s[i][k]>phys->smax) phys->smax=phys->s[i][k];      
     }
 
-  // Initialize the eddy-viscosity and scalar diffusivity
-  for(i=0;i<grid->Nc;i++) {
+  // Initialize the eddy-viscosity and scalar diffusivity and the drag coefficients
+  if(prop->z0T==0) 
+    for(j=0;j<grid->Ne;j++) 
+      phys->CdT[j]=prop->CdT;
+  else
+    for(j=0;j<grid->Ne;j++) {
+      nc1=grid->grad[2*j];
+      nc2=grid->grad[2*j+1];
+      if(nc1==-1) nc1=nc2; 
+      if(nc2==-1) nc2=nc1; 
+      if(grid->Nk[nc2]>grid->Nk[nc1]) nc1=nc2;
+      if(grid->Nk[nc1]>grid->Nk[nc2]) nc2=nc1;
+      
+      phys->CdT[j]=pow(log(0.25*(grid->dzz[nc1][grid->ctop[nc1]]+grid->dzz[nc2][grid->ctop[nc2]])/prop->z0T)/KAPPA_VK,-2);
+    }
+
+  if(prop->z0B==0) 
+    for(j=0;j<grid->Ne;j++) 
+      phys->CdB[j]=prop->CdB;
+  else
+    for(j=0;j<grid->Ne;j++) {
+      nc1=grid->grad[2*j];
+      nc2=grid->grad[2*j+1];
+      if(nc1==-1) nc1=nc2; 
+      if(nc2==-1) nc2=nc1; 
+      if(grid->Nk[nc2]>grid->Nk[nc1]) nc1=nc2;
+      if(grid->Nk[nc1]>grid->Nk[nc2]) nc2=nc1;
+      
+      phys->CdB[j]=pow(log(0.25*(grid->dzz[nc1][grid->Nke[j]-1]+grid->dzz[nc2][grid->Nke[j]-1])/prop->z0B)/KAPPA_VK,-2);
+    }
+
+  for(i=0;i<grid->Nc;i++) 
     for(k=0;k<grid->Nk[i];k++) {
       phys->nu_tv[i][k]=0;
       phys->kappa_tv[i][k]=0;
+      phys->qT[i][k]=0;
+      phys->lT[i][k]=0;
     }
-  }
 }
 
 /*
@@ -3702,6 +3746,8 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->nu = MPI_GetValue(DATAFILE,"nu","ReadProperties",myproc);
   (*prop)->nu_H = MPI_GetValue(DATAFILE,"nu_H","ReadProperties",myproc);
   (*prop)->tau_T = MPI_GetValue(DATAFILE,"tau_T","ReadProperties",myproc);
+  (*prop)->z0T = MPI_GetValue(DATAFILE,"z0T","ReadProperties",myproc);
+  (*prop)->z0B = MPI_GetValue(DATAFILE,"z0B","ReadProperties",myproc);
   (*prop)->CdT = MPI_GetValue(DATAFILE,"CdT","ReadProperties",myproc);
   (*prop)->CdB = MPI_GetValue(DATAFILE,"CdB","ReadProperties",myproc);
   (*prop)->CdW = MPI_GetValue(DATAFILE,"CdW","ReadProperties",myproc);
