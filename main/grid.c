@@ -6,8 +6,23 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.13 2003-05-07 03:02:01 fringer Exp $
+ * $Id: grid.c,v 1.14 2003-05-12 00:04:43 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.13  2003/05/07 03:02:01  fringer
+ * Finished writing ReadGrid function so that suntans works in the
+ * following way:
+ * 1) Run and create the parallel grid with mpirun -np 3 sun -g
+ * 2) Solve for the physics with mpirun -np 3 sun -s
+ * 3) Without the -g flag, the function reads the previous files
+ * using the ReadGrid function.
+ *
+ * Also changed a few lines in Geometry so that xi != nan.   This
+ * was causing errors upon attempting to read in xi when it was nan.
+ *
+ * Changed verbose output of "Reading..." and "Writing..." in
+ * OutputData() and ReadGrid() so that they print out the file
+ * being written to/read from on each processor.
+ *
  * Revision 1.12  2003/05/05 01:21:50  fringer
  * Added function to search for nearest edge pointers.
  * Added function to perform non-blocking sends/recvs of 2D cell data.
@@ -273,12 +288,15 @@ static void CreateNearestEdgePointers(gridT *maingrid, gridT *localgrid, int myp
 
   // We only need to store the nearest edges for edges that belong to
   // the current processor, omitting the ghost edges.  We can use the
-  // edgedist arrays created in MakePointers to find out how many we need.
+  // edgedist arrays created in MakePointers to find out how many we need
+  // and only store nearest edges for the ones in edgep[0,...,edgedist[1]-1]
   localgrid->nearestedges=
-    (int **)malloc(localgrid->edgedist[1]*sizeof(int *));
-  for(j=0;j<localgrid->edgedist[1];j++)
+    (int **)malloc(localgrid->Ne*sizeof(int *));
+  for(jptr=localgrid->edgedist[0];jptr<localgrid->edgedist[1];jptr++) {
+    j = localgrid->edgep[jptr];
     localgrid->nearestedges[j]=
       (int *)malloc(Nnearestedges*sizeof(int));
+  }
 
   // Now we can find the nearest edges for the edges in the edgep pointer.
   // It is important to note that the jptr index must be used in the 
@@ -312,14 +330,14 @@ static void CreateNearestEdgePointers(gridT *maingrid, gridT *localgrid, int myp
 	      yc = 0.5*(maingrid->yp[localgrid->edges[NUMEDGECOLUMNS*ne]]+
 			maingrid->yp[localgrid->edges[NUMEDGECOLUMNS*ne+1]]);
 	      dist = pow(xc-xc0,2)+pow(yc-yc0,2);
-	      if(dist<=mindist && !found[ne]) {
+	      if(dist<=mindist && !found[ne] && localgrid->mark[ne]!=1) {
 		mindist=dist;
 		jmin=ne;
 	      }
 	    }
 	  }
 	}
-      localgrid->nearestedges[jptr][m]=jmin;
+      localgrid->nearestedges[j][m]=jmin;
       found[jmin]=1;
     }
     
@@ -1177,7 +1195,7 @@ int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
  */
 static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 {
-  int j, n, nf, neigh, Np=maingrid->Np, Nc=grid->Nc, Ne=grid->Ne;
+  int j, jptr, n, nf, neigh, Np=maingrid->Np, Nc=grid->Nc, Ne=grid->Ne;
   char str[BUFFERLENGTH];
   FILE *ofile;
 
@@ -1265,9 +1283,9 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   for(n=0;n<Ne;n++) {
     // Removed the two zeros because they are redundant
     // fprintf(ofile,"%f %f 0 0 %f %f %d %d %d %d ",
-    fprintf(ofile,"%f %f %f %f %d %d %d %d %d ",
-	    grid->df[n],grid->dg[n],grid->n1[n],
-	    grid->n2[n],grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
+    fprintf(ofile,"%f %f %f %f %f %f %d %d %d %d %d ",
+	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
+	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
 	    grid->mark[n]);
     for(nf=0;nf<2*(NFACES-1);nf++)
       fprintf(ofile,"%f ",grid->xi[2*(NFACES-1)*n+nf]);
@@ -1318,6 +1336,17 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   for(n=0;n<grid->Ne;n++) 
     fprintf(ofile,"%d ",grid->edgep[n]);
   fprintf(ofile,"\n");
+  fprintf(ofile,"%d %d\n",grid->Nnearestcells,grid->Nnearestedges);
+  for(j=grid->celldist[0];j<grid->celldist[2];j++)
+    for(n=0;n<grid->Nnearestcells;n++)
+      fprintf(ofile,"%d ",grid->nearestcells[j][n]);
+  fprintf(ofile,"\n");
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+    j=grid->edgep[jptr];
+    for(n=0;n<grid->Nnearestedges;n++)
+      fprintf(ofile,"%d ",grid->nearestedges[j][n]);
+  }
+  fprintf(ofile,"\n");
   fclose(ofile);
 
   if(myproc==0 && VERBOSE>2) printf("Outputting %s...\n",VERTSPACEFILE);
@@ -1341,7 +1370,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
  */
 void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm) 
 {
-  int neigh, n, nf, Nkmax;
+  int neigh, j, jptr, n, nf, Nkmax, Nnearestedges, Nnearestcells;
   char str[BUFFERLENGTH];
   FILE *ifile;
 
@@ -1431,6 +1460,44 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   for(n=0;n<(*grid)->Ne;n++) 
     (*grid)->edgep[n]=(int)getfield(ifile,str);
 
+  // Determine the maximum number of nearest cells/edges.  If this does
+  // not match up with the DATAFILE then exit.
+  Nnearestcells=(int)getfield(ifile,str);
+  Nnearestedges=(int)getfield(ifile,str);
+
+  (*grid)->Nnearestcells=(int)MPI_GetValue(DATAFILE,"Nnearestcells","VertGrid",myproc);
+  (*grid)->Nnearestedges=(int)MPI_GetValue(DATAFILE,"Nnearestedges","VertGrid",myproc);
+  if((*grid)->Nnearestcells != Nnearestcells && VERBOSE>0) {
+    printf("Error! Nnearestcells specified in %s is not what is in %s.%d\n",
+	   DATAFILE,TOPOLOGYFILE,myproc);
+    MPI_Finalize();
+    exit(1);
+  }
+  if((*grid)->Nnearestedges != Nnearestedges && VERBOSE>0) {
+    printf("Error! Nnearestedges specified in %s is not what is in %s.%d\n",
+	   DATAFILE,TOPOLOGYFILE,myproc);
+    MPI_Finalize();
+    exit(1);
+  }
+  (*grid)->nearestcells=(int **)MyMalloc((*grid)->celldist[2]*sizeof(int *));
+  (*grid)->nearestedges=(int **)MyMalloc((*grid)->Ne*sizeof(int *));
+
+  for(n=0;n<(*grid)->celldist[2];n++)
+    (*grid)->nearestcells[n]=(int *)MyMalloc((*grid)->Nnearestcells*sizeof(int));
+  for(jptr=(*grid)->edgedist[0];jptr<(*grid)->edgedist[1];jptr++) {
+    j=(*grid)->edgep[jptr];
+    (*grid)->nearestedges[j]=(int *)MyMalloc((*grid)->Nnearestedges*sizeof(int));
+  }
+
+  for(n=0;n<(*grid)->celldist[2];n++)
+    for(j=0;j<(*grid)->Nnearestcells;j++)
+      (*grid)->nearestcells[n][j]=(int)getfield(ifile,str);
+  for(jptr=(*grid)->edgedist[0];jptr<(*grid)->edgedist[1];jptr++) {
+    j=(*grid)->edgep[jptr];
+    for(n=0;n<(*grid)->Nnearestedges;n++)
+      (*grid)->nearestedges[j][n]=(int)getfield(ifile,str);
+  }
+
   /*
    * Now read in cell-centered data.dat
    *
@@ -1473,6 +1540,8 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->dg = (REAL *)malloc((*grid)->Ne*sizeof(REAL));
   (*grid)->n1 = (REAL *)malloc((*grid)->Ne*sizeof(REAL));
   (*grid)->n2 = (REAL *)malloc((*grid)->Ne*sizeof(REAL));
+  (*grid)->xe = (REAL *)malloc((*grid)->Ne*sizeof(REAL));
+  (*grid)->ye = (REAL *)malloc((*grid)->Ne*sizeof(REAL));
 
   (*grid)->Nke = (int *)malloc((*grid)->Ne*sizeof(int));
   (*grid)->Nkc = (int *)malloc((*grid)->Ne*sizeof(int));
@@ -1491,6 +1560,8 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
       (*grid)->dg[n] = getfield(ifile,str);
       (*grid)->n1[n] = getfield(ifile,str);
       (*grid)->n2[n] = getfield(ifile,str);
+      (*grid)->xe[n] = getfield(ifile,str);
+      (*grid)->ye[n] = getfield(ifile,str);
       (*grid)->Nke[n] = (int)getfield(ifile,str);
       (*grid)->Nkc[n] = (int)getfield(ifile,str);
       (*grid)->grad[2*n] = (int)getfield(ifile,str);
@@ -2606,6 +2677,8 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
   (*grid)->dg = (REAL *)malloc(Ne*sizeof(REAL));
   (*grid)->n1 = (REAL *)malloc(Ne*sizeof(REAL));
   (*grid)->n2 = (REAL *)malloc(Ne*sizeof(REAL));
+  (*grid)->xe = (REAL *)malloc(Ne*sizeof(REAL));
+  (*grid)->ye = (REAL *)malloc(Ne*sizeof(REAL));
   (*grid)->xi = (REAL *)malloc(2*(NFACES-1)*Ne*sizeof(REAL));
 
   /* Compute the area of each cell.*/
@@ -2626,6 +2699,14 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 	       maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]],2)+
 	   pow(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]-
 	       maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]],2));
+
+  /* Compute the centers of each edge. */
+  for(n=0;n<Ne;n++) {
+    (*grid)->xe[n] = 0.5*(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
+		       maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+    (*grid)->ye[n] = 0.5*(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
+		       maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+  }
 
   /* Compute the normal distances between Voronoi points to compute the 
      gradients and then output the lengths to a data file. Also, compute 
@@ -2860,3 +2941,4 @@ void CorrectVoronoi(gridT *grid)
     }
   }
 }
+
