@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.44 2004-04-14 13:31:22 fringer Exp $
+ * $Id: phys.c,v 1.45 2004-04-21 02:32:49 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.44  2004/04/14 13:31:22  fringer
+ * Added  QCoefficients to compute coefficients for pressure solver
+ * at each time step in order to speed up CG (preconditioned) solution
+ *
  * Revision 1.43  2004/04/06 00:18:30  fringer
  * Added computation of flux at boundary faces (of type 2) in
  * nonlinear advection of momentum.
@@ -689,9 +693,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   prop->n=0;
   ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
 
-  if(myproc==0) 
-    fid = fopen("/tmp/fs.dat","w");
-
   if(VERBOSE>1) printf("Processor %d,  Total memory: %d Mb\n",myproc,(int)(TotSpace/(1024*1e3)));
   
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
@@ -740,6 +741,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       ComputeVelocityVector(phys->utmp2,phys->uold,phys->vold,grid);
       ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
     }
+
     Progress(prop,myproc);
     OutputData(grid,phys,prop,myproc,numprocs,0,comm);
     Check(grid,phys,prop,myproc,numprocs,comm);
@@ -829,14 +831,23 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       
       nc1 = grid->grad[2*j];
       nc2 = grid->grad[2*j+1];
-
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	
-	for(k0=grid->etop[j];k0<k;k0++)
+	k0=grid->etop[j];
+	phys->Cn_U[j][k]-=0.5*prop->dt*GRAV*prop->beta*
+	  (phys->s[nc1][k0]+phys->s[nc2][k0])*(grid->dzz[nc1][k0]-grid->dzz[nc2][k0])/grid->dg[j];
+
+	for(k0=grid->etop[j]+1;k0<=k;k0++)
 	  phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
 	    (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
       }
-      
+      /*
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	for(k0=grid->etop[j];k0<=k;k0++)
+	  phys->Cn_U[j][k]-=GRAV*prop->beta*prop->dt*phys->s[nc1][k0]*grid->dzz[nc1][k0]/grid->dg[j];
+	for(k0=grid->etop[j];k0<=k;k0++)
+	  phys->Cn_U[j][k]+=GRAV*prop->beta*prop->dt*phys->s[nc2][k0]*grid->dzz[nc2][k0]/grid->dg[j];
+      }
+      */
       /*
 	for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	phys->utmp[j][k]-=0.5*dt*GRAV*prop->beta*
@@ -1066,25 +1077,11 @@ static void AdvectHorizontalVelocity(gridT *grid, physT *phys, propT *prop,
       
       for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	j = grid->edgep[jptr]; 
-	
+
 	nc1 = grid->grad[2*j];
 	nc2 = grid->grad[2*j+1];
 	if(nc1==-1) nc1=nc2;
 	if(nc2==-1) nc2=nc1;
-
-	/*	
-	for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	  
-	  if(phys->u[j][k]>0)
-	    nc = grid->grad[2*j+1];
-	  else
-	    nc = grid->grad[2*j];
-	  
-	  //	  phys->Cn_U[j][k]-=prop->dt*(phys->stmp[nc][k]*grid->n1[j]+phys->stmp2[nc][k]*grid->n2[j]);
-	  phys->Cn_U[j][k]-=0.5*(prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j])
-	    +prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]));
-	}
-	*/
 
 	for(k=grid->ctop[nc1];k<grid->Nk[nc1];k++) 
 	  phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
