@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.4 2002-11-05 01:31:17 fringer Exp $
+ * $Id: grid.c,v 1.5 2002-11-30 13:44:45 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2002/11/05 01:31:17  fringer
+ * Added baroclinic term
+ *
  * Revision 1.3  2002/11/03 02:09:42  fringer
  * Moved up to field-scale and stable!!!
  *
@@ -595,12 +598,20 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   mindepth=INFTY;
   IntDepth=(int)MPI_GetValue(DATAFILE,"IntDepth","GetDepth",myproc);
 
-  if(IntDepth)
+  if(IntDepth) 
     InterpDepth(grid,myproc,numprocs,comm);
   else {
     for(n=0;n<grid->Nc;n++) {
       //grid->dv[n] = 3000 - 2500*.5*(1+tanh((grid->xv[n]-60000)/5000));
-      grid->dv[n] = 3000 - 500*exp(-pow((grid->xv[n]-50000)/10000,2));
+
+      if(grid->xv[n]<=70000)
+	grid->dv[n]=3000;
+      else if(grid->xv[n]>70000 && grid->xv[n]<80000)
+	grid->dv[n]=3000-2500*(grid->xv[n]-70000)/10000;
+      else
+	grid->dv[n]=500;
+	
+      //grid->dv[n] = 3000 - 1000*exp(-pow((grid->xv[n]-50000)/5000,2));
       //      grid->dv[n] = 5;
       //      if(grid->xv[n]<500) grid->dv[n]=20;
     }
