@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.28 2003-12-02 02:31:44 fringer Exp $
+ * $Id: phys.c,v 1.29 2003-12-02 04:38:27 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.28  2003/12/02 02:31:44  fringer
+ * Removed ability to transfer first or all in send/recv routines.
+ *
  * Revision 1.27  2003/12/02 02:15:54  fringer
  * Removed all traces of kriging, including findnearestplane and
  * findnearestedges.
@@ -638,15 +641,15 @@ void Solve(gridT *grid, physT *phys, int myproc, int numprocs, MPI_Comm comm)
 	}
       }
       */
-
-      SendRecvCellData3D(phys->s,grid,myproc,comm);
-      SendRecvCellData3D(phys->T,grid,myproc,comm);
-      SendRecvEdgeData3D(phys->u,grid,myproc,comm);
-      SendRecvCellData3D(phys->uc,grid,myproc,comm);
-      SendRecvCellData3D(phys->vc,grid,myproc,comm);
-      SendRecvWData(phys->w,grid,myproc,comm);
+      
+      // Exchange interprocessor boundary data.
+      ISendRecvCellData3D(phys->s,grid,myproc,comm);
+      ISendRecvCellData3D(phys->T,grid,myproc,comm);
+      ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
+      ISendRecvCellData3D(phys->uc,grid,myproc,comm);
+      ISendRecvCellData3D(phys->vc,grid,myproc,comm);
+      ISendRecvWData(phys->w,grid,myproc,comm);
     }
-
     Progress(prop,myproc);
     OutputData(grid,phys,prop,myproc,numprocs,0,comm);
     Check(grid,phys,prop,myproc,numprocs,comm);
@@ -1031,7 +1034,7 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
   }
 
   // Send q to the boundary cells now that it has been updated with qc
-  SendRecvCellData3D(phys->q,grid,myproc,comm);
+  ISendRecvCellData3D(phys->q,grid,myproc,comm);
 
   /*
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
@@ -1150,7 +1153,7 @@ static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop
 
   for(n=0;n<niters;n++) {
 
-    SendRecvCellData3D(p,grid,myproc,comm);
+    ISendRecvCellData3D(p,grid,myproc,comm);
     OperatorQ(p,z,grid,phys,prop);
 
     mu = 1/eps;
@@ -1183,7 +1186,7 @@ static void CGSolveQ(REAL **q, REAL **src, gridT *grid, physT *phys, propT *prop
   else
     if(VERBOSE>2 && myproc==0) printf("Time step %d, CGSolve pressure converged after %d iterations, res=%e\n",prop->n,n,sqrt(eps/eps0));
 
-  SendRecvCellData3D(x,grid,myproc,comm);
+  ISendRecvCellData3D(x,grid,myproc,comm);
 }
 
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop)
