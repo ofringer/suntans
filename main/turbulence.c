@@ -2,8 +2,18 @@
  * File: turbulence.c
  * Description:  Contains the Mellor-Yamad level 2.5 turbulence model.
  *
- * $Id: turbulence.c,v 1.4 2004-09-27 01:04:31 fringer Exp $
+ * $Id: turbulence.c,v 1.5 2005-04-01 20:55:23 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2004/09/27 01:04:31  fringer
+ * Removed functions that opened up files for printing out debugging profiles.
+ *
+ * Also changed i loops so that they contain all points instead of only
+ * compuational cells (i.e. i=0;i<grid->Nc instead of iptr=celldist[0];iptr<celldist[1])
+ * Because this does not require a send/recv call but instead incurs slightly
+ * more computational overhead.
+ *
+ * Also corrected a bug which used the iplot variable instead of i.
+ *
  * Revision 1.3  2004/09/22 06:29:33  fringer
  * Latest version of my25 function with several changes.  The previous
  * version was checked in too soon and was not yet working properly.
@@ -26,6 +36,7 @@
 #include "phys.h"
 #include "util.h"
 #include "turbulence.h"
+#include "boundaries.h"
 
 // Local function
 static void StabilityFunctions(REAL *Sm, REAL *Sh, REAL Gh, REAL A1, REAL A2, REAL B1, REAL B2, REAL C1);
@@ -39,8 +50,8 @@ static void StabilityFunctions(REAL *Sm, REAL *Sh, REAL Gh, REAL A1, REAL A2, RE
  *
  */
 void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q, REAL **Cn_l, REAL **nuT, REAL **kappaT, MPI_Comm comm, int myproc) {
-  int i, j, iptr, k, nf, nc1, nc2;
-  REAL thetaQ=0.75, CdAvgT, CdAvgB, *dudz, *dvdz, *drdz, z, *N, *Gh;
+  int i, ib, j, iptr, jptr, k, nf, nc1, nc2;
+  REAL thetaQ=1, CdAvgT, CdAvgB, *dudz, *dvdz, *drdz, z, *N, *Gh;
   REAL A1, A2, B1, B2, C1, E1, E2, E3, Sq, Sm, Sh;
 
   N = dudz = phys->a;
@@ -74,7 +85,7 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     dudz[grid->Nk[i]]=dudz[grid->Nk[i]-1];
     dvdz[grid->Nk[i]]=dvdz[grid->Nk[i]-1];
     drdz[grid->Nk[i]]=drdz[grid->Nk[i]-1];
-
+    
     // uold will store src1 for q^2, which is the 2q/B1 l term
     // wtmp will store src2 for q^2, which is the 2 (Ps+Pb) term
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -105,7 +116,20 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     phys->htmp[i]=pow(B1,2/3)*CdAvgT*pow(phys->uc[i][grid->ctop[i]],2)+pow(phys->vc[i][grid->ctop[i]],2);
     phys->hold[i]=pow(B1,2/3)*CdAvgB*pow(phys->uc[i][grid->Nk[i]-1],2)+pow(phys->vc[i][grid->Nk[i]-1],2);
   }
-  UpdateScalars(grid,phys,prop,q,NULL,phys->Cn_q,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
+  // Specify turbulence at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
+  // turbulence flow outward.
+  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+    j = grid->edgep[jptr];
+    ib = grid->grad[2*j];
+    
+    if(phys->boundary_flag[jptr-grid->edgedist[2]]==open)
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+	phys->boundary_tmp[jptr-grid->edgedist[2]][k]=q[ib][k];
+    else
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+	phys->boundary_tmp[jptr-grid->edgedist[2]][k]=q[ib][k];
+  }    
+  UpdateScalars(grid,phys,prop,q,phys->boundary_tmp,phys->Cn_q,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
 
   // q now contains q^2
   for(i=0;i<grid->Nc;i++) {
@@ -131,7 +155,7 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     phys->htmp[i]=0;
     phys->hold[i]=0;
   }
-  if(prop->n<3)
+  if(prop->n<30) 
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i=grid->cellp[iptr];
       
@@ -139,8 +163,22 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
 	l[i][k]+=prop->dt*pow(q[i][k],3/2)/B1;
       }
     }
-  else
-    UpdateScalars(grid,phys,prop,l,NULL,phys->Cn_l,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
+  else {
+    // Specify turbulence at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
+    // turbulence flow outward.
+    for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+      j = grid->edgep[jptr];
+      ib = grid->grad[2*j];
+      
+      if(phys->boundary_flag[jptr-grid->edgedist[2]]==open)
+	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+	  phys->boundary_tmp[jptr-grid->edgedist[2]][k]=l[ib][k];
+      else
+	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+	  phys->boundary_tmp[jptr-grid->edgedist[2]][k]=l[ib][k];
+    }
+    UpdateScalars(grid,phys,prop,l,phys->boundary_tmp,phys->Cn_l,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
+  }
 
   // Send/Recv q and l data to neighboring processors
   ISendRecvCellData3D(q,grid,myproc,comm);
