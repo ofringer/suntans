@@ -6,11 +6,14 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.1 2002-11-03 00:18:49 fringer Exp $
+ * $Id: phys.c,v 1.2 2002-11-03 02:09:56 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2002/11/03 00:18:49  fringer
+ * Initial revision
+ *
  *
  */
-#include "main.h"
+#include "suntans.h"
 #include "phys.h"
 #include "grid.h"
 #include "util.h"
@@ -179,7 +182,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys)
 
     phys->h[i] = 0;
     //    phys->h[i]=-2.5+2.5*cos(PI*grid->xv[i]/15);
-    if(grid->xv[i]>5)
+    if(grid->xv[i]>500)
       phys->h[i]=-grid->dv[i];
     //    if(grid->yv[i]>grid->xv[i])
     //      phys->h[i]=-grid->dv[i];
