@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.77 2004-09-15 01:16:29 fringer Exp $
+ * $Id: phys.c,v 1.78 2004-09-16 19:44:32 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.77  2004/09/15 01:16:29  fringer
+ * Added comments from rev 1.75 since they were removed when creating
+ * revision 1.76.
+ *
  * Revision 1.76  2004/09/15 01:13:11  fringer
  * Changed updatescalars so that it can compute transport of the
  * turbulent quantities q^2 and q^2l in turbulence.c.  Also moved
@@ -2143,7 +2147,10 @@ static void UPredictor(gridT *grid, physT *phys,
 	
 	// Top cell
 	phys->utmp[j][grid->etop[j]]+=dt*(1-theta)*(-(b[grid->etop[j]]+2.0*phys->CdT[j]*
-						      fabs(phys->u[j][grid->etop[j]])/
+						      sqrt(pow(0.5*(phys->uc[nc1][grid->etop[j]]+
+								    phys->uc[nc2][grid->etop[j]]),2)+
+							   pow(0.5*(phys->vc[nc1][grid->etop[j]]+
+								    phys->vc[nc2][grid->etop[j]]),2))/
 						      (grid->dzz[nc1][grid->etop[j]]+
 						       grid->dzz[nc2][grid->etop[j]]))*
 						    phys->u[j][grid->etop[j]]
@@ -2152,7 +2159,10 @@ static void UPredictor(gridT *grid, physT *phys,
 	// Bottom cell
 	phys->utmp[j][grid->Nke[j]-1]+=dt*(1-theta)*(a[grid->Nke[j]-1]*phys->u[j][grid->Nke[j]-2]-
 						     (a[grid->Nke[j]-1]+2.0*phys->CdB[j]*
-						      fabs(phys->u[j][grid->Nke[j]-1])/
+						      sqrt(pow(0.5*(phys->uc[nc1][grid->Nke[j]-1]+
+								    phys->uc[nc2][grid->Nke[j]-1]),2)+
+							   pow(0.5*(phys->vc[nc1][grid->Nke[j]-1]+
+								    phys->vc[nc2][grid->Nke[j]-1]),2))/
 						      (grid->dzz[nc1][grid->Nke[j]-1]+
 						       grid->dzz[nc2][grid->Nke[j]-1]))*
 						     phys->u[j][grid->Nke[j]-1]);
@@ -2176,7 +2186,11 @@ static void UPredictor(gridT *grid, physT *phys,
 	// Top cells
 	c[grid->etop[j]]=-theta*dt*b[grid->etop[j]];
 	b[grid->etop[j]]=1.0+theta*dt*(b[grid->etop[j]]+
-				       2.0*phys->CdT[j]*fabs(phys->u[j][grid->etop[j]])/
+				       2.0*phys->CdT[j]*
+				       sqrt(pow(0.5*(phys->uc[nc1][grid->etop[j]]+
+						     phys->uc[nc2][grid->etop[j]]),2)+
+					    pow(0.5*(phys->vc[nc1][grid->etop[j]]+
+						     phys->vc[nc2][grid->etop[j]]),2))/
 				       (grid->dzz[nc1][grid->etop[j]]+
 					grid->dzz[nc2][grid->etop[j]]));
 	a[grid->etop[j]]=0;
@@ -2184,7 +2198,11 @@ static void UPredictor(gridT *grid, physT *phys,
 	// Bottom cell
 	c[grid->Nke[j]-1]=0;
 	b[grid->Nke[j]-1]=1.0+theta*dt*(a[grid->Nke[j]-1]+
-					2.0*phys->CdB[j]*fabs(phys->u[j][grid->Nke[j]-1])/
+					2.0*phys->CdB[j]*
+				       sqrt(pow(0.5*(phys->uc[nc1][grid->Nke[j]-1]+
+						     phys->uc[nc2][grid->Nke[j]-1]),2)+
+					    pow(0.5*(phys->vc[nc1][grid->Nke[j]-1]+
+						     phys->vc[nc2][grid->Nke[j]-1]),2))/
 					(grid->dzz[nc1][grid->Nke[j]-1]+
 					 grid->dzz[nc2][grid->Nke[j]-1]));
 	a[grid->Nke[j]-1]=-theta*dt*a[grid->Nke[j]-1];
@@ -2196,7 +2214,10 @@ static void UPredictor(gridT *grid, physT *phys,
 	  a[k]=-theta*dt*a[k];
 	}
       } else {
-	b[grid->etop[j]]=1.0+2.0*theta*dt*fabs(phys->u[j][grid->etop[j]])/
+	b[grid->etop[j]]=1.0+2.0*theta*dt*sqrt(pow(0.5*(phys->uc[nc1][grid->etop[j]]+
+							phys->uc[nc2][grid->etop[j]]),2)+
+					       pow(0.5*(phys->vc[nc1][grid->etop[j]]+
+							phys->vc[nc2][grid->etop[j]]),2))/
 	  (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
 	  (phys->CdB[j]+phys->CdT[j]);
       }	  
