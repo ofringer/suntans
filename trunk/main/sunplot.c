@@ -6,8 +6,15 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.41 2005-04-01 22:20:49 fringer Exp $
+ * $Id: sunplot.c,v 1.42 2005-07-01 23:35:04 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.41  2005/04/01 22:20:49  fringer
+ * Changed AXESBIGRATIO to 1e10 so that the free surface deflection coule
+ * be plotted using the profile plot.  Otherwise if the aspect ratio between
+ * the vertical deflection (or extend of the data) and the horizontal
+ * extent is too small then sunplot will just assume that the vertical
+ * deflection is zero.
+ *
  * Revision 1.40  2004/11/20 22:17:52  fringer
  * Added command line arguments to allow specification of time step to plot
  * as well as vertical level to plot.  For example, to plot data in time
@@ -396,7 +403,7 @@ void Quiver(float *x, float *z, float *D, float *H,
 	    float **u, float **v, float umagmax, int Nk, int Nc);
 void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic);
 void Rotate(XPoint *points, int N, int ue, int ve, int mag);
-void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *dimensions);
+void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *dimensions, goT *go);
 void ShowMessage(void);
 void ReadData(dataT *data, int nstep, int numprocs);
 void FreeData(dataT *data, int numprocs);
@@ -436,7 +443,7 @@ char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
 sliceT sliceType;
-plottypeT plottype = v_velocity;//salinity;
+plottypeT plottype = salinity;
 int plotGrid = false;
 
 int main(int argc, char *argv[]) {
@@ -458,7 +465,7 @@ int main(int argc, char *argv[]) {
   raisewindow = false;
   goT go;
 
-  ParseCommandLine(argc,argv,&numprocs,&n,&k,&dims);  
+  ParseCommandLine(argc,argv,&numprocs,&n,&k,&dims,&go);  
   
   ReadData(data,-1,numprocs);
 
@@ -480,7 +487,6 @@ int main(int argc, char *argv[]) {
 
   XMaskEvent(dis, ExposureMask, &report);
   pressed=false;
-  go=nomovie;
   goprocs=true;
   sprintf(message,"SUNPLOT v %s",VERSION);
 
@@ -2766,13 +2772,14 @@ void SetUpButtons(void) {
 
 }
 
-void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *dimensions)
+void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *dimensions, goT *go)
 {
   int i, j, js, done=0, status;
   struct stat filestat;
   char str[BUFFERLENGTH], val[BUFFERLENGTH];
   *numprocs=1;
   *dimensions=three_d;
+  *go=nomovie;
 
   sprintf(DATADIR,".");
   sprintf(DATAFILE,"%s/%s",DATADIR,DEFAULTDATAFILE);
@@ -2790,6 +2797,8 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *
 	  *dimensions=two_d;
 	else if(!strcmp(argv[i],"-ng"))
 	  plotGrid=true;
+	else if(!strcmp(argv[i],"-m"))
+	  *go=forward;
 	else if(argv[i][1]=='-') {
 	  if(!strncmp(argv[i],"--datadir=",strlen("--datadir="))) {
 	    js=strlen("--datadir=");
