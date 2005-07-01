@@ -6,8 +6,12 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.92 2005-04-01 22:39:01 fringer Exp $
+ * $Id: phys.c,v 1.93 2005-07-01 22:13:47 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.92  2005/04/01 22:39:01  fringer
+ * Moved the specification of the wind stress to the function WindStress
+ * which is defined in boundaries.c.
+ *
  * Revision 1.91  2005/04/01 20:50:47  fringer
  * 1) Added the ability to specify the free-surface using a partially-clamped
  * boundary condition (which includes fully clamped and fully radiative):
@@ -1786,7 +1790,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
 	}
       
-      for(k=grid->ctop[i]+2;k<grid->Nk[i]-1;k++) {
+      for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++) {
 	phys->stmp[i][k]+=(a[k]-a[k+1])/grid->dzz[i][k];
 	phys->stmp2[i][k]+=(b[k]-b[k+1])/grid->dzz[i][k];
       }
