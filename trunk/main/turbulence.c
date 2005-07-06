@@ -2,8 +2,21 @@
  * File: turbulence.c
  * Description:  Contains the Mellor-Yamad level 2.5 turbulence model.
  *
- * $Id: turbulence.c,v 1.5 2005-04-01 20:55:23 fringer Exp $
+ * $Id: turbulence.c,v 1.6 2005-07-06 00:28:56 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2005/04/01 20:55:23  fringer
+ * Changed thetaQ to 1.0 instead of 0.75 since 0.75 is not always stable.
+ *
+ * Added the ability to specify incoming turbulence quantities.  Right now
+ * they are set so that there is no gradient on the turbulent quantitites
+ * for boundary_flag values of open or not open.  In order to change this
+ * the code must be changed in the loops that loop over edgedist[4] to
+ * edgedist[5].
+ *
+ * Also changed the (completely ad-hoc) initialization of the turbulent
+ * length scale so that it grows for the first 30 time steps instead of
+ * the first 3.
+ *
  * Revision 1.4  2004/09/27 01:04:31  fringer
  * Removed functions that opened up files for printing out debugging profiles.
  *
@@ -195,7 +208,10 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
       if(drdz[k]<0) drdz[k]=0;
       N[k]=sqrt(drdz[k]);
     }
-    N[grid->Nk[i]]=N[grid->Nk[i]-1];
+    if(grid->ctop[i]<grid->Nk[i]-1)
+      N[grid->ctop[i]]=N[grid->ctop[i]+1];
+    else
+      N[grid->ctop[i]]=0;
 
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       if(l[i][k]<0) l[i][k]=0;
@@ -204,7 +220,6 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
       q[i][k]=sqrt(q[i][k]);
       l[i][k]=Min(0.53*q[i][k]/(N[k]+SMALL),l[i][k]);
       Gh[k]=-pow(N[k]*l[i][k]/(q[i][k]+SMALL),2);
-
       StabilityFunctions(&Sm,&Sh,Gh[k],A1,A2,B1,B2,C1);
 
       nuT[i][k]=Sm*q[i][k]*l[i][k];
