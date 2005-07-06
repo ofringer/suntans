@@ -6,8 +6,14 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.35 2004-11-20 22:04:21 fringer Exp $
+ * $Id: grid.c,v 1.36 2005-07-06 02:18:06 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.35  2004/11/20 22:04:21  fringer
+ * Added the AllocateTransferArrays and FreeTransferArrays functions
+ * so that space associated with mpi send/recv calls is allocated once
+ * at the beginning and these arrays are used throughout the computation
+ * in the send/recv calls.
+ *
  * Revision 1.34  2004/09/28 22:52:22  fringer
  * Added SunFree for status and request pointers at the end of
  * ISendRecvWData,ISendRecvCellData2D,ISendRecvCellData3D,
@@ -1296,7 +1302,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     sprintf(str,"%s",VERTSPACEFILE);
     ofile = MPI_FOpen(str,"w","OutputData",myproc);
     for(n=0;n<grid->Nkmax;n++)
-      fprintf(ofile,"%f\n",grid->dz[n]);
+      fprintf(ofile,"%e\n",grid->dz[n]);
     fclose(ofile);
   }
 }
