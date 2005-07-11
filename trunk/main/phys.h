@@ -1,8 +1,12 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.13 2005-04-01 20:51:28 fringer Exp $
+ * $Id: phys.h,v 1.14 2005-07-11 20:12:58 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.13  2005/04/01 20:51:28  fringer
+ * Added new variables that are used to specify the partially clamped
+ * boundary condition.
+ *
  * Revision 1.12  2004/09/22 06:30:47  fringer
  * Added propT to Allocate and Free PhysicalVariables.
  *
@@ -151,7 +155,7 @@ typedef struct _propT {
     nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
     *SalinityFID, *BGSalinityFID, *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
-    *StoreFID, *StartFID;
+    *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;
 
 } propT;
 
