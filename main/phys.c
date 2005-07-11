@@ -6,8 +6,16 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.93 2005-07-01 22:13:47 fringer Exp $
+ * $Id: phys.c,v 1.94 2005-07-11 20:10:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.93  2005/07/01 22:13:47  fringer
+ * Bug fix courtesy Gang Zhao:
+ * Changed vertical advection of horizontal velocity scheme so that
+ * the k-loop starts at k=grid->ctop[i]+1 instead of k=grid->ctop[i]+2.
+ * The starting value of +2 was originally in place when the old version
+ * of the advection scheme lumped the upper two cells into one cell
+ * when the upper layer became very thin.
+ *
  * Revision 1.92  2005/04/01 22:39:01  fringer
  * Moved the specification of the wind stress to the function WindStress
  * which is defined in boundaries.c.
@@ -4170,6 +4178,54 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 	}
       }
     fflush(prop->PressureFID);
+
+    if(prop->turbmodel) {
+      if(ASCII) 
+	for(i=0;i<grid->Nc;i++) {
+	  for(k=0;k<grid->Nk[i];k++)
+	    fprintf(prop->EddyViscosityFID,"%e\n",phys->nu_tv[i][k]);
+	for(k=grid->Nk[i];k<grid->Nkmax;k++)
+	  fprintf(prop->EddyViscosityFID,"0.0\n");
+	}
+      else 
+	for(k=0;k<grid->Nkmax;k++) {
+	  for(i=0;i<grid->Nc;i++) {
+	    if(k<grid->Nk[i])
+	      phys->htmp[i]=phys->nu_tv[i][k];
+	    else
+	      phys->htmp[i]=EMPTY;
+	  }
+	  nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->EddyViscosityFID);
+	  if(nwritten!=grid->Nc) {
+	    printf("Error outputting eddy viscosity data!\n");
+	    exit(EXIT_WRITING);
+	  }
+	}
+      fflush(prop->EddyViscosityFID);
+      
+      if(ASCII) 
+	for(i=0;i<grid->Nc;i++) {
+	  for(k=0;k<grid->Nk[i];k++)
+	    fprintf(prop->ScalarDiffusivityFID,"%e\n",phys->kappa_tv[i][k]);
+	  for(k=grid->Nk[i];k<grid->Nkmax;k++)
+	    fprintf(prop->ScalarDiffusivityFID,"0.0\n");
+	}
+      else 
+	for(k=0;k<grid->Nkmax;k++) {
+	  for(i=0;i<grid->Nc;i++) {
+	    if(k<grid->Nk[i])
+	      phys->htmp[i]=phys->kappa_tv[i][k];
+	    else
+	      phys->htmp[i]=EMPTY;
+	  }
+	  nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->ScalarDiffusivityFID);
+	  if(nwritten!=grid->Nc) {
+	    printf("Error outputting scalar diffusivity data!\n");
+	    exit(EXIT_WRITING);
+	  }
+	}
+      fflush(prop->ScalarDiffusivityFID);
+    }
     
     for(i=0;i<grid->Nc;i++) {
       for(k=0;k<grid->Nk[i];k++)
@@ -4351,6 +4407,14 @@ void OpenFiles(propT *prop, int myproc)
   MPI_GetFile(filename,DATAFILE,"PressureFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->PressureFID = MPI_FOpen(str,"w","OpenFiles",myproc);
+
+  MPI_GetFile(filename,DATAFILE,"EddyViscosityFile","OpenFiles",myproc);
+  sprintf(str,"%s.%d",filename,myproc);
+  prop->EddyViscosityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
+
+  MPI_GetFile(filename,DATAFILE,"ScalarDiffusivityFile","OpenFiles",myproc);
+  sprintf(str,"%s.%d",filename,myproc);
+  prop->ScalarDiffusivityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   MPI_GetFile(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
