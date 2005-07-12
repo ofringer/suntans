@@ -2,10 +2,13 @@
 # These must be specified before SUNTANS will compile correctly!
 # Here is an example:
 #
-# MPIHOME = /usr/local/mpich
-# PARMETISHOME = /usr/local/packages/ParMetis-2.0
-# TRIANGLEHOME = /usr/local/packages/triangle
+# MPIHOME=/usr/local/mpich-1.2.7
+# PARMETISHOME=/usr/local/packages/ParMetis-2.0
+# TRIANGLEHOME=/usr/local/packages/triangle
 #
-MPIHOME = 
-PARMETISHOME = 
-TRIANGLEHOME = 
+# Note that this is for shell scripts as well as a Makefile,
+# so don't leave spaces between equal signs!
+#
+MPIHOME= 
+PARMETISHOME= 
+RIANGLEHOME= 

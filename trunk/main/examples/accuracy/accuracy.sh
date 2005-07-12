@@ -14,6 +14,8 @@ SUNTANSHOME=../..
 maindatadir=rundata
 datadir=data
 
+. $SUNTANSHOME/Makefile.in
+
 nmax=6
 n=1
 nsteps=10
@@ -43,7 +45,7 @@ do
   echo "dt $dt \#" >> $datadir/suntans.dat
   echo "nsteps $nsteps \#" >> $datadir/suntans.dat
 
-  mpirun -np 1 $SUNTANSHOME/sun -t -g -s -vvv --datadir=$datadir >& $datadir/t$np/run.out
+  $MPIHOME/bin/mpirun -np 1 $SUNTANSHOME/sun -t -g -s -vvv --datadir=$datadir >& $datadir/t$np/run.out
   'cp' $datadir/{fs.dat.0,q.dat.0,s.dat.0,u.dat.0,w.dat.0} $datadir/t$np
   
   nsteps=`calc "$nsteps * 2"`
