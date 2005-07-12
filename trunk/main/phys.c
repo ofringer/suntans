@@ -6,8 +6,15 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.94 2005-07-11 20:10:08 fringer Exp $
+ * $Id: phys.c,v 1.95 2005-07-12 01:22:23 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.94  2005/07/11 20:10:08  fringer
+ * Added output files for eddy viscosity and scalar diffusivity when
+ * turbmodel is 1 in suntans.dat.  The files in suntans.dat are specified
+ * by
+ * EddyViscosityFile
+ * ScalarDiffusivityFile
+ *
  * Revision 1.93  2005/07/01 22:13:47  fringer
  * Bug fix courtesy Gang Zhao:
  * Changed vertical advection of horizontal velocity scheme so that
@@ -1030,7 +1037,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   for(i=0;i<Nc;i++) {
     phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
     if(phys->h[i]<-grid->dv[i])
-      phys->h[i]=-grid->dv[i];
+      phys->h[i]=-grid->dv[i] + 1e-10*grid->dz[grid->Nk[i]-1];
   }
 
   // Need to update the vertical grid after updating the free surface.
@@ -1485,13 +1492,8 @@ static void StoreVariables(gridT *grid, physT *phys) {
  */
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 			     int myproc, int numprocs, MPI_Comm comm) {
-  int i, iptr, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin, kmax, wetdry_offset;
+  int i, iptr, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin, kmax;
   REAL *a, *b, *c, fab, sum;
-
-  if(prop->wetdry)
-    wetdry_offset=1;
-  else
-    wetdry_offset=0;
 
   a = phys->a;
   b = phys->b;
@@ -1592,15 +1594,16 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
-    for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      k0=grid->etop[j];
-      
-      for(k0=grid->etop[j];k0<k;k0++)
-	phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
-	  (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
-      phys->Cn_U[j][k]-=0.25*GRAV*prop->beta*prop->dt*(phys->s[nc1][k]-phys->s[nc2][k])*
-	(grid->dzz[nc1][k]+grid->dzz[nc2][k])/grid->dg[j];
-    }
+    if(grid->etop[j]<grid->Nke[j]-1) 
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	k0=grid->etop[j];
+	
+	for(k0=grid->etop[j];k0<k;k0++)
+	  phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
+	    (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
+	phys->Cn_U[j][k]-=0.25*GRAV*prop->beta*prop->dt*(phys->s[nc1][k]-phys->s[nc2][k])*
+	  (grid->dzz[nc1][k]+grid->dzz[nc2][k])/grid->dg[j];
+      }
   }
   for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
@@ -1900,9 +1903,9 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     if(nc2==-1) nc2=nc1;
     
     if(grid->ctop[nc1]>grid->ctop[nc2])
-      k0=grid->ctop[nc1]+wetdry_offset;
+      k0=grid->ctop[nc1];
     else
-      k0=grid->ctop[nc2]+wetdry_offset;
+      k0=grid->ctop[nc2];
     
     for(k=k0;k<grid->Nk[nc1];k++) 
       phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
@@ -1925,7 +1928,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     j = grid->edgep[jptr]; 
     
     nc1 = grid->grad[2*j];
-    k0=grid->ctop[nc1]+wetdry_offset;
+    k0=grid->ctop[nc1];
 
     if(phys->boundary_flag[jptr-grid->edgedist[2]]==open)
       for(k=k0;k<grid->Nk[nc1];k++) 
@@ -2013,17 +2016,12 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
  */
 static void WPredictor(gridT *grid, physT *phys, propT *prop,
 		       int myproc, int numprocs, MPI_Comm comm) {
-  int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin, wetdry_offset;
+  int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin;
   REAL fab, sum, *a, *b, *c;
 
   a = phys->a;
   b = phys->b;
   c = phys->c;
-
-  if(prop->wetdry)
-    wetdry_offset=1;
-  else
-    wetdry_offset=0;
 
   if(prop->n==1) {
     fab=1;
@@ -2181,15 +2179,13 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr]; 
     
-    for(k=grid->ctop[i]+1+wetdry_offset;k<grid->Nk[i];k++) 
+    for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
       phys->Cn_W[i][k]-=prop->dt*(grid->dzz[i][k-1]*phys->stmp[i][k-1]+grid->dzz[i][k]*phys->stmp[i][k])/
 	(grid->dzz[i][k-1]+grid->dzz[i][k]);
     
     // Top flux advection consists only of top cell
-    if(!prop->wetdry) {
-      k=grid->ctop[i];
-      phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
-    }
+    k=grid->ctop[i];
+    phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
   }
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
@@ -2582,7 +2578,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	+2.0*GRAV*(1-boundary_flag)*dt/grid->dg[j]*phys->boundary_h[jptr-grid->edgedist[2]];
   }
 
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
     nc1 = grid->grad[2*j];
@@ -2635,10 +2631,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	
 	// Top cell
 	phys->utmp[j][grid->etop[j]]+=dt*(1-theta)*(-(b[grid->etop[j]]+2.0*phys->CdT[j]*
-						      sqrt(pow(0.5*(phys->uc[nc1][grid->etop[j]]+
-								    phys->uc[nc2][grid->etop[j]]),2)+
-							   pow(0.5*(phys->vc[nc1][grid->etop[j]]+
-								    phys->vc[nc2][grid->etop[j]]),2))/
+						      fabs(phys->u[j][grid->etop[j]])/
 						      (grid->dzz[nc1][grid->etop[j]]+
 						       grid->dzz[nc2][grid->etop[j]]))*
 						    phys->u[j][grid->etop[j]]
@@ -2647,10 +2640,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	// Bottom cell
 	phys->utmp[j][grid->Nke[j]-1]+=dt*(1-theta)*(a[grid->Nke[j]-1]*phys->u[j][grid->Nke[j]-2]-
 						     (a[grid->Nke[j]-1]+2.0*phys->CdB[j]*
-						      sqrt(pow(0.5*(phys->uc[nc1][grid->Nke[j]-1]+
-								    phys->uc[nc2][grid->Nke[j]-1]),2)+
-							   pow(0.5*(phys->vc[nc1][grid->Nke[j]-1]+
-								    phys->vc[nc2][grid->Nke[j]-1]),2))/
+						      fabs(phys->u[j][grid->Nke[j]-1])/
 						      (grid->dzz[nc1][grid->Nke[j]-1]+
 						       grid->dzz[nc2][grid->Nke[j]-1]))*
 						     phys->u[j][grid->Nke[j]-1]);
@@ -2674,11 +2664,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	// Top cells
 	c[grid->etop[j]]=-theta*dt*b[grid->etop[j]];
 	b[grid->etop[j]]=1.0+theta*dt*(b[grid->etop[j]]+
-				       2.0*phys->CdT[j]*
-				       sqrt(pow(0.5*(phys->uc[nc1][grid->etop[j]]+
-						     phys->uc[nc2][grid->etop[j]]),2)+
-					    pow(0.5*(phys->vc[nc1][grid->etop[j]]+
-						     phys->vc[nc2][grid->etop[j]]),2))/
+				       2.0*phys->CdT[j]*fabs(phys->u[j][grid->etop[j]])/
 				       (grid->dzz[nc1][grid->etop[j]]+
 					grid->dzz[nc2][grid->etop[j]]));
 	a[grid->etop[j]]=0;
@@ -2686,11 +2672,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	// Bottom cell
 	c[grid->Nke[j]-1]=0;
 	b[grid->Nke[j]-1]=1.0+theta*dt*(a[grid->Nke[j]-1]+
-					2.0*phys->CdB[j]*
-				       sqrt(pow(0.5*(phys->uc[nc1][grid->Nke[j]-1]+
-						     phys->uc[nc2][grid->Nke[j]-1]),2)+
-					    pow(0.5*(phys->vc[nc1][grid->Nke[j]-1]+
-						     phys->vc[nc2][grid->Nke[j]-1]),2))/
+					2.0*phys->CdB[j]*fabs(phys->u[j][grid->Nke[j]-1])/
 					(grid->dzz[nc1][grid->Nke[j]-1]+
 					 grid->dzz[nc2][grid->Nke[j]-1]));
 	a[grid->Nke[j]-1]=-theta*dt*a[grid->Nke[j]-1];
@@ -2702,10 +2684,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	  a[k]=-theta*dt*a[k];
 	}
       } else {
-	b[grid->etop[j]]=1.0+2.0*theta*dt*sqrt(pow(0.5*(phys->uc[nc1][grid->etop[j]]+
-							phys->uc[nc2][grid->etop[j]]),2)+
-					       pow(0.5*(phys->vc[nc1][grid->etop[j]]+
-							phys->vc[nc2][grid->etop[j]]),2))/
+	b[grid->etop[j]]=1.0+2.0*theta*dt*fabs(phys->u[j][grid->etop[j]])/
 	  (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
 	  (phys->CdB[j]+phys->CdT[j]);
       }	  
@@ -2842,7 +2821,7 @@ static void UPredictor(gridT *grid, physT *phys,
 
   // Use the new free surface to add the implicit part of the free-surface
   // pressure gradient to the horizontal momentum.
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
     nc1 = grid->grad[2*j];
@@ -3488,7 +3467,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
   c = phys->c;
   d = phys->d;
 
-  if(prop->n==1) {
+  if(prop->n==1 || prop->wetdry) {
     fab=1;
     for(i=0;i<grid->Nc;i++)
       for(k=0;k<grid->Nk[i];k++)
@@ -3680,12 +3659,25 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
       } else 
 	sp=phys->stmp[nc2];
 
-      for(k=0;k<grid->Nk[nc2];k++) 
-	ap[k] += 0.5*dt*df*normal/Ac*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
-	  sp[k]*grid->dzzold[nc2][k];
-      for(k=0;k<grid->Nk[nc1];k++) 
-      	ap[k] += 0.5*dt*df*normal/Ac*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
-	  phys->stmp[nc1][k]*grid->dzzold[nc1][k];
+      if(prop->wetdry) {
+	for(k=0;k<grid->Nk[nc2];k++) 
+	  ap[k] += 0.5*dt*df*normal/Ac*
+	    (theta*(phys->u[ne][k]+fabs(phys->u[ne][k]))+
+	     (1-theta)*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k])))*
+	    sp[k]*grid->dzzold[nc2][k];
+	for(k=0;k<grid->Nk[nc1];k++) 
+	  ap[k] += 0.5*dt*df*normal/Ac*
+	    (theta*(phys->u[ne][k]-fabs(phys->u[ne][k]))+
+	     (1-theta)*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k])))*
+	    phys->stmp[nc1][k]*grid->dzzold[nc1][k];
+       } else {
+	for(k=0;k<grid->Nk[nc2];k++) 
+	  ap[k] += 0.5*dt*df*normal/Ac*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
+	    sp[k]*grid->dzzold[nc2][k];
+	for(k=0;k<grid->Nk[nc1];k++) 
+	  ap[k] += 0.5*dt*df*normal/Ac*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
+	    phys->stmp[nc1][k]*grid->dzzold[nc1][k];
+       }	  
     }
 
     for(k=ktop+1;k<grid->Nk[i];k++) 
@@ -4144,7 +4136,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       for(k=0;k<grid->Nkmax;k++) {
 	for(i=0;i<grid->Nc;i++) {
 	  if(k<grid->Nk[i])
-	    phys->htmp[i]=phys->nu_tv[i][k];//phys->T[i][k];
+	    phys->htmp[i]=phys->T[i][k];
 	  else
 	    phys->htmp[i]=EMPTY;
 	}
