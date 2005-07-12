@@ -10,9 +10,8 @@
 include Makefile.in
 
 CC = $(MPIHOME)/bin/mpicc
-OPTFLAGS = 
+OPTFLAGS = -O2
 LIBDIR = -L$(PARMETISHOME) -L$(TRIANGLEHOME)
-INCLUDES = -I$(PARMETISHOME)/ParMETISLib 
 
 XLDFLAGS=-lX11 -lm
 XINC=/usr/X11R6/include
@@ -24,7 +23,8 @@ PARMETISLIB = $(PARMETISHOME)/libparmetis.a $(PARMETISHOME)/libmetis.a
 
 LD = $(CC) 
 LDFLAGS = -lparmetis -lmetis -lm $(LIBDIR) $(PARMETISLIB) $(TRIANGLELIB)
-CFLAGS = $(OPTFLAGS) $(INCLUDES) 
+INCLUDES = -I$(PARMETISHOME)/ParMETISLib -I$(TRIANGLEHOME)
+CFLAGS = $(OPTFLAGS) $(INCLUDES)
 
 EXEC = sun
 PEXEC = sunplot
@@ -42,12 +42,6 @@ all:	$(EXEC)
 
 .c.o:	
 	$(CC) $(CFLAGS) -c $*.c
-
-triangulate.o:	triangulate.c
-	$(CC) -I$(TRIANGLEHOME) -I$(PARMETISHOME) -c triangulate.c
-
-sunplot.o:	sunplot.c
-	$(CC) -I$(XINC) -c $*.c
 
 $(EXEC): $(OBJS) 
 	$(LD)  -o $@ $(OBJS) $(LDFLAGS)
