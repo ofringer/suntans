@@ -9,6 +9,7 @@
 # Note that this is for shell scripts as well as a Makefile,
 # so don't leave spaces between equal signs!
 #
-MPIHOME= 
-PARMETISHOME= 
-RIANGLEHOME= 
+MPIHOME = 
+PARMETISHOME = 
+TRIANGLEHOME = 
+
