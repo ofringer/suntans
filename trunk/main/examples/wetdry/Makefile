@@ -1,6 +1,5 @@
-MPIHOME = /usr/local/mpich-1.2.5.2
-SUNTANSHOME = ../..
-PARMETISHOME = /home/fringer/research/SUNTANS/packages/ParMetis-2.0
+SUNTANSHOME=../..
+include $(SUNTANSHOME)/Makefile.in
 
 CC = $(MPIHOME)/bin/mpicc
 LD = $(CC) 

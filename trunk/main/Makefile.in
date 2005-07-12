@@ -1,0 +1,11 @@
+#
+# These must be specified before SUNTANS will compile correctly!
+# Here is an example:
+#
+# MPIHOME = /usr/local/mpich
+# PARMETISHOME = /usr/local/packages/ParMetis-2.0
+# TRIANGLEHOME = /usr/local/packages/triangle
+#
+MPIHOME = 
+PARMETISHOME = 
+TRIANGLEHOME = 
