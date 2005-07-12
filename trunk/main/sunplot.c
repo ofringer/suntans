@@ -6,8 +6,17 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.43 2005-07-12 01:09:24 fringer Exp $
+ * $Id: sunplot.c,v 1.44 2005-07-12 02:06:47 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.43  2005/07/12 01:09:24  fringer
+ * Added ability to plot contours of:
+ * nut (eddy viscosity)
+ * kt (scalar diffusivity)
+ * These files are specified by
+ * EddyViscosityFile
+ * ScalarDiffusivityFile
+ * in suntans.dat.
+ *
  * Revision 1.42  2005/07/01 23:35:04  fringer
  * Using the -m plays a movie of the salinity in the data specified
  * by datadir.
@@ -482,7 +491,7 @@ int main(int argc, char *argv[]) {
 
   XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask );
 
-  axisType='i';
+  axisType='n';
   edgelines=false;
   voronoipoints=false;
   delaunaypoints=false;
