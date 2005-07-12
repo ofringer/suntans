@@ -6,8 +6,11 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.44 2005-07-12 02:06:47 fringer Exp $
+ * $Id: sunplot.c,v 1.45 2005-07-12 02:12:50 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.44  2005/07/12 02:06:47  fringer
+ * Changed the default axis type to be normal instead of image.
+ *
  * Revision 1.43  2005/07/12 01:09:24  fringer
  * Added ability to plot contours of:
  * nut (eddy viscosity)
@@ -491,7 +494,7 @@ int main(int argc, char *argv[]) {
 
   XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask );
 
-  axisType='n';
+  axisType='i';
   edgelines=false;
   voronoipoints=false;
   delaunaypoints=false;
@@ -513,6 +516,7 @@ int main(int argc, char *argv[]) {
     ystart=height/2*axesPosition[3];
     xend=width*axesPosition[2];
     yend=height/2*axesPosition[3];
+    axisType='n';
   }
 
   while(true) {
