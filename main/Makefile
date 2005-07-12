@@ -5,99 +5,82 @@
 # Stanford University
 # fringer@stanford.edu
 #
-# $Id: Makefile,v 1.10 2004-09-15 01:29:59 fringer Exp $
-# $Log: not supported by cvs2svn $
-# Revision 1.9  2004/09/12 22:12:00  fringer
-# Added bounds checking options.
+# Need to define appropriate directories in Makefile.in first!
 #
-# Revision 1.8  2004/06/10 08:29:11  fringer
-# Added PI* to the superclean command.
-#
-# Revision 1.7  2004/06/10 08:20:51  fringer
-# Removed lapack and added MPIHOME to specify mpi main directory.
-#
-# Revision 1.6  2004/05/29 20:27:21  fringer
-#  Revision before converting to CVS.
-#
-# Revision 1.5  2004/04/20 16:48:33  fringer
-# 4/20/04
-#
-# Revision 1.4  2003/05/12 00:18:26  fringer
-# Added the blas and lapack libraries to compile kriging.c.  These
-# must be compiled from the CLAPACK libraries obtained from
-# netlib.org
-#
-# Revision 1.3  2003/05/07 14:46:57  fringer
-# Added PEXEC = suntans and updated superclean and tarball so that
-# tarball creates a tarball in the directory $(BACKUP).
-#
-# Revision 1.2  2003/04/29 00:23:56  fringer
-# Added triangulate.o.  In order to compile sunplot, need to type
-# make sunplot.  The default is to compile sun.
-#
-# Revision 1.1  2002/11/03 00:14:13  fringer
-# Initial revision
-#
-#
-MPIHOME = /usr/local/mpich-1.2.5.2
-SUNTANSHOME = /home/fringer/research/SUNTANS/suntans
-PARMETISHOME = /home/fringer/research/SUNTANS/packages/ParMetis-2.0
-TRIANGLEHOME = /home/fringer/research/SUNTANS/packages/triangle
-BACKUP = /home/data
+include Makefile.in
 
 CC = $(MPIHOME)/bin/mpicc
 OPTFLAGS = 
-#LD = $(CC) -p -pg -fbounds-checking -B/usr/local/gcc-3.3.3
-LD = $(CC) -p -pg 
-LIBDIR =  
-INCLUDES = -I$(PARMETISHOME)/ParMETISLib
-CFLAGS = $(OPTFLAGS) $(INCLUDES) 
-XLIB=-lX11 -lm
+LIBDIR = -L$(PARMETISHOME) -L$(TRIANGLEHOME)
+INCLUDES = -I$(PARMETISHOME)/ParMETISLib 
+
+XLDFLAGS=-lX11 -lm
 XINC=/usr/X11R6/include
 XLIBDIR = /usr/X11R6/lib
 
-MATHLIB = -lm
-LIBSDIR = -L$(PARMETISHOME) 
-LIBS = -lparmetis -lmetis $(MATHLIB)
-
+TRIINCLUDE = -I$(TRIANGLEHOME)
+TRIANGLELIB = $(TRIANGLEHOME)/triangle.o
 PARMETISLIB = $(PARMETISHOME)/libparmetis.a $(PARMETISHOME)/libmetis.a
+
+LD = $(CC) 
+LDFLAGS = -lparmetis -lmetis -lm $(LIBDIR) $(PARMETISLIB) $(TRIANGLELIB)
+CFLAGS = $(OPTFLAGS) $(INCLUDES) 
 
 EXEC = sun
 PEXEC = sunplot
 
-OBJS = mympi.o grid.o report.o util.o fileio.o phys.o suntans.o initialization.o memory.o turbulence.o boundaries.o
-          
+DEPFLAGS = -Y
+
+SRCS = mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
+	turbulence.c boundaries.c triangulate.c
+OBJS = $(SRCS:.c=.o)
+
+PLOTSRCS = sunplot.c fileio.c
+PLOTOBJS = $(PLOTSRCS:.c=.o)
+
 all:	$(EXEC)
 
 .c.o:	
-	$(LD) $(CFLAGS) $(LIBSDIR) -c $*.c
-
-kriging.o:	kriging.c
-	$(LD) -c kriging.c $(MATHLIB)
+	$(CC) $(CFLAGS) -c $*.c
 
 triangulate.o:	triangulate.c
-	$(LD) -c triangulate.c -I$(TRIANGLEHOME) -I$(PARMETISHOME)
+	$(CC) -I$(TRIANGLEHOME) -I$(PARMETISHOME) -c triangulate.c
 
-$(EXEC): $(OBJS) $(PARMETISLIB) suntans.h triangulate.o 
-	$(LD)  -o $@ $(OBJS) $(LIBSDIR) $(LIBS) triangulate.o  \
-        $(TRIANGLEHOME)/triangle.o 
+sunplot.o:	sunplot.c
+	$(CC) -I$(XINC) -c $*.c
 
-sunplot.o:	sunplot.c suntans.h $(OBJS)
-		$(LD) $(CFLAGS) -c sunplot.c
+$(EXEC): $(OBJS) 
+	$(LD)  -o $@ $(OBJS) $(LDFLAGS)
 
-$(PEXEC): sunplot.o suntans.h
-	$(LD) -o sunplot sunplot.o fileio.o $(LIBSDIR) $(LIBS) $(XLIB) -I$(XINC) -L$(XLIBDIR)
+$(PEXEC): sunplot.o
+	$(LD) -o sunplot $(PLOTOBJS) $(XLDFLAGS) -L$(XLIBDIR)
 
-tarball: 
-	-tar czvf $(BACKUP)/suntans.`date +%m%d%y`.tgz -C .. main
-
-initialization.o:	initialization.h 
-grid.o:	grid.h initialization.h
-mympi.o: mympi.h
-phys.o:	phys.h initialization.h
+depend: 
+	makedepend $(DEPFLAGS) -- $(SRCS) $(PLOTSRCS) &> /dev/null
 
 clean:
-	rm -f *.o ;\
+	rm -f *.o
 
-superclean: 
-	rm -f *~ \#*\# PI* $(EXEC) $(PEXEC)
+clobber:	clean
+	rm -f *~ \#*\# PI* $(EXEC) $(PEXEC) $(DEPFILE)
+
+
+# DO NOT DELETE THIS LINE - Dependencies are appended after it.
+
+mympi.o: mympi.h suntans.h fileio.h
+grid.o: grid.h suntans.h fileio.h mympi.h util.h initialization.h memory.h
+grid.o: triangulate.h report.h
+report.o: report.h grid.h suntans.h fileio.h mympi.h
+util.o: grid.h suntans.h fileio.h mympi.h util.h
+fileio.o: fileio.h
+phys.o: suntans.h phys.h grid.h fileio.h mympi.h util.h initialization.h
+phys.o: memory.h turbulence.h boundaries.h
+suntans.o: suntans.h mympi.h fileio.h grid.h phys.h report.h
+initialization.o: fileio.h suntans.h initialization.h
+memory.o: memory.h
+turbulence.o: phys.h suntans.h grid.h fileio.h mympi.h util.h turbulence.h
+turbulence.o: boundaries.h
+boundaries.o: boundaries.h suntans.h phys.h grid.h fileio.h mympi.h
+triangulate.o: suntans.h mympi.h fileio.h grid.h triangulate.h
+sunplot.o: suntans.h fileio.h
+fileio.o: fileio.h
