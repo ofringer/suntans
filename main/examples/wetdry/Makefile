@@ -14,6 +14,9 @@ NUMPROCS = 1
 
 all:	data
 
+initialization.c:	
+	cp initialization_1d.c initialization.c
+
 test1d:
 	cp rundata/oned.dat rundata/pslg.dat
 	cp initialization_1d.c initialization.c
