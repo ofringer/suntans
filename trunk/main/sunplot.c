@@ -6,8 +6,12 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.42 2005-07-01 23:35:04 fringer Exp $
+ * $Id: sunplot.c,v 1.43 2005-07-12 01:09:24 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.42  2005/07/01 23:35:04  fringer
+ * Using the -m plays a movie of the salinity in the data specified
+ * by datadir.
+ *
  * Revision 1.41  2005/04/01 22:20:49  fringer
  * Changed AXESBIGRATIO to 1e10 so that the free surface deflection coule
  * be plotted using the profile plot.  Otherwise if the aspect ratio between
@@ -230,7 +234,7 @@
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
 #define MAXZOOMRATIO 100.0
-#define NUMBUTTONS 34
+#define NUMBUTTONS 36
 #define POINTSIZE 2
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
@@ -262,7 +266,7 @@ typedef enum {
   kupwin, kdownwin,
   prevprocwin, allprocswin, nextprocwin,
   saltwin, tempwin, preswin, fswin,
-  uwin, vwin, wwin, vecwin, Euwin, Evwin, Evecwin, 
+  uwin, vwin, wwin, vecwin, Euwin, Evwin, Evecwin, nutwin, ktwin,  
   depthwin, nonewin,
   edgewin, voronoiwin, delaunaywin,
   zoomwin, profwin, quitwin, reloadwin, axisimagewin, cmapholdwin,
@@ -283,7 +287,8 @@ typedef enum {
 
 typedef enum {
   noplottype, freesurface, depth, h_d, salinity, temperature, pressure, saldiff, 
-  salinity0, u_velocity, v_velocity, w_velocity, u_baroclinic, v_baroclinic, Eu_velocity, Ev_velocity
+  salinity0, u_velocity, v_velocity, w_velocity, u_baroclinic, v_baroclinic, Eu_velocity, Ev_velocity,
+  nut, kt
 } plottypeT;
 
 typedef enum {
@@ -315,6 +320,8 @@ typedef struct {
   float ***q;
   float ***u;
   float ***v;
+  float ***nut;
+  float ***kt;
   float **ubar;
   float **vbar;
   float ***wf;
@@ -367,7 +374,7 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
 void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs);
 void ReadGrid(int proc);
 void ReadScalar(float *scal, int k, int Nk, int np, char *filename);
-void GetFile(char *string, char *datadir, char *datafile, char *name, int proc);
+int GetFile(char *string, char *datadir, char *datafile, char *name, int proc);
 void ReadVelocity(float *u, float *v, int kp, int Nk, int np , char *filename);
 float Min(float *x, int N);
 float Max(float *x, int N);
@@ -778,6 +785,20 @@ int main(int argc, char *argv[]) {
 	  redraw=true;
 	} else
 	  sprintf(message,"Ey flux is already being displayed...");
+      } else if(report.xany.window==controlButtons[nutwin].butwin && mousebutton==left_button) {
+	if(plottype!=nut) {
+	  plottype=nut;
+	  sprintf(message,"Turb. eddy-visc. selected...");
+	  redraw=true;
+	} else
+	  sprintf(message,"Turb. eddy-visc. already being displayed...");
+      } else if(report.xany.window==controlButtons[ktwin].butwin && mousebutton==left_button) {
+	if(plottype!=kt) {
+	  plottype=kt;
+	  sprintf(message,"Turb. scalar-diff. selected...");
+	  redraw=true;
+	} else
+	  sprintf(message,"Turb. scalar-diff. already being displayed...");
       } else if(report.xany.window==controlButtons[wwin].butwin && mousebutton==left_button) {
 	if(plottype!=w_velocity) {
 	  plottype=w_velocity;
@@ -1818,6 +1839,12 @@ float *GetScalarPointer(dataT *data, plottypeT plottype, int klevel, int proc) {
   case Ev_velocity: 
     return data->Ev[proc];
     break;
+  case nut:
+    return data->nut[proc][klevel];
+    break;
+  case kt:
+    return data->kt[proc][klevel];
+    break;
   case w_velocity:
     return data->w[proc][klevel];
     break;
@@ -2379,6 +2406,12 @@ void DrawColorBar(dataT *data, int procnum, int numprocs, plottypeT plottype) {
     case Ev_velocity: 
       sprintf(str,"Ey Flux");
       break;
+    case nut:
+      sprintf(str,"nu_t");
+      break;
+    case kt:
+      sprintf(str,"k_t");
+      break;
     case v_baroclinic: 
       sprintf(str,"V baro");
       break;
@@ -2770,6 +2803,20 @@ void SetUpButtons(void) {
   controlButtons[Evecwin].w=0.4;
   controlButtons[Evecwin].h=(float)BUTTONHEIGHT;
 
+  controlButtons[nutwin].string="nu_t";
+  controlButtons[nutwin].mapstring="nutwin";
+  controlButtons[nutwin].l=0.05;
+  controlButtons[nutwin].b=controlButtons[nextwin].b+14*dist;
+  controlButtons[nutwin].w=0.2;
+  controlButtons[nutwin].h=(float)BUTTONHEIGHT;
+
+  controlButtons[ktwin].string="k_t";
+  controlButtons[ktwin].mapstring="ktwin";
+  controlButtons[ktwin].l=0.3;
+  controlButtons[ktwin].b=controlButtons[nextwin].b+14*dist;
+  controlButtons[ktwin].w=0.2;
+  controlButtons[ktwin].h=(float)BUTTONHEIGHT;
+
 }
 
 void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *dimensions, goT *go)
@@ -2894,6 +2941,8 @@ void FreeData(dataT *data, int numprocs) {
 	free(data->q[proc][j]);
 	free(data->u[proc][j]);
 	free(data->v[proc][j]);
+	free(data->nut[proc][j]);
+	free(data->kt[proc][j]);
 	free(data->wf[proc][j]);
 	free(data->w[proc][j]);
       }
@@ -2906,6 +2955,8 @@ void FreeData(dataT *data, int numprocs) {
       free(data->q[proc]);
       free(data->u[proc]);
       free(data->v[proc]);
+      free(data->nut[proc]);
+      free(data->kt[proc]);
       free(data->wf[proc]);
       free(data->w[proc]);
     }
@@ -2923,6 +2974,8 @@ void FreeData(dataT *data, int numprocs) {
     free(data->T);
     free(data->u);
     free(data->v);
+    free(data->nut);
+    free(data->kt);
     free(data->wf);
     free(data->w);
     free(data->Ne);
@@ -2931,7 +2984,7 @@ void FreeData(dataT *data, int numprocs) {
     free(data->yc);
 }
 
-void GetFile(char *string, char *datadir, char *datafile, char *name, int proc) {
+int GetFile(char *string, char *datadir, char *datafile, char *name, int proc) {
   int status;
   char str[BUFFERLENGTH];
   
@@ -2947,10 +3000,11 @@ void GetFile(char *string, char *datadir, char *datafile, char *name, int proc) 
     else
       sprintf(string,"%s/%s.%d",datadir,str,proc);
   }
+  return status;
 }
 
 void ReadData(dataT *data, int nstep, int numprocs) {
-  int i, j, ik, ik0, proc, status, ind, ind0, nf, count, nsteps, ntout, nk;
+  int i, j, ik, ik0, proc, status, ind, ind0, nf, count, nsteps, ntout, nk, turbmodel;
   float xind, vel, ubar, vbar, dz, beta, dmax;
   double *dummy, *dummy2;
   char string[BUFFERLENGTH];
@@ -2983,6 +3037,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->T = (float ***)malloc(numprocs*sizeof(float **));
     data->u = (float ***)malloc(numprocs*sizeof(float **));
     data->v = (float ***)malloc(numprocs*sizeof(float **));
+    data->nut = (float ***)malloc(numprocs*sizeof(float **));
+    data->kt = (float ***)malloc(numprocs*sizeof(float **));
     data->ubar = (float **)malloc(numprocs*sizeof(float *));
     data->vbar = (float **)malloc(numprocs*sizeof(float *));
     data->wf = (float ***)malloc(numprocs*sizeof(float **));
@@ -3055,6 +3111,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       data->vbar[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->wf[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->w[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
+      data->nut[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
+      data->kt[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
 
       for(i=0;i<data->Nkmax;i++) {
 	data->s[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
@@ -3064,6 +3122,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	data->q[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->u[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->v[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
+	data->nut[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
+	data->kt[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	data->wf[proc][i]=(float *)malloc(data->Ne[proc]*sizeof(float));
 	data->w[proc][i]=(float *)malloc(data->Nc[proc]*sizeof(float));
 	}
@@ -3134,8 +3194,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
     for(proc=0;proc<numprocs;proc++) {
 
-      printf("Reading salinity at step %d, proc %d\n",nstep,proc);
-
       if(data->Ne[proc]>data->Nkmax)
 	dummy=(double *)malloc(data->Ne[proc]*sizeof(double));
       else
@@ -3170,8 +3228,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      printf("Reading temperature at step %d, proc %d\n",nstep,proc);
-
       GetFile(string,DATADIR,DATAFILE,"TemperatureFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
@@ -3191,8 +3247,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  data->q[proc][i][j]=dummy[j];
       }
       fclose(fid);
-
-      printf("Reading u and v at step %d, proc %d\n",nstep,proc);
 
       GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
@@ -3234,8 +3288,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	}
       }
 
-      printf("Reading w at step %d, proc %d\n",nstep,proc);
-
       GetFile(string,DATADIR,DATAFILE,"VerticalVelocityFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       for(i=0;i<data->Nkmax;i++) {
@@ -3256,8 +3308,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      printf("Reading h at step %d, proc %d\n",nstep,proc);
-
       GetFile(string,DATADIR,DATAFILE,"FreeSurfaceFile",proc);
       fid = MyFOpen(string,"r","ReadData");
       fseek(fid,(nstep-1)*data->Nc[proc]*sizeof(double),0);
@@ -3270,6 +3320,35 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	data->h_d[proc][i]=data->h[proc][i]+data->depth[proc][i];
 	if(data->h_d[proc][i]/data->depth[proc][i]<SMALLHEIGHT)
 	  data->h_d[proc][i]=EMPTY;
+      }
+
+      turbmodel=(int)GetValue(DATAFILE,"turbmodel",&status);
+      if(turbmodel) {
+	GetFile(string,DATADIR,DATAFILE,"EddyViscosityFile",proc);
+	fid = MyFOpen(string,"r","ReadData");
+	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+	for(i=0;i<data->Nkmax;i++) {
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	  for(j=0;j<data->Nc[proc];j++) {
+	    data->nut[proc][i][j]=dummy[j];
+	    if(data->s[proc][i][j]==EMPTY)
+	      data->nut[proc][i][j]=EMPTY;
+	  }
+	}
+	fclose(fid);
+	
+	GetFile(string,DATADIR,DATAFILE,"ScalarDiffusivityFile",proc);
+	fid = MyFOpen(string,"r","ReadData");
+	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+	for(i=0;i<data->Nkmax;i++) {
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	  for(j=0;j<data->Nc[proc];j++) {
+	    data->kt[proc][i][j]=dummy[j];
+	    if(data->s[proc][i][j]==EMPTY)
+	      data->kt[proc][i][j]=EMPTY;
+	  }
+	}
+	fclose(fid);
       }
 
       /*
@@ -3457,6 +3536,16 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
       for(i=0;i<data->Nslice;i++) 
 	for(ik=0;ik<data->Nkmax;ik++) 
 	  data->sliceData[i][ik]=data->s[data->sliceProc[i]][ik][data->sliceInd[i]];
+      break;
+    case nut:
+      for(i=0;i<data->Nslice;i++) 
+	for(ik=0;ik<data->Nkmax;ik++) 
+	  data->sliceData[i][ik]=data->nut[data->sliceProc[i]][ik][data->sliceInd[i]];
+      break;
+    case kt:
+      for(i=0;i<data->Nslice;i++) 
+	for(ik=0;ik<data->Nkmax;ik++) 
+	  data->sliceData[i][ik]=data->kt[data->sliceProc[i]][ik][data->sliceInd[i]];
       break;
     case saldiff:
       for(i=0;i<data->Nslice;i++) 
