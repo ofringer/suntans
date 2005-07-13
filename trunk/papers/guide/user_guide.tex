@@ -6,8 +6,12 @@
 % Stanford University
 % 10 June 2004
 %
-% $Id: user_guide.tex,v 1.4 2004-06-24 08:37:27 fringer Exp $
+% $Id: user_guide.tex,v 1.5 2005-07-13 17:07:47 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.4  2004/06/24 08:37:27  fringer
+% Added sections on initial and boundary conditions as well as
+% restart files.
+%
 % Revision 1.3  2004/06/23 06:18:25  fringer
 % Added CVS section for anonymous updating (read-only).
 %
@@ -23,8 +27,8 @@
 %\usepackage{amsfonts,graphics,/usr/share/texmf/tex/latex/misc/authordate1-4}
 \usepackage{amsfonts,graphics}
 
-\newif\ifpdf\ifx\pdfoutput\undefined\pdffalse\else\pdfoutput=1\pdftrue\fi
-\newcommand{\pdfgraphics}{\ifpdf\DeclareGraphicsExtensions{.pdf,.jpg}\else\fi}
+%\newif\ifpdf\ifx\pdfoutput\undefined\pdffalse\else\pdfoutput=1\pdftrue\fi
+%\newcommand{\pdfgraphics}{\ifpdf\DeclareGraphicsExtensions{.pdf,.jpg}\else\fi}
 
 \textheight 9.0in
 \textwidth 6.5in
@@ -33,7 +37,7 @@
 \include{newcommands}
 
 \begin{document}
-\pdfgraphics
+%\pdfgraphics
 
 \title{Suntans User Guide\\
 {\large Stanford Unstructured Nonhydrostatic 
@@ -228,7 +232,7 @@ crash}.  The Suntans executable looks for this file in the directory specified
 by \verb+--datadir=+.  If this is not specified, then it looks for it in the
 same directory as the \verb+sun+ executable.
 A listing of the parameters in the \verb+suntans.dat+ file is given in
-Appendix \ref{app:params}.
+Section \ref{sec:params}.
 
 \section{Creating or Reading in Triangular Grids} \label{sec:grids}
 
@@ -518,11 +522,10 @@ Suppose you would like to
 specify an incoming velocity that oscillates at a frequency $\omega$ due to an incoming wave at $x=0$ m and that
 you would like to use the linearized open boundary condition to specify the outflow at $x=1000$ m.  Since the
 edge markers at the inflow and outflow are the same, you need to set the boundary condition based on the x,y
-location of the specified edge.  To do so, you would set up the \verb+boundaries.c+ file as follows
+location of the specified edge.  To do so, you would set up the functions in the \verb+boundaries.c+ file as follows
+\begin{itemize}
+\item Function OpenBoundaryFluxes:
 \begin{verbatim}
-  .
-  .
-  .
 
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
@@ -530,56 +533,92 @@ location of the specified edge.  To do so, you would set up the \verb+boundaries
     ib = grid->grad[2*j];
 
     if(grid->xv[ib]>500) {
-      forced=0;
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-        uboundary[k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
+         ub[j][k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
     } else {
-      forced=1;
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-        uboundary[k] = prop->amp*cos(prop->omega*prop->rtime);
+         ub[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->n1[j]+
+                  phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->n2[j];
     }
-    .
-    .
-    .
+ }
+
 \end{verbatim}
+\item BoundaryVelocities Function:
+\begin{verbatim}
+
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) 
+    j = grid->edgep[jptr];
+
+    ib = grid->grad[2*j];
+
+    if(grid->xv[ib]>500) {
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+        phys->boundary_u[jptr-grid->edgedist[2]][k]=phys->uc[ib][k];
+        phys->boundary_v[jptr-grid->edgedist[2]][k]=phys->vc[ib][k];
+        phys->boundary_w[jptr-grid->edgedist[2]][k]=
+            0.5*(phys->w[ib][k]+phys->w[ib][k+1]);
+      } 
+    } else {
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+        phys->boundary_u[jptr-grid->edgedist[2]][k]=
+            prop->amp*cos(prop->omega*prop->rtime);
+        phys->boundary_v[jptr-grid->edgedist[2]][k]=0;
+        phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
+        } 
+    }
+ }
+
+\end{verbatim}
+\end{itemize}
 The outermost \verb+j+ loop loops over the edges which have boundary markers specified as \verb+2+.
 The \verb+ib+ index is an index to the cell adjacent to the boundary edge.  Since the Voronoi points
 are specified at the \verb+ib+ indices, then we need to specify the boundary condition based on
 the location of the Voronoi points of the adjacent cell.  In this case the open boundary exists at x=1000, but since
 we know that this boundary exists for boundary edges for $x>500$, we use the if statement
 \verb+if(grid->xv[ib]>500)+ to specify these boundary edges.  The first part of the if statement
-sets the velocity at the open boundary over all the vertical levels with
+sets the flux at the open boundary over all the vertical levels with
 \begin{verbatim}
-      forced=0;
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-        uboundary[k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
+        ub[j][k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
 \end{verbatim}
 which is identical to 
 \[ u_b = -h_b\sqrt{\frac{g}{d}} \,,\]
-which is the linearized shallow-water free-surface boundary condition.  The variable \verb+forced+ is
-set to \verb+0+ for this boundary because it is used later when the velocity at the boundary is set
-to the value in the \verb+uboundary[k]+ array.  If \verb+forced+ is \verb+0+, then the velocity is nudged
-towards this value over a timescale specified by the \verb+timescale+ variable in \verb+suntans.dat+.  
-The boundary condition on the velocity $u_j$ is then effectively
-\[\D{u_j}{t} = \frac{u_j-u_b}{\tau}\,,\]
-where $u_b$ is specified by \verb+uboundary[k]+ and $\tau$ is specified by \verb+timescale+.  
+which is the linearized shallow-water free-surface boundary condition.  This loop uses
+the \verb+Nke[j]+ variable, which is the number of vertical levels at face \verb+j+,
+and \verb+etop[j]+, which is the index of the top level at the boundary.  The variable
+\verb+etop[j]+ is usually \verb+0+ unless filling and emptying occur at the boundary
+edges.  
 
-For the case in which the if-statement fails, then the edges for which $x<500$ are specified with
+In addition to setting
+the boundary flux in the OpenBoundaryFluxes function, the user must also set the cartesian components
+of velocity in the BoundaryVelocities function.  These are used to compute the advection of momentum.
+At the open boundary, the boundary velocity components are set to the upwind value of the velocity
+component.  For the u-component of velocity, for example, the boundary value is specified
+with
 \begin{verbatim}
-      forced=1;
-      for(k=grid->etop[j];k<grid->Nke[j];k++) 
-        uboundary[k] = prop->amp*cos(prop->omega*prop->rtime);
+phys->boundary_u[jptr-grid->edgedist[2]][k]=phys->uc[ib][k];
 \end{verbatim}
-Here \verb+forced+ is set to zero so that the boundary condition is not nudged to this value over
-the specified timescale so that effectively
-\[u_j = u_b\,,\]
-where \verb+u_b+ is set by \verb+uboundary[k]+.  In the above code, the boundary value is set to
-\[u_b = a\cos(\omega t)\,,\]
-where the amplitude $a$ of the forcing is specified by the \verb+amp+ variable in \verb+suntans.dat+,
-the frequency $\omega$ is set by \verb+omega+, and the time is computed and set by the \verb+rtime+ 
-variable.  Each of these are accessed by the \verb+prop+ struct with \verb+prop->amp+, \verb+prop->omega+,
-and \verb+prop->rtime+.  Note that if the velocity is into the domain, then it must be positive, while
-if it is out of the domain, it must be negative.
+Here, \verb+uc+ is the u-component of velocity at the Voronoi point with index \verb+ib+.
+
+At the inlet, only the cartesian velocity components need to be specified.  In this example,
+the u-component of velocity at the inlet is set with the code
+\begin{verbatim}
+phys->boundary_u[jptr-grid->edgedist[2]][k]=
+               prop->amp*cos(prop->omega*prop->rtime);
+\end{verbatim}
+and the other components are set to 0.  This function uses the variables \verb+amp+ and \verb+omega+
+which are set in \verb+suntans.dat+, and \verb+rtime+ is the physical time in the simulation.
+The cartesian velocities which are specified at the inlet boundary are then used to compute
+the flux in the OpenBoundaryFluxes function with
+\begin{verbatim}
+ub[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->n1[j]+
+         phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->n2[j];
+\end{verbatim}
+This is just the dot product of the velocity field specified at the boundary with the
+normal vector at the boundary edge, which points into the domain by definition.
+Examples of how to employ velocity boundary conditions are described in Sections \ref{sec:riverplume}
+and \ref{sec:internalwaves}.  Section \ref{sec:riverplumes} also demonstrates 
+how to specify salinity and temperature at the boundaries.
 
 \section{Using the Sunplot GUI}
 
@@ -638,14 +677,280 @@ to
 FreeSurfaceFile   	run2/fs.dat
 \end{verbatim}
 
-\appendix
+\section{SUNTANS Examples} \label{sec:examples}
 
-\section{Parameter listing} \label{app:params}
+\subsection{Time accuracy} \label{sec:timeaccuracy}
+
+\subsection{Lock exchange} \label{sec:lockexchange}
+
+\subsection{River plume} \label{sec:riverplume}
+
+\subsection{Wetting and drying} \label{sec:wettinganddrying}
+
+\subsection{Internal waves} \label{sec:internalwaves}
+
+\section{Parameter listing} \label{sec:params}
+
+\subsection*{Nkmax: $\mbox{Nkmax}\ge 1$}
+
+Number of cells in the vertical.  This is used when the -g flag is
+specified in order to build the vertical grid levels.  It must be
+greater than or equal to 1.  
+
+\subsection*{stairstep: Boolean}
+
+If stairstep is 1 then the vertical grid spacing does not change in
+the horizontal. If stairstep is 0, then partial-stepping is employed and
+the height of the bottom cell
+is set such that the bottom face of the cell coincides with the actual
+value of the depth. Otherwise (when stairstep=1), the bottom face of
+of the lowermost cell is always greater than the actual depth.  
+
+\subsection*{rstretch: $-1.1 < \mbox{rstretch} < -1$ or $1 < \mbox{rstretch} < +1.1$}
+
+Employ vertical grid stretching such that the distribution of vertical
+grid spacings is given by
+\[
+\Delta z_k = \mbox{rstretch}\,\Delta z_{k+1}\,,
+\]
+where $0\le \mbox{k} < \mbox{Nkmax}$.  If $\mbox{rstretch}<0$ then the grid is refined near the
+bottom, otherwise it is refined at the free-surface.
+
+\subsection*{CorrectVoronoi: Boolean}
+
+If CorrectVoronoi is 1 then degenerate triangles are corrected using
+the VoronoiRatio parameter defined below.  For a given triangulation,
+stability is dictated by the smallest distance between Voronoi
+points.  The worst case occurs when two right triangles abut each
+other, since they have coincident Voronoi points.  In SUNTANS, the
+Voronoi points are corrected if they are too close to each other
+relative to the distance between the centroids of the neighboring triangles.
+If triangle $1$ and $2$ have centroids defined by $(xc_1,yc_1)$ and $(xc_2,yc_2)$
+and Voronoi points defined by $(xv_1,yv_1)$ and $(xv_2,yv_2)$, then the distance
+between the centroids is given by
+\[
+D_c^2 = (xc_2-xc_1)^2 + (yc_2-yc_1)^2\,,
+\]
+and the distance between the Voronoi points is given by
+\[
+D_v^2 = (xv_2-xv_1)^2 + (yv_2-yv_1)^2\,.
+\]
+The Voronoi points are corrected if $D_g/D_c< VoronoiRatio$, and if this
+is the case, they are updated with
+\begin{eqnarray}
+xv_1 &=& xc + \mbox{VoronoiRatio}(xc_1-xc)\,,\nonumber\\
+yv_1 &=& yc + \mbox{VoronoiRatio}(yc_1-xc)\,,\nonumber\\
+xv_2 &=& xc + \mbox{VoronoiRatio}(xc_2-xc)\,,\nonumber\\
+yv_2 &=& yc + \mbox{VoronoiRatio}(yc_2-xc)\,,\nonumber
+\end{eqnarray}
+where $xc=(xc_1+xc_2)/2$ and $yc=(yc_1+yc_2)/2$.  Using this correction methodology,
+setting VoronoiRatio to 1 moves the Voronoi points to the centroids of the cells.
+
+\subsection*{VoronoiRatio: $0\le\mbox{VoronoiRatio}\le 1$}
+
+Adjustment factor for degenerate triangles.  If $\mbox{VoronoiRatio}=1$, then
+all Voronoi points are moved to the centroids, while if $\mbox{VoronoiRatio}=0$, 
+then no correction is performed.
+
+\subsection*{vertgridcorrect: Boolean}
+
+For an equispaced vertical grid, the vertical grid spacing is constant and
+is given by $\Delta z=D_{max}/\mbox{Nkmax}$, where $D_{max}$ is the maximum depth in the domain.
+In the rare case for which the minimum depth, $D_{min}$ in the domain is less than $\Delta z$, there
+are not enough grid points to resolve the region with the smallest depth.  If this is the
+case and vertgridcorrect
+is set to 1, then the number of vertical grid cells is adjusted such that $\Delta z=D_{min}$,
+such that $\mbox{Nkmax}=D_{max}/D_{min}$.
+
+\subsection*{IntDepth: Boolean}
+
+If set to 1, then the depths at the Voronoi points are interpolated from the
+depth specified by the depth file (see below).  Otherwise, the depths are
+specified in the file \verb+initialization.c+.
+
+\subsection*{dzsmall: No longer used}
+
+\subsection*{scaledepth: Boolean$\mbox{scaledepth}>0$}
+
+For debugging purposes.  If set to 1, scales the depth by scaledepthfactor (see below).
+
+\subsection*{scaledepthfactor}
+
+If scaledepth=1, this scales the depth by the given amount and hence
+can be used to reduce the depth and hence the surface gravity wave speed by
+a desired amount.
+
+\subsection*{thetaramptime: $\mbox{thetaramptime}>0$}
+
+This is used to damp out transient barotropic motions by initializing
+the value of $\theta$ in the free-surface solver to 1 and ramping it
+down to the value of $\theta$ specified below.  The thetaramptime parameter
+determines the timescale over which this is damped, such that, if the value
+of $\theta$ specified below is given by $\theta_0$, then the value of
+$\theta$ that is used in the calculations is given by
+\begin{eqnarray}
+\theta(t) &=& \theta_0 + (1-\theta_0)\exp\left(-\frac{t}{\mbox{thetaramptime}}\right)\nonumber\,.
+\end{eqnarray}
+
+\subsection*{beta}
+			1	\# Expansivity of salt
+\subsection*{theta}
+			0.55	\# 0: fully explicit, 1: fully implicit
+\subsection*{thetaS}
+			0.55	\# For scalar advection
+\subsection*{thetaB}
+			0.55	\# For scalar advection
+\subsection*{kappa\_s}
+                 1e-4 	\# Vertical mass diffusivity
+\subsection*{kappa\_sH}
+                1e-4       \# Horizontal mass diffusivity
+\subsection*{gamma}
+ 			1 	\# Coefficient of expansivity of temperature.
+\subsection*{kappa\_T}
+                 0	\# Vertical thermal diffusivity
+\subsection*{kappa\_TH}
+                0       \# Horizontal thermal diffusivity
+\subsection*{nu}
+ 			1e-3  	\# Laminar viscosity of water (\verb+m^2 s^-1+)
+\subsection*{nu\_H}
+ 			1e-3    \# Horizontal laminar viscosity of water (\verb+m^2 s^-1+)
+\subsection*{tau\_T}
+			0 	\# Wind shear stress
+\subsection*{z0T}
+	                0.0 	\# Top roughness
+\subsection*{z0B}
+	                0.0	\# Bottom roughness
+\subsection*{CdT}
+	                0.0 	\# Drag coefficient at surface
+\subsection*{CdB}
+	                0.005	\# Drag coefficient at bottom
+\subsection*{CdW}
+			0.005	\# Drag coefficient at sidewalls
+\subsection*{turbmodel}
+		1	\# Turbulence model (0 for none, 1 for MY25)
+\subsection*{dt}
+ 			0.025	\# Time step
+\subsection*{Cmax}
+ 			1 	\# Maximum permissible Courant number
+\subsection*{nsteps}
+ 			2000    \# Number of steps
+\subsection*{ntout}
+   		50  	\# How often to output data
+\subsection*{ntprog}
+   		5 	\# How often to report progress (in %)
+\subsection*{ntconserve}
+ 		1	\# How often to output conserved data
+\subsection*{nonhydrostatic}
+		1	\# 0 = hydrostatic, 1 = nonhydrostatic
+\subsection*{cgsolver}
+		1	\# 0 = GS, 1 = CG
+\subsection*{maxiters}
+		1000	\# Maximum number of CG iterations
+\subsection*{qmaxiters}
+		2000	\# Maximum number of CG iterations for nonhydrostatic pressure
+\subsection*{qprecond}
+		2	\# 1 = preconditioned, 0 = not preconditioned
+\subsection*{epsilon}
+			1e-20 	\# Tolerance for CG convergence
+\subsection*{qepsilon}
+		1e-5	\# Tolerance for CG convergence for nonhydrostatic pressure
+\subsection*{resnorm}
+			1	\# Normalized or non-normalized residual
+\subsection*{relax}
+			1	\# Relaxation parameter for GS solver.	
+\subsection*{amp}
+ 			0	\# amplitude
+\subsection*{omega}
+ 			0	\# frequency
+\subsection*{flux}
+ 			0	\# flux
+\subsection*{timescale}
+		0	\# timescale for open boundary condition
+\subsection*{volcheck}
+		1	\# Check for volume conservation
+\subsection*{masscheck}
+		1	\# Check for mass conservation
+\subsection*{nonlinear}
+		0	\# 1 if ELM for horizontal velocity, 0 for $u^(n+1)=u^n$
+\subsection*{newcells}
+		0	\# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
+\subsection*{wetdry}
+			1       \# 1 if wetting and drying, 0 otherwise
+\subsection*{Coriolis\_f}
+              0	\# Coriolis frequency f=2*Omega*sin(phi)
+\subsection*{sponge\_distance}
+	        0 	\# Decay distance scale for sponge layer
+\subsection*{sponge\_decay}
+	        0	\# Decay time scale for sponge layer
+\subsection*{readSalinity}
+		0	\# Whether or not to read initial salinity profile from file InitSalinityFile
+\subsection*{readTemperature}
+		0	\# Whether or not to read initial temperature profile from file InitTemperatureFile
+
+\subsection*{pslg}
+   pslg.dat 	\# Planar straight line graph (input)
+\subsection*{points}
+ points.dat	\# Vertices file (input)
+\subsection*{edges}
+ edges.dat		\# Edge file (input)
+\subsection*{cells}
+ cells.dat		\# Cell centered file (input)
+\subsection*{depth}
+ depth.dat		\# Depth file for interpolation (if INTERPDEPTH=1) (input)
+\subsection*{celldata}
+ celldata.dat	\# Cell-centered output (output)
+\subsection*{edgedata}
+ edgedata.dat	\# Edge-centered output (output)
+\subsection*{vertspace}
+ vertspace.dat	\# Vertical grid spacing (output)
+\subsection*{topology}
+ topology.dat	\# Grid topology data
+
+\subsection*{FreeSurfaceFile}
+   	fs.dat
+\subsection*{HorizontalVelocityFile}
+ 	u.dat
+\subsection*{VerticalVelocityFile}
+ 	w.dat
+\subsection*{SalinityFile}
+ 		s.dat
+\subsection*{BGSalinityFile}
+ 		s0.dat
+\subsection*{TemperatureFile}
+		T.dat
+\subsection*{PressureFile}
+		q.dat
+\subsection*{VerticalGridFile}
+ 	g.dat
+\subsection*{ConserveFile}
+		e.dat
+\subsection*{ProgressFile}
+	        step.dat
+\subsection*{StoreFile}
+		store.dat
+\subsection*{StartFile}
+		start.dat
+\subsection*{EddyViscosityFile}
+	nut.dat
+\subsection*{ScalarDiffusivityFile}
+	kappat.dat
+
+\subsection*{InitSalinityFile}
+	sinit.dat
+\subsection*{InitTemperatureFile}
+	Tinit.dat
 
 \bibliographystyle{plain}
-\bibliography{/home/fringer/latex/bibliography}
+\bibliography{bibliography}
 
 \end{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% After \end{document}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 \section{Using the Sunplot GUI}
 
@@ -711,115 +1016,7 @@ in the \verb+points+ file, and \verb+neigh1,2,3+ are the indices to cell neighbo
 
 \appendix
 
-\section{Parameter listing} \label{app:params}
 
-\subsection{General variables for the sun executable}
-
-\begin{tabular}{p{1.25in}p{5in}}
-\verb+Nkmax+ & The number of vertical grid cells.\\
-\verb+stairstep+ & Type of vertical grid to use.  1: stair-stepping, 0: partial-stepping\\
-\verb+rstretch+ & Stretching factor for vertical grid (1<=rstretch<1.1)\\
-\verb+CorrectVoronoi+ &  Whether or not to correct Voronoi points\\
-\verb+VoronoiRatio+ &  Adjust the voronoi points by this amount if 1 then = centroid.\\
-\verb+vertgridcorrect+ &  Correct vertical grid if Nkmax is too small\\
-\verb+IntDepth+ &  1 if interpdepth, 0 otherwise\\
-\verb+dzsmall+ &  Smallest grid spacing ratio before correction\\
-\verb+scaledepth+ &  Scale the depth by scalefactor\\
-\verb+scaledepthfactor+ &  Depth scaling factor (to test deep grids with explicit methods)\\
-\verb+thetaramptime+ &  Timescale over which theta is ramped from 1 to theta (fs theta only)\\
-\verb+theta+ &  0: fully explicit, 1: fully implicit\\
-\verb+thetaS+ &  For scalar advection\\
-\verb+thetaB+ &  For scalar advection\\
-\verb+beta+ &  Coefficient of expansivity of salt.\\
-\verb+kappa+ &  Vertical mass diffusivity\\
-\verb+kappa+ &  Horizontal mass diffusivity\\
-\verb+gamma+ &  Coefficient of expansivity of temperature.\\
-\verb+kappa+ &  Vertical thermal diffusivity\\
-\verb+kappa+ &  thermal diffusivity\\
-\verb+nu+ &  Vertical laminar viscosity of water (m$^2$ s$^{-1}$)\\
-\verb+nu+ &  Horizontal laminar viscosity of water (m$^2$ s$^-1$)\\
-\verb+tau+ &  Wind shear stress\\
-\verb+CdT+ &  Drag coefficient at surface\\
-\verb+CdB+ &  Drag coefficient at bottom\\
-\verb+CdW+ &  Drag coefficient at sidewalls\\
-\verb+dt+ &  Time step\\
-\verb+Cmax+ &  Maximum permissible Courant number\\
-\verb+nsteps+ &  Number of steps (3000 per M2 tide)\\
-\verb+ntout+ &  How often to output data\\
-\verb+ntprog+ &  How often to report progress (in \%)\\
-\verb+ntconserve+ &  How often to output conserved data\\
-\verb+nonhydrostatic+ &  0 = hydrostatic, 1 = nonhydrostatic\\
-\verb+cgsolver+ &  0 = GS, 1 = CG\\
-\verb+maxiters+ &  Maximum number of CG iterations\\
-\verb+qmaxiters+ &  Maximum number of CG iterations for nonhydrostatic pressure\\
-\verb+qprecond+ &  1 = preconditioned, 0 = not preconditioned\\
-\verb+epsilon+ &  Tolerance for CG convergence\\
-\verb+qepsilon+ &  Tolerance for CG convergence for nonhydrostatic pressure\\
-\verb+relax+ &  Relaxation parameter for GS solver.	\\
-\verb+amp+ &  amplitude\\
-\verb+omega+ &  frequency\\
-\verb+flux+ &  flux\\
-\verb+timescale+ &  timescale for open boundary condition\\
-\verb+volcheck+ &  Check for volume conservation\\
-\verb+masscheck+ &  Check for mass conservation\\
-\verb+nonlinear+ &  1 if nonlinear advection for horizontal velocity, 0 for u$^{n+1}=u^n$\\
-\verb+newcells+ &  1 if adjust momentum in surface cells as the volume changes, 0 otherwise\\
-\verb+wetdry+ &  1 if wetting and drying, 0 otherwise\\
-\verb+Coriolis+ &  Coriolis frequency f=2*Omega*sin(phi)\\
-\verb+sponge+ &  Decay distance scale for sponge layer\\
-\verb+sponge+ &  Decay time scale for sponge layer
-\end{tabular}
-
-\subsection{General variables for sunplot}
-
-\begin{tabular}{p{1.5in}p{5in}}
-\verb+caxisminU+ &  minimum caxis value for horizontal U velocity\\
-\verb+caxismaxU+ &  maximum caxis value for horizontal U velocity\\
-\verb+caxisminV+ &  minimum caxis value for horizontal V velocity\\
-\verb+caxismaxV+ &  maximum caxis value for horizontal V velocity\\
-\verb+caxisminW+ &  minimum caxis value for horizontal W velocity\\
-\verb+caxismaxW+ &  maximum caxis value for horizontal W velocity\\
-\verb+caxisminS+ &  minimum caxis value for horizontal Salinity\\
-\verb+caxismaxS+ &  maximum caxis value for horizontal Salinity\\
-\verb+caxisminDefault+ &  default min\\
-\verb+caxismaxDefault+ &  default max
-\end{tabular}
-
-\subsection{Grid input/output files}
-
-\begin{tabular}{p{1in}p{5in}}
-\verb+pslg+ &  Planar straight line graph (input)\\
-\verb+points+ &  Vertices file (input)\\
-\verb+edges+ &  Edge file (input)\\
-\verb+cells+ &  Cell centered file (input)\\
-\verb+depth+ &  Depth file for interpolation (if INTERPDEPTH=1) (input)\\
-\verb+celldata+ &  Cell-centered output (output)\\
-\verb+edgedata+ &  Edge-centered output (output)\\
-\verb+vertspace+ &  Vertical grid spacing (output)\\
-\verb+topology+ &  Grid topology data\\
-\end{tabular}
-
-\subsection{Output Data Files}
-
-\begin{tabular}{p{.5in}p{6in}}
-\verb+FreeSurfaceFile+   	& \\
-\verb+HorizontalVelocityFile+ 	& \\
-\verb+VerticalVelocityFile+ 	& \\
-\verb+SalinityFile+ 		& \\
-\verb+BGSalinityFile+ 		& \\
-\verb+TemperatureFile+		& \\
-\verb+PressureFile+		& \\
-\verb+VerticalGridFile+ 	& \\
-\verb+ConserveFile+		& \\
-\verb+ProgressFile+	        & \\
-\verb+StoreFile+		& \\
-\verb+StartFile+		&
-\end{tabular}
-
-\bibliographystyle{plain}
-\bibliography{/home/fringer/latex/bibliography}
-
-\end{document}
 
 
 
