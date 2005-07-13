@@ -1,89 +1,65 @@
 ########################################################################
 #
-#  Input file for SUNTANS.  This does not work with empty lines!!!
-#
-#  $Id: suntans.dat,v 1.7 2004-09-23 20:16:07 fringer Exp $
-#  $Log: not supported by cvs2svn $
-#  Revision 1.6  2004/06/23 06:27:33  fringer
-#  This is the version of suntans.dat which does not contain the full paths
-#  to the filenames.
-#
-#  Revision 1.5  2004/06/01 01:55:49  fringer
-#  Updated the suntans.dat file to contain all of the relevant
-#  variables.  This file is rarely used in its present location.
-#  Instead, it is more practical to copy it to a data directory and
-#  use it there with the --datadir= option to sun.
-#
-#  Revision 1.4  2004/05/29 20:25:02  fringer
-#   Revision before converting to CVS.
-#
-#  Revision 1.3  2002/11/05 01:31:17  fringer
-#  Added baroclinic term
-#
-#  Revision 1.2  2002/11/03 01:02:10  fringer
-#  This is the main parameter file for SUNTANS.  These parameters
-#  specify all physical constants as well as filenames.
-#
-#
-#  Parameters
+#  Input file for SUNTANS.  This is the same as the suntans.dat
+#  file in examples/iwaves/rundata.
 #
 ########################################################################
-Nkmax   		100	# Number of vertical grid points
+Nkmax			100	# Number of cells in the vertical
 stairstep		1	# 1 if stair-stepping, 0 if partial-stepping
-rstretch		1	# Stretching factor for vertical grid (1<=rstretch<1.1)
+rstretch		1.025	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
 VoronoiRatio		0	# Adjust the voronoi points by this amount if 1 then = centroid.
 vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
 IntDepth 		0	# 1 if interpdepth, 0 otherwise
-dzsmall			0	# Smallest grid spacing ratio before correction
+dzsmall			0.1	# Smallest grid spacing ratio before correction
 scaledepth 		0 	# Scale the depth by scalefactor
-scaledepthfactor 	1 	# Depth scaling factor (to test deep grids with explicit methods)
-thetaramptime	        0       # Timescale over which theta is ramped from 1 to theta (fs theta only)
+scaledepthfactor 	0 	# Depth scaling factor (to test deep grids with explicit methods)
+thetaramptime	        0  	# Timescale over which theta is ramped from 1 to theta (fs theta only)
+beta			0.007	# Expansivity of salt
 theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
-beta 			0.007   # Coefficient of expansivity of salt
-kappa_s                 0       # Vertical mass diffusivity
+kappa_s                 1e-4    # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
-gamma 			0 	# Coefficient of expansivity of temperature.
-kappa_T                 0       # Vertical thermal diffusivity
-kappa_TH                0	# Horizontal thermal diffusivity
+gamma 			1.0 	# Coefficient of expansivity of temperature.
+kappa_T                 1e-4    # Vertical thermal diffusivity
+kappa_TH                1e-4    # Horizontal thermal diffusivity
 nu 			1e-4  	# Laminar viscosity of water (m^2 s^-1)
 nu_H 			10      # Horizontal laminar viscosity of water (m^2 s^-1)
-tau_T			0.0 	# Wind shear stress
+tau_T			0 	# Wind shear stress
 z0T	                0.0 	# Top roughness
 z0B	                0.0	# Bottom roughness
 CdT	                0.0 	# Drag coefficient at surface
 CdB	                0.005	# Drag coefficient at bottom
-CdW			0.005   # Drag coefficient at sidewalls
-turbmodel		0	# Turbulence model (0 for none, 1 for MY25)
-dt 			29.808  # Time step
+CdW			0.005	# Drag coefficient at sidewalls
+turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
+dt 			29.808	# Time step 
 Cmax 			1  	# Maximum permissible Courant number
 nsteps 			3000    # Number of steps
 ntout   		150  	# How often to output data
 ntprog   		5 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
-nonhydrostatic		0	# 0 = hydrostatic, 1 = nonhydrostatic
+nonhydrostatic		1	# 0 = hydrostatic, 1 = nonhydrostatic
 cgsolver		1	# 0 = GS, 1 = CG
 maxiters		1000	# Maximum number of CG iterations
 qmaxiters		2000	# Maximum number of CG iterations for nonhydrostatic pressure
 qprecond		2	# 1 = preconditioned, 0 = not preconditioned
 epsilon			1e-10 	# Tolerance for CG convergence
 qepsilon		1e-5	# Tolerance for CG convergence for nonhydrostatic pressure
-resnorm			1	# Normalized or non-normalized residual
+resnorm			0	# Normalized or non-normalized residual
 relax			1	# Relaxation parameter for GS solver.	
-amp 			0.05    # amplitude
-omega 			1.4e-4	# frequency
-flux 			1e-4	# flux
-timescale		1800	# timescale for open boundary condition
+amp 			0.004	# amplitude
+omega 			1.4026e-4	# frequency
+flux 			0	# flux
+timescale		0	# timescale for open boundary condition
 volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
-nonlinear		0	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
+nonlinear		2	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
 newcells		1	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              7.25e-5 # Coriolis frequency f=2*Omega*sin(phi)
-sponge_distance	        0 1e3	# Decay distance scale for sponge layer
-sponge_decay	        1e3	# Decay time scale for sponge layer
+sponge_distance	        0 	# Decay distance scale for sponge layer
+sponge_decay	        0	# Decay time scale for sponge layer
 readSalinity		0	# Whether or not to read initial salinity profile from file InitSalinityFile
 readTemperature		0	# Whether or not to read initial temperature profile from file InitTemperatureFile
 ########################################################################
@@ -117,6 +93,8 @@ ConserveFile		e.dat
 ProgressFile	        step.dat
 StoreFile		store.dat
 StartFile		start.dat
+EddyViscosityFile	nut.dat
+ScalarDiffusivityFile	kappat.dat
 ########################################################################
 #
 # Input Data Files
