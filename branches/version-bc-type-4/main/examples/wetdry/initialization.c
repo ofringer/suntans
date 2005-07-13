@@ -61,15 +61,11 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
  *
  */
 REAL ReturnDepth(REAL x, REAL y) {
-  REAL y_c, w;
-  y_c = 10+2*sin(2*PI*x/20);
-  w = 10;
-  if(y<y_c+w/2 && y>y_c-w/2) {
-    if(x>25)
-      return 1-.3*exp(-pow((x-37.5)/5,2));
-    return .5-.25*x/25;
-  } else
-    return .25;
+  REAL length, xmid, shelfdepth, depth;
+
+  if(x>25)
+    return 1-.3*exp(-pow((x-37.5)/5,2));
+  return .5-.25*x/25;
 }
 
  /*
