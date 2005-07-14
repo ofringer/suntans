@@ -46,7 +46,7 @@ all:	$(EXEC)
 $(EXEC): $(OBJS) 
 	$(LD)  -o $@ $(OBJS) $(LDFLAGS)
 
-$(PEXEC): sunplot.o
+$(PEXEC): $(PLOTOBJS)
 	$(LD) -o sunplot $(PLOTOBJS) $(XLDFLAGS) -L$(XLIBDIR)
 
 depend: 
