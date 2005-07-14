@@ -6,8 +6,12 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.45 2005-07-12 02:12:50 fringer Exp $
+ * $Id: sunplot.c,v 1.46 2005-07-14 23:04:05 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.45  2005/07/12 02:12:50  fringer
+ * Changed default axis type back to image but set axis type to normal
+ * when a 2-d plot is specified at the command line, i.e. with -2d.
+ *
  * Revision 1.44  2005/07/12 02:06:47  fringer
  * Changed the default axis type to be normal instead of image.
  *
@@ -3048,6 +3052,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->sd = (float ***)malloc(numprocs*sizeof(float **));
     data->s0 = (float ***)malloc(numprocs*sizeof(float **));
     data->T = (float ***)malloc(numprocs*sizeof(float **));
+    data->q = (float ***)malloc(numprocs*sizeof(float **));
     data->u = (float ***)malloc(numprocs*sizeof(float **));
     data->v = (float ***)malloc(numprocs*sizeof(float **));
     data->nut = (float ***)malloc(numprocs*sizeof(float **));
