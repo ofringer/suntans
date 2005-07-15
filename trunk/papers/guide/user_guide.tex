@@ -6,8 +6,11 @@
 % Stanford University
 % 10 June 2004
 %
-% $Id: user_guide.tex,v 1.5 2005-07-13 17:07:47 fringer Exp $
+% $Id: user_guide.tex,v 1.6 2005-07-15 15:25:41 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.5  2005/07/13 17:07:47  fringer
+% Commiting changes as of 7/13/05.
+%
 % Revision 1.4  2004/06/24 08:37:27  fringer
 % Added sections on initial and boundary conditions as well as
 % restart files.
@@ -691,7 +694,7 @@ FreeSurfaceFile   	run2/fs.dat
 
 \section{Parameter listing} \label{sec:params}
 
-\subsection*{Nkmax: $\mbox{Nkmax}\ge 1$}
+\subsection*{Nkmax: $N_{kmax}\ge 1$}
 
 Number of cells in the vertical.  This is used when the -g flag is
 specified in order to build the vertical grid levels.  It must be
@@ -706,14 +709,14 @@ is set such that the bottom face of the cell coincides with the actual
 value of the depth. Otherwise (when stairstep=1), the bottom face of
 of the lowermost cell is always greater than the actual depth.  
 
-\subsection*{rstretch: $-1.1 < \mbox{rstretch} < -1$ or $1 < \mbox{rstretch} < +1.1$}
+\subsection*{rstretch: $-1.1 < r < -1$ or $1 < r < +1.1$}
 
 Employ vertical grid stretching such that the distribution of vertical
 grid spacings is given by
 \[
-\Delta z_k = \mbox{rstretch}\,\Delta z_{k+1}\,,
+\Delta z_k = r\,\Delta z_{k+1}\,,
 \]
-where $0\le \mbox{k} < \mbox{Nkmax}$.  If $\mbox{rstretch}<0$ then the grid is refined near the
+where $0\le \mbox{k} < \mbox{Nkmax}$.  If $r<0$ then the grid is refined near the
 bottom, otherwise it is refined at the free-surface.
 
 \subsection*{CorrectVoronoi: Boolean}
@@ -735,32 +738,32 @@ and the distance between the Voronoi points is given by
 \[
 D_v^2 = (xv_2-xv_1)^2 + (yv_2-yv_1)^2\,.
 \]
-The Voronoi points are corrected if $D_g/D_c< VoronoiRatio$, and if this
+The Voronoi points are corrected if $D_g/D_c< V_r$, and if this
 is the case, they are updated with
 \begin{eqnarray}
-xv_1 &=& xc + \mbox{VoronoiRatio}(xc_1-xc)\,,\nonumber\\
-yv_1 &=& yc + \mbox{VoronoiRatio}(yc_1-xc)\,,\nonumber\\
-xv_2 &=& xc + \mbox{VoronoiRatio}(xc_2-xc)\,,\nonumber\\
-yv_2 &=& yc + \mbox{VoronoiRatio}(yc_2-xc)\,,\nonumber
+xv_1 &=& xc + V_r(xc_1-xc)\,,\nonumber\\
+yv_1 &=& yc + V_r(yc_1-xc)\,,\nonumber\\
+xv_2 &=& xc + V_r(xc_2-xc)\,,\nonumber\\
+yv_2 &=& yc + V_r(yc_2-xc)\,,\nonumber
 \end{eqnarray}
 where $xc=(xc_1+xc_2)/2$ and $yc=(yc_1+yc_2)/2$.  Using this correction methodology,
-setting VoronoiRatio to 1 moves the Voronoi points to the centroids of the cells.
+setting $V_r=1$ moves the Voronoi points to the centroids of the cells.
 
-\subsection*{VoronoiRatio: $0\le\mbox{VoronoiRatio}\le 1$}
+\subsection*{VoronoiRatio: $0\le V_r\le 1$}
 
-Adjustment factor for degenerate triangles.  If $\mbox{VoronoiRatio}=1$, then
-all Voronoi points are moved to the centroids, while if $\mbox{VoronoiRatio}=0$, 
-then no correction is performed.
+Adjustment factor for degenerate triangles.  If $V_r=1$, then
+all Voronoi points are moved to the centroids, while if $V_r=0$, 
+then no correction is performed.  See CorrectVoronoi.
 
 \subsection*{vertgridcorrect: Boolean}
 
 For an equispaced vertical grid, the vertical grid spacing is constant and
-is given by $\Delta z=D_{max}/\mbox{Nkmax}$, where $D_{max}$ is the maximum depth in the domain.
+is given by $\Delta z=D_{max}/N_{kmax}$, where $D_{max}$ is the maximum depth in the domain.
 In the rare case for which the minimum depth, $D_{min}$ in the domain is less than $\Delta z$, there
 are not enough grid points to resolve the region with the smallest depth.  If this is the
 case and vertgridcorrect
 is set to 1, then the number of vertical grid cells is adjusted such that $\Delta z=D_{min}$,
-such that $\mbox{Nkmax}=D_{max}/D_{min}$.
+such that $N_{kmax}=D_{max}/D_{min}$.
 
 \subsection*{IntDepth: Boolean}
 
@@ -780,82 +783,227 @@ If scaledepth=1, this scales the depth by the given amount and hence
 can be used to reduce the depth and hence the surface gravity wave speed by
 a desired amount.
 
-\subsection*{thetaramptime: $\mbox{thetaramptime}>0$}
+\subsection*{thetaramptime: $\tau_\theta >0$}
 
 This is used to damp out transient barotropic motions by initializing
 the value of $\theta$ in the free-surface solver to 1 and ramping it
-down to the value of $\theta$ specified below.  The thetaramptime parameter
+down to the value of $\theta$ specified below.  The $\tau_\theta$ parameter
 determines the timescale over which this is damped, such that, if the value
 of $\theta$ specified below is given by $\theta_0$, then the value of
 $\theta$ that is used in the calculations is given by
 \begin{eqnarray}
-\theta(t) &=& \theta_0 + (1-\theta_0)\exp\left(-\frac{t}{\mbox{thetaramptime}}\right)\nonumber\,.
+\theta(t) &=& \theta_0 + (1-\theta_0)\exp\left(-\frac{t}{\tau_\theta}\right)\nonumber\,.
 \end{eqnarray}
 
-\subsection*{beta}
-			1	\# Expansivity of salt
-\subsection*{theta}
-			0.55	\# 0: fully explicit, 1: fully implicit
-\subsection*{thetaS}
-			0.55	\# For scalar advection
-\subsection*{thetaB}
-			0.55	\# For scalar advection
-\subsection*{kappa\_s}
-                 1e-4 	\# Vertical mass diffusivity
-\subsection*{kappa\_sH}
-                1e-4       \# Horizontal mass diffusivity
-\subsection*{gamma}
- 			1 	\# Coefficient of expansivity of temperature.
-\subsection*{kappa\_T}
-                 0	\# Vertical thermal diffusivity
-\subsection*{kappa\_TH}
-                0       \# Horizontal thermal diffusivity
-\subsection*{nu}
- 			1e-3  	\# Laminar viscosity of water (\verb+m^2 s^-1+)
-\subsection*{nu\_H}
- 			1e-3    \# Horizontal laminar viscosity of water (\verb+m^2 s^-1+)
-\subsection*{tau\_T}
-			0 	\# Wind shear stress
-\subsection*{z0T}
-	                0.0 	\# Top roughness
-\subsection*{z0B}
-	                0.0	\# Bottom roughness
-\subsection*{CdT}
-	                0.0 	\# Drag coefficient at surface
-\subsection*{CdB}
-	                0.005	\# Drag coefficient at bottom
-\subsection*{CdW}
-			0.005	\# Drag coefficient at sidewalls
-\subsection*{turbmodel}
-		1	\# Turbulence model (0 for none, 1 for MY25)
-\subsection*{dt}
- 			0.025	\# Time step
-\subsection*{Cmax}
- 			1 	\# Maximum permissible Courant number
-\subsection*{nsteps}
- 			2000    \# Number of steps
-\subsection*{ntout}
-   		50  	\# How often to output data
-\subsection*{ntprog}
-   		5 	\# How often to report progress (in %)
-\subsection*{ntconserve}
- 		1	\# How often to output conserved data
-\subsection*{nonhydrostatic}
-		1	\# 0 = hydrostatic, 1 = nonhydrostatic
-\subsection*{cgsolver}
-		1	\# 0 = GS, 1 = CG
-\subsection*{maxiters}
-		1000	\# Maximum number of CG iterations
-\subsection*{qmaxiters}
-		2000	\# Maximum number of CG iterations for nonhydrostatic pressure
-\subsection*{qprecond}
-		2	\# 1 = preconditioned, 0 = not preconditioned
-\subsection*{epsilon}
-			1e-20 	\# Tolerance for CG convergence
-\subsection*{qepsilon}
-		1e-5	\# Tolerance for CG convergence for nonhydrostatic pressure
-\subsection*{resnorm}
-			1	\# Normalized or non-normalized residual
+\subsection*{beta: $\beta\ge 0$}
+
+Expansivity of salt.  This is used in the gravity term on the right hand side of
+the Navier-Stokes equations in the form
+\[
+-g\beta\left(s-s_0\right)\,,
+\]
+where $s(x,y,z,t)$ is the salinity and $s_0(z)$ is the initial salinity.  If $\beta=0$
+advection of salinity is not computed.  
+
+
+\subsection*{theta: $0<\theta\le 1$}
+
+Implicitness parameter for the free-surface solver and the vertial diffusion terms.
+\begin{itemize}
+\item $\theta=0$: Fully explicit (unstable)
+\item $\theta=0.5$: Crank-Nicolson (neutrally stable in the linear sense)
+\item $\theta=1.0$: Fully implicit
+\item $\theta=0.55$: For practical simulations
+\end{itemize}
+
+\subsection*{thetaS: $0\le \theta_S \le 1$}
+
+Implicitness parameter for vertical scalar advection and diffusion.  Note that this
+value of thetaS does not necessarily share the same stability properties as the
+free-surface solver since stability for scalar transport is governed by
+the horizontal Courant number even when $\theta_S>0.5$.
+\begin{itemize}
+\item $\theta_S=0$: Fully explicit 
+\item $\theta_S=0.5$: Crank-Nicolson (Ensures no vertical Courant limitation for advection or diffusion)
+\item $\theta_S=1.0$: Fully implicit (same as above but first order accurate)
+\item $\theta_S=\theta$: To guarantee consistency with continuity 
+\end{itemize}
+
+
+\subsection*{thetaB: Not used}
+
+\subsection*{kappa\_s: $\kappa_s\ge 0$}
+
+Laminar vertical diffusivity of salt in units of m$^2$ s$^{-1}$.  Does not affect stability.
+
+\subsection*{kappa\_sH: $\kappa_{sH}\ge 0$}
+
+Laminar horizontal diffusivity of salt in units of m$^2$ s$^{-1}$.  For stability 
+\[
+\frac{\kappa_{sH}\Delta t}{\mbox{min}(D_g^2)}<\frac{1}{2}\,,
+\]
+where $D_g$ is the distance between Voronoi points.  
+
+\subsection*{gamma: $\gamma$: Boolean}
+
+Temperature is implemented as a passive scalar.  If gamma is set to 0 then scalar
+transport of T is not computed.
+
+\subsection*{kappa\_T: $kappa_T\ge 0$}
+
+Same as $kappa\_s$ but for T.
+
+\subsection*{kappa\_TH: $nu_{TH}\ge 0$}
+
+Same as $kappa\_TH$ but for T.
+
+\subsection*{nu: $nu\ge 0$}
+
+Laminar vertical diffusivity of momentum in units of m$^2$ s$^{-1}$.  Does not affect stability.
+
+\subsection*{nu\_H: $nu_{H}\ge 0$}
+
+Laminar horizontal diffusivity of momentum in units of m$^2$ s$^{-1}$.  For stability 
+\[
+\frac{nu_{sH}}{\Delta t}{\mbox{min}(D_g^2)}<\frac{1}{2}\,,
+\]
+where $D_g$ is the distance between Voronoi points.  
+
+\subsection*{tau\_T: $\tau_T$}
+
+Parameter used in boundaries.c to employ a surface wind stress in units of m$^2$ s$^{-2}$.
+See Section \ref{sec:boundary}
+
+\subsection*{z0T: $z_{0T}$}
+
+Lid roughness used to calculate drag at the lid.  See CdT.
+
+\subsection*{z0B: $z_{0B}$}
+
+Bottom roughness used to calculate drag at the bottom boundary layer.  See CdB.
+
+\subsection*{CdT: $C_{dT}$}
+
+If the roughness at the lid is zero (i.e. z0T=0) then the drag coefficient at the lid is given by
+this constant, otherwise the drag coefficient is calculated with the rough wall 
+relationship
+\[
+C_{dT} = \left[\ln\left(\frac{1}{2}\frac{\Delta z_{top}}{z_{0T}}\right)\right]^{-2}\,.
+\]
+where $\Delta z_{top}$ is the thickness of the top cell.
+
+\subsection*{CdB: $C_{dB}$}
+
+If the roughness at the bottom is zero (i.e. $z_{0B}$=0) then the drag coefficient at the bottom is given by
+this constant, otherwise the drag coefficient is calculated with the rough wall
+relationship
+\[
+C_{dB} = \left[\ln\left(\frac{1}{2}\frac{\Delta z_{bot}}{z_{0B}}\right)\right]^{-2}\,,
+\]
+where $\Delta z_{bot}$ is the thickness of the bottom cell.
+
+\subsection*{CdW: $C_{dW}$}
+
+Constant drag coefficient of sidewalls.  Drag on sidewalls is only computed if the wall
+does not extend up to the free surface.  For example, in a compound channel, sidewall
+drag is only computed within the channel and not on the edges of the floodplain, as shown
+in Figure \ref{fig:compoundchannel}.
+
+\subsection*{turbmodel: Boolean}
+
+If turbmodel is 1 then the Mellor-Yamada level 2.5 turbulence model is used, otherwise
+no turbulence model is employed.  
+
+\subsection*{dt: $\Delta t$}
+
+Time step. Assuming $\theta>0.5$, stability is limited by
+\[
+\Delta t < C\left[\frac{\min(D_g)}{\max(|U|)},\frac{\min(\Delta z)}{\max(|w|)},
+\frac{\min(D_g)}{\max(c_i)},
+\frac{1}{2}\frac{\min(D_g)^2}{\max(\kappa_{sH})},
+\frac{1}{2}\frac{\min(D_g)^2}{\max(\kappa_{TH})},
+\frac{1}{2}\frac{\min(D_g)^2}{\max(\nu_{H})}
+\right]\,,
+\]
+where $c_i$ is the internal wave speed, $C$ is the relevant Courant number, and $D_g$
+is the minimum Voronoi distance.
+
+\subsection*{Cmax: $C_{max}>0$}
+
+Maximum permissible Courant number for advection of momentum.  
+
+\subsection*{nsteps: $N_{steps}\ge 0$}
+
+Total number of time steps. 
+
+
+\subsection*{ntout: $N_{tout}> 0$}
+
+How often to output data.  Since the first time step is always output, 
+the total number of time steps that are output is then given
+by
+\[
+1+\mbox{floor}\left(\frac{N_{steps}}{N_{tout}}\right)\,.
+\]
+
+
+\subsection*{ntprog: $0\le N_{tprog}\le 100$}
+
+Report progress at $N_{tprog}$\% intervals if $N_{tprog}>0$, otherwise do not report
+progress.  Either way, progress is reported only if the verbose flag is at least \verb+-v+.
+
+\subsection*{ntconserve: $0\le N_{tconserve}\le N_{steps}$}
+
+How often to output conservative data, such as mass, volume, and potential energy, into
+the file specified by ConserveFile.  Output should be edited to suit user's needs in
+the \verb+OutputData+ function in \verb+phys.c+.
+
+\subsection*{nonhydrostatic: Boolean}
+
+(1): Compute the nonhydrostatic pressure, (0): neglect the nonhydrostatic pressure and
+calculate the vertical velocity with continuity.
+
+\subsection*{cgsolver: No longer used}
+
+\subsection*{maxiters: $I_{max,H}>0$}
+
+Maximum number of iterations allowed of the free-surface conjugate-gradient solver before
+reporting nonconvergence.  If the free-surface solver is not converging in less than 200
+iterations then the problem is poorly conditioned.
+
+\subsection*{qmaxiters: $I_{max,Q}>0$}
+
+Maximum number of iterations allowed of the nonhydrostatic pressure conjugate-gradient solver before
+reporting nonconvergence. 
+
+\subsection*{qprecond: 0,1, or 2}
+
+Type of preconditioner to use for the nonhydrostatic pressure solver.  For a typical environmental
+flow with an aspect ratio of $\order{10^2}$:
+\begin{enumerate}
+\item[0] No preconditioner - 1000s of iterations to converge
+\item[1] Diagonal preconditioner - 100s of iterations to converge
+\item[2] Block-diagonal preconditioner - 10s of iterations to converge.
+\end{enumerate}
+There is no significant difference among the preconditioners when the aspect ratio is roughly 1.
+
+\subsection*{epsilon: $\epsilon_H>0$}
+
+Tolerance for free-surface conjugate gradient solver.  Default: $\epsilon_H=10^{-10}$.
+
+\subsection*{qepsilon: $\epsilon_Q>0$}
+
+Tolerance for nonhydrostatic pressure conjugate gradient solver.  Default: $\epsilon_Q=10^{-5}$.
+
+\subsection*{resnorm: Boolean}
+
+Whether or not to normalize the residual when computing tolerance criteria for the conjugate
+gradient solvers.  At a given iteration, if the residual is given by $r=b-Ax$, then tolerance is evaluated with:
+\begin{enumerate}
+\item[0]: error=$r^T r$
+\item[1]: error=$\frac{r^T r}{b^T b}$
+\end{enumerate}
+
 \subsection*{relax}
 			1	\# Relaxation parameter for GS solver.	
 \subsection*{amp}
