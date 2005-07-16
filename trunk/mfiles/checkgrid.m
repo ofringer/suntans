@@ -1,9 +1,10 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % CHECKGRID Check Voronoi distances on an unstructured grid.
-%   CHECKGRID(DGMIN,NBINS) checks an unstructured grid for Voronoi
-%   distances (distances between Voronoi points on either side of
-%   an edge) that are less than DGMIN, and displays those edges in
+%   CHECKGRID(DGMIN,NBINS,EDGESFILE,CELLSFILE) checks an 
+%   unstructured grid defined by the EDGESFILE and CELLSFILE
+%   for Voronoi distances (distances between Voronoi points on either 
+%   side of an edge) that are less than DGMIN, and displays those edges in
 %   red on a plot of the Voronoi points.  This function also plots
 %   a histogram of the Voronoi distances with the number of bins
 %   as NBINS.
