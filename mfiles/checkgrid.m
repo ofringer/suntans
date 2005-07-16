@@ -16,12 +16,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function checkgrid(dgmin,nbins,edgesfile,cellsfile)
 
-  dgmin = 1;
-  Nbins = 20;
-
-  edgesfile = 'edges.dat';
-  cellsfile = 'cells.dat';
-
   e = load(edgesfile,'-ascii');
   c = load(cellsfile,'-ascii');
 
