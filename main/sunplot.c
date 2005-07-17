@@ -6,8 +6,16 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.46 2005-07-14 23:04:05 fringer Exp $
+ * $Id: sunplot.c,v 1.47 2005-07-17 22:06:48 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.46  2005/07/14 23:04:05  fringer
+ * Fixed a bug in sunplot.c by adding the line
+ *  data->q = (float ***)malloc(numprocs*sizeof(float **));
+ * This initial pointer was never being allocated but the bug did
+ * not show up using gcc-3.2.2-5 with linux 2.4.20-35.9.legacysmp
+ * (Redhat 9) but did show up using gcc-3.3.3-7 with linux 2.6.10-1.770_FC2smp
+ * (Fedora Core 2).
+ *
  * Revision 1.45  2005/07/12 02:12:50  fringer
  * Changed default axis type back to image but set axis type to normal
  * when a 2-d plot is specified at the command line, i.e. with -2d.
@@ -2924,7 +2932,7 @@ void FindNearest(dataT *data, int x, int y, int *iloc, int *procloc, int procnum
 }
 
 dataT *NewData(void) {
-  dataT *data = (dataT *)malloc(sizeof(data));
+  dataT *data = (dataT *)malloc(sizeof(dataT));
   data->timestep=-1;
   data->klevel=-1;
   return data;
