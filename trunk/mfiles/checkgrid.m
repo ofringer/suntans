@@ -34,7 +34,7 @@ function checkgrid(dgmin,nbins,edgesfile,cellsfile)
   ind = find(Dg<dgmin);
 
   figure(1);
-  hist(Dg,linspace(min(Dg),max(Dg),Nbins));
+  hist(Dg,linspace(min(Dg),max(Dg),nbins));
   xlabel('Voronoi Distance');
   ylabel('Number of edges');
   title('Voronoi Distance Histogram');
