@@ -6,8 +6,11 @@
 % Stanford University
 % 10 June 2004
 %
-% $Id: user_guide.tex,v 1.7 2005-07-16 00:03:23 fringer Exp $
+% $Id: user_guide.tex,v 1.8 2005-07-18 04:52:09 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.7  2005/07/16 00:03:23  fringer
+% Finished suntans.dat section and made some other minor changes.
+%
 % Revision 1.6  2005/07/15 15:25:41  fringer
 % Additions made in parameter listing.
 %
@@ -75,7 +78,7 @@ Triangle \> \verb+http://www-2.cs.cmu.edu/~quake/triangle.html+
 Note that you must compile the triangle libraries as object files by making them
 with \verb+make trilibrary+.  Currently SUNTANS compiles and runs with Parmetis-2.0.
 
-\subsection{Downloading and installing the latest source}
+\subsection{Downloading and installing the latest source} \label{sec:download}
 
 To obtain a copy of SUNTANS, download the latest version from the SUNTANS
 web page at \verb+http://suntans.stanford.edu/downloads+.  Follow the following
@@ -637,6 +640,54 @@ and \ref{sec:internalwaves}.  Section \ref{sec:boundary_ex} also demonstrates
 how to specify salinity and temperature at the boundaries.
 
 \section{Using the Sunplot GUI}
+
+The Sunplot GUI is meant to be a debugging tool and hence it does not have the ability to output
+results into a figure file, such as postscript, jpeg, or eps.  It is, however, a handy tool to
+quickly view results without having to execute third-party software.  Sunplot has the ability to
+view all of the data output from SUNTANS on several processors, and it only requires the X11 libraries.
+
+This howto describes how to view the results presented in the two-dimensional wetting
+and drying example and assumes that the data has been created in the respective data directory
+in \verb+examples/wetdry/data+.  Details on how to create this data is given in Section \ref{sec:wettinganddrying},
+and details on how to compile \verb+sunplot+ are described in Section \ref{sec:download}.
+
+\subsubsection{Starting up the GUI}
+
+The \verb+sunplot+ gui can be started while a simulation is running as long as the data files
+are not empty.  To view the data with the default settings in a given directory, use
+\begin{verbatim}
+./sunplot --datadir=examples/wetdry/data
+\end{verbatim}
+This will bring up a planview of the salinity data at the first time step $n=1$ in the upper layer.$k=1$ (note
+that the gui does not use C-style indexing, so the first index starts at k=1.), as shown in Figure
+\ref{fig:sun1}
+%\insertfig{0.8}{figures/sun1}{View of the Sunplot window upon first execution without any command
+%line options.}{fig:sun1}
+
+\subsection{Moving around in time and space}
+
+The three buttons beneath \verb+''Step 1 of 41''+ on the upper left of the GUI control the time stepping.
+\begin{list}{}
+\item \button{$<--$}
+\begin{list}{}
+\item Left button: Moves one step backward in time.
+\item Middle button: No effect
+\item Right button: Moves to time step 1.
+\end{list}
+\item \verb+-->+
+\begin{list}{}
+\item Left button: Moves one step forward in time.
+\item Middle button: No effect
+\item Right button: Moves to the last step (in this case step 41).
+\end{list}
+\item \verb+M+: 
+\begin{list}{}
+\item Left button: Animates forward in time from begining to end.
+\item Middle button: Asks the user to input a desired time step at the command line.
+\item Right button: Animates backward in time from the end to the begining.
+\end{list}
+\end{list}
+
 
 \section{Restarting Runs} \label{sec:restart}
 
