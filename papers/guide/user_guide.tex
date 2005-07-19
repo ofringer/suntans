@@ -6,8 +6,11 @@
 % Stanford University
 % 10 June 2004
 %
-% $Id: user_guide.tex,v 1.8 2005-07-18 04:52:09 fringer Exp $
+% $Id: user_guide.tex,v 1.9 2005-07-19 22:47:04 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.8  2005/07/18 04:52:09  fringer
+% Working on sunplot section.
+%
 % Revision 1.7  2005/07/16 00:03:23  fringer
 % Finished suntans.dat section and made some other minor changes.
 %
@@ -651,7 +654,7 @@ and drying example and assumes that the data has been created in the respective 
 in \verb+examples/wetdry/data+.  Details on how to create this data is given in Section \ref{sec:wettinganddrying},
 and details on how to compile \verb+sunplot+ are described in Section \ref{sec:download}.
 
-\subsubsection{Starting up the GUI}
+\subsection{Starting up the GUI}
 
 The \verb+sunplot+ gui can be started while a simulation is running as long as the data files
 are not empty.  To view the data with the default settings in a given directory, use
@@ -664,9 +667,9 @@ that the gui does not use C-style indexing, so the first index starts at k=1.), 
 %\insertfig{0.8}{figures/sun1}{View of the Sunplot window upon first execution without any command
 %line options.}{fig:sun1}
 
-\subsection{Moving around in time and space}
+\subsection{Moving around in time}
 
-The three buttons beneath \verb+''Step 1 of 41''+ on the upper left of the GUI control the time stepping.
+The three buttons beneath \verb+''Step: 1 of 41''+ on the upper left of the GUI control the time stepping.
 \begin{list}{}
 \item \button{$<--$}
 \begin{list}{}
@@ -674,20 +677,133 @@ The three buttons beneath \verb+''Step 1 of 41''+ on the upper left of the GUI c
 \item Middle button: No effect
 \item Right button: Moves to time step 1.
 \end{list}
-\item \verb+-->+
-\begin{list}{}
-\item Left button: Moves one step forward in time.
-\item Middle button: No effect
-\item Right button: Moves to the last step (in this case step 41).
-\end{list}
 \item \verb+M+: 
 \begin{list}{}
 \item Left button: Animates forward in time from begining to end.
 \item Middle button: Asks the user to input a desired time step at the command line.
 \item Right button: Animates backward in time from the end to the begining.
 \end{list}
+\item \verb+-->+
+\begin{list}{}
+\item Left button: Moves one step forward in time.
+\item Middle button: No effect
+\item Right button: Moves to the last step (in this case step 41).
+\end{list}
 \end{list}
 
+\subsection{Displaying different vertical levels}
+
+The two buttons beneath \verb+''Level: 1 of 20''+ on the upper left of the GUI control the vertical level
+being shown.  Level 1 is the top level, while level 20 is level $N_{kmax}$.
+\begin{list}{}
+\item \button{$<--$}
+\begin{list}{}
+\item Left button: Displays level up (decreasing k).
+\item Middle button: No effect
+\item Right button: Displays level 1.
+\end{list}
+\item \verb+-->+
+\begin{list}{}
+\item Left button: Displays one level down (increasing k).
+\item Middle button: No effect
+\item Right button: Displays level $N_{kmax}$.
+\end{list}
+\end{list}
+
+\subsection{Displaying different processors}
+
+The three buttons beneath \verb+''Showing all 1 Procs''+ on the upper left of the GUI control the processor
+being shown.  The default is to show all processors.  
+\begin{list}{}
+\item \button{$<--$}
+\begin{list}{}
+\item Left button: Decreases the processor being displayed.  Loops around if on processor 1.
+\item Middle button: No effect
+\item Right button: Displays processor 1 (no C-style indexing).
+\end{list}
+\item \verb+All+: 
+\begin{list}{}
+\item Left button: Displays all processors.
+\item Middle button: No effect.
+\item Right button: No effect.
+\end{list}
+\item \verb+-->+
+\begin{list}{}
+\item Left button: Increases the processor number being displayed.  Loops around if on the last processor.
+\item Middle button: No effect
+\item Right button: Displays the last processor.
+\end{list}
+\end{list}
+
+\subsection{Plotting different quantities}
+
+The default quantity to display is the salinity, or s, in planview, at level 1 and time step 1.  Color axes
+are scaled to the minimum and maximum of the profile being shown.  The following
+buttons control their respective plots:
+\begin{list}{}
+\item \button{S}: Salinity
+\begin{list}{}
+\item Left button: Displays the salinity $s$.
+\item Middle button: Displays the salinity anomoly $s-s_0$.
+\item Right button: Displays the background salinity $s_0$.
+\end{list}
+\item \button{T}: Temperature
+\begin{list}{}
+\item Left button: Displays the temperature $T$.
+\item Middle button: No effect.
+\item Right button: No effect.
+\end{list}
+\item \button{q}: Nonhydrostatic pressure
+\begin{list}{}
+\item Left button: Displays the nonhydrostatic pressure $q$.
+\item Middle button: No effect.
+\item Right button: No effect.
+\end{list}
+\item \button{Surface}: Free surface
+\begin{list}{}
+\item Left button: Displays the free surface $h$.
+\item Middle button: No effect.
+\item Right button: No effect.
+\end{list}
+\item \button{U}: 
+\begin{list}{}
+\item Left button: Displays the horizontal cartesian velocity component $u$, at the center of the cell.
+\item Middle button: No effect.
+\item Right button: Displays the horizontal cartesian baroclinic velocity component $u_b$, at the center of the cell.
+This is calculated with
+\[
+u_b = u - \frac{1}{D}\int_{-D}^h u\,dz\,.
+\]
+\end{list}
+\item \button{V}: 
+\begin{list}{}
+\item Left button: Displays the horizontal cartesian velocity component $v$, at the center of the cell.
+\item Middle button: No effect.
+\item Right button: Displays the horizontal cartesian baroclinic velocity component $v_b$, at the center of the cell.
+This is calculated with
+\[
+v_b = v - \frac{1}{D}\int_{-D}^h v\,dz\,.
+\]
+\end{list}
+\item \button{W}: 
+\begin{list}{}
+\item Left button: Displays the vertical cartesian velocity component $w$, at the center of the cell.
+\item Middle button: No effect.
+\item Right button: No effect.
+\end{list}
+\item \button{nu\_t}: 
+\begin{list}{}
+\item Left button: Displays the eddy viscosity $\nu_t$ at the center of the cell.
+\item Middle button: No effect.
+\item Right button: No effect.
+\end{list}
+\item \button{k\_t}: 
+\begin{list}{}
+\item Left button: Displays the scalar diffusivity $\kappa_t$ at the center of the cell.
+\item Middle button: No effect.
+\item Right button: No effect.
+\end{list}
+\end{list}
 
 \section{Restarting Runs} \label{sec:restart}
 
