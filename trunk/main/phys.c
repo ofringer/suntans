@@ -6,8 +6,56 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.95 2005-07-12 01:22:23 fringer Exp $
+ * $Id: phys.c,v 1.96 2005-07-19 21:41:57 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.95  2005/07/12 01:22:23  fringer
+ * Minor change: current version output eddy viscosity into T.dat but
+ * since nut is output into its own file this was changed.
+ *
+ * CHANGES TO ALLOW FOR WETTING AND DRYING:  NOTE THAT NONLINEAR MUST
+ * STILL BE 0!!!!:
+ *
+ * Also note that these changes will not affect results unless the
+ * wetdry flag is set to 1 in suntans.dat:
+ *
+ * 1) The minimum water depth upon initialization is 1e-10 times the
+ * vertical grid spacing at the wall.
+ * i.e. phys->h[i]=-grid->dv[i] + 1e-10*grid->dz[grid->Nk[i]-1];
+ *
+ * 2) Removed the wetdry_offset variable since it was not used.
+ *
+ * 3) Only compute the baroclinic pressure gradient if there is
+ * more than 1 cell at a face, i.e. grid->etop[j]<grid->Nke[j]-1
+ *
+ * 4) Changed loops from edgedist[0] to edgedist[5] only to loop
+ * until edgedist[1] since this was only to satisfy requirements for
+ * boundary condition of marker=4 and was causing problems for wetting
+ * and drying.  Specifically, the calculation of the wind stress on
+ * edges with nonzero edge marker was causing volume conservation
+ * problems (since a wind stress on an edge induces a velocity there).
+ *
+ * 5) Changed the drag law so that it uses the face-normal velocity
+ * instead of the dot-product with uc,vc components.  This does not
+ * change the results drastically and it works for wetting and drying.
+ * This was done for the surface and bottom cells. i.e.
+ * drag = Cd*fabs(phys->u[j][k])*phys->u[j][k] instead of
+ * drag = Cd*sqrt(uc*uc + vc*vc)*phys->u[j][k].
+ *
+ * 6) Changed UpdateScalars so that Adams Bashforth is NOT used with
+ * wetting and drying since it causes consistency issues.
+ *
+ * 7) Fixed a bug that uses the theta-weighted velocity to calculate
+ * the horizontal mass fluxes instead of the old velocity when
+ * AB2 is not used, i.e. when wetdry = 1:
+ *
+ * Old version (wetdry=0): Flux = df*uold*supwindold*dzupwindold
+ * New version (wetdry=1): Flux = df*(theta*unew+(1-theta)*uold)*
+ * supwindold*dzupwindold
+ *
+ * This ensures consistency with continuity.  Either way conserves
+ * mass globally but AB2 cannot be used if consistency is to be
+ * assured.
+ *
  * Revision 1.94  2005/07/11 20:10:08  fringer
  * Added output files for eddy viscosity and scalar diffusivity when
  * turbmodel is 1 in suntans.dat.  The files in suntans.dat are specified
@@ -1837,12 +1885,12 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       phys->stmp2[nc2][k]+=b[k]/grid->Ac[nc2];
     }
     
-    for(k=grid->Nke[j]+1;k<grid->Nk[nc1];k++) {
+    for(k=grid->Nke[j];k<grid->Nk[nc1];k++) {
       phys->stmp[nc1][k]+=prop->CdW*fabs(phys->uc[nc1][k])*phys->uc[nc1][k]*grid->df[j]/grid->Ac[nc1];
       phys->stmp2[nc1][k]+=prop->CdW*fabs(phys->vc[nc1][k])*phys->vc[nc1][k]*grid->df[j]/grid->Ac[nc1];
     }
-    for(k=grid->Nke[j]+1;k<grid->Nk[nc2];k++) {
-      phys->stmp[nc2][k]+=prop->CdW*fabs(phys->uc[nc2][k])*phys->vc[nc2][k]*grid->df[j]/grid->Ac[nc2];
+    for(k=grid->Nke[j];k<grid->Nk[nc2];k++) {
+      phys->stmp[nc2][k]+=prop->CdW*fabs(phys->uc[nc2][k])*phys->uc[nc2][k]*grid->df[j]/grid->Ac[nc2];
       phys->stmp2[nc2][k]+=prop->CdW*fabs(phys->vc[nc2][k])*phys->vc[nc2][k]*grid->df[j]/grid->Ac[nc2];
     }
   }
@@ -2167,10 +2215,10 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
       //      phys->stmp[nc1][k]-=prop->nu_H*(phys->w[nc2][k]-phys->w[nc1][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc1];
       //      phys->stmp[nc2][k]-=prop->nu_H*(phys->w[nc1][k]-phys->w[nc2][k])*grid->df[j]/grid->dg[j]/grid->Ac[nc2];
     }
-    for(k=grid->Nke[j]+1;k<grid->Nk[nc1];k++) 
+    for(k=grid->Nke[j];k<grid->Nk[nc1];k++) 
       phys->stmp[nc1][k]+=0.25*prop->CdW*fabs(phys->w[nc1][k]+phys->w[nc1][k+1])*
 	(phys->w[nc1][k]+phys->w[nc1][k+1])*grid->df[j]/grid->Ac[nc1];
-    for(k=grid->Nke[j]+1;k<grid->Nk[nc2];k++) 
+    for(k=grid->Nke[j];k<grid->Nk[nc2];k++) 
       phys->stmp[nc2][k]+=0.25*prop->CdW*fabs(phys->w[nc2][k]+phys->w[nc2][k+1])*
 	(phys->w[nc2][k]+phys->w[nc2][k+1])*grid->df[j]/grid->Ac[nc2];
   }
