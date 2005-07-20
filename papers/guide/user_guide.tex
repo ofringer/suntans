@@ -6,8 +6,11 @@
 % Stanford University
 % 10 June 2004
 %
-% $Id: user_guide.tex,v 1.10 2005-07-20 00:22:19 fringer Exp $
+% $Id: user_guide.tex,v 1.11 2005-07-20 17:22:17 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.10  2005/07/20 00:22:19  fringer
+% Completed sunplot section.
+%
 % Revision 1.9  2005/07/19 22:47:04  fringer
 % More additions to sunplot section.
 %
@@ -1040,7 +1043,102 @@ FreeSurfaceFile   	run2/fs.dat
 
 \section{SUNTANS Examples} \label{sec:examples}
 
+\subsection{Running the examples}
+
+Each example is located in one of the directories in the \verb+examples+ directory in
+the main source directory.  As an example, consider the internal waves example located
+in \verb+examples/iwaves+.  The internal waves simulation in this directory is defined by the following files
+in the \verb+examples/iwaves+ directory:
+\begin{itemize}
+\item \verb+initialization.c+: Initial conditions
+\item \verb+boundaries.c+: Boundary conditions
+\item \verb+rundata/suntans.dat+: Parameters
+\item \verb+rundata/pslg.dat+: Planar straight line graph
+\end{itemize}
+All examples are run in the same way.
+The makefile in the \verb+iwaves+ directory compiles and links the initial and boundary condition
+files with the main sun executable in the source directory.  Then it copies the parameter
+file (\verb+suntans.dat+) and the planar straight line graph file to the directory \verb+data+ in
+the particular example directory.  Then the main sun executable is run with
+\begin{verbatim}
+../../sun -t -g -s -vv --datadir=data
+\end{verbatim}
+where the particular flags may depend on the example, but the executable is run from
+the main source directory and the data is local to the particular examples directory.
+In order to compile and run an example, enter that example
+directory and type \verb+make test+.  This will run the example simulation and place
+the output data into the data irectory in the examples directory.
+While the simulation is running, the data can be viewed from another command line
+from the main source directory with
+\begin{verbatim}
+./sunplot --datadir=examples/iwaves/data
+\end{verbatim}
+
 \subsection{Time accuracy} \label{sec:timeaccuracy}
+
+This example is in the \verb+examples/accuracy+ directory and it
+serves to verify the time accuracy of SUNTANS.  Details of the time accuracy
+of SUNTANS and this particular test case can be found in Fringer\etal~\cite{FRINGER[2005]}.
+The parameter file is given by
+\verb+suntans.in+, which lacks the paramters \verb+dt+ and \verb+nsteps+.  These
+are copied to the actual parameter file \verb+data/suntans.dat+ upon running the
+script \verb+accuracy.sh+, which runs SUNTANS with different time steps and computes
+accuracy criteria using the \verb+accuracy.c+ code.  This code is a good exmaple
+of how to read in and analyze SUNTANS data using the C programming language.  More
+details are given below.
+
+\begin{list}{}
+\item {\bf Grid}:
+The domain is 100 m long and 100 m deep, and it
+uses 100 vertical levels and 100 equilateral triangles, as defined in the planar
+straight line graph file \verb+rundata/oned.dat+, which was created with the
+\verb+onedgrid.m+ m-file which can be downloaded from 
+
+\medskip
+\noindent
+\mfiledownload.
+
+\medskip
+\noindent
+All boundary edges are of type 1 (closed) boundaries.
+The depth is constant and is defined in \verb+initialization.c+ in the 
+\verb+ReturnDepth+ function with the line
+\begin{verbatim}
+return 100;
+\end{verbatim}
+\item {\bf Initial conditions}:
+The initial velocity field is quiescent, the initial free surface height is 0,
+and the initial density distribution is defined in the function \verb+ReturnSalinity+
+in \verb+initialization.c+ as
+\begin{verbatim}
+  return -.03*tanh(2.0*2.6467/20*(z+50-cos(PI*x/100)));
+\end{verbatim}
+Because $\beta=1$ in \verb+suntans.dat+ (the parameter \verb+beta+), this is also the initial density 
+distribution, since $(\rho-\rho_0)/\rho_0 = \beta(s-s_0)$ More generally, then, 
+this density distribution is given by
+\[
+\frac{\rho}{\rho_0} = -\frac{1}{2}\frac{\Delta\rho}{\rho_0}
+\tanh\left[\frac{2\mbox{atanh}(\alpha)}{\delta}\left(z+\frac{D}{2}-\zeta\right)\right]\,,
+\]
+where
+\begin{itemize}
+\item $\Delta\rho/\rho_0=0.06$: Density difference between layers.
+\item $\alpha=0.99$: Parameter that defines interface extent.
+\item $\delta=20$ m: Interface thickenss.
+\item $z$: vertical coordinate
+\item $D=100$ m: Depth
+\item $\zeta = \cos(\pi x/L)$: Interface profile, where $L=100$ m is the domain length.
+\end{itemize}
+and is shown in Figure \ref{fig:initdens}. 
+not used.
+\item {\bf Boundary conditions}:
+Because all boundaries of the planar
+straight line graph (\verb+rundata/oned.dat+) are of type 1, the functions in the \verb+boundaries.c+ file are
+not used in this example.
+
+\item {\bf Running the test}:
+
+\end{list}
 
 \subsection{Lock exchange} \label{sec:lockexchange}
 
