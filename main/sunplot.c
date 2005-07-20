@@ -6,8 +6,15 @@
  * Oliver Fringer
  * EFML Stanford University
  *
- * $Id: sunplot.c,v 1.47 2005-07-17 22:06:48 fringer Exp $
+ * $Id: sunplot.c,v 1.48 2005-07-20 00:20:52 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.47  2005/07/17 22:06:48  fringer
+ * Fixed malloc bug.  data pointer was only allocating enough space
+ * for data and not dataT.  i.e.
+ * old: dataT *data = (dataT *)malloc(sizeof(data)) (only 4 bytes)
+ * new: dataT *data = (dataT *)malloc(sizeof(dataT)) (204 bytes!)
+ * This was causing sunplot to crash upon exiting.
+ *
  * Revision 1.46  2005/07/14 23:04:05  fringer
  * Fixed a bug in sunplot.c by adding the line
  *  data->q = (float ***)malloc(numprocs*sizeof(float **));
@@ -258,7 +265,7 @@
 #define ZOOMFACTOR 2.0
 #define MINZOOMRATIO 1/100.0
 #define MAXZOOMRATIO 100.0
-#define NUMBUTTONS 36
+#define NUMBUTTONS 33
 #define POINTSIZE 2
 #define NSLICEMAX 1000
 #define NSLICEMIN 2
@@ -290,7 +297,7 @@ typedef enum {
   kupwin, kdownwin,
   prevprocwin, allprocswin, nextprocwin,
   saltwin, tempwin, preswin, fswin,
-  uwin, vwin, wwin, vecwin, Euwin, Evwin, Evecwin, nutwin, ktwin,  
+  uwin, vwin, wwin, vecwin, nutwin, ktwin,  
   depthwin, nonewin,
   edgewin, voronoiwin, delaunaywin,
   zoomwin, profwin, quitwin, reloadwin, axisimagewin, cmapholdwin,
@@ -311,7 +318,7 @@ typedef enum {
 
 typedef enum {
   noplottype, freesurface, depth, h_d, salinity, temperature, pressure, saldiff, 
-  salinity0, u_velocity, v_velocity, w_velocity, u_baroclinic, v_baroclinic, Eu_velocity, Ev_velocity,
+  salinity0, u_velocity, v_velocity, w_velocity, u_baroclinic, v_baroclinic,
   nut, kt
 } plottypeT;
 
@@ -351,8 +358,6 @@ typedef struct {
   float ***wf;
   float ***w;
   float **h;
-  float **Eu;
-  float **Ev;
   float **h_d;
 
   float *currptr;
@@ -386,7 +391,6 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
 void GetDMax(dataT *data, int numprocs);
 void GetHMax(dataT *data, int numprocs);
 void GetUMagMax(dataT *data, int klevel, int numprocs);
-void GetEMagMax(dataT *data, int numprocs);
 void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N);
 void DrawDelaunayPoints(float *xc, float *yc, plottypeT plottype, int Np);
 float *GetScalarPointer(dataT *data, plottypeT plottype, int klevel, int proc);
@@ -429,7 +433,7 @@ void SetUpButtons(void);
 void DrawVoronoiPoints(float *xv, float *yv, int Nc);
 void FillCircle(int xp, int yp, int r, int ic, Window mywin);
 void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv, 
-	      float *u, float *v, float umagmax, int Ne, int Nc, int type);
+	      float *u, float *v, float umagmax, int Ne, int Nc);
 void Quiver(float *x, float *z, float *D, float *H,
 	    float **u, float **v, float umagmax, int Nk, int Nc);
 void DrawArrow(int xp, int yp, int ue, int ve, Window mywin, int ic);
@@ -464,11 +468,11 @@ int width=WIDTH, height=HEIGHT, newwidth, newheight,
   xstart, ystart, xend, yend, lastgridread=0, iskip=1, kskip=1, iskipmax=5;
 //int *cells, *edges;
 //float caxis[2], *xc, *yc, *depth, *xp, axesPosition[4], dataLimits[4], buttonAxesPosition[4],
-//  zoomratio, *xv, *yv, vlengthfactor=1.0, Evlengthfactor=1.0;
+//  zoomratio, *xv, *yv, vlengthfactor=1.0;
 float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4], cmapAxesPosition[4],
-  zoomratio, vlengthfactor=1.0, Evlengthfactor=1.0;
+  zoomratio, vlengthfactor=1.0;
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
-bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, Evectorplot, goprocs,
+bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, goprocs,
   vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, cmaphold, getcmap, raisewindow;
 char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
@@ -497,7 +501,7 @@ int main(int argc, char *argv[]) {
   goT go;
 
   ParseCommandLine(argc,argv,&numprocs,&n,&k,&dims,&go);  
-  
+    
   ReadData(data,-1,numprocs);
 
   InitializeGraphics();
@@ -510,6 +514,12 @@ int main(int argc, char *argv[]) {
   edgelines=false;
   voronoipoints=false;
   delaunaypoints=false;
+
+  if(plotGrid) {
+    plottype = noplottype;
+    edgelines=true;
+    voronoipoints=true;
+  }
 
   SetUpButtons();
 
@@ -778,38 +788,6 @@ int main(int argc, char *argv[]) {
 	  } else
 	    sprintf(message,"Baroclinic V-velocity is already being displayed...");
 	}
-      } else if(report.xany.window==controlButtons[Evecwin].butwin) {
-	if(Evectorplot==false) {
-	  Evectorplot=true;
-	  sprintf(message,"E-flux Vectors on...");
-	  Evlengthfactor=1;
-	} else {
-	  if(mousebutton==left_button) {
-	    Evectorplot=false;
-	    sprintf(message,"E-flux Vectors off...");
-	  } else if(mousebutton==middle_button) {
-	    Evlengthfactor/=2;
-	    sprintf(message,"Halving flux vector lengths...");
-	  } else if(mousebutton==right_button) {
-	    Evlengthfactor*=2;
-	    sprintf(message,"Doubling flux vector lengths...");
-	  }	
-	}    
-	redraw=true;
-      } else if(report.xany.window==controlButtons[Euwin].butwin && mousebutton==left_button) {
-	if(plottype!=Eu_velocity) {
-	  plottype=Eu_velocity;
-	  sprintf(message,"Ex flux selected...");
-	  redraw=true;
-	} else
-	  sprintf(message,"Ex flux is already being displayed...");
-      } else if(report.xany.window==controlButtons[Evwin].butwin && mousebutton==left_button) {
-	if(plottype!=Ev_velocity) {
-	  plottype=Ev_velocity;
-	  sprintf(message,"Ey flux selected...");
-	  redraw=true;
-	} else
-	  sprintf(message,"Ey flux is already being displayed...");
       } else if(report.xany.window==controlButtons[nutwin].butwin && mousebutton==left_button) {
 	if(plottype!=nut) {
 	  plottype=nut;
@@ -956,7 +934,7 @@ int main(int argc, char *argv[]) {
 	    sprintf(message,"Color axes will be scaled with parameters in suntans.dat...");
 	  } else {
 	    cmaphold=false;
-	    sprintf(message,"Keeping current color axes...");
+	    sprintf(message,"Scaling color axes with min/max of data...");
 	  }
 	  getcmap=false;
 	} else if(mousebutton==right_button) {
@@ -1225,9 +1203,6 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   if(vectorplot) 
     GetUMagMax(data,k,numprocs);
 
-  if(Evectorplot) 
-    GetEMagMax(data,numprocs);
-
   if(procplottype==allprocs && !vertprofile)
     for(proc=0;proc<numprocs;proc++) {
       if(proc==0) {
@@ -1253,27 +1228,11 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
 	for(proc=0;proc<numprocs;proc++) 
 	  UnQuiver(data->edges[proc],data->xc,data->yc,data->xv[proc],data->yv[proc],
 		   data->u[proc][k],data->v[proc][k],
-		   data->umagmax,data->Ne[proc],data->Nc[proc],0);
+		   data->umagmax,data->Ne[proc],data->Nc[proc]);
       else 
 	UnQuiver(data->edges[procnum],data->xc,data->yc,data->xv[procnum],data->yv[procnum],
 		 data->u[procnum][k],data->v[procnum][k],
-		 data->umagmax,data->Ne[procnum],data->Nc[procnum],0);
-    }
-  }
-
-  if(Evectorplot) {
-    if(vertprofile && sliceType==slice) 
-      sprintf(message,"Can only display flux vectors in plan view");
-    else {
-      if(procplottype==allprocs) 
-	for(proc=0;proc<numprocs;proc++) 
-	  UnQuiver(data->edges[proc],data->xc,data->yc,data->xv[proc],data->yv[proc],
-		   data->Eu[proc],data->Ev[proc],
-		   data->Emagmax,data->Ne[proc],data->Nc[proc],1);
-      else 
-	UnQuiver(data->edges[procnum],data->xc,data->yc,data->xv[procnum],data->yv[procnum],
-		 data->Eu[procnum],data->Ev[procnum],
-		 data->umagmax,data->Ne[procnum],data->Nc[procnum],1);
+		 data->umagmax,data->Ne[procnum],data->Nc[procnum]);
     }
   }
 
@@ -1599,7 +1558,7 @@ void QuadContour(float *h, float *D,
 }
 
 void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv, 
-	      float *u, float *v, float umagmax, int Ne, int Nc, int type) {
+	      float *u, float *v, float umagmax, int Ne, int Nc) {
   int j, ic;
   float xe, ye, umag, l, lmax, n1, n2;
   int xp, yp, ue, ve, vlength;
@@ -1615,14 +1574,9 @@ void UnQuiver(int *edges, float *xc, float *yc, float *xv, float *yv,
 	   pow(yc[edges[2*j]]-yc[edges[2*j+1]],2));
     if(l>lmax) lmax=l;
   }
-  if(type==0) {
-    vlength = vlengthfactor*(int)(lmax/(dataLimits[1]-dataLimits[0])*
-				  axesPosition[2]*width);
-  } else {
-    vlength = Evlengthfactor*(int)(lmax/(dataLimits[1]-dataLimits[0])*
-				  axesPosition[2]*width);
-    ic=red;
-  }
+
+  vlength = vlengthfactor*(int)(lmax/(dataLimits[1]-dataLimits[0])*
+				axesPosition[2]*width);
 
   for(j=0;j<Nc;j+=iskip) {
     if(u[j]!=EMPTY) {
@@ -1857,12 +1811,6 @@ float *GetScalarPointer(dataT *data, plottypeT plottype, int klevel, int proc) {
     break;
   case v_velocity: case v_baroclinic:
     return data->v[proc][klevel];
-    break;
-  case Eu_velocity:
-    return data->Eu[proc];
-    break;
-  case Ev_velocity: 
-    return data->Ev[proc];
     break;
   case nut:
     return data->nut[proc][klevel];
@@ -2419,17 +2367,11 @@ void DrawColorBar(dataT *data, int procnum, int numprocs, plottypeT plottype) {
     case u_velocity: 
       sprintf(str,"U");
       break;
-    case Eu_velocity: 
-      sprintf(str,"Ex Flux");
-      break;
     case u_baroclinic: 
       sprintf(str,"U baro");
       break;
     case v_velocity: 
       sprintf(str,"V");
-      break;
-    case Ev_velocity: 
-      sprintf(str,"Ey Flux");
       break;
     case nut:
       sprintf(str,"nu_t");
@@ -2666,12 +2608,26 @@ void SetUpButtons(void) {
   controlButtons[preswin].w=0.1;
   controlButtons[preswin].h=(float)BUTTONHEIGHT;
 
-  controlButtons[fswin].string="Surface";
+  controlButtons[fswin].string="h";
   controlButtons[fswin].mapstring="saltwin";
   controlButtons[fswin].l=0.55;
   controlButtons[fswin].b=controlButtons[nextwin].b+3*dist;
-  controlButtons[fswin].w=0.4;
+  controlButtons[fswin].w=0.1;
   controlButtons[fswin].h=(float)BUTTONHEIGHT;
+
+  controlButtons[nutwin].string="n";
+  controlButtons[nutwin].mapstring="nutwin";
+  controlButtons[nutwin].l=0.7;
+  controlButtons[nutwin].b=controlButtons[nextwin].b+3*dist;
+  controlButtons[nutwin].w=0.1;
+  controlButtons[nutwin].h=(float)BUTTONHEIGHT;
+
+  controlButtons[ktwin].string="k";
+  controlButtons[ktwin].mapstring="ktwin";
+  controlButtons[ktwin].l=0.85;
+  controlButtons[ktwin].b=controlButtons[nextwin].b+3*dist;
+  controlButtons[ktwin].w=0.1;
+  controlButtons[ktwin].h=(float)BUTTONHEIGHT;
 
   controlButtons[uwin].string="U";
   controlButtons[uwin].mapstring="uwin";
@@ -2806,42 +2762,6 @@ void SetUpButtons(void) {
   controlButtons[quitwin].b=controlButtons[nextwin].b+12*dist;
   controlButtons[quitwin].w=0.9;
   controlButtons[quitwin].h=(float)BUTTONHEIGHT;
-
-  controlButtons[Euwin].string="Ex";
-  controlButtons[Euwin].mapstring="Euwin";
-  controlButtons[Euwin].l=0.05;
-  controlButtons[Euwin].b=controlButtons[nextwin].b+13*dist;
-  controlButtons[Euwin].w=0.2;
-  controlButtons[Euwin].h=(float)BUTTONHEIGHT;
-
-  controlButtons[Evwin].string="Ey";
-  controlButtons[Evwin].mapstring="Evwin";
-  controlButtons[Evwin].l=0.3;
-  controlButtons[Evwin].b=controlButtons[nextwin].b+13*dist;
-  controlButtons[Evwin].w=0.2;
-  controlButtons[Evwin].h=(float)BUTTONHEIGHT;
-
-  controlButtons[Evecwin].string="E flux";
-  controlButtons[Evecwin].mapstring="Evecwin";
-  controlButtons[Evecwin].l=0.55;
-  controlButtons[Evecwin].b=controlButtons[nextwin].b+13*dist;
-  controlButtons[Evecwin].w=0.4;
-  controlButtons[Evecwin].h=(float)BUTTONHEIGHT;
-
-  controlButtons[nutwin].string="nu_t";
-  controlButtons[nutwin].mapstring="nutwin";
-  controlButtons[nutwin].l=0.05;
-  controlButtons[nutwin].b=controlButtons[nextwin].b+14*dist;
-  controlButtons[nutwin].w=0.2;
-  controlButtons[nutwin].h=(float)BUTTONHEIGHT;
-
-  controlButtons[ktwin].string="k_t";
-  controlButtons[ktwin].mapstring="ktwin";
-  controlButtons[ktwin].l=0.3;
-  controlButtons[ktwin].b=controlButtons[nextwin].b+14*dist;
-  controlButtons[ktwin].w=0.2;
-  controlButtons[ktwin].h=(float)BUTTONHEIGHT;
-
 }
 
 void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *dimensions, goT *go)
@@ -2867,7 +2787,7 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *
 	  *k = (int)atof(argv[++i]);
 	else if(!strcmp(argv[i],"-2d"))
 	  *dimensions=two_d;
-	else if(!strcmp(argv[i],"-ng"))
+	else if(!strcmp(argv[i],"-g"))
 	  plotGrid=true;
 	else if(!strcmp(argv[i],"-m"))
 	  *go=forward;
@@ -2897,7 +2817,7 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *
 }    
 
 void Usage(char *str) {
-  printf("Usage: %s [-np 2, -2d, -n, -k]\n",str);
+  printf("Usage: %s [-np (numprocs), -2d, -n (time step), -k (vert level), -g, -m]\n",str);
 }
 
 void FindNearest(dataT *data, int x, int y, int *iloc, int *procloc, int procnum, int numprocs) {
@@ -3053,8 +2973,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
     data->depth = (float **)malloc(numprocs*sizeof(float *));
     data->h = (float **)malloc(numprocs*sizeof(float *));
-    data->Eu = (float **)malloc(numprocs*sizeof(float *));
-    data->Ev = (float **)malloc(numprocs*sizeof(float *));
     data->h_d = (float **)malloc(numprocs*sizeof(float *));
     data->s = (float ***)malloc(numprocs*sizeof(float **));
     data->sd = (float ***)malloc(numprocs*sizeof(float **));
@@ -3123,8 +3041,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
       data->depth[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->h[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
-      data->Eu[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
-      data->Ev[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->h_d[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->s[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
       data->sd[proc]=(float **)malloc(data->Nkmax*sizeof(float *));
@@ -3377,36 +3293,6 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	fclose(fid);
       }
 
-      /*
-      printf("Computing energy flux at step %d, proc %d\n",nstep,proc);
-
-      dz = data->dmax/(float)data->Nkmax;
-      beta=GetValue(DATAFILE,"beta",&status);
-      for(i=0;i<data->Nc[proc];i++) {
-
-	for(ik0=0;ik0<data->Nkmax;ik0++) {
-	  dummy[ik0]=0;
-	  for(ik=ik0;ik>=0;ik--) {
-	    dz = data->z[ik-1]-data->z[ik];
-	    if(data->s[proc][ik][i]!=EMPTY) 
-	      dummy[ik0]+=1000*GRAV*beta*(data->s[proc][ik][i]-data->s0[proc][ik][i])*dz;
-	  }
-	}
-	
-	if(nstep==1) {
-	  data->Eu[proc][i]=0;
-	  data->Ev[proc][i]=0;
-	}
-	for(ik0=0;ik0<data->Nkmax;ik0++) 
-	  if(data->s[proc][ik0][i]!=EMPTY) {
-	    dz = data->z[ik0-1]-data->z[ik0];
-	    data->Eu[proc][i]+=(data->u[proc][ik0][i]-data->ubar[proc][i])*dummy[ik0]*dz;
-	    data->Ev[proc][i]+=(data->v[proc][ik0][i]-data->vbar[proc][i])*dummy[ik0]*dz;
-	    //	    data->u[proc][ik0][i]=data->u[proc][ik0][i]-data->ubar[proc][i];
-	    //	    data->v[proc][ik0][i]=data->v[proc][ik0][i]-data->vbar[proc][i];
-	  }
-      }
-      */
       free(dummy);
     }
   }
@@ -3436,20 +3322,6 @@ void GetUMagMax(dataT *data, int klevel, int numprocs) {
       }
     data->umagmax=umagmax;
   }
-}
-
-void GetEMagMax(dataT *data, int numprocs) {
-  int j, i, proc;
-  float Emag, Emagmax=0, ud, Eud, Evd;
-  
-  for(proc=0;proc<numprocs;proc++)  
-    for(j=0;j<data->Nc[proc];j++) {
-      Eud = data->Eu[proc][j];
-      Evd = data->Ev[proc][j];
-      Emag=sqrt(pow(Eud,2)+pow(Evd,2));
-      if(Emag>Emagmax) Emagmax=Emag;
-    }
-  data->Emagmax=Emagmax;
 }
 
 void GetDMax(dataT *data, int numprocs) {
@@ -3687,8 +3559,8 @@ int LoadCAxis(void) {
   int status;
   REAL caxis0,caxis1;
 
-  caxis0=GetValue(DATAFILE,"caxisminDefault",&status);  
-  caxis1=GetValue(DATAFILE,"caxismaxDefault",&status);  
+  caxis0=GetValue(DATAFILE,"caxismin",&status);  
+  caxis1=GetValue(DATAFILE,"caxismax",&status);  
 
   if(!status) 
     printf("Error! Could not find values for caxismin or caxismax in %s (using min and max from data).\n",DATAFILE);
