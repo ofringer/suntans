@@ -637,8 +637,8 @@ are not empty.  To view the data with the default settings in a given directory,
 This will bring up a planview of the salinity data at the first time step $n=1$ in the upper layer.$k=1$ (note
 that the gui does not use C-style indexing, so the first index starts at k=1.), as shown in Figure
 \ref{fig:sun1}
-%\insertfig{0.8}{figures/sun1}{View of the Sunplot window upon first execution without any command
-%line options.}{fig:sun1}
+\insertfig{0.4}{figures/sun1}{View of the Sunplot window upon first execution without any command
+line options.}{fig:sun1}
 
 \subsection{Moving around in time}
 
@@ -1040,6 +1040,12 @@ from the main source directory with
 \begin{verbatim}
 ./sunplot --datadir=examples/iwaves/data
 \end{verbatim}
+It is important that you run \verb+make clobber+ between successive tests in other
+test directories to ensure that you are recompiling the \verb+../../sun+ executable
+with the correct initial and boundary condition files each time.  Without clobbering,
+rerunning \verb+make test+ will run the test case while only reflecting changes in \verb+suntans.dat+.
+Therefore, it is not necessary to clobber if the same test is being run with different 
+parameters in \verb+suntans.dat+.
 
 \subsection{Time accuracy} \label{sec:timeaccuracy}
 
@@ -1054,8 +1060,8 @@ accuracy criteria using the \verb+accuracy.c+ code.  This code is a good exmaple
 of how to read in and analyze SUNTANS data using the C programming language.  More
 details are given below.
 
-\begin{list}{}
-\item {\bf Grid}:
+\subsubsection{Grid}
+
 The domain is 100 m long and 100 m deep, and it
 uses 100 vertical levels and 100 equilateral triangles, as defined in the planar
 straight line graph file \verb+rundata/oned.dat+, which was created with the
@@ -1073,7 +1079,11 @@ The depth is constant and is defined in \verb+initialization.c+ in the
 \begin{verbatim}
 return 100;
 \end{verbatim}
-\item {\bf Initial conditions}:
+Note that in order for this depth to be specified, the \verb+IntDepth+ parameter must
+be set to 0 in the \verb+suntans.dat+ parameter file.
+
+\subsubsection{Initial conditions}
+
 The initial velocity field is quiescent, the initial free surface height is 0,
 and the initial density distribution is defined in the function \verb+ReturnSalinity+
 in \verb+initialization.c+ as
@@ -1092,18 +1102,21 @@ where
 \item $\Delta\rho/\rho_0=0.06$: Density difference between layers.
 \item $\alpha=0.99$: Parameter that defines interface extent.
 \item $\delta=20$ m: Interface thickenss.
-\item $z$: vertical coordinate
+\item $z$: Vertical coordinate
 \item $D=100$ m: Depth
 \item $\zeta = \cos(\pi x/L)$: Interface profile, where $L=100$ m is the domain length.
 \end{itemize}
 and is shown in Figure \ref{fig:initdens}. 
-not used.
-\item {\bf Boundary conditions}:
+\insertfig{1}{figures/initdens}{Initial density distribution in $x$-$z$ (a) and as a profile at $x=L/2$ (b)
+for the time accuracy test case.}{fig:initdens}
+
+\subsubsection{Boundary conditions}
+
 Because all boundaries of the planar
 straight line graph (\verb+rundata/oned.dat+) are of type 1, the functions in the \verb+boundaries.c+ file are
 not used in this example.
 
-\item {\bf Running the test}:
+\subsubsection{Running the test}
 
 The accuracy test case is run at the command line with
 \begin{verbatim}
@@ -1156,8 +1169,8 @@ The code outputs the results from the current run, then displays the results tha
 have been saved from a working version of this simulation, and then plots the relative
 difference between your results and the stored results as
 \[
-\mbox{Difference} = \frac{\mbox{Your $Error(n)/Error(0)$} - \mbox{Stored $Error(n)/Error(0)$}}
-{\mbox{Stored $Error(n)/Error(0)$}}\,.
+\mbox{Difference} = \frac{\mbox{Your($Error(n)/Error(0)$)} - \mbox{Stored($Error(n)/Error(0)$)}}
+{\mbox{Stored($Error(n)/Error(0)$)}}\,.
 \]
 Each column represents a different quantity, as:
 \begin{itemize}
@@ -1170,16 +1183,134 @@ using the last two time steps (for details see Fringer\etal~\cite{FRINGER[2005]}
 \item \verb+Q0+: Nonhydrostatic pressure without the extrapolation of \verb+Q+.
 \item \verb+h+: Free surface.
 \end{itemize}
-
-\end{list}
+The first time you download and run the examples, the results
+you obtain should be identical to the stored results since they were obtained with the
+same code, and the relative difference should be identically zero.  Changing parts of the
+code may or may not affect the accuracy, but if it does then this will be reflected by
+nonzero values for the relative difference.
 
 \subsection{Lock exchange} \label{sec:lockexchange}
 
+This example demonstrates the nonhydrostatic internal lock exchange problem.  Due to the
+coarseness of the grid being used, numerical diffusion acts to limit the formation of
+the KH billows along the interface.  These billows can easily be obtained by increasing
+the resolution, following the simulation outlined by Fringer\etal~\cite{FRINGER[2005]}.
+
+\subsection{Grid}
+
+The grid in this example is also obtained with the 
+\verb+onedgrid.m+ m-file which can be downloaded from 
+
+\medskip
+\noindent
+\mfiledownload.
+
+\medskip
+\noindent
+In this case, the grid contains 200 cells in the horizontal and 20 in the vertical, with
+a length of 100 m and a depth of 20 m.  This constant depth is specified in \verb+initialization.c+
+in the function \verb+ReturnDepth+ with the line
+\begin{verbatim}
+return 20;
+\end{verbatim}
+Note that in order for this depth to be specified, the \verb+IntDepth+ parameter must
+be set to 0 in the \verb+suntans.dat+ parameter file.  As shown in Figure \ref{fig:stretched},
+this grid is stretched in the
+vertical in order to provide extra resolution at the bottom boundary.  This is done by
+specifying a negative stretching factor of $r=-1.025$ (\verb+suntans.dat: rstretch = -1.025+),
+which causes each grid layer to be 1.025 times thicker than the layer beneath it.  
+\insertfig{0.8}{figures/stretched}{Depiction of the vertically stretched grid for the lock exchange
+problem.  Every fourth vertical cell face plotted for clarity.}{fig:stretched}
+
+\subsection{Initial conditions}
+
+The initial velocity field is quiescent, the initial free surface height is 0,
+and the initial density distribution is defined in the function \verb+ReturnSalinity+
+in \verb+initialization.c+ as
+\begin{verbatim}
+  return -.001*tanh(2.0*2.6467/5*(x-50.0));
+\end{verbatim}
+Because $\beta=1$ in \verb+suntans.dat+ (the parameter \verb+beta+), this is also the initial density 
+distribution, since $(\rho-\rho_0)/\rho_0 = \beta(s-s_0)$ More generally, then, 
+this density distribution is given by
+\[
+\frac{\rho}{\rho_0} = -\frac{1}{2}\frac{\Delta\rho}{\rho_0}
+\tanh\left[\frac{2\mbox{atanh}(\alpha)}{\delta}\left(x-\frac{L}{2}\right)\right]\,,
+\]
+where
+\begin{itemize}
+\item $\Delta\rho/\rho_0=2\times 10^{-3}$: Density difference.
+\item $\alpha=0.99$: Parameter that defines interface extent.
+\item $\delta=5$ m: Interface thickenss.
+\item $x$: Horizontal coordinate.
+\item $L=100$ m: Length
+\end{itemize}
+and is shown in Figure \ref{fig:initlock}. 
+\insertfig{0.8}{figures/initlock}{Initial density distribution in $x$-$z$ (a) and as a profile at $x=L/2$ (b)
+for the lock exchange test case.}{fig:initlock}
+
+\subsection{Boundary conditions}
+
+Because all boundaries of the planar
+straight line graph (\verb+rundata/oned.dat+) are of type 1, the functions in the \verb+boundaries.c+ file are
+not used in this example.
+
+\subsection{Running the test and viewing the results}
+
+This test case is run with the command
+\begin{verbatim}
+make test
+\end{verbatim}
+The simulation runs for 500 time steps (\verb+suntans.dat: nsteps = 500+) with a time step size of 0.2 s (\verb+suntans.dat: dt = 0.2+).
+For this grid, given that the Voronoi distance for the equilateral triangles with sides of length $\Delta x=L/200$
+is $D_g = \Delta x/\sqrt{3} = 0.2887$ m, and the maximum velocity is roughly $u_{max}=0.5$ m s$^{-1}$ (it actually
+never exceeds $0.44$ m s$^{-1}$),
+the horizontal Courant number is $C_x=u_{max}\Delta t/D_g = 0.35$, and the vertical Courant number is
+$C_z=w_{max}\Delta t/\Delta z_{min}=0.2\mbox{m s}^{-1} 0.2\mbox{s}/0.78 m=0.05$.  Because central differencing
+is employed for advection of momentum (\verb+suntans.dat: nonlinear = 2+), 
+the horizontal grid Peclet number must satisfy the one-dimensional stability criterion which requires
+that  $Pe_{\Delta x}<2/C_x$.  This is an approximation and is not as restrictive as it should be for multidimensional,
+unstructured-grid problems, but it serves as a good approximation (See Fletcher~\cite{FLETCHER[1997]} for details).
+For the horizontal stability, then, this requires that $\nu_H\ge u_{max}^2\Delta t/2 = 0.025$ m$^2$ s$^{-1}$ (\verb+suntans.dat: nuH = 0.025+).
+Likewise, for vertical stability, $\nu = 0.016$  m$^2$ s$^{-1}$ (\verb+suntans.dat: nu = 0.016+).
+
+The results can be viewed with the \verb+sunplot+ gui from the main source directory with
+\begin{verbatim}
+./sunplot --datadir=examples/lockexchange/data
+\end{verbatim}
+This will open up a planview of the one-dimensional grid of equilateral triangles, showing that
+there are 26 (1+\verb+nsteps+/\verb+ntout+) time steps to plot.  To view the
+profile plot, depress the \button{Profile} button with the middle mouse button.  The last time step
+of the velocity vectors along with the salinity field can be viewed with the following buttons:
+\begin{enumerate}
+\item Right mouse on \button{$-->$}:  To get to last time step.
+\item Left mouse on \button{Vectors}: Turn on velocity vectors.
+\item 3$\times$ Right mouse on \button{Vectors}: Increase vector length by a factor of 8.
+\item 2$\times$ Left mouse on \button{$>$}: Increase \verb+iskip+ to 3 to plot every third vector for clarity.
+\end{enumerate}
+The display should appear as it does in Figure \ref{fig:lock}.
+\insertfig{0.6}{figures/lock}{Sunplot display of the lock exchange example after 500 time steps.}{fig:lock}
+
 \subsection{Boundary conditions} \label{sec:boundary_ex}
+
+\subsection{Grid}
+\subsection{Initial conditions}
+\subsection{Boundary conditions}
+\subsection{Running the test}
 
 \subsection{Wetting and drying} \label{sec:wettinganddrying}
 
+\subsection{Grid}
+\subsection{Initial conditions}
+\subsection{Boundary conditions}
+\subsection{Running the test}
+
 \subsection{Internal waves} \label{sec:internalwaves}
+
+\subsection{Grid}
+\subsection{Initial conditions}
+\subsection{Boundary conditions}
+\subsection{Running the test}
 
 \section{Parameter listing in suntans.dat} \label{sec:params}
 
