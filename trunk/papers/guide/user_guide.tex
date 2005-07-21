@@ -6,39 +6,6 @@
 % Stanford University
 % 10 June 2004
 %
-% $Id: user_guide.tex,v 1.11 2005-07-20 17:22:17 fringer Exp $
-% $Log: not supported by cvs2svn $
-% Revision 1.10  2005/07/20 00:22:19  fringer
-% Completed sunplot section.
-%
-% Revision 1.9  2005/07/19 22:47:04  fringer
-% More additions to sunplot section.
-%
-% Revision 1.8  2005/07/18 04:52:09  fringer
-% Working on sunplot section.
-%
-% Revision 1.7  2005/07/16 00:03:23  fringer
-% Finished suntans.dat section and made some other minor changes.
-%
-% Revision 1.6  2005/07/15 15:25:41  fringer
-% Additions made in parameter listing.
-%
-% Revision 1.5  2005/07/13 17:07:47  fringer
-% Commiting changes as of 7/13/05.
-%
-% Revision 1.4  2004/06/24 08:37:27  fringer
-% Added sections on initial and boundary conditions as well as
-% restart files.
-%
-% Revision 1.3  2004/06/23 06:18:25  fringer
-% Added CVS section for anonymous updating (read-only).
-%
-% Revision 1.2  2004/06/14 07:51:30  fringer
-% Added to section on reading grids from file.
-%
-% Revision 1.1  2004/06/14 05:43:58  fringer
-% Suntans user guide added to CVS repository.
-%
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \documentclass[12pt,oneside]{article}
@@ -683,13 +650,13 @@ The three buttons beneath \verb+''Step: 1 of 41''+ on the upper left of the GUI 
 \item {\bf Middle button:} No effect
 \item {\bf Right button:} Moves to time step 1.
 \end{list}
-\item \verb+M+: 
+\item \button{M}: 
 \begin{list}{}
 \item {\bf Left button:} Animates forward in time from begining to end.
 \item {\bf Middle button:} Asks the user to input a desired time step at the command line.
 \item {\bf Right button:} Animates backward in time from the end to the begining.
 \end{list}
-\item \verb+-->+
+\item \button{$-->$};
 \begin{list}{}
 \item {\bf Left button:} Moves one step forward in time.
 \item {\bf Middle button:} No effect
@@ -708,7 +675,7 @@ being shown.  Level 1 is the top level, while level 20 is level $N_{kmax}$.
 \item {\bf Middle button:} No effect
 \item {\bf Right button:} Displays level 1.
 \end{list}
-\item \verb+-->+
+\item \button{$-->$}:
 \begin{list}{}
 \item {\bf Left button:} Displays one level down (increasing k).
 \item {\bf Middle button:} No effect
@@ -727,13 +694,13 @@ being shown.  The default is to show all processors.
 \item {\bf Middle button:} No effect
 \item {\bf Right button:} Displays processor 1 (no C-style indexing).
 \end{list}
-\item \verb+All+: 
+\item \button{All}:
 \begin{list}{}
 \item {\bf Left button:} Displays all processors.
 \item {\bf Middle button:} No effect.
 \item {\bf Right button:} No effect.
 \end{list}
-\item \verb+-->+
+\item \button{$-->$}:
 \begin{list}{}
 \item {\bf Left button:} Increases the processor number being displayed.  Loops around if on the last processor.
 \item {\bf Middle button:} No effect
@@ -1137,6 +1104,72 @@ straight line graph (\verb+rundata/oned.dat+) are of type 1, the functions in th
 not used in this example.
 
 \item {\bf Running the test}:
+
+The accuracy test case is run at the command line with
+\begin{verbatim}
+make test
+\end{verbatim}
+This will compile the local initial and boundary condition files and link them with the
+executable \verb+../../sun+.  The script \verb+accuracy.sh+ loops through different
+time step sizes given by $\Delta t_n = \Delta t_0/2^n$, with $n=0,1,\dots,5$, where
+$\Delta t_0 = 0.1$ s.  If the reference solution is given by the solution $\phi^{ref}$
+with a time step size of $\Delta t_0/32$, then the error between a solution using
+$\Delta t=\Delta t_0/2^n$ and the 
+reference solution can be calculated with
+\[
+Error(n)^2 = \frac{\sum_{i=0}^{Nc-1}\sum_{k=0}^{N_{kmax}-1} \left(\phi_{i,k}-\phi^{ref}_{i,k}\right)^2}
+{\sum_{i=0}^{Nc-1}\sum_{k=0}^{N_{kmax}-1} \left(\phi^{ref}_{i,k}\right)^2}\,.
+\]
+Since this is a second-order method, we must have $Error(n)/Error(n-1)=4$ since the time step size
+for $Error(n)$ is double that of $Error(n-1)$.  Therefore, $Error(n)/Error(0) = 4^n = (\Delta t_0/\Delta t_n)^2$,
+$n=0,1,\dots,4$.  After
+the \verb+accuracy.sh+ script finishes, the results are analyzed with the code in \verb+accuracy.c+,
+which computes $Error(n)$.  The output of this code is given by
+\begin{verbatim}
+Error results (Error(n)/Error(0)):
+
+Your results:
+--------------------------------------------------
+dt0/dt  U       W       S       Q       Q0      h
+--------------------------------------------------
+1       1.0     1.0     1.0     1.0     1.0     1.0
+2       3.9     3.9     4.0     4.1     1.2     4.0
+4       15.6    15.5    16.2    16.4    2.1     16.4
+8       65.1    64.8    68.1    68.9    4.4     69.1
+16      324.7   323.5   340.6   344.8   12.8    345.9
+
+Reference results:
+1       1.0     1.0     1.0     1.0     1.0     1.0
+2       3.9     3.9     4.0     4.1     1.2     4.0
+4       15.6    15.5    16.2    16.4    2.1     16.4
+8       65.1    64.8    68.1    68.9    4.4     69.1
+16      324.7   323.5   340.6   344.8   12.8    345.9
+
+Difference (relative):
+1       0.00    0.00    0.00    0.00    0.00    0.00
+2       -0.00   0.00    0.00    0.00    0.00    -0.00
+4       -0.00   0.00    0.00    0.00    0.00    -0.00
+8       -0.00   0.00    0.00    0.00    0.00    -0.00
+16      -0.00   0.00    0.00    0.00    0.00    -0.00
+\end{verbatim}
+The code outputs the results from the current run, then displays the results that
+have been saved from a working version of this simulation, and then plots the relative
+difference between your results and the stored results as
+\[
+\mbox{Difference} = \frac{\mbox{Your $Error(n)/Error(0)$} - \mbox{Stored $Error(n)/Error(0)$}}
+{\mbox{Stored $Error(n)/Error(0)$}}\,.
+\]
+Each column represents a different quantity, as:
+\begin{itemize}
+\item \verb+dt0/dt+: $\Delta t_0/\Delta t^n$, $n=0,1,\dots 4$
+\item \verb+U+: Horizontal velocity.
+\item \verb+W+: Vertical velocity
+\item \verb+S+: Salinity (or density, since $\beta=1$).
+\item \verb+Q+: Nonhydrostatic pressure using the second-order Adams-Bashforth extrapolation
+using the last two time steps (for details see Fringer\etal~\cite{FRINGER[2005]}).
+\item \verb+Q0+: Nonhydrostatic pressure without the extrapolation of \verb+Q+.
+\item \verb+h+: Free surface.
+\end{itemize}
 
 \end{list}
 
