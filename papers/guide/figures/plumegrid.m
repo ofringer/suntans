@@ -14,7 +14,8 @@ clf;
 hold on;
 plot(x(ip)',y(ip)','k-');
 plot(x(ie(ig,:))',y(ie(ig,:))','k-','linewidth',5);
-
+set(gca,'fontsize',12);
 axis image;
+axis([-.005 3.05 -.001 1.001]);
 xlabel('x (km)')
 ylabel('y (km)');
