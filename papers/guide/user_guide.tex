@@ -1172,7 +1172,7 @@ difference between your results and the stored results as
 \mbox{Difference} = \frac{\mbox{Your($Error(n)/Error(0)$)} - \mbox{Stored($Error(n)/Error(0)$)}}
 {\mbox{Stored($Error(n)/Error(0)$)}}\,.
 \]
-Each column represents a different quantity, as:
+Each column represents:
 \begin{itemize}
 \item \verb+dt0/dt+: $\Delta t_0/\Delta t^n$, $n=0,1,\dots 4$
 \item \verb+U+: Horizontal velocity.
@@ -1191,12 +1191,13 @@ nonzero values for the relative difference.
 
 \subsection{Lock exchange} \label{sec:lockexchange}
 
-This example demonstrates the nonhydrostatic internal lock exchange problem.  Due to the
+This example is in the \verb+examples/lockexchange+ directory and it 
+demonstrates the nonhydrostatic internal lock exchange problem.  Due to the
 coarseness of the grid being used, numerical diffusion acts to limit the formation of
 the KH billows along the interface.  These billows can easily be obtained by increasing
 the resolution, following the simulation outlined by Fringer\etal~\cite{FRINGER[2005]}.
 
-\subsection{Grid}
+\subsubsection{Grid}
 
 The grid in this example is also obtained with the 
 \verb+onedgrid.m+ m-file which can be downloaded from 
@@ -1222,7 +1223,7 @@ which causes each grid layer to be 1.025 times thicker than the layer beneath it
 \insertfig{0.8}{figures/stretched}{Depiction of the vertically stretched grid for the lock exchange
 problem.  Every fourth vertical cell face plotted for clarity.}{fig:stretched}
 
-\subsection{Initial conditions}
+\subsubsection{Initial conditions}
 
 The initial velocity field is quiescent, the initial free surface height is 0,
 and the initial density distribution is defined in the function \verb+ReturnSalinity+
@@ -1249,13 +1250,13 @@ and is shown in Figure \ref{fig:initlock}.
 \insertfig{0.8}{figures/initlock}{Initial density distribution in $x$-$z$ (a) and as a profile at $x=L/2$ (b)
 for the lock exchange test case.}{fig:initlock}
 
-\subsection{Boundary conditions}
+\subsubsection{Boundary conditions}
 
 Because all boundaries of the planar
 straight line graph (\verb+rundata/oned.dat+) are of type 1, the functions in the \verb+boundaries.c+ file are
 not used in this example.
 
-\subsection{Running the test and viewing the results}
+\subsubsection{Running the test and viewing the results}
 
 This test case is run with the command
 \begin{verbatim}
@@ -1291,26 +1292,223 @@ of the velocity vectors along with the salinity field can be viewed with the fol
 The display should appear as it does in Figure \ref{fig:lock}.
 \insertfig{0.6}{figures/lock}{Sunplot display of the lock exchange example after 500 time steps.}{fig:lock}
 
-\subsection{Boundary conditions} \label{sec:boundary_ex}
+\subsection{Boundary condition example} \label{sec:boundary_ex}
 
-\subsection{Grid}
-\subsection{Initial conditions}
-\subsection{Boundary conditions}
-\subsection{Running the test}
+This example is in the \verb+examples/boundaries+ directory and it simulates a simplified
+river plume in order to demonstrate the use of velocity as well as scalar boundary conditions
+at the inflow and the outflow.
+
+\subsubsection{Grid}
+
+The two-dimensional grid of equilateral triangles is created with the m-file \verb+twodgrid.m+,
+which can be downloaded from
+\medskip
+\noindent
+\mfiledownload.
+
+\medskip
+\noindent
+As shown in Figure \ref{fig:plumegrid}, it is 3 km by 2 km with a total of 2430 equilateral triangles
+with edge lengths of 75 m.  The eastern and southern boundaries
+are marked as type 2 edges.  These will be specified in \verb+boundaries.c+.  The depth is
+10 m and is specified in \verb+initialization.c+ as
+\begin{verbatim}
+return 10;
+\end{verbatim}
+There are 10 vertical levels (\verb+suntans.dat: Nkmax = 10+).
+\insertfig{.8}{figures/plumegrid}{Two-dimensional planview of the river plume grid, showing the
+boundary edges of type 2 in bold.}{fig:plumegrid}
+
+\subsubsection{Initial conditions}
+
+As specified in \verb+initialization.c+, the initial conditions are straightforward in
+that all quantities are initialized to zero except the temperature field, which is a passive
+tracer when $\gamma=1$ (\verb+suntans.dat: gamma = 1+).
+
+\subsubsection{Boundary conditions}
+
+\begin{itemize}
+\item[] {\bf Eastern Boundary: open}\\
+The eastern boundary fluxes normal to the faces are specified while values used for
+advection of momentum and scalars are upwinded
+\begin{itemize}
+\item[] {\bf Boundary fluxes}\\
+As specified in \verb+boundaries.c+, the eastern boundary is an open boundary and employs the
+linearized boundary condition on the velocity as
+\[ u_b = -h_b\sqrt{\frac{g}{d}} \,,\]
+This is enforced in the \verb+OpenBoundaryFluxes+ function with the lines
+\begin{verbatim}
+if(grid->yv[ib]>50) {
+   for(k=grid->etop[j];k<grid->Nke[j];k++) 
+     ub[j][k]=-phys->h[ib]*sqrt(GRAV/grid->dv[ib]);
+...
+\end{verbatim}
+The \verb+ib+ index is the index of the cell adjacent to the boundary, and the if statement
+is required to distinguish this eastern outflow boundary from the southern boundary.
+\item[] {\bf Boundary velocities}\\
+At the eastern open boundary, the boundary velocities which are used for advection of momentum
+out of the domain are given by the upwind velocity components.  This is specified in the
+\verb+BoundaryVelocities+ function with the lines
+\begin{verbatim}
+if(grid->yv[ib]>50) {
+   for(k=grid->etop[j];k<grid->Nke[j];k++) {
+      phys->boundary_u[jptr-grid->edgedist[2]][k]=
+                                  phys->uc[ib][k];
+      phys->boundary_v[jptr-grid->edgedist[2]][k]=
+                                  phys->vc[ib][k];
+      phys->boundary_w[jptr-grid->edgedist[2]][k]=
+                             0.5*(phys->w[ib][k]+phys->w[ib][k+1]);
+   } 
+\end{verbatim}
+Because the flux of momentum is calculated at the vertical centers of the vertical faces,
+the upwind vertical velocity is interpolated from the upper (k) and lower (k+1) faces of the kth cell.
+\item[] {\bf Boundary scalars}\\
+The outflow conditions on the scalars are imposed by specified the upwind scalar quantity
+at the outflow face.  This is set in the funciton \verb+BoundaryScalars+ with the lines
+\begin{verbatim}
+for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+   phys->boundary_T[jptr-grid->edgedist[2]][k]=phys->T[ib][k];
+   phys->boundary_s[jptr-grid->edgedist[2]][k]=phys->s[ib][k];
+}
+\end{verbatim}
+\end{itemize}
+\end{itemize}
+
+\begin{itemize}
+\item[] {\bf Southern boundary: specified}\\
+All quantities at the southern boundary are specified.  Since this example simulates a river
+inflow, the velocity and scalar field in only part of the southern boundary is specified, while
+the rest is kept at zero inflow to represent a solid boundary.  This requires if-statements to
+determine which of the southern boundary edges fall between the extent of the inflowing river.
+An alternative is to set the markers of the southern boundary edges that fall within the boundaries
+of the river to 2, and the rest to 1.
+\begin{itemize}
+\item[] {\bf Boundary fluxes}
+Because the velocity components at the southern boundary are specified, the incoming boundary
+flux is computed in \verb+OpenBoundaryFluxes+ using the velocity components specified in the \verb+BoundaryVelocities+ function,
+but only within the extent of the 300 m wide river, which is defined for $900 < x < 1200$ m (4 cell faces), as in:
+\begin{verbatim}
+if(grid->xv[ib]>900&&grid->xv[ib]<1200)
+  for(k=grid->etop[j];k<grid->Nke[j];k++) 
+    ub[j][k]=
+      phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->n1[j]+
+      phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->n2[j];
+\end{verbatim}
+Since \verb+boundary_u+ and \verb+boundary_v+ store the inflow velocity components, then this
+is setting the flux at the inflow to the normal component of the velocity at the inflow, i.e.
+\[
+U_{inflow} = {\mathbf u}_{inflow}\cdot {\mathbf n}_{inflow}\,,
+\]
+where ${\mathbf n}_{inflow}$ is, by convention, the inward pointing normal at the boundary face.
+\item[] {\bf Boundary velocities}
+The north-south velocity is specified at the inflow for $900 < x < 1200$ over a specified depth,
+which represents the river inflow, such that
+\begin{eqnarray}
+u_{inflow} &=& 0\,,\nonumber\\
+v_{inflow} &=& \left\{\begin{array}{ll}
+                    \mbox{amp} & z>-D_r \\
+		    0 & \mbox{otherwise\,,}
+		    \end{array}
+             \right.\nonumber\\
+w_{inflow} &=& 0\,.\nonumber
+\end{eqnarray}
+where amp is specified in \verb+suntans.dat+ as $0.01$ m s$^{-1}$.  In \verb+boundaries.c+, this inflow is implemented with
+\begin{verbatim}
+if(grid->xv[ib]>900 && grid->xv[ib]<1200) {
+  z=0;
+  for(k=grid->etop[j];k<grid->Nke[j];k++) {
+    z-=grid->dzz[ib][k];
+    if(z>-5)
+      phys->boundary_v[jptr-grid->edgedist[2]][k]=prop->amp;
+    z-=grid->dzz[ib][k];
+  }
+}
+\end{verbatim}
+And all other components are set to zero at the beginning of the main loop in the function \verb+BoundaryVelocities+
+with
+\begin{verbatim}
+for(k=grid->etop[j];k<grid->Nke[j];k++) {
+  phys->boundary_u[jptr-grid->edgedist[2]][k]=0;
+  phys->boundary_v[jptr-grid->edgedist[2]][k]=0;
+  phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
+}
+\end{verbatim}
+\item[] {\bf Boundary scalars}
+The inflow boundary condition for the salinity (or density, when $\beta=1$) field
+represents an inflow of fresh water with a density anomoly of $\Delta \rho/\rho_0=-10^{-4}$, with a surface depth of $D_r=5$ m,
+such that
+\[
+\rho_{inflow} = \left\{\begin{array}{ll}
+                    \Delta \rho & z>-D_r \\
+		    0 & \mbox{otherwise\,.}
+		    \end{array}
+             \right.
+\]
+The inflow boundary condition for temperature is a no-gradient condition, and as a result the temperature
+just outside the boundary is equal to that just inside the boundary.  These boundary conditions for salinity (density)
+and temperature are given in \verb+boundaries.c+ as
+\begin{verbatim}
+if(grid->yv[ib]<50)
+  if(grid->xv[ib]>1000 && grid->xv[ib]<1200)
+    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+      z-=0.5*grid->dzz[ib][k];
+      if(z>-5) {
+        phys->boundary_T[jptr-grid->edgedist[2]][k]=phys->T[ib][k];
+        phys->boundary_s[jptr-grid->edgedist[2]][k]=-0.0001;
+      } else {
+        phys->boundary_T[jptr-grid->edgedist[2]][k]=phys->T[ib][k];
+        phys->boundary_s[jptr-grid->edgedist[2]][k]=0;
+      }
+      z-=0.5*grid->dzz[ib][k];
+    }
+\end{verbatim}
+\end{itemize}
+\end{itemize}
+
+\subsubsection{Running the test}
+
+Upon typing \verb+make test+, the simulation runs for a total of 3000 time steps (\verb+suntans.dat: nsteps = 3000+)
+with a time step of 60 s (\verb+suntans.dat: dt = 60+), outputting
+data every 120 time steps (\verb+suntans.dat: ntout = 120+).  While the data is running you can view the
+results from the main source directory with
+\begin{verbatim}
+./sunplot --datadir=./examples/boundaries/data
+\end{verbatim}
+As can be seen from the results, the river plume forms a bulge as well as a coastal current resulting from
+the nonzero Coriolis parameter of $f=5\times 10^{-4}$ (\verb+suntans.dat: Coriolis_f = 5e-4+).
+After 3000 time steps, the density anomoly at the upper layer is depicted in Figure \ref{fig:plume}.  This
+figure was obtained using the m-file \verb+sunsurf.m+, which can be downloaded from
+
+\medskip
+\noindent
+\mfiledownload.
+
+\medskip
+\noindent
+If you are running this m-file from the \verb+examples/boundaries+ directory, then the plot in Figure \ref{fig:plume}
+was obtained with the command
+\begin{verbatim}
+timestep = 26;
+klevel = 1;
+processor = 0;
+sunsurf('s','.../data',timestep,klevel,processor);
+\end{verbatim}
+Note that \verb+sunsurf.m+ requires \verb+unsurf.m+. 
+\insertfig{0.8}{figures/plume}{River plume example showing the salinity (density) field after 3000 time steps.}{fig:plume}
 
 \subsection{Wetting and drying} \label{sec:wettinganddrying}
 
-\subsection{Grid}
-\subsection{Initial conditions}
-\subsection{Boundary conditions}
-\subsection{Running the test}
+\subsubsection{Grid}
+\subsubsection{Initial conditions}
+\subsubsection{Boundary conditions}
+\subsubsection{Running the test}
 
 \subsection{Internal waves} \label{sec:internalwaves}
 
-\subsection{Grid}
-\subsection{Initial conditions}
-\subsection{Boundary conditions}
-\subsection{Running the test}
+\subsubsection{Grid}
+\subsubsection{Initial conditions}
+\subsubsection{Boundary conditions}
+\subsubsection{Running the test}
 
 \section{Parameter listing in suntans.dat} \label{sec:params}
 
@@ -1460,10 +1658,9 @@ the horizontal Courant number even when $\theta_S>0.5$.
 \begin{itemize}
 \item $\theta_S=0$: Fully explicit 
 \item $\theta_S=0.5$: Crank-Nicolson (Ensures no vertical Courant limitation for advection or diffusion)
-\item $\theta_S=1.0$: Fully implicit (same as above but first order accurate)
+\item $\theta_S=1.0$: Fully implicit (same as above but first-order accurate)
 \item $\theta_S=\theta$: To guarantee consistency with continuity 
 \end{itemize}
-
 
 \subsubsection{thetaB: Not used}
 
@@ -1697,8 +1894,8 @@ which translates into the requirement that the horizontal diffusion be restricte
 Since the advection of momentum is not conservative in the upper cells, the velocity in the upper cells
 can be adjusted to ensure that
 \[
-\frac{U_{top}^{n+1}\Delta z_{top}^{n+1}} = 
-\frac{U_{top}^{n}\Delta z_{top}^{n}}\,.
+U_{top}^{n+1}\Delta z_{top}^{n+1} = 
+U_{top}^{n}\Delta z_{top}^{n}\,.
 \]
 This should be used with caution and results should be checked to make sure this does not alter them
 significantly.  Otherwise the upper layer depth is too small relative ot the free surface motions.\\
@@ -1853,8 +2050,8 @@ Contains edge-centered data for each processor. ($N_e$ total edges)
 \item (float$\times$ 2)x-y coordinates of center of edge
 \item (int)Number of edges in vertical
 \item (int)Maximum number of neighboring cells in vertical
-\item (int)Upwind cell neighbor (if U>0)
-\item (int)Downwind cell neighbor (if U>0)
+\item (int)Upwind cell neighbor (if $U>0$)
+\item (int)Downwind cell neighbor (if $U>0$)
 \item (int$\times$ 2) gradf pointers (see Section \ref{sec:grids})
 \item (int)Edge marker
 \end{list}
