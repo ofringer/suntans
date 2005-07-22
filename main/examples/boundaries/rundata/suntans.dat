@@ -18,13 +18,13 @@ beta			1	# Expansivity of salt
 theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
-kappa_s                 0 1e-4    # Vertical mass diffusivity
+kappa_s                 0       # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
 gamma 			1.0 	# Coefficient of expansivity of temperature.
 kappa_T                 1e-4    # Vertical thermal diffusivity
 kappa_TH                1e-4    # Horizontal thermal diffusivity
 nu 			1e-4  	# Laminar viscosity of water (m^2 s^-1)
-nu_H 			1e-1    # Horizontal laminar viscosity of water (m^2 s^-1)
+nu_H 			0.1    # Horizontal laminar viscosity of water (m^2 s^-1)
 tau_T			0 	# Wind shear stress
 z0T	                0.0 	# Top roughness
 z0B	                0.0	# Bottom roughness
@@ -47,7 +47,7 @@ epsilon			1e-10 	# Tolerance for CG convergence
 qepsilon		1e-5	# Tolerance for CG convergence for nonhydrostatic pressure
 resnorm			0	# Normalized or non-normalized residual
 relax			1	# Relaxation parameter for GS solver.	
-amp 			0.005	# amplitude
+amp 			0.01	# amplitude
 omega 			0	# frequency
 flux 			0	# flux
 timescale		0	# timescale for open boundary condition
@@ -56,7 +56,7 @@ masscheck		0	# Check for mass conservation
 nonlinear		2	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
 newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			0       # 1 if wetting and drying, 0 otherwise
-Coriolis_f              1e-3	# Coriolis frequency f=2*Omega*sin(phi)
+Coriolis_f              5e-4	# Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        0 	# Decay distance scale for sponge layer
 sponge_decay	        0	# Decay time scale for sponge layer
 readSalinity		0	# Whether or not to read initial salinity profile from file InitSalinityFile

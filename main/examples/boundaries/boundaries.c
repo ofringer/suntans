@@ -36,7 +36,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	ub[j][k]=-phys->h[ib]*sqrt(GRAV/grid->dv[ib]);
     } else {
-      if(grid->xv[ib]>1000&&grid->xv[ib]<1200)
+      if(grid->xv[ib]>900&&grid->xv[ib]<1200)
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
 	  ub[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->n1[j]+
 	    phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->n2[j];
@@ -66,15 +66,15 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
       
       z=0;
       if(grid->yv[ib]<50)
-	if(grid->xv[ib]>1000 && grid->xv[ib]<1200)
+	if(grid->xv[ib]>900 && grid->xv[ib]<1200)
 	  for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
 	    z-=0.5*grid->dzz[ib][k];
 	    if(z>-5) {
 	      phys->boundary_T[jptr-grid->edgedist[2]][k]=phys->T[ib][k];
-	      phys->boundary_s[jptr-grid->edgedist[2]][k]=-0.000125;
+	      phys->boundary_s[jptr-grid->edgedist[2]][k]=-0.0001;
 	    } else {
 	      phys->boundary_T[jptr-grid->edgedist[2]][k]=phys->T[ib][k];
-	      phys->boundary_s[jptr-grid->edgedist[2]][k]=phys->s[ib][k];
+	      phys->boundary_s[jptr-grid->edgedist[2]][k]=0;
 	    }
 	    z-=0.5*grid->dzz[ib][k];
 	  }
@@ -89,8 +89,8 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
  * 
  */
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop) {
-  int jptr, j, ib, k, boundary_index;
-  REAL z, amp=prop->amp, rtime=prop->rtime, omega=prop->omega, boundary_flag;
+  int jptr, j, ib, k;
+  REAL z;
 
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
@@ -110,12 +110,15 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop) {
 	phys->boundary_w[jptr-grid->edgedist[2]][k]=0.5*(phys->w[ib][k]+phys->w[ib][k+1]);
       } 
     } else {
-      if(grid->xv[ib]>1000 && grid->xv[ib]<1200)
+      if(grid->xv[ib]>900 && grid->xv[ib]<1200) {
+	z=0;
 	for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	  phys->boundary_u[jptr-grid->edgedist[2]][k]=0;
-	  phys->boundary_v[jptr-grid->edgedist[2]][k]=prop->amp;
-	  phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
-	} 
+	  z-=grid->dzz[ib][k];
+	  if(z>-5)
+	    phys->boundary_v[jptr-grid->edgedist[2]][k]=prop->amp;
+	  z-=grid->dzz[ib][k];
+	}
+      }
     }
   }
 }
