@@ -85,7 +85,7 @@ function [x,z,data] = plotslice(PLOT,datadir,n,proc)
 
   switch(PLOT)
    case {'u','w'}
-    data = reshape(getcdata(fid,Nk*3*Nc,0,n,precision),Nk,3,Nc);
+    data = reshape(getcdata(fid,Nk*3*Nc,n,precision),Nk,3,Nc);
     if(PLOT=='u')
       data = squeeze(data(:,1,:));
     else
@@ -94,10 +94,10 @@ function [x,z,data] = plotslice(PLOT,datadir,n,proc)
     data = data(is,:)';
     data(find(data==EMPTY))=nan;
    case 'h'
-    data = getcdata(fid,Nc,0,n,precision);
+    data = getcdata(fid,Nc,n,precision);
     data = data(is);
    otherwise
-    data = reshape(getcdata(fid,Nc*Nk,0,n,precision),Nc,Nk);
+    data = reshape(getcdata(fid,Nc*Nk,n,precision),Nc,Nk);
     data = data(is,:)';
     data(find(data==EMPTY))=nan;
   end
