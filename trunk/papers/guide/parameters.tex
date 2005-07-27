@@ -1,0 +1,717 @@
+\section{Parameter listing in suntans.dat} \label{sec:params}
+
+The main SUNTANS input file is called \verb+suntans.dat+  and contains three
+columns.  The first column contains the name of the variable used in
+the program while the second column contains its value, and the information
+after that value is ignored.  Lines beginning
+with \verb #  are ignored, while {\bf empty lines will cause the program to 
+crash}.  The SUNTANS executable looks for this file in the directory specified
+by \verb+--datadir=+.  If this is not specified, then it looks for it in the
+same directory as the \verb+sun+ executable.
+
+\subsection{Physical/Computational parameters}
+
+These parameters define values used in SUNTANS.  The syntax of the line in suntans.dat is given by
+\begin{verbatim}
+variablename  variablevalue   # Description of variable
+\end{verbatim}
+When this file is read, the effect is equivalent to \verb+variablename=variablevalue+.
+This file cannot have empty lines, but the spacing between variablename and value is arbitrary, as long
+as it does not contain a new line.  
+Only the first variable is read before the \verb+#+ sign.  That is, old variable values can exist to
+the right of the variable values being used and they are neglected.  The following line is therefore legal:
+\begin{verbatim}
+dt    0.025  0.05 (unstable)  0.0125 (10/12/04)  # Time step size
+\end{verbatim}
+This will have the effect of \verb+dt=0.025+ and neglecting the rest of the line after \verb+0.025+.
+
+\subsubsection{Nkmax: $N_{kmax}\ge 1$}
+
+Number of cells in the vertical.  This is used when the -g flag is
+specified in order to build the vertical grid levels.  It must be
+greater than or equal to 1.  
+
+\subsubsection{stairstep: Boolean}
+
+If stairstep is 1 then the vertical grid spacing does not change in
+the horizontal. If stairstep is 0, then partial-stepping is employed and
+the height of the bottom cell
+is set such that the bottom face of the cell coincides with the actual
+value of the depth. Otherwise (when stairstep=1), the bottom face of
+of the lowermost cell is always greater than the actual depth.  
+
+\subsubsection{rstretch: $-1.1 < r < -1$ or $1 < r < +1.1$}
+
+Employ vertical grid stretching such that the distribution of vertical
+grid spacings is given by
+\[
+\Delta z_k = r\,\Delta z_{k+1}\,,
+\]
+where $0\le \mbox{k} < \mbox{Nkmax}$.  If $r<0$ then the grid is refined near the
+bottom, otherwise it is refined at the free-surface.
+
+\subsubsection{CorrectVoronoi: Boolean}
+
+If CorrectVoronoi is 1 then degenerate triangles are corrected using
+the VoronoiRatio parameter defined below.  For a given triangulation,
+stability is dictated by the smallest distance between Voronoi
+points.  The worst case occurs when two right triangles abut each
+other, since they have coincident Voronoi points.  In SUNTANS, the
+Voronoi points are corrected if they are too close to each other
+relative to the distance between the centroids of the neighboring triangles.
+If triangle $1$ and $2$ have centroids defined by $(xc_1,yc_1)$ and $(xc_2,yc_2)$
+and Voronoi points defined by $(xv_1,yv_1)$ and $(xv_2,yv_2)$, then the distance
+between the centroids is given by
+\[
+D_c^2 = (xc_2-xc_1)^2 + (yc_2-yc_1)^2\,,
+\]
+and the distance between the Voronoi points is given by
+\[
+D_v^2 = (xv_2-xv_1)^2 + (yv_2-yv_1)^2\,.
+\]
+The Voronoi points are corrected if $D_g/D_c< V_r$, and if this
+is the case, they are updated with
+\begin{eqnarray}
+xv_1 &=& xc + V_r(xc_1-xc)\,,\nonumber\\
+yv_1 &=& yc + V_r(yc_1-yc)\,,\nonumber\\
+xv_2 &=& xc + V_r(xc_2-xc)\,,\nonumber\\
+yv_2 &=& yc + V_r(yc_2-yc)\,,\nonumber
+\end{eqnarray}
+where $xc=(xc_1+xc_2)/2$ and $yc=(yc_1+yc_2)/2$.  Using this correction methodology,
+setting $V_r=1$ moves the Voronoi points to the centroids of the cells.
+
+\subsubsection{VoronoiRatio: $0\le V_r\le 1$}
+
+Adjustment factor for degenerate triangles.  If $V_r=1$, then
+all Voronoi points are moved to the centroids, while if $V_r=0$, 
+then no correction is performed.  See CorrectVoronoi.
+
+\subsubsection{vertgridcorrect: Boolean}
+
+For an equispaced vertical grid, the vertical grid spacing is constant and
+is given by $\Delta z=D_{max}/N_{kmax}$, where $D_{max}$ is the maximum depth in the domain.
+In the rare case for which the minimum depth, $D_{min}$ in the domain is less than $\Delta z$, there
+are not enough grid points to resolve the region with the smallest depth.  If this is the
+case and vertgridcorrect
+is set to 1, then the number of vertical grid cells is adjusted such that $\Delta z=D_{min}$,
+such that $N_{kmax}=D_{max}/D_{min}$.
+
+\subsubsection{IntDepth: Boolean}
+
+If set to 1, then the depths at the Voronoi points are interpolated from the
+depth specified by the depth file (see below).  Otherwise, the depths are
+specified in the file \verb+initialization.c+.
+
+\subsubsection{dzsmall: No longer used}
+
+\subsubsection{scaledepth: Boolean}
+
+For debugging purposes.  If set to 1, scales the depth by scaledepthfactor (see below).
+
+\subsubsection{scaledepthfactor}
+
+If scaledepth=1, this scales the depth by the given amount and hence
+can be used to reduce the depth and hence the surface gravity wave speed by
+a desired amount.
+
+\subsubsection{thetaramptime: $\tau_\theta >0$}
+
+This is used to damp out transient barotropic motions by initializing
+the value of $\theta$ in the free-surface solver to 1 and ramping it
+down to the value of $\theta$ specified below.  The $\tau_\theta$ parameter
+determines the timescale over which this is damped, such that, if the value
+of $\theta$ specified below is given by $\theta_0$, then the value of
+$\theta$ that is used in the calculations is given by
+\begin{eqnarray}
+\theta(t) &=& \theta_0 + (1-\theta_0)\exp\left(-\frac{t}{\tau_\theta}\right)\nonumber\,.
+\end{eqnarray}
+
+\subsubsection{beta: $\beta\ge 0$}
+
+Expansivity of salt.  This is used in the gravity term on the right hand side of
+the Navier-Stokes equations in the form
+\[
+-g\beta\left(s-s_0\right)\,,
+\]
+where $s(x,y,z,t)$ is the salinity and $s_0(z)$ is the initial salinity.  If $\beta=0$
+advection of salinity is not computed.  
+
+
+\subsubsection{theta: $0<\theta\le 1$}
+
+Implicitness parameter for the free-surface solver and the vertial diffusion terms.
+\begin{itemize}
+\item $\theta=0$: Fully explicit (unstable)
+\item $\theta=0.5$: Crank-Nicolson (neutrally stable in the linear sense)
+\item $\theta=1.0$: Fully implicit
+\item $\theta=0.55$: For practical simulations
+\end{itemize}
+
+\subsubsection{thetaS: $0\le \theta_S \le 1$}
+
+Implicitness parameter for vertical scalar advection and diffusion.  Note that this
+value of thetaS does not necessarily share the same stability properties as the
+free-surface solver since stability for scalar transport is governed by
+the horizontal Courant number even when $\theta_S>0.5$.
+\begin{itemize}
+\item $\theta_S=0$: Fully explicit 
+\item $\theta_S=0.5$: Crank-Nicolson (Ensures no vertical Courant limitation for advection or diffusion)
+\item $\theta_S=1.0$: Fully implicit (same as above but first-order accurate)
+\item $\theta_S=\theta$: To guarantee consistency with continuity 
+\end{itemize}
+
+\subsubsection{thetaB: Not used}
+
+\subsubsection{kappa\_s: $\kappa_s\ge 0$}
+
+Laminar vertical diffusivity of salt in units of m$^2$ s$^{-1}$.  Does not affect stability.
+
+\subsubsection{kappa\_sH: $\kappa_{sH}\ge 0$}
+
+Laminar horizontal diffusivity of salt in units of m$^2$ s$^{-1}$.  For stability 
+\[
+\frac{\kappa_{sH}\Delta t}{\mbox{min}(D_g^2)}<\frac{1}{2}\,,
+\]
+where $D_g$ is the distance between Voronoi points.  
+
+\subsubsection{gamma: $\gamma$: Boolean}
+
+Temperature is implemented as a passive scalar.  If gamma is set to 0 then scalar
+transport of T is not computed.
+
+\subsubsection{kappa\_T: $\kappa_T\ge 0$}
+
+Same as $kappa\_s$ but for T.
+
+\subsubsection{kappa\_TH: $\nu_{TH}\ge 0$}
+
+Same as $kappa\_TH$ but for T.
+
+\subsubsection{nu: $\nu\ge 0$}
+
+Laminar vertical diffusivity of momentum in units of m$^2$ s$^{-1}$.  Does not affect stability.
+
+\subsubsection{nu\_H: $\nu_{H}\ge 0$}
+
+Laminar horizontal diffusivity of momentum in units of m$^2$ s$^{-1}$.  For stability 
+\[
+\frac{\nu_{H}}{\Delta t}{\mbox{min}(D_g^2)}<\frac{1}{2}\,,
+\]
+where $D_g$ is the distance between Voronoi points.  
+
+\subsubsection{tau\_T: $\tau_T$}
+
+Parameter used in boundaries.c to employ a surface wind stress in units of m$^2$ s$^{-2}$.
+See Section \ref{sec:boundary}
+
+\subsubsection{z0T: $z_{0T}$}
+
+Lid roughness used to calculate drag at the lid.  See CdT.
+
+\subsubsection{z0B: $z_{0B}$}
+
+Bottom roughness used to calculate drag at the bottom boundary layer.  See CdB.
+
+\subsubsection{CdT: $C_{dT}$}
+
+If the roughness at the lid is zero (i.e. z0T=0) then the drag coefficient at the lid is given by
+this constant, otherwise the drag coefficient is calculated with the rough wall 
+relationship
+\[
+C_{dT} = \left[\ln\left(\frac{1}{2}\frac{\Delta z_{top}}{z_{0T}}\right)\right]^{-2}\,.
+\]
+where $\Delta z_{top}$ is the thickness of the top cell.
+
+\subsubsection{CdB: $C_{dB}$}
+
+If the roughness at the bottom is zero (i.e. $z_{0B}$=0) then the drag coefficient at the bottom is given by
+this constant, otherwise the drag coefficient is calculated with the rough wall
+relationship
+\[
+C_{dB} = \left[\ln\left(\frac{1}{2}\frac{\Delta z_{bot}}{z_{0B}}\right)\right]^{-2}\,,
+\]
+where $\Delta z_{bot}$ is the thickness of the bottom cell.
+
+\subsubsection{CdW: $C_{dW}$}
+
+Constant drag coefficient of sidewalls.  Drag on sidewalls is only computed if the wall
+does not extend up to the free surface.  For example, in a compound channel, sidewall
+drag is only computed within the channel and not on the edges of the floodplain, as shown
+in Figure \ref{fig:compoundchannel}.
+\insertfig{0.8}{figures/compoundchannel}{Example of a compound channel, for which sidewall
+drag is only computed in the channel and not on the shoals.}{fig:compoundchannel}
+
+\subsubsection{turbmodel: Boolean}
+
+If turbmodel is 1 then the Mellor-Yamada level 2.5 turbulence model is used, otherwise
+no turbulence model is employed.  
+
+\subsubsection{dt: $\Delta t$}
+
+Time step. Assuming $\theta>0.5$, stability is limited by
+\[
+\Delta t < C\left[\frac{\min(D_g)}{\max(|U|)},\frac{\min(\Delta z)}{\max(|w|)},
+\frac{\min(D_g)}{\max(c_i)},
+\frac{1}{2}\frac{\min(D_g)^2}{\max(\kappa_{sH})},
+\frac{1}{2}\frac{\min(D_g)^2}{\max(\kappa_{TH})},
+\frac{1}{2}\frac{\min(D_g)^2}{\max(\nu_{H})}
+\right]\,,
+\]
+where $c_i$ is the internal wave speed, $C$ is the relevant Courant number, and $D_g$
+is the minimum Voronoi distance.
+
+\subsubsection{Cmax: $C_{max}>0$}
+
+Maximum permissible Courant number for advection of momentum.  
+
+\subsubsection{nsteps: $N_{steps}\ge 0$}
+
+Total number of time steps. 
+
+
+\subsubsection{ntout: $N_{tout}> 0$}
+
+How often to output data.  Since the first time step is always output, 
+the total number of time steps that are output is then given
+by
+\[
+1+\mbox{floor}\left(\frac{N_{steps}}{N_{tout}}\right)\,.
+\]
+
+
+\subsubsection{ntprog: $0\le N_{tprog}\le 100$}
+
+Report progress at $N_{tprog}$\% intervals if $N_{tprog}>0$, otherwise do not report
+progress.  Either way, progress is reported only if the verbose flag is at least \verb+-v+.
+
+\subsubsection{ntconserve: $0\le N_{tconserve}\le N_{steps}$}
+
+How often to output conservative data, such as mass, volume, and potential energy, into
+the file specified by ConserveFile.  Output should be edited to suit user's needs in
+the \verb+OutputData+ function in \verb+phys.c+.
+
+\subsubsection{nonhydrostatic: Boolean}
+
+(1): Compute the nonhydrostatic pressure, (0): neglect the nonhydrostatic pressure and
+calculate the vertical velocity with continuity.
+
+\subsubsection{cgsolver: No longer used}
+
+\subsubsection{maxiters: $I_{max,H}>0$}
+
+Maximum number of iterations allowed of the free-surface conjugate-gradient solver before
+reporting nonconvergence.  If the free-surface solver is not converging in less than 200
+iterations then the problem is poorly conditioned.
+
+\subsubsection{qmaxiters: $I_{max,Q}>0$}
+
+Maximum number of iterations allowed of the nonhydrostatic pressure conjugate-gradient solver before
+reporting nonconvergence. 
+
+\subsubsection{qprecond: 0,1, or 2}
+
+Type of preconditioner to use for the nonhydrostatic pressure solver.  For a typical environmental
+flow with an aspect ratio of $\order{10^2}$:
+\begin{enumerate}
+\item[0] No preconditioner - 1000s of iterations to converge
+\item[1] Diagonal preconditioner - 100s of iterations to converge
+\item[2] Block-diagonal preconditioner - 10s of iterations to converge.
+\end{enumerate}
+There is no significant difference among the preconditioners when the aspect ratio is roughly 1.
+
+\subsubsection{epsilon: $\epsilon_H>0$}
+
+Tolerance for free-surface conjugate gradient solver.  Default: $\epsilon_H=10^{-10}$.
+
+\subsubsection{qepsilon: $\epsilon_Q>0$}
+
+Tolerance for nonhydrostatic pressure conjugate gradient solver.  Default: $\epsilon_Q=10^{-5}$.
+
+\subsubsection{resnorm: Boolean}
+
+Whether or not to normalize the residual when computing tolerance criteria for the conjugate
+gradient solvers.  At a given iteration, if the residual is given by $r=b-Ax$, then tolerance is evaluated with:
+\begin{enumerate}
+\item[0]: error=$r^T r$
+\item[1]: error=$\frac{r^T r}{b^T b}$
+\end{enumerate}
+
+\subsubsection{relax: No longer used}
+
+\subsubsection{amp}
+
+Amplitude parameter for use in \verb+boundaries.c+ in the form \verb+prop->amp+.
+
+\subsubsection{omega}
+
+Frequency parameter for use in \verb+boundaries.c+ in the form \verb+prop->omega+.
+
+\subsubsection{flux}
+
+Flux parameter for use in \verb+boundaries.c+ in the form \verb+prop->flux+.
+
+\subsubsection{timescale}
+
+Timescale parameter for use in \verb+boundaries.c+ in the form \verb+prop->timescale+.
+
+\subsubsection{volcheck: Boolean}
+
+(0): Do not check for volume conservation, (1): check for volume conservation and print out errors
+if volume is not conserved to within the tolerance defined by \verb+CONSERVED+ in \verb+suntans.h+.
+Prints regardless of verbosity setting at command line.
+
+\subsubsection{masscheck: Boolean}
+
+(0): Do not check for mass conservation, (1): check for mass conservation and print out errors
+if volume is not conserved to within the tolerance defined by \verb+CONSERVED+ in \verb+suntans.h+.
+Prints regardless of verbosity setting at command line.
+
+\subsubsection{nonlinear: 0,1, or 2}
+
+Advection scheme for momentum:
+\begin{enumerate}
+\item[0]: No advection of momentum, i.e. $\ub\cdot\nabla\ub=0$.
+\item[1]: First-order upwind for momentum.
+\item[2]: Second-order central for momentum.  Note that diffusion must be present for stability.  While
+it is difficult to perform an exact stability analysis for the unstructured-grid equations, the 1-d
+stability limitation requires that 
+grid Peclet number according to 
+\[
+Pe_\Delta<\frac{2}{C}\,,
+\]
+where $Pe_\Delta = \frac{\max(|U|)\max(D_g)}{\min(\kappa_H)}$ and $C=\frac{\max(|U|)\Delta t}{\max(D_g)}$,
+which translates into the requirement that the horizontal diffusion be restricted to
+\[
+\kappa_H>\frac{\max(|U|)^2\Delta t}{2}\,.
+\]
+
+\end{enumerate}
+
+\subsubsection{newcells: Boolean}
+
+Since the advection of momentum is not conservative in the upper cells, the velocity in the upper cells
+can be adjusted to ensure that
+\[
+U_{top}^{n+1}\Delta z_{top}^{n+1} = 
+U_{top}^{n}\Delta z_{top}^{n}\,.
+\]
+This should be used with caution and results should be checked to make sure this does not alter them
+significantly.  Otherwise the upper layer depth is too small relative ot the free surface motions.\\
+(0): Do not adjust upper layer cells, (1): Adjust upper layer cells.
+
+\subsubsection{wetdry: Boolean}
+
+Different time-stepping schemes are used for horizontal scalar advection when wetting and drying occur (vertical
+advection always uses the $\theta$ method).  To guarantee consistency
+with continuity, the $\theta$ method must be used for scalar advection.  This is formally first-order
+accurate in time, so results are more accurate when second-order Adams-Bashforth is used if there
+is no wetting and drying.  Therefore, the wetdry Boolean is set according to:\\
+(0): No wetting and drying, employ AB2 for horizontal scalar advection\\
+(1): Wetting and drying: employ $\theta$-method for horizontal scalar advection.
+
+\subsubsection{Coriolis\_f: $f\ge 0$}
+
+Coriolis frequency $f=2\Omega\sin(\phi)$, where $\phi$ is the latitude.
+
+\subsubsection{sponge\_distance: $D_{sponge}\ge 0$}
+
+An example of how to implement a sponge layer is shown in \verb+phys.c+ in the form
+\[
+\frac{u^{n+1}-u^n}{\Delta t} = -\frac{1}{\tau_{sponge}}\exp\left(-\frac{x}{D_{sponge}}\right)\,,
+\]
+where the $\tau_{sponge}$ timescale is defined by the value of sponge\_decay.  If $D_{sponge}=0$ then
+no sponge layer is employed.  {\bf Note that this sponge layer assumes the boundary is located at $x=0$
+and that the sponge layer is roughly $D_{sponge}$ m thick and extends in the positive $x$ direction!}
+
+\subsubsection{sponge\_decay: $\tau_{sponge}>0$}
+
+Decay timescale for sponge layer.
+
+\subsubsection{readSalinity: Boolean}
+
+(0): Vertical salinity distribution is specified in \verb+initilization.c+\\
+(1): Read vertical salinity distribution from the file specified by the InitSalinityFile parameter.
+This file must be in binary form and must contain $N_{kmax}$ double precision values in top-to-bottom
+order.
+
+\subsubsection{readTemperature: Boolean}
+
+(0): Vertical temperature distribution is specified in \verb+initilization.c+\\
+(1): Read vertical temperature distribution from the file specified by the InitTemperatureFile parameter.
+This file must be in binary form and must contain $N_{kmax}$ double precision values in top-to-bottom
+order.
+
+\subsection{Input/Output files}
+
+These parameters define the names of the input files.  The syntax of the line in suntans.dat is given by
+\begin{verbatim}
+filespecifier  fileprefix   # Description of parameter
+\end{verbatim}
+Global files do not contain the processor suffix, while per-processor files contain the processor
+number as the suffix.
+For example, in a four-processor run, there will be four i/o files relating
+to this specifier, i.e. fileprefix.0, fileprefix.1, fileprefix.2, and fileprefix.3.  The file
+called fileprefix (with no suffix) contains information for all processors.  
+
+\subsubsection{pslg: input}
+
+Planar straight line graph file. Does not contain the processor number suffix.
+ See Section \ref{sec:grids} for details.
+
+\subsubsection{points: input/output}
+
+Delaunay points file ($N_p$ total points).  Does not contain
+the processor number suffix. For details see Section \ref{sec:grids}.
+\begin{list}{}
+\item Size: $N_p\times 3$
+\item Type: ASCII
+\item Format: (float)xp, (float)yp, (int)marker
+\end{list}
+
+\subsubsection{edges: input/output}
+
+Edge connectivity file ($N_e$ total edges). For details see Section \ref{sec:grids}.
+\begin{list}{}
+\item Size: $N_e\times 5$
+\item Type: ASCII
+\item Format: 
+\begin{list}{}
+\item (int$\times$ 2)Indices to Delaunay points that make up endpoints
+\item (int)Edge marker for boundary condition
+\item (int$\times$ 2)Indices to Voronoi points on either side of edge
+\end{list}
+\end{list}
+
+
+\subsubsection{cells: input/output}
+
+Cell connectivity file ($N_c$ total cells). For details see Section \ref{sec:grids}.
+\begin{list}{}
+\item Size: $N_c\times 8$
+\item Type: ASCII
+\item Format: 
+\begin{list}{}
+\item (float$\times$ 2) Voronoi coordinates
+\item (int $\times$ 3) Indices to points that make up vertics
+\item (int $\times$ 3) Indices to neighboring cells 
+\end{list}
+\end{list}
+
+\subsubsection{depth: input}
+
+Contains bathymetry data used to interpolate the depth onto the Voronoi points only
+if the IntDepth parameter is set to 1.  Otherwise the depth is set in initialization.c.
+The spacing of the data is arbitrary since the interpolation routine searches for the
+nearest neighbors to perform the interpolations.
+\begin{list}{}
+\item Size: $\mbox{Number of bathymetry data points}\times 3$
+\item Type: ASCII
+\item Format: 
+\begin{itemize}{}
+\item (float)x
+\item (float)y
+\item (float)depth
+\end{itemize}
+\end{list}
+
+\subsubsection{celldata: input/output}
+
+Contains cell-centered data for each processor. ($N_c$ total cells)
+\begin{list}{}
+\item Size: $N_c\times 17$
+\item Type: ASCII
+\item Format:
+\begin{list}{}
+\item (float)Voronoi point x
+\item (float)Voronoi point y
+\item (float)Cell Area
+\item (float)Voronoi depth
+\item (int)Number of vertical levels
+\item (3$\times$int)Index to edge faces
+\item (3$\times$int)Index to cell neighbors
+\item (3$\times$int)Dot-product with outward normal on faces
+\item (3$\times$float)Distance from Voronoi point to normal on faces
+\end{list}
+\end{list}
+
+\subsubsection{edgedata: input/output}
+
+Contains edge-centered data for each processor. ($N_e$ total edges)
+\begin{list}{}
+\item Size: $N_e\times 13$
+\item Type: ASCII
+\item Format:
+\begin{list}{}
+\item (float)Edge length
+\item (float)Voronoi length 
+\item (float$\times$ 2)x-y components of unique normal
+\item (float$\times$ 2)x-y coordinates of center of edge
+\item (int)Number of edges in vertical
+\item (int)Maximum number of neighboring cells in vertical
+\item (int)Upwind cell neighbor (if $U>0$)
+\item (int)Downwind cell neighbor (if $U>0$)
+\item (int$\times$ 2) gradf pointers (see Section \ref{sec:grids})
+\item (int)Edge marker
+\end{list}
+\end{list}
+
+\subsubsection{vertspace: input/output}
+
+Contains vertical grid spacing in top-to-bottom ordering.  Same for all processors.
+\begin{list}{}
+\item Size: $N_{kmax}\times 1$
+\item Type: ASCII
+\item Format: (float)Grid spacing
+\end{list}
+
+\subsubsection{topology: input/output}
+
+Contains topology information per processor. ($N_c$ = number of cells, $N_e$ = number of edges)
+\begin{list}{}
+\item Size: Depends on processor topology
+\item Type: ASCII
+\item Format:
+\begin{list}{}
+\item (int)Number of processors
+\item (int)Number of neighboring processors (Numneighs)
+\item (int$\times$Numneighs)Processor neighbor list
+\item For each neighboring processor:
+\begin{list}{}
+\item (int)Number of cells to send (cellsend)
+\item (int)Number of cells to receive (cellrecv)
+\item (int)Number of edges to send (edgesend)
+\item (int)Number of edges to receive (edgerecv)
+\item (int$\times$ cellsend)Indices of cells to send
+\item (int$\times$ cellrecv)Indices of cells to recv
+\item (int$\times$ edgesend)Indices of edges to send
+\item (int$\times$ edgerecv)Indices of edges to recv
+\end{list}
+\item (int$\times$3)Indices for celldist array
+\item (int$\times$6)Indices for edgedist array
+\item (int$\times N_c$)Indices for cellp array
+\item (int$\times N_e$)Indices for edgep array
+\end{list}
+\end{list}
+
+\subsubsection{FreeSurfaceFile: output}
+
+Contains the free-surface data. ($N_c$ = number of cells)
+\begin{list}{}
+\item Size: $\left[1+\mbox{floor}\left(\frac{N_{steps}}{N_{tout}}\right)\right]\times N_c$
+\item Type: binary
+\item Format: (double$\times N_c$) for each time step.  
+\item Matlab equivalent: h(1:Nc) for each time step.
+\end{list}
+
+\subsubsection{HorizontalVelocityFile: output}
+
+Contains the three components of velocity at the Voronoi points. ($N_c$ = number of cells)
+\begin{list}{}
+\item Size: $\left[1+\mbox{floor}\left(\frac{N_{steps}}{N_{tout}}\right)\right]\times N_{kmax} \times 3 \times N_c$
+\item Type: binary
+\item Format: (double$\times N_{kmax} \times 3 \times N_c$) for each time step.  
+\item Matlab equivalent: u(1:Nkmax,1:3,1:Nc) for each time step.
+\end{list}
+
+\bigskip
+\noindent
+Note: empty cells (beneath z=-d) contain value of \verb+EMPTY+ defined in \verb+suntans.h+.
+
+
+\subsubsection{VerticalVelocityFile: output}
+
+Contains the vertical velocity at the horizontal faces. ($N_c$ = number of cells)
+\begin{list}{}
+\item Size: $\left[1+\mbox{floor}\left(\frac{N_{steps}}{N_{tout}}\right)\right]\times (1+N_{kmax}) \times N_c$
+\item Type: binary
+\item Format: (double$\times (1+N_{kmax})\times N_c$) for each time step.  
+\item Matlab equivalent: w(1:Nkmax+1,1:Nc) for each time step.  
+\end{list}
+
+\bigskip
+\noindent
+Note: empty cells (beneath z=-d) contain value of \verb+EMPTY+ defined in \verb+suntans.h+.
+
+\subsubsection{SalinityFile,BGSAlinityFile,TemperatureFile,\\PressureFile,VerticalGridFile,EddyViscosityFile,\\ScalarDiffusivityFile: outputs}
+
+Contain data at Voronoi points for the given quantity. ($N_c$ = number of cells)
+\begin{list}{}
+\item Size: $\left[1+\mbox{floor}\left(\frac{N_{steps}}{N_{tout}}\right)\right]\times N_{kmax} \times N_c$
+\item Type: binary
+\item Format: (double$\times N_{kmax}\times N_c$) for each time step.  
+\item Matlab equivalent: s(1:Nkmax,1:Nc) for each time step.  
+\end{list}
+
+\bigskip
+\noindent
+Note: empty cells (beneath z=-d) contain value of \verb+EMPTY+ defined in \verb+suntans.h+.
+
+\subsubsection{ConserveFile: output}
+
+File used to report conservative variables such as volume, mass, and energy.  The format for this file
+is user-implemented in the \verb+OutputData+ function in \verb+phys.c+.
+
+\subsubsection{ProgressFile: output}
+
+Short file containing a printout of the run progress in the form
+\begin{verbatim}
+On (int) of (int),t=(float) ((int)% Complete, (int) output)
+\end{verbatim}
+to show total number of time steps complete, the current simulation time (t=...), 
+the percentage completion, and the number of steps that have been output for
+viewing.
+
+\subsubsection{StoreFile: output}
+
+Saves data to be loaded for a restart run or to analyze data in existence at the time of
+a blow up.    
+\begin{list}{}
+\item Size: Depends on grid geometry since cells beneath the depth are not stored (unlike other
+individual data files).
+\item Type: binary
+\item Format: 
+\begin{list}{}
+\item (int)last time step
+\item (double$\times N_c$)Free surface
+\item (double$\times N_e \times N_{ke}$)AB2 term at n-1 for horizontal momentum 
+\item (double$\times N_c \times N_{k}$)AB2 term at n-1 for vertical momentum 
+\item (double$\times N_c \times N_{k}$)AB2 term at n-1 for salinity
+\item (double$\times N_c \times N_{k}$)AB2 term at n-1 for temperature
+\item (double$\times N_c \times N_{k}$)AB2 term at n-1 for Mellory-Yamada 2.5 q when turbulence=1
+\item (double$\times N_c \times N_{k}$)AB2 term at n-1 for Mellory-Yamada 2.5 L  when turbulence=1
+\item (double$\times N_c \times N_{k}$)Mellor-Yamada 2.5 q  when turbulence=1
+\item (double$\times N_c \times N_{k}$)Mellor-Yamada 2.5 L  when turbulence=1
+\item (double$\times N_c \times N_{k}$)Turbulent eddy-viscosity
+\item (double$\times N_c \times N_{k}$)Turbulent scalar-diffusivity
+\item (double$\times N_e \times N_{ke}$)Horizontal velocity
+\item (double$\times N_c \times (N_{k}+1)$)Vertical velocity
+\item (double$\times N_c \times N_{k}$)Nonhydrostatic pressure 
+\item (double$\times N_c \times N_{k}$)Salinity
+\item (double$\times N_c \times N_{k}$)Temperature
+\item (double$\times N_c \times N_{k}$)Background salinity 
+\end{list}
+\end{list}
+
+\subsubsection{StartFile: input}
+
+Used to read in data for a restart run.  See Section \ref{sec:restart} for details.
+
+
+\subsubsection{InitSalinityFile: input}
+
+Contains initial vertical top-to-bottom salinity distribution.  Read only when readSalinity=1.
+\begin{list}{}
+\item Size: $N_{kmax}$
+\item Type: binary
+\item Format: (double$\times N_{kmax}$)
+\end{list}
+
+
+\subsubsection{InitTemperatureFile: input}
+
+Contains initial vertical top-to-bottom temperature distribution.  Read only when \\readTemperature=1.
+\begin{list}{}
+\item Size: $N_{kmax}$
+\item Type: binary
+\item Format: (double$\times N_{kmax}$)
+\end{list}
