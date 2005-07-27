@@ -1,30 +1,35 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % File name: plotslice.m
-% Description: Create a surface plot of 2d suntans data.
+% Description: Extract data for a surface plot of 2d suntans data.
+%
+% [x,z,data]=plotslice(plottype,dirname,timestep,processor);
+% 
+% plottype: 
+%    'q': nonhydrostatic pressure
+%    's': salinity
+%    'u': u-velocity
+%    'w': w-velocity
+%    's0': background salinity
+%    'h': free surface
+%    'nut': eddy-viscosity
+%    'kappat': scalar-diffusivity
+%
+% Example: [x,z,data]=plotslice(1,'/home/data/suntans_data',10,0);
+% will extract the salinity data at output step 10
+% for processor 0 and will return the x,z,data matrices for that plot,
+% which can then be used with:  pcolor(x,z,data);
+% If the free surface is selected, it can be viewed with
+% plot(x(1,:),data);  
 %
 % Oliver Fringer
 % Stanford University
 % 15 Jun 04
 %
-% $Id: plotslice.m,v 1.2 2004-08-23 23:03:25 fringer Exp $
-% $Log: not supported by cvs2svn $
-% Revision 1.1  2004/06/16 02:29:36  fringer
-% This file plots a slice of data from 2d suntans output.
-%
-%
-% Surface plot determined by:
-% PLOT: 0: q, 1: s, 2: u, 3: w
-%
-% Example: plotslice(1,'/home/data/suntans_data',10,0);
-% will plot the salinity data without the free surface at time step 10
-% for processor 0.
-%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function plotslice(PLOT,datadir,n,proc)
+function [x,z,data] = plotslice(PLOT,datadir,n,proc)
 
   EMPTY=999999;         % Empty cells are defined by this
-  dbl=8;                % Size of double precision in bytes
   precision='float64';  % Precision for reading in data
   
   % cellcentered data contains the voronoi points and the depths
@@ -46,84 +51,54 @@ function plotslice(PLOT,datadir,n,proc)
   % Set up the Cartesian grid
   z = -cumsum(dz);
   [xs,is]=sort(xv);
-  [X,Z]=meshgrid(xs,z);
-  
+  [x,z]=meshgrid(xs,z);
+
   % Empty the cells below the bottom
   D = ones(Nk,1)*dv(is)';
-  Z(find(Z<-D))=nan;
+  z(find(z<-D))=nan;
   dv = dv(is);
-  
-  % Open up file descriptors for binary files
-  qfile = [datadir,'/q.dat.',num2str(proc)];
-  qfid = fopen(qfile,'rb');
-  ufile = [datadir,'/u.dat.',num2str(proc)];
-  ufid = fopen(ufile,'rb');
-  sfile = [datadir,'/s.dat.',num2str(proc)];
-  sfid = fopen(sfile,'rb');
-  hfile = [datadir,'/fs.dat.',num2str(proc)];
-  hfid = fopen(hfile,'rb');
-  
-  % Total number of time steps to plot is obtained by checking
-  % size of file
-  status=fseek(sfid,0,'eof');
-  nsteps = ftell(sfid)/Nk/Nc/dbl;
-  status=fseek(sfid,0,'bof');
-  
-  % Determine hmax for plotting
-  hd = getcdata(hfid,Nc*nsteps,0,1,precision);
-  hmax = max(hd);
-  hmin = min(hd);
-  dtop = max(max(Z));  % Top of grid
-  HFACT = 0.1;
-  rH = 4;
-  
-  ax = [0 L -dmax dtop];
-  
-  U = zeros(Nk,Nc);
-  W = zeros(Nk,Nc);
-  
-  component = 1;
-  numcomponents = 3;
 
-  ud = getcdata(ufid,numcomponents*Nc*Nk,0,n,precision);
-  sd = getcdata(sfid,Nc*Nk,0,n,precision);
-  qd = getcdata(qfid,Nc*Nk,0,n,precision);
-  hd = getcdata(hfid,Nc,0,n,precision);
-  
-  S = reshape(sd,Nc,Nk);
-  S = S(is,:)';
-  
-  Q = reshape(qd,Nc,Nk);
-  Q = Q(is,:)';
-  Q(find(S==EMPTY))=nan;
-  H = hd(is);
-  
-  S(find(S==EMPTY))=nan;
-  
-  for k=1:Nk
-    component = 1;
-    nstart = 1+numcomponents*Nc*(k-1)+(component-1)*Nc;
-    nend = nstart+Nc-1;
-    us = ud(nstart:nend)';
-    U(k,:) = us(is);
-    
-    component = 3;
-    nstart = 1+numcomponents*Nc*(k-1)+(component-1)*Nc;
-    nend = nstart+Nc-1;
-    us = ud(nstart:nend)';
-    W(k,:) = us(is);
-  end
-  
+  % Open up file descriptors for binary files
   switch(PLOT)
-   case 0
-    pcolor(X,Z,Q);
-   case 1
-    pcolor(X,Z,S);
-   case 2
-    pcolor(X,Z,U);
-   case 3
-    pcolor(X,Z,W);
+   case 'q'
+    file = [datadir,'/q.dat.',num2str(proc)];
+   case 's'
+    file = [datadir,'/s.dat.',num2str(proc)];    
+   case {'u','w'}
+    file = [datadir,'/u.dat.',num2str(proc)];    
+   case 's0'
+    file = [datadir,'/s0.dat.',num2str(proc)];    
+   case 'h'
+    file = [datadir,'/fs.dat.',num2str(proc)];    
+   case 'nut'
+    file = [datadir,'/nut.dat.',num2str(proc)];    
+   case 'kappat'
+    file = [datadir,'/kappat.dat.',num2str(proc)];    
    otherwise
+    fprintf('Unrecognized plot variable.\n');
+    fprintf('Use one of ''q'',''s'',''u'',''w'',''s0'',''h'',''nut'',''kappat''.\n');
+    data=zeros(Nk,Nc);
+    return;
   end
-  shading flat;
+
+  fid = fopen(file,'rb');
+
+  switch(PLOT)
+   case {'u','w'}
+    data = reshape(getcdata(fid,Nk*3*Nc,0,n,precision),Nk,3,Nc);
+    if(PLOT=='u')
+      data = squeeze(data(:,1,:));
+    else
+      data = squeeze(data(:,3,:));      
+    end
+    data = data(is,:)';
+    data(find(data==EMPTY))=nan;
+   case 'h'
+    data = getcdata(fid,Nc,0,n,precision);
+    data = data(is);
+   otherwise
+    data = reshape(getcdata(fid,Nc*Nk,0,n,precision),Nc,Nk);
+    data = data(is,:)';
+    data(find(data==EMPTY))=nan;
+  end
   
