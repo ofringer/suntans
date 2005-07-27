@@ -47,7 +47,7 @@ epsilon			1e-10 	# Tolerance for CG convergence
 qepsilon		1e-5	# Tolerance for CG convergence for nonhydrostatic pressure
 resnorm			0	# Normalized or non-normalized residual
 relax			1	# Relaxation parameter for GS solver.	
-amp 			0.01	# amplitude
+amp 			0.005	# amplitude
 omega 			0	# frequency
 flux 			0	# flux
 timescale		0	# timescale for open boundary condition
