@@ -1,0 +1,54 @@
+\section{Restarting Runs} \label{sec:restart}
+
+It is always a good idea to design production-scale runs so that at any point in time if your
+job crashes you can restart it without having lost too much data.  At the end of a run, SUNTANS
+outputs the restart file specified by \verb+StoreFile+ in \verb+suntans.dat+.  To restart a run using
+this restart file, you need to copy this file into the file specified by \verb+StartFile+ in \verb+suntans.dat+.
+This reads the data required to continue a run.  For example, at the end of a two-processor run in which
+the \verb+StoreFile+ variable is set to \verb+store.dat+, two restart files are created for each processor, 
+namely \verb+store.dat.0+ and \verb+store.dat.1+.  To restart this run, set the entry for \verb+StartFile+ in
+\verb+suntans.dat+ to \verb+start.dat+ and copy \verb+StoreFile+ to \verb+StartFile+ for each processor, i.e.
+copy the contents of \verb+store.dat.0+ to \verb+start.dat.0+ and \verb+store.dat.1+ to \verb+start.dat.1+.
+
+Since the new output data from the restart run will overwrite any existing data from a previous run, it is
+a good idea to create a new directory for each restart run and copy the restart files into that directory.
+Each run requires the \verb+suntans.dat+ file as well as other files for the grid as well, but rather than
+copy these over to the new directory, it is best to create links to the already existing files in order
+to save disk space.  In order for the restart run to proceed, links must be created for each of these
+files (or copies):
+\begin{itemize}
+\item suntans.dat
+\item celldata.dat.np
+\item edgedata.dat.np
+\item topology.dat.np
+\item vertspace.dat
+\end{itemize}
+where \verb+np+ corresponds to each processor id.  Considering the previous example, to restart a run
+one might create a new directory called \verb+run2+.  Then links could be made to the existing files 
+with
+\begin{verbatim}
+ln -s suntans.dat run2/suntans.dat
+ln -s celldata.dat.0 run2/celldata.dat.0
+ln -s celldata.dat.1 run2/celldata.dat.1
+ln -s edgedata.dat.0 run2/edgedata.dat.0
+ln -s edgedata.dat.1 run2/edgedata.dat.1
+ln -s topology.dat.0 run2/topology.dat.0
+ln -s topology.dat.1 run2/topology.dat.1
+ln -s vertspace.dat run2/vertspace.dat
+\end{verbatim}
+and then restarting SUNTANS (after copying the store files into run2) with
+\begin{verbatim}
+mpirun -np 2 sun -s -r --datadir=./run2
+\end{verbatim}
+where the \verb+r+ flag indicates a restart run.  An alternative method to perform a restart
+is to create a new directory and then alter the entries in \verb+suntans.dat+ so that the
+output files are specified by their full rather than relative paths.  For example, to set
+the output directory so that SUNTANS outputs the free surface to the new directory \verb+run2+,
+the entry for \verb+FreeSurfaceFile+ in \verb+suntans.dat+ could be changed from
+\begin{verbatim}
+FreeSurfaceFile   	fs.dat
+\end{verbatim}
+to
+\begin{verbatim}
+FreeSurfaceFile   	run2/fs.dat
+\end{verbatim}

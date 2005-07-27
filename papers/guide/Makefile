@@ -18,5 +18,9 @@ ps:	dvi
 pdf:	dvi bib
 	pdflatex $(file)
 
+edit:	all
+	xdvi $(file) &
+	'emacs' -geometry 120x70 $(file).tex &
+
 clean:
 	rm -f *.bbl *.aux *.toc *.log *~ *.aux *.blg *.dvi

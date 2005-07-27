@@ -1,0 +1,101 @@
+\section{Downloading and installing SUNTANS}
+
+In order to use SUNTANS, you must also install the message-passing
+interface (MPI), the parallel graph partitioning libraries (ParMetis~\cite{PARMETIS[1998]}),
+the grid generation package Triangle~\cite{TRIANGLE[1996]}.  Instructions for 
+downloading and installing these packages are available from the individual websites
+for each package:
+\begin{tabbing}
+MPI\hspace{0.5in}\=  \verb+http://www-unix.mcs.anl.gov/mpi/mpich/+\\
+ParMetis \> \verb+http://www-users.cs.umn.edu/~karypis/metis/parmetis/+\\
+Triangle \> \verb+http://www-2.cs.cmu.edu/~quake/triangle.html+
+\end{tabbing}
+Note that you must compile the triangle libraries as object files by making them
+with \verb+make trilibrary+.  Currently SUNTANS compiles and runs with Parmetis-2.0.
+
+\subsection{Downloading and installing the latest source} \label{sec:download}
+
+To obtain a copy of SUNTANS, download the latest version from the SUNTANS
+web page at \verb+http://suntans.stanford.edu/downloads+.  Follow the following
+steps to install the software.  {\bf Note: Do not continue beyond this point unless
+you have installed the required packages mentioned in the previous paragraph!
+SUNTANS will not compile unless you do so, even if you do not intend to run it in
+parallel.}
+\begin{enumerate}
+\item First unpack the gzipped tar archive with
+\begin{verbatim}
+tar xzvf suntans-X.X.tgz
+\end{verbatim}
+where \verb+X.X+ is the latest version of SUNTANS.  
+\item In the suntans-X.X directory, edit Makefile.in so that the directories containing the appropriate packages
+are correctly specified as follows:
+\begin{itemize}
+\item \verb+MPIHOME+ should contain the base directory of the mpich distribution.
+For example, 
+\verb+MPIHOME=/usr/local/mpich-1.2.7+
+\item \verb+PARMETISHOME+ should contain the base directory of the ParMetis distribution.
+\item \verb+TRIANGLEHOME+ should contain the base directory of the Triangle libraries.
+\end{itemize}
+Note that there cannot be any spaces between the ``='' sign and the value.  As an example,
+the \verb+Makefile.in+ file might look like
+\begin{verbatim}
+MPIHOME=/usr/local/mpich-1.2.7
+PARMETISHOME=/usr/local/packages/ParMetis-2.0
+TRIANGLEHOME=/usr/local/packages/triangle
+\end{verbatim}
+\item Once these locations are properly specified, compile the SUNTANS executable with
+\begin{verbatim}
+make
+\end{verbatim}
+This will create the main executable \verb+sun+.
+\item Compile the SUNTANS graphical user interface with
+\begin{verbatim}
+make sunplot
+\end{verbatim}
+This will create the gui executable \verb+sunplot+.  Note:  This GUI requires the
+existence of the \verb+Xlib+ libraries and it is assumed that these are located
+in \verb+/usr/X11R6+.  Make sure the \verb+XINC+ and \verb+XLIBDIR+ variables
+are specified correctly in the \verb+Makefile+ if \verb+sunplot+ does not compile.
+\item In order to remove the object files, use
+\begin{verbatim}
+make clean
+\end{verbatim}
+\item To clean up the directory even further (remove \verb+*~, #*#, PI*, sun, sunplot+),
+use
+\begin{verbatim}
+make clobber
+\end{verbatim}
+\end{enumerate}
+
+\subsection{Keeping up to date with CVS}
+
+You can keep an up to date copy of the SUNTANS distribution on your machine by using the
+cvs repository.  To do so, you need to send your ssh public key to the suntans server administrator so that
+it can be installed in the authorized keys file on the suntans server.  To obtain your
+public key, use
+\begin{verbatim}
+ssh-keygen -t rsa
+\end{verbatim}
+This will create a public key in the file \verb+~/.ssh/id_rsa.pub+, which you should send
+via email to the administrator.  You may use an empty passphrase but it is not recommended.
+Once you send your public key to the suntans cvs administrator, in the \verb+bash+ shell, type
+\begin{verbatim}
+export CVSROOT=:ext:cvsuser@suntans:/home/cvs
+export CVS_RSH=ssh
+\end{verbatim}
+This sets the \verb+CVSROOT+ environmental variable so that when you use the cvs commands
+they look for the cvs repository on the suntans server as user cvsuser.
+You will be granted read-only access to the cvs repository, so you can keep an up-to-date
+copy of the latest source on your machine.  To check out the latest copy, type
+\begin{verbatim}
+cvs checkout suntans
+\end{verbatim}
+This will create the \verb+suntans+ directory and all of the subdirectories on the server.
+If you would like to sync your copy of SUNTANS with the copy on the server, use
+\begin{verbatim}
+cvs update suntans
+\end{verbatim}
+Note that you are only allowed read access to the cvs server.  Any changes you make to
+the SUNTANS files on your machine will not be updated on the server unless you are added
+to the group list on the server.  You will also not be able to ssh into the server if you
+try, as this will freeze your screen as only cvs access is allowed via ssh.
