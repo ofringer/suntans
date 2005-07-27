@@ -1,31 +1,29 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % File name: twogrid.m
-% Description: Create a 2-d grid composed of equilateral triangles.
+% Description: Create a 2-d planar straight line graph composed of 
+% equilateral triangles.
 %
 % Oliver Fringer
 % Stanford University
 % 27 July 04
 %
-% $Id: twodgrid.m,v 1.1 2004-07-27 21:51:12 fringer Exp $
-% $Log: not supported by cvs2svn $
-%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % File name for the planar straight line graph
-fname = '/home/data/suntans_data/zhonghua/twod.dat';
+fname = 'twod.dat';
 
 % Length and width of domain
-L = 50000;
-W0 = 200000;
+L = 100000;
+W0 = 10000;
 
 % Number of cells along length
-Nx = 20;
+Nx = 100;
 
 % Boundary condition types at specific boundaries
 WestBoundary = 2;
-NorthBoundary = 2;
-EastBoundary = 2;
-SouthBoundary = 2;
+NorthBoundary = 1;
+EastBoundary = 1;
+SouthBoundary = 1;
 
 % Offset of lower leftmost cell
 xoffset = 0;
