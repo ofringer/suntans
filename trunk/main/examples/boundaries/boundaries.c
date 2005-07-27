@@ -69,7 +69,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
 	if(grid->xv[ib]>900 && grid->xv[ib]<1200)
 	  for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
 	    z-=0.5*grid->dzz[ib][k];
-	    if(z>-5) {
+	    if(z>-3.0) {
 	      phys->boundary_T[jptr-grid->edgedist[2]][k]=phys->T[ib][k];
 	      phys->boundary_s[jptr-grid->edgedist[2]][k]=-0.0001;
 	    } else {
@@ -113,10 +113,10 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop) {
       if(grid->xv[ib]>900 && grid->xv[ib]<1200) {
 	z=0;
 	for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	  z-=grid->dzz[ib][k];
-	  if(z>-5)
+	  z-=0.5*grid->dzz[ib][k];
+	  if(z>-3.0)
 	    phys->boundary_v[jptr-grid->edgedist[2]][k]=prop->amp;
-	  z-=grid->dzz[ib][k];
+	  z-=0.5*grid->dzz[ib][k];
 	}
       }
     }
