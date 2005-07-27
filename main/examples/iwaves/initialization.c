@@ -61,18 +61,18 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
  *
  */
 REAL ReturnDepth(REAL x, REAL y) {
-  REAL length, xmid, shelfdepth, depth;
+  REAL Ls, xmid, Ds, D0;
 
-  length = 20000;
+  Ls = 20000;
   xmid = 65000;
-  shelfdepth = 500;
-  depth = 3000;
-  if(x<=xmid-length/2)
-    return depth;
-  else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
-    return depth-(depth-shelfdepth)*(x-xmid+length/2)/length;
+  D0 = 3000;
+  Ds = 500;
+  if(x<=xmid-Ls/2)
+    return D0;
+  else if(x>xmid+Ls/2)
+    return Ds;
   else
-    return shelfdepth;
+    return D0-(D0-Ds)*((x-xmid)/Ls+0.5);
 }
 
  /*
@@ -96,11 +96,16 @@ REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
  *
  */
 REAL ReturnSalinity(REAL x, REAL y, REAL z) {
-  REAL thermocline_depth=20;
+  REAL deltaS, alphaS, D_pycnocline;
 
-  if(z>-thermocline_depth)
-    return 3.4286*pow(fabs(thermocline_depth),0.0187)-3.6;
-  return 3.4286*pow(fabs(z),0.0187)-3.6;
+  deltaS = 0.024;
+  alphaS = 0.0187;
+  D_pycnocline = 20;
+
+  if(z<-D_pycnocline)
+    return deltaS*pow(-z,0.0187);
+  else
+    return deltaS*pow(D_pycnocline,0.0187);
 }
 
 /*

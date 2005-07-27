@@ -14,16 +14,16 @@ dzsmall			0.1	# Smallest grid spacing ratio before correction
 scaledepth 		0 	# Scale the depth by scalefactor
 scaledepthfactor 	0 	# Depth scaling factor (to test deep grids with explicit methods)
 thetaramptime	        0  	# Timescale over which theta is ramped from 1 to theta (fs theta only)
-beta			0.007	# Expansivity of salt
+beta			1	# Expansivity of salt
 theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
 kappa_s                 1e-4    # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
 gamma 			1.0 	# Coefficient of expansivity of temperature.
-kappa_T                 1e-4    # Vertical thermal diffusivity
-kappa_TH                1e-4    # Horizontal thermal diffusivity
-nu 			1e-4  	# Laminar viscosity of water (m^2 s^-1)
+kappa_T                 1e-3    # Vertical thermal diffusivity
+kappa_TH                1e-3    # Horizontal thermal diffusivity
+nu 			1e-3  	# Laminar viscosity of water (m^2 s^-1)
 nu_H 			10      # Horizontal laminar viscosity of water (m^2 s^-1)
 tau_T			0 	# Wind shear stress
 z0T	                0.0 	# Top roughness
@@ -57,8 +57,8 @@ nonlinear		2	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
 newcells		1	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              7.25e-5 # Coriolis frequency f=2*Omega*sin(phi)
-sponge_distance	        0 	# Decay distance scale for sponge layer
-sponge_decay	        0	# Decay time scale for sponge layer
+sponge_distance	        5000 	# Decay distance scale for sponge layer
+sponge_decay	        7200	# Decay time scale for sponge layer
 readSalinity		0	# Whether or not to read initial salinity profile from file InitSalinityFile
 readTemperature		0	# Whether or not to read initial temperature profile from file InitTemperatureFile
 ########################################################################
