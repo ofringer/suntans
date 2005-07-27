@@ -8,19 +8,27 @@
 % Stanford University
 % 1 Jun 04
 %
-% $Id: sunmovie.m,v 1.2 2004-06-01 04:24:56 fringer Exp $
+% $Id: sunmovie.m,v 1.3 2005-07-27 17:55:18 fringer Exp $
 % $Log: not supported by cvs2svn $
+% Revision 1.2  2004/06/01 04:24:56  fringer
+% Changed daspect([1 3*dmax/L 1]) to daspect([1 5*dmax/L 1]) so that
+% a 5:1 aspect ratio will be 1 to 1.
+%
 % Revision 1.1  2004/06/01 01:56:50  fringer
 % This m-file takes a directory containining 2-d suntans (x-z) data
 % and plots the output as a surface plot, then creates a movie.
 %
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-datadir = '/home/data/suntans_data';
+datadir = '../main/examples/iwaves/data';
 
 % Surface plot determined by:
 % PLOT: 0: q, 1: s, 2: u, 3: w
-PLOT=1;
+PLOT=3;
+
+% Whether or not to create a movie
+% Requires the linux convert command and printmovie.m.
+MOVIE=1;
 
 % Show the free-surface profile
 FS=1;
@@ -46,7 +54,7 @@ L = max(xv);
 dmax = max(dv);
 
 % Set up the Cartesian grid
-z = -dmax+cumsum(dz);
+z = -dmax+cumsum(dz(end:-1:1));
 [xs,is]=sort(xv);
 [X,Z]=meshgrid(xs,z);
 
@@ -72,7 +80,7 @@ nsteps = ftell(sfid)/Nk/Nc/dbl;
 status=fseek(sfid,0,'bof');
 
 % Determine hmax for plotting
-hd = getcdata(hfid,Nc*nsteps,0,1,precision);
+hd = getcdata(hfid,Nc*nsteps,1,precision);
 hmax = max(hd);
 hmin = min(hd);
 dtop = max(max(Z));  % Top of grid
@@ -100,11 +108,11 @@ W = zeros(Nk,Nc);
 component = 1;
 numcomponents = 3;
 for n=1:nsteps,
-  count(n,[1:nsteps]);
-  ud = getcdata(ufid,numcomponents*Nc*Nk,0,n,precision);
-  sd = getcdata(sfid,Nc*Nk,0,n,precision);
-  qd = getcdata(qfid,Nc*Nk,0,n,precision);
-  hd = getcdata(hfid,Nc,0,n,precision);
+  fprintf('On %d of %d\n',n,nsteps);
+  ud = getcdata(ufid,numcomponents*Nc*Nk,n,precision);
+  sd = getcdata(sfid,Nc*Nk,n,precision);
+  qd = getcdata(qfid,Nc*Nk,n,precision);
+  hd = getcdata(hfid,Nc,n,precision);
 
   S = reshape(sd,Nc,Nk);
   S = S(is,end:-1:1)';
@@ -148,5 +156,17 @@ for n=1:nsteps,
   shading flat;
   
   pause(0);
-  printmovie(n,'/tmp/movies/movie',1,50)
+  if(MOVIE)
+    if(~exist('movies','dir'))
+      qq=input('Movies directory does not exist.  Create? (y or n): ','s');
+      switch(qq)
+       case 'y'
+        mkdir movies
+       otherwise
+        fprintf('Need to create the directory movies to create a movie.\n');
+        return;
+      end
+    end
+    printmovie(n,'movies/movie',1,50)
+  end
 end
