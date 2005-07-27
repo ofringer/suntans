@@ -8,17 +8,6 @@
 % Stanford University
 % 1 Jun 04
 %
-% $Id: sunmovie.m,v 1.3 2005-07-27 17:55:18 fringer Exp $
-% $Log: not supported by cvs2svn $
-% Revision 1.2  2004/06/01 04:24:56  fringer
-% Changed daspect([1 3*dmax/L 1]) to daspect([1 5*dmax/L 1]) so that
-% a 5:1 aspect ratio will be 1 to 1.
-%
-% Revision 1.1  2004/06/01 01:56:50  fringer
-% This m-file takes a directory containining 2-d suntans (x-z) data
-% and plots the output as a surface plot, then creates a movie.
-%
-%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 datadir = '../main/examples/iwaves/data';
 
@@ -28,7 +17,7 @@ PLOT=3;
 
 % Whether or not to create a movie
 % Requires the linux convert command and printmovie.m.
-MOVIE=1;
+MOVIE=0;
 
 % Show the free-surface profile
 FS=1;
