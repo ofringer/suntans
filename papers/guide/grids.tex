@@ -3,10 +3,10 @@
 \subsection{Using the triangle libraries} \label{sec:tri}
 
 Triangular grids can be created from a simple planar straight line
-graph which is specified as the \verb+pslg+ file in \verb+suntans.dat+.
+graph (pslg) which is specified as the \verb+pslg+ file in \verb+suntans.dat+.
 The format of this file is similar to the format of the planar straight
 line graph file for use in triangle.  The planar straight line graph
-file is a listing of points and edges which make up a closed contour.
+file is a listing of points and edges that make up a closed contour.
 These edges will comprise the boundaries of the triangulation that are
 created by the triangle libraries.  The simplest PSLG file is one which
 specifies a box with sides of length 1.  This requires four points and
@@ -40,7 +40,7 @@ mpirun sun -t -g --datadir=./data
 \end{verbatim}
 This creates a triangulation composed of 256 right triangles within a square
 with sides of length 1.  The three columns after the number of points
-specification correspond to the x,y coordinates of each point, along
+specification correspond to the x-y coordinates of each point, along
 with a marker for each point.  Following the number of segments specification,
 the first two columns specify the indices of the points that make up
 the end points of each segment in C-style numbering, such that the indices
@@ -62,7 +62,7 @@ then the Voronoi points are adjusted so that the distance between them is half t
 distance between the cell centroids.  If \verb+VoronoiRatio+ is set to \verb+1+,
 then the Voronoi points correspond to the cell centroids.
 
-\subsection{Reading Triangular Grids from a File} \label{sec:readgrid}
+\subsection{Reading triangular grids from a file} \label{sec:readgrid}
 
 Use of the \verb+-t+ flag creates three files specified in \verb+suntans.dat+: 
 \verb+points+, \verb+cells+, and \verb+edges+.  By default, these are specified
