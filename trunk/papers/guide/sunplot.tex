@@ -1,6 +1,6 @@
-\section{Using the Sunplot GUI}
+\section{Using the sunplot GUI}
 
-The Sunplot GUI is meant to be a debugging tool and hence it does not have the ability to output
+The sunplot GUI is meant to be a debugging tool and hence it does not have the ability to output
 results into a figure file, such as postscript, jpeg, or eps.  It is, however, a handy tool to
 quickly view results without having to execute third-party software.  Sunplot has the ability to
 view all of the data output from SUNTANS on several processors, and it only requires the X11 libraries.
@@ -13,16 +13,23 @@ and details on how to compile \verb+sunplot+ are described in Section \ref{sec:d
 
 \subsection{Starting up the GUI}
 
-The \verb+sunplot+ gui can be started while a simulation is running as long as the data files
+The \verb+sunplot+ GUI can be started while a simulation is running as long as the data files
 are not empty.  To view the data with the default settings in a given directory, use
 \begin{verbatim}
 ./sunplot --datadir=examples/boundaries/data
 \end{verbatim}
-This will bring up a planview of the salinity data at the first time step $n=1$ in the upper layer.$k=1$ (note
-that the gui does not use C-style indexing, so the first index starts at k=1.), as shown in Figure
-\ref{fig:sun1}
-\insertfig{0.4}{figures/lock}{View of the Sunplot window upon first execution without any command
-line options.}{fig:sun1}
+This will bring up a planview of the salinity data at the first time step $n=1$ in the upper layer $k=1$ (note
+that the GUI does not use C-style indexing, so the first index starts at k=1).  If more than one processor
+is being viewed, that should be specified at the command line, as in
+\begin{verbatim}
+./sunplot -np 8 --datadir=examples/boundaries/data
+\end{verbatim}
+For multiprocessor output, the processors being displayed will start at 0 and end at \verb+np-1+. 
+For example, for a 64 processor job, the command
+\begin{verbatim}
+./sunplot -np 3 --datadir=examples/boundaries/data
+\end{verbatim}
+will show data on processors 0, 1, and 2.
 
 \subsection{Moving around in time}
 
@@ -95,7 +102,8 @@ being shown.  The default is to show all processors.
 \subsection{Surface plots of data}
 
 The default quantity to display is the salinity, or s, in planview, at level 1 and time step 1.  Color axes
-are scaled to the minimum and maximum of the profile being shown.  The following
+are scaled to the minimum and maximum of the profile being shown.  They may also be specified by
+parameters in \verb+suntans.dat+, as described in Section \ref{sec:caxis}. The following
 buttons control their respective plots:
 \begin{list}{}
 \item \button{S}: Salinity
@@ -176,7 +184,7 @@ v_b = v - \frac{1}{D}\int_{-D}^h v\,dz\,.
 
 \subsection{Vector plots}
 
-Vector plotting is controlled with the Vectors and the iskip and kskip buttons.
+Vector plotting is controlled with the Vectors, iskip, and kskip buttons.
 \begin{list}{}
 \item \button{Vectors}:
 \begin{list}{}
@@ -212,7 +220,7 @@ amount to maximum index size.
 
 \subsection{Displaying the grid}
 
-The grid can be viewed with the buttons \verb+Edges Voro Dela+.
+The grid can be viewed with the following buttons:
 \begin{list}{}
 \item \button{Edges}:
 \begin{list}{}
@@ -291,7 +299,7 @@ in which the data is scaled to fit the plot area.  You can also do
 this by hitting the ``a'' key.  The middle and right mouse buttons have
 no effect here.
 
-\subsection{Changing the color axes}
+\subsection{Changing the color axes} \label{sec:caxis}
 
 By default, the color axes are scaled with the maximum and minimum values of the data.
 This can be changed with the Caxis button as follows:

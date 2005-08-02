@@ -11,7 +11,7 @@ same directory as the \verb+sun+ executable.
 
 \subsection{Physical/Computational parameters}
 
-These parameters define values used in SUNTANS.  The syntax of the line in suntans.dat is given by
+These parameters define values used in SUNTANS.  The syntax of the line in \verb+suntans.dat+ is given by
 \begin{verbatim}
 variablename  variablevalue   # Description of variable
 \end{verbatim}
@@ -27,7 +27,7 @@ This will have the effect of \verb+dt=0.025+ and neglecting the rest of the line
 
 \subsubsection{Nkmax: $N_{kmax}\ge 1$}
 
-Number of cells in the vertical.  This is used when the -g flag is
+This is the number of cells in the vertical and is used when the -g flag is
 specified in order to build the vertical grid levels.  It must be
 greater than or equal to 1.  
 
@@ -69,8 +69,8 @@ and the distance between the Voronoi points is given by
 \[
 D_v^2 = (xv_2-xv_1)^2 + (yv_2-yv_1)^2\,.
 \]
-The Voronoi points are corrected if $D_g/D_c< V_r$, and if this
-is the case, they are updated with
+The Voronoi points are corrected if $D_g/D_c< V_r$, where $V_r$ is the \verb+VoronoiRatio+ parameter,
+and if this is the case, they are updated with
 \begin{eqnarray}
 xv_1 &=& xc + V_r(xc_1-xc)\,,\nonumber\\
 yv_1 &=& yc + V_r(yc_1-yc)\,,\nonumber\\
@@ -119,7 +119,7 @@ a desired amount.
 This is used to damp out transient barotropic motions by initializing
 the value of $\theta$ in the free-surface solver to 1 and ramping it
 down to the value of $\theta$ specified below.  The $\tau_\theta$ parameter
-determines the timescale over which this is damped, such that, if the value
+determines the timescale, in seconds, over which this is damped, such that, if the value
 of $\theta$ specified below is given by $\theta_0$, then the value of
 $\theta$ that is used in the calculations is given by
 \begin{eqnarray}
@@ -206,11 +206,11 @@ See Section \ref{sec:boundary}
 
 \subsubsection{z0T: $z_{0T}$}
 
-Lid roughness used to calculate drag at the lid.  See CdT.
+Lid roughness used to calculate drag at the lid (in meters).  See CdT.
 
 \subsubsection{z0B: $z_{0B}$}
 
-Bottom roughness used to calculate drag at the bottom boundary layer.  See CdB.
+Bottom roughness used to calculate drag at the bottom boundary layer (in meters).  See CdB.
 
 \subsubsection{CdT: $C_{dT}$}
 
@@ -218,9 +218,9 @@ If the roughness at the lid is zero (i.e. z0T=0) then the drag coefficient at th
 this constant, otherwise the drag coefficient is calculated with the rough wall 
 relationship
 \[
-C_{dT} = \left[\ln\left(\frac{1}{2}\frac{\Delta z_{top}}{z_{0T}}\right)\right]^{-2}\,.
+C_{dT} = \left[\frac{1}{\kappa}\ln\left(\frac{1}{2}\frac{\Delta z_{top}}{z_{0T}}\right)\right]^{-2}\,.
 \]
-where $\Delta z_{top}$ is the thickness of the top cell.
+where $\Delta z_{top}$ is the thickness of the top cell (in meters) and $\kappa=0.4$ is the von Karman constant.
 
 \subsubsection{CdB: $C_{dB}$}
 
@@ -230,7 +230,7 @@ relationship
 \[
 C_{dB} = \left[\ln\left(\frac{1}{2}\frac{\Delta z_{bot}}{z_{0B}}\right)\right]^{-2}\,,
 \]
-where $\Delta z_{bot}$ is the thickness of the bottom cell.
+where $\Delta z_{top}$ is the thickness of the bottom cell (in meters) and $\kappa=0.4$ is the von Karman constant.
 
 \subsubsection{CdW: $C_{dW}$}
 
@@ -425,7 +425,7 @@ and that the sponge layer is roughly $D_{sponge}$ m thick and extends in the pos
 
 \subsubsection{sponge\_decay: $\tau_{sponge}>0$}
 
-Decay timescale for sponge layer.
+Decay timescale for sponge layer (in seconds).
 
 \subsubsection{readSalinity: Boolean}
 
@@ -443,7 +443,7 @@ order.
 
 \subsection{Input/Output files}
 
-These parameters define the names of the input files.  The syntax of the line in suntans.dat is given by
+These parameters define the names of the input files.  The syntax of the line in \verb+suntans.dat+ is given by
 \begin{verbatim}
 filespecifier  fileprefix   # Description of parameter
 \end{verbatim}
@@ -500,9 +500,10 @@ Cell connectivity file ($N_c$ total cells). For details see Section \ref{sec:gri
 \subsubsection{depth: input}
 
 Contains bathymetry data used to interpolate the depth onto the Voronoi points only
-if the IntDepth parameter is set to 1.  Otherwise the depth is set in initialization.c.
+if the IntDepth parameter is set to 1.  Otherwise the depth is set in \verb+initialization.c+.
 The spacing of the data is arbitrary since the interpolation routine searches for the
-nearest neighbors to perform the interpolations.
+nearest neighbors to perform the interpolations.  Note that the absolute value of the depth
+is read in from this file, so SUNTANS does not distinguish between elevation and depression.
 \begin{list}{}
 \item Size: $\mbox{Number of bathymetry data points}\times 3$
 \item Type: ASCII

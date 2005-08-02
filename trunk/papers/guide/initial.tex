@@ -1,12 +1,12 @@
 \section{Specifying initial and boundary conditions} 
 
-Initial and boundary conditions are specified by editing the files \verb+initial.c+ and \verb+boundaries.c+.  When you
+Initial and boundary conditions are specified by editing the files \verb+initialization.c+ and \verb+boundaries.c+.  When you
 edit either one of these files, you must recompile the SUNTANS executable in order for it to reflect changes made
 to the initial or boundary conditions.
 
 \subsection{Initial conditions}
 
-Initial conditions are set by altering the functions in the file \verb+initial.c+ so that they return the
+Initial conditions are set by altering the functions in the file \verb+initialization.c+ so that they return the
 desired initial distributions.  There are five functions that specify the initial depth, free-surface,
 salinity, temperature, and velocity fields.  Each function takes as its argument the x,y,z coordinates of
 the desired initial condition.  You need to edit the function to return the desired initial value based on the
@@ -21,7 +21,8 @@ REAL ReturnDepth(REAL x, REAL y) {
 }
 \end{verbatim}
 Note that the depth is specified as a positive quantity.  This function is only used when the \verb+IntDepth+ variable is
-set to \verb+0+ in \verb+suntans.dat+.  Otherwise, the depth is interpolated from the file specified by the \verb+depth+
+set to \verb+0+ in \verb+suntans.dat+.  Otherwise, when \verb+IntDepth+ is set to 1, 
+the depth is interpolated from the file specified by the \verb+depth+
 file in \verb+suntans.dat+.  This file must contain the depth data in three columns given by x, y, depth, where depth
 is specified as a negative quantity and elevation is positive.
 \item \verb+ReturnFreeSurface+ This returns the initial free surface distribution as a function of the x,y coordinate.
@@ -74,7 +75,7 @@ are specified as inflow and outflow and the other two are specified as solid wal
 \ref{fig:boundaries}.  
 \insertfig{.5}{figures/boundaries}{Depiction of a channel with an inflow at $x=0$ m and outflow at $x=1000$ m with
 the inflow/outflow boundaries specified with 2 markers and the solid walls with 1 markers.  The indices of
-the cells adjacent to the boundaries are denoted by ib while the boundary cells have indices j.}{fig:boundaries}
+the cells adjacent to the boundaries are denoted by ib while the boundary faces have indices j.}{fig:boundaries}
 Suppose you would like to
 specify an incoming velocity that oscillates at a frequency $\omega$ due to an incoming wave at $x=0$ m and that
 you would like to use the linearized open boundary condition to specify the outflow at $x=1000$ m.  Since the
@@ -127,8 +128,9 @@ location of the specified edge.  To do so, you would set up the functions in the
 
 \end{verbatim}
 \end{itemize}
-The outermost \verb+j+ loop loops over the edges which have boundary markers specified as \verb+2+.
-The \verb+ib+ index is an index to the cell adjacent to the boundary edge.  Since the Voronoi points
+The outermost \verb+jptr+ loop loops over the edges which have boundary markers specified as \verb+2+.
+The \verb+j+ index is an index to an edge along the open boundary, and 
+the \verb+ib+ index is an index to the cell adjacent to that boundary edge.  Since the Voronoi points
 are specified at the \verb+ib+ indices, then we need to specify the boundary condition based on
 the location of the Voronoi points of the adjacent cell.  In this case the open boundary exists at x=1000, but since
 we know that this boundary exists for boundary edges for $x>500$, we use the if statement
@@ -140,7 +142,8 @@ sets the flux at the open boundary over all the vertical levels with
 \end{verbatim}
 which is identical to 
 \[ u_b = -h_b\sqrt{\frac{g}{d}} \,,\]
-which is the linearized shallow-water free-surface boundary condition.  This loop uses
+and this is the linearized shallow-water free-surface boundary condition (Note that the upwind depth
+and free-surface height are being used to approximate the values at the open boundary).  This loop uses
 the \verb+Nke[j]+ variable, which is the number of vertical levels at face \verb+j+,
 and \verb+etop[j]+, which is the index of the top level at the boundary.  The variable
 \verb+etop[j]+ is usually \verb+0+ unless filling and emptying occur at the boundary
@@ -149,7 +152,7 @@ edges.
 In addition to setting
 the boundary flux in the OpenBoundaryFluxes function, the user must also set the cartesian components
 of velocity in the BoundaryVelocities function.  These are used to compute the advection of momentum.
-At the open boundary, the boundary velocity components are set to the upwind value of the velocity
+At the open outflow boundary, the boundary velocity components are set to the upwind value of the velocity
 component.  For the u-component of velocity, for example, the boundary value is specified
 with
 \begin{verbatim}
