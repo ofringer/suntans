@@ -31,6 +31,7 @@ function checkgrid(dgmin,nbins,edgesfile,cellsfile)
   g2jp1(find(g2jp1==0))=[];
 
   Dg = sqrt((xv(g2j)-xv(g2jp1)).^2+(yv(g2j)-yv(g2jp1)).^2);
+  fprintf('Minimum Dg is %.2f\n',min(Dg));
   ind = find(Dg<dgmin);
 
   figure(1);
