@@ -2,8 +2,14 @@
  * File: turbulence.c
  * Description:  Contains the Mellor-Yamad level 2.5 turbulence model.
  *
- * $Id: turbulence.c,v 1.6 2005-07-06 00:28:56 fringer Exp $
+ * $Id: turbulence.c,v 1.7 2005-10-28 23:44:07 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.6  2005/07/06 00:28:56  fringer
+ * Fixed a bug in which the buoyancy frequency was being set at
+ * N[grid->Nk[i]] even though that cell is never used.  Changed this
+ * to set N at grid->ctop[i] since this was not being set before and
+ * was causing the wetting/drying test to blow up.
+ *
  * Revision 1.5  2005/04/01 20:55:23  fringer
  * Changed thetaQ to 1.0 instead of 0.75 since 0.75 is not always stable.
  *
@@ -126,21 +132,17 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
       CdAvgT+=phys->CdT[grid->face[i*NFACES+nf]]/3;
       CdAvgB+=phys->CdB[grid->face[i*NFACES+nf]]/3;
     }
-    phys->htmp[i]=pow(B1,2/3)*CdAvgT*pow(phys->uc[i][grid->ctop[i]],2)+pow(phys->vc[i][grid->ctop[i]],2);
-    phys->hold[i]=pow(B1,2/3)*CdAvgB*pow(phys->uc[i][grid->Nk[i]-1],2)+pow(phys->vc[i][grid->Nk[i]-1],2);
+    phys->htmp[i]=pow(B1,2.0/3.0)*CdAvgT*pow(phys->uc[i][grid->ctop[i]],2)+pow(phys->vc[i][grid->ctop[i]],2);
+    phys->hold[i]=pow(B1,2.0/3.0)*CdAvgB*pow(phys->uc[i][grid->Nk[i]-1],2)+pow(phys->vc[i][grid->Nk[i]-1],2);
   }
   // Specify turbulence at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
   // turbulence flow outward.
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
     ib = grid->grad[2*j];
     
-    if(phys->boundary_flag[jptr-grid->edgedist[2]]==open)
-      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
-	phys->boundary_tmp[jptr-grid->edgedist[2]][k]=q[ib][k];
-    else
-      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
-	phys->boundary_tmp[jptr-grid->edgedist[2]][k]=q[ib][k];
+    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+      phys->boundary_tmp[jptr-grid->edgedist[2]][k]=q[ib][k];
   }    
   UpdateScalars(grid,phys,prop,q,phys->boundary_tmp,phys->Cn_q,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
 
@@ -168,29 +170,25 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     phys->htmp[i]=0;
     phys->hold[i]=0;
   }
-  if(prop->n<30) 
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i=grid->cellp[iptr];
-      
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-	l[i][k]+=prop->dt*pow(q[i][k],3/2)/B1;
-      }
+
+  // Specify turbulence at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
+  // turbulence flow outward.
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
+    j = grid->edgep[jptr];
+    ib = grid->grad[2*j];
+    
+    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+      phys->boundary_tmp[jptr-grid->edgedist[2]][k]=l[ib][k];
+  }
+  UpdateScalars(grid,phys,prop,l,phys->boundary_tmp,phys->Cn_l,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
+
+  // Set l to a background value if it gets too small.
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i=grid->cellp[iptr];
+    
+    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      if(l[i][k]<LBACKGROUND) l[i][k]=LBACKGROUND;
     }
-  else {
-    // Specify turbulence at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
-    // turbulence flow outward.
-    for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-      j = grid->edgep[jptr];
-      ib = grid->grad[2*j];
-      
-      if(phys->boundary_flag[jptr-grid->edgedist[2]]==open)
-	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
-	  phys->boundary_tmp[jptr-grid->edgedist[2]][k]=l[ib][k];
-      else
-	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
-	  phys->boundary_tmp[jptr-grid->edgedist[2]][k]=l[ib][k];
-    }
-    UpdateScalars(grid,phys,prop,l,phys->boundary_tmp,phys->Cn_l,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
   }
 
   // Send/Recv q and l data to neighboring processors
@@ -237,7 +235,7 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
  *
  */
 static void StabilityFunctions(REAL *Sm, REAL *Sh, REAL Gh, REAL A1, REAL A2, REAL B1, REAL B2, REAL C1) {
-  *Sm = (pow(B1,-1/3)-A1*A2*Gh*((B2-3*A2)*(1-6*A1/B1)-3*C1*(B2+6*A1)))/
+  *Sm = (pow(B1,-1.0/3.0)-A1*A2*Gh*((B2-3*A2)*(1-6*A1/B1)-3*C1*(B2+6*A1)))/
     ((1-3*A2*Gh*(6*A1+B2))*(1-9*A1*A2*Gh));
   *Sh = A2*(1-6*A1/B1)/(1-3*A2*Gh*(6*A1+B2));
 }
