@@ -61,8 +61,6 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
  *
  */
 REAL ReturnDepth(REAL x, REAL y) {
-  REAL length, xmid, shelfdepth, depth;
-
   return 10;
 }
 
@@ -112,6 +110,6 @@ REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
  *
  */
 REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
-  return 0.1*n1;
+  return n1;
 }
 
