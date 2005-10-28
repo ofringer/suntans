@@ -50,10 +50,19 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
       j=grid->edgep[jptr];
       ib=grid->grad[2*j];
 
-      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
-	phys->boundary_T[jptr-grid->edgedist[2]][k]=phys->T[ib][k];
-	phys->boundary_s[jptr-grid->edgedist[2]][k]=phys->s[ib][k];
-      }
+      if(grid->xv[ib]>1000)
+	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+	  phys->boundary_T[jptr-grid->edgedist[2]][k]=phys->T[ib][k];
+	  phys->boundary_s[jptr-grid->edgedist[2]][k]=phys->s[ib][k];
+	}
+      else {
+	z=0;
+	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+	  z-=grid->dzz[ib][k]/2;
+	  phys->boundary_s[jptr-grid->edgedist[2]][k]=-0.0001*z;
+	  z-=grid->dzz[ib][k]/2;
+	}
+      }	
   }
 }
 
@@ -73,11 +82,21 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop) {
 
     ib = grid->grad[2*j];
 
-    for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      phys->boundary_u[jptr-grid->edgedist[2]][k]=0.1;
-      phys->boundary_v[jptr-grid->edgedist[2]][k]=0;
-      phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
-    }
+    if(grid->xv[ib]>1000)
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	// Maintain a constant free-surface height at the right boundary.
+	phys->boundary_u[jptr-grid->edgedist[2]][k]=phys->uc[ib][k] + 2*(sqrt(GRAV*(grid->dv[ib]+phys->h[ib]))-
+									 sqrt(GRAV*(grid->dv[ib]+0.0)));
+	phys->boundary_v[jptr-grid->edgedist[2]][k]=phys->vc[ib][k];
+	phys->boundary_w[jptr-grid->edgedist[2]][k]=phys->w[ib][k];
+      }
+    else
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	// Maintain a constant inflow volume flux at the left boundary.
+	phys->boundary_u[jptr-grid->edgedist[2]][k]=10.0/(grid->dv[ib]+phys->h[ib]);  
+	phys->boundary_v[jptr-grid->edgedist[2]][k]=0.0;
+	phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
+      }
   }
 }
 
