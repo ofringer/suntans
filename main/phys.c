@@ -6,8 +6,17 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.97 2005-08-31 05:18:09 fringer Exp $
+ * $Id: phys.c,v 1.98 2005-10-28 23:46:38 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.97  2005/08/31 05:18:09  fringer
+ * Added the InterpToFace function, which interpolates the flux-face values for
+ * the nonlinear advection of momentum (when nonlinear=2) to the faces using
+ * a linear interpolation from the values on either side of the face.  This is
+ * a slight improvement over simple averaging since def(1,2)/dg is usually close
+ * to 0.5.
+ *
+ * This function is also used for the Coriolis terms.
+ *
  * Revision 1.96  2005/07/19 21:41:57  fringer
  * Bug fixes courtesy of Yi-Ju Chou:
  * Fixed k-loop limits for sidewall drag.  The original code was including
@@ -780,7 +789,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid);
 static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, int blowup, MPI_Comm comm);
-static REAL InterpToFace(int j, int k, REAL **phi, gridT *grid);
+static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);
 
 /*
  * Function: AllocatePhysicalVariables
@@ -1645,8 +1654,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      phys->Cn_U[j][k]+=prop->dt*prop->Coriolis_f*(InterpToFace(j,k,phys->vc,grid)*grid->n1[j]-
-						   InterpToFace(j,k,phys->uc,grid)*grid->n2[j]);
+      phys->Cn_U[j][k]+=prop->dt*prop->Coriolis_f*(InterpToFace(j,k,phys->vc,phys->u,grid)*grid->n1[j]-
+						   InterpToFace(j,k,phys->uc,phys->u,grid)*grid->n2[j]);
   }
   
   // Baroclinic term
@@ -1744,7 +1753,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=0;
 	
 	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=0.5*InterpToFace(j,k,phys->uc,grid)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.5*InterpToFace(j,k,phys->uc,phys->u,grid)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
     
     // Now compute the cell-centered source terms and put them into stmp
@@ -1818,7 +1827,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=0;
 	
 	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=0.5*InterpToFace(j,k,phys->vc,grid)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.5*InterpToFace(j,k,phys->vc,phys->u,grid)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
     
     // Now compute the cell-centered source terms and put them into stmp.
@@ -2169,8 +2178,8 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 	for(k=0;k<kmin;k++)
 	  phys->ut[j][k]=0;
 	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=0.25*(InterpToFace(j,k,phys->w,grid)+
-			       InterpToFace(j,k+1,phys->w,grid))*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.25*(InterpToFace(j,k,phys->w,phys->u,grid)+
+			       InterpToFace(j,k+1,phys->w,phys->u,grid))*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
     
     for(i=0;i<grid->Nc;i++) {
@@ -2583,7 +2592,7 @@ static void UPredictor(gridT *grid, physT *phys,
 {
   int i, iptr, j, jptr, ne, nf, nf1, normal, nc1, nc2, k;
   REAL sum, dt=prop->dt, theta=prop->theta, fluxheight, h0, boundary_flag;
-  REAL *a, *b, *c, *d, *e1, **E;
+  REAL *a, *b, *c, *d, *e1, **E, *a0, *b0, *c0, *d0;
 
   a = phys->a;
   b = phys->b;
@@ -2591,6 +2600,10 @@ static void UPredictor(gridT *grid, physT *phys,
   d = phys->d;
   e1 = phys->ap;
   E = phys->ut;
+
+  a0 = phys->am;
+  b0 = phys->bp;
+  c0 = phys->bm;
 
   // Set D[j] = 0 
   for(i=0;i<grid->Nc;i++) 
@@ -2695,7 +2708,7 @@ static void UPredictor(gridT *grid, physT *phys,
 						       grid->dzz[nc2][grid->etop[j]]))*
 						    phys->u[j][grid->etop[j]]
 						    +b[grid->etop[j]]*phys->u[j][grid->etop[j]+1]);
-	
+
 	// Bottom cell
 	phys->utmp[j][grid->Nke[j]-1]+=dt*(1-theta)*(a[grid->Nke[j]-1]*phys->u[j][grid->Nke[j]-2]-
 						     (a[grid->Nke[j]-1]+2.0*phys->CdB[j]*
@@ -2761,10 +2774,17 @@ static void UPredictor(gridT *grid, physT *phys,
 
       // Now utmp will have U*** in it, which is given by A^{-1}U**, and E will have
       // A^{-1}e1, where e1 = [1,1,1,1,1,...,1]^T 
+      // Store the tridiagonals so they can be used twice (TriSolve alters the values
+      // of the elements in the diagonals!!!
+      for(k=0;k<grid->Nke[j];k++) {
+	a0[k]=a[k];
+	b0[k]=b[k];
+	c0[k]=c[k];
+      }
       if(grid->Nke[j]-grid->etop[j]>1) {
 	TriSolve(&(a[grid->etop[j]]),&(b[grid->etop[j]]),&(c[grid->etop[j]]),
 		 &(d[grid->etop[j]]),&(phys->utmp[j][grid->etop[j]]),grid->Nke[j]-grid->etop[j]);
-	TriSolve(&(a[grid->etop[j]]),&(b[grid->etop[j]]),&(c[grid->etop[j]]),
+	TriSolve(&(a0[grid->etop[j]]),&(b0[grid->etop[j]]),&(c0[grid->etop[j]]),
 		 &(e1[grid->etop[j]]),&(E[j][grid->etop[j]]),grid->Nke[j]-grid->etop[j]);	
       } else {
 	phys->utmp[j][grid->etop[j]]/=b[grid->etop[j]];
@@ -2819,6 +2839,7 @@ static void UPredictor(gridT *grid, physT *phys,
       }
     }
     phys->htmp[i]=phys->h[i]-dt/grid->Ac[i]*sum;
+    //    printf("%f %f\n",grid->xv[i],phys->htmp[i]);
   }
 
   // Set the free-surface values at the boundary.  These are set for h and not for
@@ -4522,8 +4543,8 @@ static void Progress(propT *prop, int myproc)
 
 /*
  * Function: InterpToFace
- * Usage: uface = InterpToFace(j,k,phys->uc,grid);
- * -----------------------------------------------
+ * Usage: uface = InterpToFace(j,k,phys->uc,u,grid);
+ * -------------------------------------------------
  * Linear interpolation of a Voronoi-centered value to the face, using the equation
  * 
  * uface = 1/Dj*(def1*u2 + def2*u1);
@@ -4532,8 +4553,11 @@ static void Progress(propT *prop, int myproc)
  *
  * uface = 1/(def1+def2)*(def1*u2 + def2*u1);
  *
+ * If the triangle is a right triangle, then first-order upwinded interpolation
+ * is used.
+ *
  */
-static REAL InterpToFace(int j, int k, REAL **phi, gridT *grid) {
+static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid) {
   int nc1, nc2;
   REAL def1, def2, Dj;
   nc1 = grid->grad[2*j];
@@ -4541,6 +4565,9 @@ static REAL InterpToFace(int j, int k, REAL **phi, gridT *grid) {
   Dj = grid->dg[j];
   def1 = grid->def[nc1*NFACES+grid->gradf[2*j]];
   def2 = grid->def[nc2*NFACES+grid->gradf[2*j+1]];
-    
-  return (phi[nc1][k]*def2+phi[nc2][k]*def1)/(def1+def2);
+
+  if(def1==0 || def2==0)
+    return UpWind(u[j][k],phi[nc1][k],phi[nc2][k]);
+  else    
+    return (phi[nc1][k]*def2+phi[nc2][k]*def1)/(def1+def2);
 }
