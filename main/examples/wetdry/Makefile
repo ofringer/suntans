@@ -43,4 +43,4 @@ clean:
 	rm -f *.o
 
 clobber: clean
-	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/*~
+	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/*~ initialization.c
