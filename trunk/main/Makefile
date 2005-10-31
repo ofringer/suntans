@@ -57,7 +57,7 @@ clean:
 
 clobber:	clean
 	rm -f *~ \#*\# PI* $(EXEC) $(PEXEC) $(DEPFILE)
-
+	make -C examples clobber
 
 # DO NOT DELETE THIS LINE - Dependencies are appended after it.
 
