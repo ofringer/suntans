@@ -2,8 +2,17 @@
  * File: turbulence.c
  * Description:  Contains the Mellor-Yamad level 2.5 turbulence model.
  *
- * $Id: turbulence.c,v 1.7 2005-10-28 23:44:07 fringer Exp $
+ * $Id: turbulence.c,v 1.8 2005-10-31 05:48:35 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.7  2005/10/28 23:44:07  fringer
+ * Fixed the following bugs:
+ * 1) when pow was used it was truncating since pow(x,1/3) truncates
+ * to pow(x,0)=1, so changed it to pow(x,1.0/3.0), which fixed the
+ * calculation of Sm and Sh to produce the correct values and hence
+ * reduce the eddy-viscosity to its correct value.
+ * 2) Set the length scale to its background value of LBACKGROUND
+ * which is defined in turbulence.h.
+ *
  * Revision 1.6  2005/07/06 00:28:56  fringer
  * Fixed a bug in which the buoyancy frequency was being set at
  * N[grid->Nk[i]] even though that cell is never used.  Changed this
@@ -223,6 +232,8 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
       nuT[i][k]=Sm*q[i][k]*l[i][k];
       kappaT[i][k]=Sh*q[i][k]*l[i][k];
     }
+    for(k=0;k<grid->ctop[i];k++)
+      nuT[i][k]=kappaT[i][k]=l[i][k]=q[i][k]=0;
   }
 }
 
