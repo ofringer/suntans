@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.1 2005-10-31 05:59:10 fringer Exp $
+ * $Id: phys.c,v 1.2 2005-11-01 00:46:51 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.1  2005/10/31 05:59:10  fringer
+ * Estuary test example.  This example uses the boundary condition of
+ * type 3, which allows the specification of the free-surface height
+ * and scalar values within the unstructured grid.
+ *
  * Revision 1.98  2005/10/28 23:46:38  fringer
  * Modified the InterpToFace function so that it performs upwinding
  * when the triangle is a right triangle.
@@ -1117,9 +1122,6 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
       phys->h[i]=-grid->dv[i] + 1e-10*grid->dz[grid->Nk[i]-1];
   }
 
-  // Set the boundary velocities and free surface
-  BoundaryVelocities(grid,phys,prop);
-
   // Need to update the vertical grid after updating the free surface.
   // The 1 indicates that this is the first call to UpdateDZ
   UpdateDZ(grid,phys,1);
@@ -1198,6 +1200,10 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   // on the initialized velocities at the faces.
   ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
   ComputeVelocityVector(phys->u,phys->uold,phys->vold,grid);
+
+  // Set the boundary velocities and free surface after computing velocity 
+  // vectors since compute velocity vectors overwrites boundary values (of type 3).
+  BoundaryVelocities(grid,phys,prop);
 
   // Determine minimum and maximum scalar values.
   phys->smin=phys->s[0][0];
@@ -3023,13 +3029,33 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
   niters = prop->maxiters;
 
+  // For the boundary term (marker of type 3):
+  // 1) Need to set x to zero in the interior points, but
+  //    leave it as is for the boundary points.
+  // 2) Then set z=Ax and substract b = b-z so that
+  //    the new problem is Ax=b with the boundary values
+  //    on the right hand side acting as forcing terms.
+  // 3) After b=b-z for the interior points, then need to
+  //    set b=0 for the boundary points.
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+
+    x[i]=0;
+  }
+  ISendRecvCellData2D(x,grid,myproc,comm);
   OperatorH(x,z,grid,phys,prop);
-  ISendRecvCellData2D(z,grid,myproc,comm);
+  
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
 
     p[i] = p[i] - z[i];
     r[i] = p[i];
+    x[i] = 0;
+  }    
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    i = grid->cellp[iptr];
+
+    p[i] = 0;
   }    
   eps0 = eps = InnerProduct(r,r,grid,myproc,numprocs,comm);
   if(!prop->resnorm) eps0 = 1;
