@@ -6,8 +6,13 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.36 2005-07-06 02:18:06 fringer Exp $
+ * $Id: grid.c,v 1.37 2005-11-17 01:27:44 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.36  2005/07/06 02:18:06  fringer
+ * Changed the writing of the vertspace file so that it outputs as a %e
+ * instead of %f since %f was causing the grid spacings to truncate and
+ * crash upon reading in without running the -g flag.
+ *
  * Revision 1.35  2004/11/20 22:04:21  fringer
  * Added the AllocateTransferArrays and FreeTransferArrays functions
  * so that space associated with mpi send/recv calls is allocated once
@@ -212,6 +217,7 @@ static void FreeGrid(gridT *grid, int numprocs);
 static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs);
 static void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int Nc, int Ne);
 static void CreateNormalArray(int *grad, int *face, int *normal, int Nc);
+static void ReadDepth(gridT *grid, int myproc);
 
 void CorrectVoronoi(gridT *grid);
 
@@ -920,6 +926,21 @@ void ReadFileNames(int myproc)
   MPI_GetFile(TOPOLOGYFILE,DATAFILE,"topology","OpenFiles",myproc);
 }
 
+static void ReadDepth(gridT *grid, int myproc) {
+  int n;
+  char str[BUFFERLENGTH];
+  FILE *fid;
+  sprintf(str,"%s-voro",INPUTDEPTHFILE);
+
+  fid = MPI_FOpen(str,"r","ReadDepth",myproc);
+  for(n=0;n<grid->Nc;n++) {
+    getfield(fid,str);
+    getfield(fid,str);
+    grid->dv[n]=getfield(fid,str);
+  }
+  fclose(fid);
+}
+  
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
 {
   int n, maxgridweight=100, IntDepth, Nkmax;
@@ -931,8 +952,10 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   mindepth=INFTY;
   IntDepth=(int)MPI_GetValue(DATAFILE,"IntDepth","GetDepth",myproc);
 
-  if(IntDepth) 
+  if(IntDepth==1) 
     InterpDepth(grid,myproc,numprocs,comm);
+  else if(IntDepth==2) 
+    ReadDepth(grid,myproc);
   else {
     for(n=0;n<grid->Nc;n++) {
       grid->dv[n]=ReturnDepth(grid->xv[n],grid->yv[n]);
@@ -2741,7 +2764,7 @@ static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   int n, Nd, proc, nstart, ncount, scaledepth;
   REAL *xd, *yd, *d, scaledepthfactor;
   char str[BUFFERLENGTH];
-  FILE *ifile;
+  FILE *ifile, *ofile;
   MPI_Status status;
 
   scaledepth=(int)MPI_GetValue(DATAFILE,"scaledepth","InterpDepth",myproc);
@@ -2786,6 +2809,14 @@ static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
     }
   }
   MPI_Bcast((void *)grid->dv,grid->Nc,MPI_DOUBLE,0,comm);
+
+  if(myproc==0) {
+    sprintf(str,"%s-voro",INPUTDEPTHFILE);
+    ofile = MPI_FOpen(str,"w","InterpDepth",myproc);
+    for(n=0;n<grid->Nc;n++) 
+      fprintf(ofile,"%f %f %f\n",grid->xv[n],grid->yv[n],grid->dv[n]);
+    fclose(ofile);
+  }
 
   free(xd);
   free(yd);
