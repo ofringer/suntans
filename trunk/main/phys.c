@@ -6,8 +6,15 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.98 2005-10-28 23:46:38 fringer Exp $
+ * $Id: phys.c,v 1.99 2005-12-02 22:51:38 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.98  2005/10/28 23:46:38  fringer
+ * Modified the InterpToFace function so that it performs upwinding
+ * when the triangle is a right triangle.
+ *
+ * Changed the second call to TriSolve in UPredictor so that it uses
+ * the a0,b0, and c0 tridiagonals.
+ *
  * Revision 1.97  2005/08/31 05:18:09  fringer
  * Added the InterpToFace function, which interpolates the flux-face values for
  * the nonlinear advection of momentum (when nonlinear=2) to the faces using
@@ -1501,8 +1508,9 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // it at time step n+1.  This is so that at the next time step
       // phys->uold contains velocity at time step n-1 and phys->uc contains
       // that at time step n.
-      ComputeVelocityVector(phys->utmp2,phys->uold,phys->vold,grid);
       ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
+      ISendRecvCellData3D(phys->uc,grid,myproc,comm);
+      ISendRecvCellData3D(phys->vc,grid,myproc,comm);
     }
 
     // Output progress
@@ -2839,18 +2847,6 @@ static void UPredictor(gridT *grid, physT *phys,
       }
     }
     phys->htmp[i]=phys->h[i]-dt/grid->Ac[i]*sum;
-    //    printf("%f %f\n",grid->xv[i],phys->htmp[i]);
-  }
-
-  // Set the free-surface values at the boundary.  These are set for h and not for
-  // htmp since the boundary values for h will be used in the cg solver.
-  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    i = grid->cellp[iptr];
-
-    if(grid->yv[i]<500)
-      phys->h[i] = .1;//*prop->amp*sin(prop->omega*prop->rtime);
-    else
-      phys->h[i] = 0*prop->amp*sin(prop->omega*prop->rtime);
   }
 
   // Now we have the required components for the CG solver for the free-surface:
@@ -2981,14 +2977,33 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
 
   niters = prop->maxiters;
 
-  //  OperatorH(p,z,grid,phys,prop);
-  //  ISendRecvCellData2D(z,grid,myproc,comm);
+  // For the boundary term (marker of type 3):
+  // 1) Need to set x to zero in the interior points, but
+  //    leave it as is for the boundary points.
+  // 2) Then set z=Ax and substract b = b-z so that
+  //    the new problem is Ax=b with the boundary values
+  //    on the right hand side acting as forcing terms.
+  // 3) After b=b-z for the interior points, then need to
+  //    set b=0 for the boundary points.
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
 
-    //    r[i] = p[i]-z[i];
+    x[i]=0;
+  }
+  ISendRecvCellData2D(x,grid,myproc,comm);
+  OperatorH(x,z,grid,phys,prop);
+  
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+
+    p[i] = p[i] - z[i];
     r[i] = p[i];
     x[i] = 0;
+  }    
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    i = grid->cellp[iptr];
+
+    p[i] = 0;
   }    
   eps0 = eps = InnerProduct(r,r,grid,myproc,numprocs,comm);
   if(!prop->resnorm) eps0 = 1;
@@ -3537,11 +3552,12 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 {
   int i, iptr, j, jptr, ib, k, nf, ktop;
   int Nc=grid->Nc, normal, nc1, nc2, ne;
-  REAL df, dg, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, *bd, dznew, mass, *sp;
+  REAL df, dg, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, *bd, dznew, mass, *sp, *temp;
 
   ap = phys->ap;
   am = phys->am;
   bd = phys->bp;
+  temp = phys->bm;
   a = phys->a;
   b = phys->b;
   c = phys->c;
@@ -3732,24 +3748,22 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
       if(nc1==-1) nc1=nc2;
       if(nc2==-1) {
 	nc2=nc1;
-	if(boundary_scal)
+	if(boundary_scal && grid->mark[ne]==2)
 	  sp=phys->stmp2[nc1];
 	else
 	  sp=phys->stmp[nc1];
       } else 
 	sp=phys->stmp[nc2];
 
+      for(k=0;k<grid->Nke[ne];k++) 
+	temp[k]=UpWind(phys->utmp2[ne][k],
+		       grid->dzzold[nc1][k]*phys->stmp[nc1][k],
+		       grid->dzzold[nc2][k]*sp[k]);
+
       if(prop->wetdry) {
-	for(k=0;k<grid->Nk[nc2];k++) 
-	  ap[k] += 0.5*dt*df*normal/Ac*
-	    (theta*(phys->u[ne][k]+fabs(phys->u[ne][k]))+
-	     (1-theta)*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k])))*
-	    sp[k]*grid->dzzold[nc2][k];
-	for(k=0;k<grid->Nk[nc1];k++) 
-	  ap[k] += 0.5*dt*df*normal/Ac*
-	    (theta*(phys->u[ne][k]-fabs(phys->u[ne][k]))+
-	     (1-theta)*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k])))*
-	    phys->stmp[nc1][k]*grid->dzzold[nc1][k];
+	for(k=0;k<grid->Nke[ne];k++)
+	  ap[k] += dt*df*normal/Ac*
+	    (theta*phys->u[ne][k]+(1-theta)*phys->utmp2[ne][k])*temp[k];
        } else {
 	for(k=0;k<grid->Nk[nc2];k++) 
 	  ap[k] += 0.5*dt*df*normal/Ac*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
@@ -3784,14 +3798,11 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
     else if(b[0]!=0)
       scal[i][ktop]=d[0]/b[0];
 
-    if(dznew!=0) {
-      mass = scal[i][ktop]*dznew;
-      for(k=grid->ctop[i];k<=grid->ctopold[i];k++) 
-	scal[i][k]=mass/dznew;
-    }
-
     for(k=0;k<grid->ctop[i];k++)
       scal[i][k]=0;
+
+    for(k=grid->ctop[i];k<grid->ctopold[i];k++) 
+      scal[i][k]=scal[i][ktop];
   }
 }
 
