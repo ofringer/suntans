@@ -23,7 +23,6 @@ data:	$(SUN)
 	$(LD) -c $(INCLUDES) $*.c
 
 $(SUN):	initialization.o boundaries.o
-	cp grid.h util.h util.c phys.c $(SUNTANSHOME)
 	cp initialization.o boundaries.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 
