@@ -2,8 +2,12 @@
  * File: turbulence.c
  * Description:  Contains the Mellor-Yamad level 2.5 turbulence model.
  *
- * $Id: turbulence.c,v 1.8 2005-10-31 05:48:35 fringer Exp $
+ * $Id: turbulence.c,v 1.9 2005-12-02 22:56:56 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2005/10/31 05:48:35  fringer
+ * Set turb quantities nuT, kappaT, q, and l to zero in
+ * dry cells.
+ *
  * Revision 1.7  2005/10/28 23:44:07  fringer
  * Fixed the following bugs:
  * 1) when pow was used it was truncating since pow(x,1/3) truncates
@@ -141,8 +145,8 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
       CdAvgT+=phys->CdT[grid->face[i*NFACES+nf]]/3;
       CdAvgB+=phys->CdB[grid->face[i*NFACES+nf]]/3;
     }
-    phys->htmp[i]=pow(B1,2.0/3.0)*CdAvgT*pow(phys->uc[i][grid->ctop[i]],2)+pow(phys->vc[i][grid->ctop[i]],2);
-    phys->hold[i]=pow(B1,2.0/3.0)*CdAvgB*pow(phys->uc[i][grid->Nk[i]-1],2)+pow(phys->vc[i][grid->Nk[i]-1],2);
+    phys->htmp[i]=pow(B1,2.0/3.0)*CdAvgT*(pow(phys->uc[i][grid->ctop[i]],2)+pow(phys->vc[i][grid->ctop[i]],2));
+    phys->hold[i]=pow(B1,2.0/3.0)*CdAvgB*(pow(phys->uc[i][grid->Nk[i]-1],2)+pow(phys->vc[i][grid->Nk[i]-1],2));
   }
   // Specify turbulence at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
   // turbulence flow outward.
