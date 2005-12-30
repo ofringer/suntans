@@ -1,8 +1,11 @@
 /*
  * Main header file
  *
- * $Id: suntans.h,v 1.8 2005-07-12 01:07:29 fringer Exp $
+ * $Id: suntans.h,v 1.9 2005-12-30 23:27:28 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.8  2005/07/12 01:07:29  fringer
+ * Decreased the conserved cutoff to 1e-10 instead of 1e-5.
+ *
  * Revision 1.7  2004/09/22 06:31:25  fringer
  * Added a definition of SMALL which is used in turbulence.c to prevent
  * denominators from vanishing.
@@ -31,6 +34,8 @@
  */
 #ifndef _suntans_h
 #define _suntans_h
+
+#include "math.h"
 
 #define NFACES 3
 #define REAL double

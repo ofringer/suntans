@@ -1,8 +1,12 @@
 /*
  * Header file for grid.c
  *
- * $Id: grid.h,v 1.10 2004-11-20 22:19:24 fringer Exp $
+ * $Id: grid.h,v 1.11 2005-12-30 23:27:28 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.10  2004/11/20 22:19:24  fringer
+ * Added arrays used to allocate space for the transfer arrays which are
+ * used in the send/recv calls.
+ *
  * Revision 1.9  2004/05/29 20:25:02  fringer
  * Revision before converting to CVS.
  *
@@ -39,7 +43,6 @@
 #ifndef _grid_h
 #define _grid_h
 
-#include "parmetis.h"
 #include "suntans.h"
 #include "fileio.h"
 #include "mympi.h"
