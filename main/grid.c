@@ -6,8 +6,18 @@
  * --------------------------------
  * This file contains grid-based functions.
  *
- * $Id: grid.c,v 1.37 2005-11-17 01:27:44 fringer Exp $
+ * $Id: grid.c,v 1.38 2005-12-30 23:27:28 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.37  2005/11/17 01:27:44  fringer
+ * Added the ability to read the depth from a file when IntDepth=2 in
+ * suntans.dat.  When IntDepth=1, the data is interpolated from the
+ * detph file and written to a file with the string "-voro" appended
+ * to the depth file.  For example, if the depth file is named
+ * mbay-depth.dat, then when IntDepth=1, the depth data will be interpolated
+ * to the Voronoi points and then written to the file "mbay-depth.dat-voro".
+ * Then, with IntDepth=2, the depth data is read in from mbay-depth.dat-voro
+ * instead of interpolated, which can take quite some time.
+ *
  * Revision 1.36  2005/07/06 02:18:06  fringer
  * Changed the writing of the vertspace file so that it outputs as a %e
  * instead of %f since %f was causing the grid spacings to truncate and
@@ -196,7 +206,6 @@
  */
 static void InitLocalGrid(gridT **grid);
 static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm);
-static void GetGraph(GraphType *graph, gridT *grid, MPI_Comm comm);
 void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs);
 static int GetNumCells(gridT *grid, int proc);
 static void TransferData(gridT *maingrid, gridT **localgrid, int myproc);
@@ -289,49 +298,15 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
 
 void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 {
-  int j, numflag=0, wgtflag=0, options[5], edgecut;
-  int myproc, numprocs, proc;
-  MPI_Status status;
-  GraphType graph;
+  int j;
+  int myproc, numprocs;
 
   InitLocalGrid(localgrid);
 
   MPI_Comm_size(comm, &numprocs);
   MPI_Comm_rank(comm, &myproc);
 
-  if(numprocs>1) {
-    options[0] = 0;
-    wgtflag = 2;
-    numflag = 0;
-    
-    GetGraph(&graph,maingrid,comm);
-    
-    (*localgrid)->part = idxmalloc(graph.nvtxs, "TestParMetis: part");
-    
-    /*
-     * Partition the graph and create the part array.
-     */
-    if(myproc==0 && VERBOSE>2) printf("Partitioning with ParMETIS_PartKway...\n");
-    ParMETIS_PartKway(graph.vtxdist,graph.xadj,graph.adjncy,graph.vwgt,NULL,
-		      &wgtflag,&numflag,&numprocs,options,&edgecut,
-		      (*localgrid)->part,&comm);
-    
-    if(myproc==0 && VERBOSE>2) printf("Redistributing the partition arrays...\n");
-    if(myproc!=0) 
-      MPI_Send((void *)(*localgrid)->part,graph.nvtxs,MPI_INT,0,1,comm); 
-    else {
-      for(j=0;j<graph.nvtxs;j++)
-	maingrid->part[graph.vtxdist[myproc]+j]=(*localgrid)->part[j];
-      for(proc=1;proc<numprocs;proc++) 
-	MPI_Recv((void *)(maingrid->part+graph.vtxdist[proc]),
-		 graph.vtxdist[proc+1]-graph.vtxdist[proc],MPI_INT,proc,1,comm,&status);
-    }
-    MPI_Bcast((void *)maingrid->part,maingrid->Nc,MPI_INT,0,comm);
-  } else {
-    for(j=0;j<maingrid->Nc;j++)
-      maingrid->part[j]=0;
-  }
-
+  GetPartitioning(maingrid,localgrid,myproc,numprocs,comm);
   Topology(&maingrid,localgrid,myproc,numprocs);
 
   if(myproc==0 && VERBOSE>2) printf("Transferring data...\n");
@@ -1637,8 +1612,8 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
     for(k=0;k<maingrid->Nkmax;k++)
       dmaxtest+=maingrid->dz[k];
     for(i=0;i<maingrid->Nc;i++)
-      if(maingrid->dv[i]>dmaxtest && WARNING) {
-	printf("Warning...sum of grid spacings dz is less than depth!\n");
+      if(fabs(maingrid->dv[i]-dmaxtest>SMALL) && WARNING) {
+	printf("Warning...sum of grid spacings dz is less than depth! %e\n",maingrid->dv[i]-dmaxtest);
 	break;
       }
   }
@@ -1740,114 +1715,6 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
     }
   }
 }
-
-/*
- * Function: GetGraph
- * Usage GetGraph(graph,grid,comm);
- * --------------------------------
- * This code was adapted from the ParMetis-2.0 code in the ParMetis
- * distribution.
- *
- */
-static void GetGraph(GraphType *graph, gridT *grid, MPI_Comm comm)
-{
-  int i, k, l, numprocs, myproc;
-  int nvtxs, penum, snvtxs;
-  idxtype *gxadj, *gadjncy, *gvwgt;  
-  idxtype *vtxdist, *sxadj, *ssize, *svwgt;
-  MPI_Status status;
-
-  MPI_Comm_size(comm, &numprocs);
-  MPI_Comm_rank(comm, &myproc);
-
-  vtxdist = graph->vtxdist = idxsmalloc(numprocs+1, 0, "ReadGraph: vtxdist");
-
-  if (myproc == 0) {
-    ssize = idxsmalloc(numprocs, 0, "ReadGraph: ssize");
-
-    nvtxs = grid->Nc;
-    gxadj = grid->xadj;
-    gadjncy = grid->adjncy;
-    gvwgt = (idxtype *)grid->vwgt;
-
-    /* Construct vtxdist and send it to all the processors */
-    vtxdist[0] = 0;
-    for (i=0,k=nvtxs; i<numprocs; i++) {
-      l = k/(numprocs-i);
-      vtxdist[i+1] = vtxdist[i]+l;
-      k -= l;
-    }
-  }
-
-  MPI_Bcast((void *)vtxdist, numprocs+1, IDX_DATATYPE, 0, comm);
-
-  graph->gnvtxs = vtxdist[numprocs];
-  graph->nvtxs = vtxdist[myproc+1]-vtxdist[myproc];
-  graph->xadj = idxmalloc(graph->nvtxs+1, "ReadGraph: xadj");
-  graph->vwgt = idxmalloc(graph->nvtxs, "ReadGraph: vwgt");
-
-  if (myproc == 0) {
-    for (penum=0; penum<numprocs; penum++) {
-      snvtxs = vtxdist[penum+1]-vtxdist[penum];
-      sxadj = idxmalloc(snvtxs+1, "ReadGraph: sxadj");
-      svwgt = idxmalloc(snvtxs, "ReadGraph: svwgt");
-
-      idxcopy(snvtxs+1, gxadj+vtxdist[penum], sxadj);
-      idxcopy(snvtxs, gvwgt+vtxdist[penum], svwgt);
-
-      if(VERBOSE>3) 
-	for(k=0;k<snvtxs;k++)
-	  printf("svwgt[%d]=%d\n",k,svwgt[k]);
-
-      for (i=snvtxs; i>=0; i--)
-        sxadj[i] -= sxadj[0];
-
-      ssize[penum] = gxadj[vtxdist[penum+1]] - gxadj[vtxdist[penum]];
-
-      if (penum == myproc) {
-        idxcopy(snvtxs+1, sxadj, graph->xadj);
-	idxcopy(snvtxs, svwgt, graph->vwgt);
-      } else {
-        MPI_Send((void *)sxadj, snvtxs+1, IDX_DATATYPE, penum, 1, comm); 
-        MPI_Send((void *)svwgt, snvtxs, IDX_DATATYPE, penum, 1, comm); 
-      }
-
-      free(sxadj);
-      free(svwgt);
-    }
-  }
-  else {
-    MPI_Recv((void *)graph->xadj, graph->nvtxs+1, IDX_DATATYPE, 0, 1, comm, &status);
-    MPI_Recv((void *)graph->vwgt, graph->nvtxs, IDX_DATATYPE, 0, 1, comm, &status);
-  }
-  if(VERBOSE>3) {
-    printf("Weights on each processor after MPI_Recv\n");
-    for(k=0;k<graph->nvtxs;k++)
-      printf("vwgt[%d]=%d\n",k,graph->vwgt[k]);
-  }
-
-  graph->nedges = graph->xadj[graph->nvtxs];
-  graph->adjncy = idxmalloc(graph->nedges, "ReadGraph: graph->adjncy");
-
-  if (myproc == 0) {
-    for (penum=0; penum<numprocs; penum++) {
-      if (penum == myproc) 
-        idxcopy(ssize[penum], gadjncy+gxadj[vtxdist[penum]], graph->adjncy);
-      else
-        MPI_Send((void *)(gadjncy+gxadj[vtxdist[penum]]), ssize[penum], IDX_DATATYPE, penum, 1, comm); 
-    }
-
-    free(ssize);
-  }
-  else 
-    MPI_Recv((void *)graph->adjncy, graph->nedges, IDX_DATATYPE, 0, 1, comm, &status);
-
-  if (myproc == 0) 
-    GKfree(&gxadj, &gadjncy, LTERM);
-
-  MALLOC_CHECK(NULL);
-}
-
 
 /*
  * Function: ResortBoundaries
@@ -2163,11 +2030,13 @@ static void ReOrder(gridT *grid)
   numflag=0;
   options[0]=0;
 
+  /*
   grid->xadj = (int *)SunMalloc((Nc+1)*sizeof(int),"ReOrder");
   CreateCellGraph(grid);
   METIS_NodeND(&Nc,grid->xadj,grid->adjncy,&numflag,options,corder,corderp);
   free(grid->xadj);
   free(grid->adjncy);
+  */
 
   /*
   grid->xadj = (int *)SunMalloc((Ne+1)*sizeof(int),"ReOrder");

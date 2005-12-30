@@ -11,19 +11,44 @@ include Makefile.in
 
 CC = $(MPIHOME)/bin/mpicc
 OPTFLAGS = -O2
-LIBDIR = -L$(PARMETISHOME) -L$(TRIANGLEHOME)
 
 XLDFLAGS=-lX11 -lm
 XINC=/usr/X11R6/include
 XLIBDIR = /usr/X11R6/lib
 
-TRIINCLUDE = -I$(TRIANGLEHOME)
-TRIANGLELIB = $(TRIANGLEHOME)/triangle.o
-PARMETISLIB = $(PARMETISHOME)/libparmetis.a $(PARMETISHOME)/libmetis.a
+ifneq ($(TRIANGLEHOME),)
+  TRIANGLEINCLUDE = -I$(TRIANGLEHOME)
+  TRIANGLELIB = $(TRIANGLEHOME)/triangle.o
+  TRIANGLELIBDIR = -L$(TRIANGLEHOME)
+  TRIANGLELD = 
+  TRIANGLESRC = triangulate.c
+else
+  TRIANGLEINCLUDE =
+  TRIANGLELIB =
+  TRIANGLELIBDIR =
+  TRIANGLELD =
+  TRIANGLESRC = triangulate-notriangle.c
+endif	
+
+ifneq ($(PARMETISHOME),)
+  PARMETISINCLUDE = -I$(PARMETISHOME)/ParMETISLib
+  PARMETISLIB = $(PARMETISHOME)/libparmetis.a $(PARMETISHOME)/libmetis.a
+  PARMETISLIBDIR = -L$(PARMETISHOME)
+  PARMETISLD = -lparmetis -lmetis 
+  PARMETISSRC = partition.c
+else
+  PARMETISINCLUDE =
+  PARMETISLIB =
+  PARMETISLIBDIR =
+  PARMETISLD =
+  PARMETISSRC = partition-noparmetis.c
+endif
 
 LD = $(CC) 
-LDFLAGS = -lparmetis -lmetis -lm $(LIBDIR) $(PARMETISLIB) $(TRIANGLELIB)
-INCLUDES = -I$(PARMETISHOME)/ParMETISLib -I$(TRIANGLEHOME)
+LIBS = $(PARMETISLIB) $(TRIANGLELIB)
+LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR)
+LDFLAGS = -lm $(LIBDIR) $(LIBS)
+INCLUDES = $(PARMETISINCLUDE) $(TRIANGLEINCLUDE)
 CFLAGS = $(OPTFLAGS) $(INCLUDES)
 
 EXEC = sun
@@ -32,7 +57,7 @@ PEXEC = sunplot
 DEPFLAGS = -Y
 
 SRCS = mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
-	turbulence.c boundaries.c triangulate.c
+	turbulence.c boundaries.c $(TRIANGLESRC) $(PARMETISSRC)
 OBJS = $(SRCS:.c=.o)
 
 PLOTSRCS = sunplot.c fileio.c
