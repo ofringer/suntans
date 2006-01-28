@@ -1,8 +1,17 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.14 2005-07-11 20:12:58 fringer Exp $
+ * $Id: phys.h,v 1.15 2006-01-28 02:06:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.14  2005/07/11 20:12:58  fringer
+ * Added output files for eddy viscosity and scalar diffusivity when
+ * turbmodel is 1 in suntans.dat.  The files in suntans.dat are specified
+ * by
+ * EddyViscosityFile
+ * ScalarDiffusivityFile
+ * This required the addition of EddyViscosityFID and ScalarDiffusivityFID
+ * to the propT struct.
+ *
  * Revision 1.13  2005/04/01 20:51:28  fringer
  * Added new variables that are used to specify the partially clamped
  * boundary condition.
@@ -175,5 +184,6 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
 		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot);
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
+REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind);
 
 #endif
