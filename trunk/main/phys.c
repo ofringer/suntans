@@ -6,8 +6,19 @@
  * --------------------------------
  * This file contains physically-based functions.
  *
- * $Id: phys.c,v 1.99 2005-12-02 22:51:38 fringer Exp $
+ * $Id: phys.c,v 1.100 2006-01-28 02:06:08 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.99  2005/12/02 22:51:38  fringer
+ * Fixed cgsolve so that bc of type 3 works.  This involved changes
+ * to CGSolve().  Also:
+ *
+ * 1) Added send/recv of computevelocityvectors since this was
+ * creating some problems for the Coriolis terms.
+ * 2) Fixed scalar transport when wetting/drying are used so that
+ * the flux-face height is computed using the Upwind function.  This
+ * enforces strict consistency with continuity since the free-surface
+ * flux-face heights are computed with the Upwind function.
+ *
  * Revision 1.98  2005/10/28 23:46:38  fringer
  * Modified the InterpToFace function so that it performs upwinding
  * when the triangle is a right triangle.
@@ -784,8 +795,6 @@ static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, ph
 static void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop);
 static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
 			  MPI_Comm comm);
-static int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
-static void Progress(propT *prop, int myproc);
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc);
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 			     int myproc, int numprocs, MPI_Comm comm);
@@ -1396,6 +1405,23 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
 }
 
 /*
+ * Function: DepthFromDZ
+ * Usage: z = DepthFromDZ(grid,phys,i,k);
+ * --------------------------------------
+ * Return the depth beneath the free surface at location i, k.
+ *
+ */
+REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind) {
+  int k;
+  REAL z = phys->h[i]-0.5*grid->dzz[i][grid->ctop[i]];
+  for(k=grid->ctop[i];k<kind;k++) {
+    z-=0.5*grid->dzz[i][k-1];
+    z-=0.5*grid->dzz[i][k];
+  }
+  return z;
+}
+
+/*
  * Function: Solve
  * Usage: Solve(grid,phys,prop,myproc,numprocs,comm);
  * --------------------------------------------------
@@ -1453,8 +1479,9 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       if(prop->newcells) NewCells(grid,phys,prop);
       ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
 
+      blowup = CheckDZ(grid,phys,prop,myproc,numprocs,comm);
       // Compute vertical momentum and the nonhydrostatic pressure
-      if(prop->nonhydrostatic) {
+      if(prop->nonhydrostatic && !blowup) {
 
 	// Predicted vertical velocity field is in phys->w
 	WPredictor(grid,phys,prop,myproc,numprocs,comm);
@@ -1516,7 +1543,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     // Output progress
     Progress(prop,myproc);
     // Check whether or not run is blowing up
-    blowup=Check(grid,phys,prop,myproc,numprocs,comm);
+    blowup=(Check(grid,phys,prop,myproc,numprocs,comm) || blowup);
     // Output data based on ntout specified in suntans.dat
     OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
 
@@ -2496,7 +2523,7 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
     eps=eps0=InnerProduct3(r,r,grid,myproc,numprocs,comm);
   else
     eps=eps0=alpha0;
-  
+
   // Iterate until residual is less than prop->qepsilon
   for(n=0;n<niters && eps!=0;n++) {
 
@@ -3916,110 +3943,6 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
 }
 
 /*
- * Function: Check
- * Usage: Check(grid,phys,prop,myproc,numprocs,comm);
- * --------------------------------------------------
- * Check to make sure the run isn't blowing up.
- *
- */    
-static int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
-{
-  int i, k, icu, kcu, icw, kcw, Nc=grid->Nc, Ne=grid->Ne, ih, is, ks, iu, ku;
-  int uflag=1, sflag=1, hflag=1, myalldone, alldone;
-  REAL C, CmaxU, CmaxW;
-
-  icu=kcu=icw=kcw=ih=is=ks=iu=ku=0;
-
-  for(i=0;i<Nc;i++) 
-    if(phys->h[i]!=phys->h[i]) {
-	hflag=0;
-	ih=i;
-	break;
-    }
-
-  for(i=0;i<Nc;i++) {
-    for(k=0;k<grid->Nk[i];k++)
-      if(phys->s[i][k]!=phys->s[i][k]) {
-	sflag=0;
-	is=i;
-	ks=k;
-	break;
-      }
-    if(!sflag)
-      break;
-  }
-
-  for(i=0;i<Ne;i++) {
-    for(k=0;k<grid->Nke[i];k++)
-      if(phys->u[i][k]!=phys->u[i][k]) {
-	uflag=0;
-	iu=i;
-	ku=k;
-	break;
-      }
-    if(!uflag)
-      break;
-  }
-
-  CmaxU=0;
-  for(i=0;i<Ne;i++) 
-    for(k=grid->etop[i]+1;k<grid->Nke[i];k++) {
-      C = fabs(phys->u[i][k])*prop->dt/grid->dg[i];
-      if(C>CmaxU) {
-	icu = i;
-	kcu = k;
-	CmaxU = C;
-      }
-    }
-
-  CmaxW=0;
-  for(i=0;i<Nc;i++) 
-    for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-      C = 0.5*fabs(phys->w[i][k]+phys->w[i][k+1])*prop->dt/grid->dzz[i][k];
-      if(C>CmaxW) {
-	icw = i;
-	kcw = k;
-	CmaxW = C;
-      }
-    }
-
-  myalldone=0;
-  if(!uflag || !sflag || !hflag || CmaxU>prop->Cmax || CmaxW>prop->Cmax) {
-    printf("Time step %d: Processor %d, Run is blowing up!\n",prop->n,myproc);
-    
-    if(CmaxU>prop->Cmax)
-      printf("Courant number problems at (%d,%d), Umax=%f, dx=%f CmaxU=%.2f > %.2f\n",
-	     icu,kcu,phys->u[icu][kcu],grid->dg[icu],CmaxU,prop->Cmax);
-    else if(CmaxW>prop->Cmax)
-      printf("Courant number problems at (%d,%d), Wmax=%f, dz=%f CmaxW=%.2f > %.2f\n",
-	     icw,kcw,0.5*(phys->w[icw][kcw]+phys->w[icw][kcw+1]),grid->dzz[icw][kcw],CmaxW,prop->Cmax);
-    else
-      printf("Courant number is okay: CmaxU=%.2f,CmaxW=%.2f < %.2f\n",CmaxU,CmaxW,prop->Cmax);
-
-    if(!uflag)
-      printf("U is divergent at (%d,%d)\n",iu,ku);
-    else
-      printf("U is okay.\n");
-    if(!sflag) 
-      printf("Scalar is divergent at (%d,%d).\n",is,ks);
-    else
-      printf("Scalar is okay.\n");
-    if(!hflag)
-      printf("Free-surface is divergent at (%d)\n",ih);
-    else
-      printf("Free-surface is okay.\n");
-    
-    OutputData(grid,phys,prop,myproc,numprocs,1,comm);
-    myalldone=1;
-  }
-
-  MPI_Reduce(&myalldone,&alldone,1,MPI_INT,MPI_SUM,0,comm);
-  MPI_Bcast(&alldone,1,MPI_INT,0,comm);
-
-  return alldone;
-}
-
-/*
  * Function: ComputeVelocityVector
  * Usage: ComputeVelocityVector(u,uc,vc,grid);
  * -------------------------------------------
@@ -4521,38 +4444,6 @@ void OpenFiles(propT *prop, int myproc)
 }
 
 /*
- * Function: Progress
- * Usage: Progress(prop,myproc);
- * -----------------------------
- * Output the progress of the calculation to the terminal.
- *
- */
-static void Progress(propT *prop, int myproc) 
-{
-  int progout, prog;
-  char filename[BUFFERLENGTH];
-  FILE *fid;
-  
-  MPI_GetFile(filename,DATAFILE,"ProgressFile","Progress",myproc);
-
-  if(myproc==0) {
-    fid = fopen(filename,"w");
-    fprintf(fid,"On %d of %d, t=%.2f (%d%% Complete, %d output)",
-	    prop->n,prop->nstart+prop->nsteps,prop->rtime,100*(prop->n-prop->nstart)/prop->nsteps,
-	    1+(prop->n-prop->nstart)/prop->ntout);
-    fclose(fid);
-  }
-
-  if(myproc==0 && prop->ntprog>0 && VERBOSE>0) {
-    progout = (int)(prop->nsteps*(double)prop->ntprog/100);
-    prog=(int)(100.0*(double)(prop->n-prop->nstart)/(double)prop->nsteps);
-    if(progout>0)
-      if(!(prop->n%progout))
-	printf("%d%% Complete.\n",prog);
-  }
-}
-
-/*
  * Function: InterpToFace
  * Usage: uface = InterpToFace(j,k,phys->uc,u,grid);
  * -------------------------------------------------
@@ -4582,3 +4473,5 @@ static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid) {
   else    
     return (phi[nc1][k]*def2+phi[nc2][k]*def1)/(def1+def2);
 }
+
+
