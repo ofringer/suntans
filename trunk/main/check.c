@@ -130,7 +130,7 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
 
       printf("Vertical Courant number problems:\n");
       printf("  Grid indices: i=%d k=%d\n", icw, kcw);
-      printf("  Location: x=%.3e, y=$.3e, z=%.3e\n",grid->xv[icw],grid->yv[icw],DepthFromDZ(grid,phys,icw,kcw));
+      printf("  Location: x=%.3e, y=%.3e, z=%.3e\n",grid->xv[icw],grid->yv[icw],DepthFromDZ(grid,phys,icw,kcw));
       printf("  Wmax = %.3e (located half-way between faces)\n",0.5*(phys->w[icw][kcw]+phys->w[icw][kcw+1]));
       printf("  Vertical grid spacing dz = %.3e\n",icu,grid->dzz[icw][kcw]);
       printf("  Vertical Courant number is CmaxW = %.2f.\n",CmaxW);
