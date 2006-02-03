@@ -183,7 +183,7 @@ int CheckDZ(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI
   iw=kw=iz=kz=0;
 
   for(i=0;i<Nc;i++) {
-    for(k=grid->ctop[i];k<=grid->Nk[i];k++)
+    for(k=grid->ctop[i];k<grid->Nk[i];k++)
       if(grid->dzz[i][k]<=0) {
 	zflag=0;
 	iz=i;
