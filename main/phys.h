@@ -1,8 +1,19 @@
 /*
  * Header file for phys.c
  *
- * $Id: phys.h,v 1.15 2006-01-28 02:06:08 fringer Exp $
+ * $Id: phys.h,v 1.16 2006-03-06 18:34:40 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.15  2006/01/28 02:06:08  fringer
+ * Removed the Check() and CheckDZ() functions, as well as the Progress()
+ * functions, and placed them into check.c.  The Check functions have
+ * been rewritten to give much more detail with regard to blowups.
+ * The CheckDZ function checks for zero cell heights and if the free
+ * surface crosses over cell boundaries when wetdry=0.  In this case
+ * the code exits.
+ *
+ * Also added the DepthFromDZ function, which returns the depth at
+ * a given i,k index.
+ *
  * Revision 1.14  2005/07/11 20:12:58  fringer
  * Added output files for eddy viscosity and scalar diffusivity when
  * turbmodel is 1 in suntans.dat.  The files in suntans.dat are specified
@@ -150,6 +161,20 @@ typedef struct _physT {
   REAL *c;
   REAL *d;
 
+  // Horizontal facial scalar
+  REAL **SfHp;
+  REAL **SfHm;
+
+  //Define variables for TVD schemes
+  REAL *Cp;
+  REAL *Cm;
+  REAL *rp;
+  REAL *rm;
+  REAL *wp;
+  REAL *wm;
+  REAL **gradSx;
+  REAL **gradSy; 
+
 } physT;
 
 /*
@@ -161,7 +186,8 @@ typedef struct _propT {
     thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
     dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f;
   int ntout, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, qprecond, volcheck, masscheck,
-    nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel;
+    nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
+    TVD, horiTVD, vertTVD;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
     *SalinityFID, *BGSalinityFID, *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
     *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;
@@ -180,9 +206,6 @@ void InitializeVerticalGrid(gridT **grid);
 void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc);
 void OpenFiles(propT *prop, int myproc);
 void ReadProperties(propT **prop, int myproc);
-void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
-		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
-		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot);
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
 REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind);
 

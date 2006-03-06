@@ -8,6 +8,7 @@
  *
  */
 #ifndef _check_h
+#define _check_h
 
 #include "grid.h"
 #include "phys.h"

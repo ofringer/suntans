@@ -6,8 +6,11 @@
  * --------------------------------
  * This file contains utility functions for array operations.
  *
- * $Id: util.c,v 1.4 2004-09-15 01:19:30 fringer Exp $
+ * $Id: util.c,v 1.5 2006-03-06 18:34:40 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.4  2004/09/15 01:19:30  fringer
+ * Added the Min function which is used in turbulence.c
+ *
  * Revision 1.3  2004/05/29 20:25:02  fringer
  *  Revision before converting to CVS.
  *
@@ -151,7 +154,7 @@ int IsNan(REAL x)
   return 0;
 }
 
-static REAL Max(REAL x1, REAL x2)
+REAL Max(REAL x1, REAL x2)
 {
   if(x2>x1)
     return x2;
