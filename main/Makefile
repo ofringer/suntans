@@ -10,7 +10,7 @@
 include Makefile.in
 
 CC = $(MPIHOME)/bin/mpicc
-OPTFLAGS = -O2 -Wall
+OPTFLAGS = -O2
 
 XLDFLAGS=-lX11 -lm
 XINC=/usr/X11R6/include
