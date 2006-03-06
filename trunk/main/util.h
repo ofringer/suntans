@@ -1,8 +1,11 @@
 /*
  * Header file for util.c
  *
- * $Id: util.h,v 1.5 2004-09-22 06:31:59 fringer Exp $
+ * $Id: util.h,v 1.6 2006-03-06 18:34:40 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.5  2004/09/22 06:31:59  fringer
+ * Added the Min function.
+ *
  * Revision 1.4  2004/06/15 18:36:33  fringer
  * Changed definition of Max to static.
  *
@@ -34,7 +37,7 @@ void TriSolve(REAL *a, REAL *b, REAL *c, REAL *d, REAL *u, int N);
 int IsNan(REAL x);
 REAL UpWind(REAL u, REAL dz1, REAL dz2);
 void Copy(REAL **from, REAL **to, gridT *grid);
-static REAL Max(REAL x1, REAL x2);
+REAL Max(REAL x1, REAL x2);
 REAL Min(REAL x, REAL y);
 
 #endif

@@ -10,7 +10,7 @@
 include Makefile.in
 
 CC = $(MPIHOME)/bin/mpicc
-OPTFLAGS = -O2
+OPTFLAGS = -O2 -Wall
 
 XLDFLAGS=-lX11 -lm
 XINC=/usr/X11R6/include
@@ -57,7 +57,7 @@ PEXEC = sunplot
 DEPFLAGS = -Y
 
 SRCS = mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
-	turbulence.c boundaries.c check.c $(TRIANGLESRC) $(PARMETISSRC)
+	turbulence.c boundaries.c check.c scalars.c tvd.c $(TRIANGLESRC) $(PARMETISSRC)
 OBJS = $(SRCS:.c=.o)
 
 PLOTSRCS = sunplot.c fileio.c

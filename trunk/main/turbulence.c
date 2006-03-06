@@ -2,8 +2,12 @@
  * File: turbulence.c
  * Description:  Contains the Mellor-Yamad level 2.5 turbulence model.
  *
- * $Id: turbulence.c,v 1.9 2005-12-02 22:56:56 fringer Exp $
+ * $Id: turbulence.c,v 1.10 2006-03-06 18:34:40 fringer Exp $
  * $Log: not supported by cvs2svn $
+ * Revision 1.9  2005/12/02 22:56:56  fringer
+ * Fixed bug found by Ed Gross for BCs for q2.  Cd was being multiplied
+ * by uc^2 and not (uc^2 + vc^2).
+ *
  * Revision 1.8  2005/10/31 05:48:35  fringer
  * Set turb quantities nuT, kappaT, q, and l to zero in
  * dry cells.
@@ -69,6 +73,7 @@
 #include "util.h"
 #include "turbulence.h"
 #include "boundaries.h"
+#include "scalars.h"
 
 // Local function
 static void StabilityFunctions(REAL *Sm, REAL *Sh, REAL Gh, REAL A1, REAL A2, REAL B1, REAL B2, REAL C1);
