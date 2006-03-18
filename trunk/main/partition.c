@@ -1,10 +1,12 @@
 /*
  * File: partition.c
- * Author: Oliver Fringer
+ * Author: Oliver B. Fringer
  * Institution: Stanford University
- * Date: 12/30/05
  * --------------------------------
  * This file contains functions that use the ParMetis libraries
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "partition.h"

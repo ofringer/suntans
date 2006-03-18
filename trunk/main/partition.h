@@ -1,5 +1,12 @@
 /*
- * Header file for partition.c
+ * File: partition.h
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Header file for partition.c.
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #ifndef _partition_h

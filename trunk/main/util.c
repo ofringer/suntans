@@ -1,25 +1,12 @@
 /*
  * File: util.c
- * Author: Oliver Fringer
+ * Author: Oliver B. Fringer
  * Institution: Stanford University
- * Date: 10/16/02
  * --------------------------------
  * This file contains utility functions for array operations.
  *
- * $Id: util.c,v 1.5 2006-03-06 18:34:40 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.4  2004/09/15 01:19:30  fringer
- * Added the Min function which is used in turbulence.c
- *
- * Revision 1.3  2004/05/29 20:25:02  fringer
- *  Revision before converting to CVS.
- *
- * Revision 1.2  2003/04/26 14:23:39  fringer
- * Changed the large number to INFTY, which is defined in suntans.h
- *
- * Revision 1.1  2002/11/03 00:23:27  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "grid.h"

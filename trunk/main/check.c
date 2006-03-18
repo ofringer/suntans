@@ -1,11 +1,13 @@
 /*
  * File: check.c
- * Author: Oliver Fringer
+ * Author: Oliver B. Fringer
  * Institution: Stanford University
- * Date: 01/27/06 (Mozart's 250th birthday)
- * ----------------------------------------
+ * --------------------------------
  * This file contains functions that check for instability or
  * wetting and drying problems.
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "check.h"

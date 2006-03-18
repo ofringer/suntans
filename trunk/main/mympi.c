@@ -1,28 +1,12 @@
 /*
  * File: mympi.c
- * Author: Oliver Fringer
+ * Author: Oliver B. Fringer
  * Institution: Stanford University
- * Date: 09/30/02
  * --------------------------------
  * This file contains mpi-based functions.
  *
- * $Id: mympi.c,v 1.5 2005-04-01 20:57:07 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.4  2004/05/29 20:25:02  fringer
- * Revision before converting to CVS.
- *
- * Revision 1.3  2003/06/10 03:21:03  fringer
- * Added MPI_GetFile which extracts either the full pathname or the
- * relative path from suntans.dat and uses the DATADIR global character
- * array as the directory.
- *
- * Revision 1.2  2003/04/29 16:37:23  fringer
- * Added MPI_FOPen as well as MPI_GetSize so that mpi exits cleanly when
- * files are not found.
- *
- * Revision 1.1  2002/11/03 00:21:16  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include <errno.h>

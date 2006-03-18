@@ -1,16 +1,12 @@
 /*
  * File: fileio.h
- * --------------
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
  * Header file for fileio.c.
  *
- * $Id: fileio.h,v 1.3 2004-05-29 20:25:02 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.2  2003/05/01 00:33:15  fringer
- * Added prototype for MyFOpen.
- *
- * Revision 1.1  2002/11/03 00:20:27  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #ifndef _fileio_h

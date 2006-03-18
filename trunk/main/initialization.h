@@ -1,16 +1,12 @@
 /*
- * File: initialization.h
- * Description: Header file for initialization.c
+ * File: initialization.c
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Header file for initialization.c.
  *
- * $Id: initialization.h,v 1.3 2004-05-29 20:25:02 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.2  2003/05/12 00:19:51  fringer
- * Added REAL d to the ReturnFreeSurface function so that the depth
- * can be used to initialize the free surface
- *
- * Revision 1.1  2003/04/29 00:23:33  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #ifndef _initialization_h

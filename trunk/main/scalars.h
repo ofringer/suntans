@@ -1,10 +1,12 @@
 /*
  * File: scalars.h
- * Author: Oliver Fringer
+ * Author: Oliver B. Fringer
  * Institution: Stanford University
- * Date: 03/06/06 
  * ----------------------------------------
- * Header file for scalars.c
+ * Header file for scalars.c.
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #ifndef _scalars_h

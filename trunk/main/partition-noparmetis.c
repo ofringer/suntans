@@ -1,11 +1,13 @@
 /*
  * File: partition-noparmetis.c
- * Author: Oliver Fringer
+ * Author: Oliver B. Fringer
  * Institution: Stanford University
- * Date: 12/30/05
  * --------------------------------
  * This file contains functions that are defined when there are no parmetis
  * libraries present.
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "suntans.h"
