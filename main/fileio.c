@@ -1,23 +1,12 @@
 /*
  * File: fileio.c
- * --------------
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
  * Contains helper functions for opening and reading data from a file.
  *
- * $Id: fileio.c,v 1.4 2004-05-29 20:25:02 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.3  2003/05/07 15:18:33  fringer
- * Changed GetValue so that it uses MyFOpen.
- * Also changed if(errno) to if(!fid) in MyFOpen since it gives a
- * "resource temporarily unavailable" error when multiple processors try
- * and access the same file at the same time.
- *
- * Revision 1.2  2003/04/29 16:38:00  fringer
- * Added MyFOpen which uses errno error codes and exits when fopen
- * encounters an error.
- *
- * Revision 1.1  2002/11/03 00:19:53  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include <stdio.h>

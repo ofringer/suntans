@@ -1,8 +1,12 @@
 /*
- * Header file for triangulate.c
+ * File: triangulate.h
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Header file for triangulate.c.
  *
- * $Id: triangulate.h,v 1.1 2004-05-29 20:25:02 fringer Exp $
- * $Log: not supported by cvs2svn $
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #ifndef _triangulate_h

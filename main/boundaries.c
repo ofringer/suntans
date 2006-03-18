@@ -1,63 +1,12 @@
 /*
  * File: boundaries.c
- * Author: Oliver Fringer
+ * Author: Oliver B. Fringer
  * Institution: Stanford University
- * Date: 03/11/04
  * --------------------------------
  * This file contains functions to impose the boundary conditions on u.
  *
- * $Id: boundaries.c,v 1.12 2005-04-01 22:38:33 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.11  2005/04/01 22:17:47  fringer
- * Added functions to implement the open boundary condition via
- * specification of the free-surface.
- *
- * Revision 1.10  2004/11/20 22:28:40  fringer
- * Changed the GetBoundaryVelocity function so that the default is to
- * force the M2/K1 barotropic tides at x=0 (the Monterey Bay test case).
- *
- * Revision 1.9  2004/09/30 21:01:14  fringer
- * Added the GetBoundaryVelococity function, which separates code input
- * by the user from the open boundary implementation.  This function
- * only sets the velocity at the boundary based on geometry and
- * time, which are inputs to the function.  The user sets ub0, the
- * barotropic velocity magnitude, and forced.  If *forced==1, then
- * this is a clamped-free condition, while if *forced==0, this
- * is a free open boundary condition.
- *
- * Revision 1.8  2004/09/27 01:28:15  fringer
- * Changed the open boundary condition so that the user needs to specify c0 and
- * c1, the surface and internal wave speeds at the boundary.  c0 is set to
- * sqrt(gH), while c1 must be computed with a modal analysis function and
- * extracting the speed of the first mode.
- *
- * In this boundary condition implementation, the barotropic velocity field
- * is first updated and then the baroclinic velocity is updated.  As it
- * stands the barotropic velocity is clamped (not clamped-free) while the
- * baroclinic velocity is free.
- *
- * Revision 1.7  2004/07/27 20:31:13  fringer
- * Added SetBoundaryScalars function, which allows the specification of
- * the salinity or temperature on the boundaries.
- *
- * Revision 1.6  2004/06/23 06:20:36  fringer
- * This is the form of boundaries.c used to force the Monterey Bay run
- * over the Spring-Neap cycle.
- *
- * Revision 1.5  2004/06/17 02:53:58  fringer
- * Added river plume forcing code.
- *
- * Revision 1.4  2004/06/15 18:24:23  fringer
- * Cleaned up and removed extraneous code used for testing.
- *
- * Revision 1.3  2004/06/13 07:08:57  fringer
- * Changes after testing of open boundaries.  No physical breakthroughs...
- *
- * Revision 1.2  2004/05/29 20:25:02  fringer
- * Revision before converting to CVS.
- *
- * Revision 1.1  2004/03/12 06:21:56  fringer
- * Initial revision
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "boundaries.h"

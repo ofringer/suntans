@@ -1,12 +1,12 @@
 /*
  * File: memory.h
- * Description: Header file for memory.c
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Header file for memory.c.
  *
- * $Id: memory.h,v 1.2 2004-05-29 20:25:02 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.1  2003/04/29 00:10:59  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #ifndef _memory_h

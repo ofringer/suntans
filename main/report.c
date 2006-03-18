@@ -1,33 +1,13 @@
 /*
  * File: report.c
- * Author: Oliver Fringer
+ * Author: Oliver B. Fringer
  * Institution: Stanford University
- * Date: 10/03/02
  * --------------------------------
  * This file contains functions that print out data into
  * files as well as printing for debugging.
  *
- * $Id: report.c,v 1.6 2004-06-26 01:05:54 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.5  2004/05/29 20:25:02  fringer
- * Revision before converting to CVS.
- *
- * Revision 1.4  2003/04/26 14:18:20  fringer
- * Added TRIANGLE option, which allows the user to select -t, which triangulates
- * a point set specified by the file PSLGFILE.
- *
- * Revision 1.3  2003/04/23 03:23:54  fringer
- * Added option to change a variable and override what's in the input file.
- * For example, --nsteps=2, but coding for this is much more difficult than I
- * had thought...
- *
- * Revision 1.2  2003/03/28 11:36:28  fringer
- * Added the ability to use the -a flag, which tells the output data to
- * be printed in ASCII form.
- *
- * Revision 1.1  2002/11/03 00:22:22  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "report.h"

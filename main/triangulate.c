@@ -1,43 +1,12 @@
 /*
  * File: triangulate.c
- * --------------------
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
  * Uses triangle libraries to create a triangulation from a specified file.
  *
- * $Id: triangulate.c,v 1.9 2004-05-29 20:25:02 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.8  2004/01/27 02:08:04  fringer
- * Moved the *infile = MPI_FOpen command back to after the MPI_GetFile
- * command but kept the declaration FILE *infile before i.
- *
- * Revision 1.7  2004/01/27 01:43:27  fringer
- * Moved the FILE *infile=MPI_FOpen line to come before the MPI_GetFile line
- * so that the declaration for FILE * comes before the GetFile command.
- *
- * Revision 1.6  2003/05/12 00:15:07  fringer
- * Changed the string that is passed to triangle when segments are
- * specified in the pslg to include the "p" flag, which tells
- * triangle to preserve the convex hull.  If this is not used then
- * when edge markers are specified in the pslg they may not necessarily
- * be preserved in the final triangulation.
- *
- * Revision 1.5  2003/05/05 01:27:48  fringer
- * Added verbose line to be compatible with grid.c.
- *
- * Revision 1.4  2003/05/02 23:07:39  fringer
- * Cleaned up options passed to triangle function and also allowed
- * for input PSLG file without any segments, which requires the c
- * option to triangle.
- *
- * Revision 1.3  2003/04/29 16:39:07  fringer
- * Added MPI_FOPen in place of fopen.
- *
- * Revision 1.2  2003/04/29 00:16:27  fringer
- * Fixed VERBOSE>0 line to include myproc==0, which required a redefinition
- * of the function prototype for triangulate.
- *
- * Revision 1.1  2003/04/26 14:20:18  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "suntans.h"

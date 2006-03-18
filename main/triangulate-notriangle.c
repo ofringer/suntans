@@ -1,7 +1,13 @@
 /*
  * File: triangulate-notriangle.c
- * ------------------------------
- * Returns an error if the -t option is used when the triangle libraries are not installed.
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Returns an error if the -t option is used when the triangle libraries are 
+ * not installed.
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "suntans.h"

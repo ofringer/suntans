@@ -1,50 +1,13 @@
 /*
  * File: initialization.c
- * Description:  This file contains the functions that are used
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Contains the functions that are used
  * to initialize the depth, free-surface, and salinity.
  *
- * $Id: initialization.c,v 1.12 2004-09-27 00:52:48 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.11  2004/09/15 02:00:57  fringer
- * Cleaned up this file so that it only contains initialization for
- * an idealized shelf break.
- *
- * Revision 1.10  2004/07/22 20:24:52  fringer
- * Added initial sech^2 solitary waves of depsression to simulate transbasin
- * solitary waves.
- *
- * Revision 1.9  2004/06/23 05:24:44  fringer
- * Committing as a test since fringer is not a writer.
- *
- * Revision 1.8  2004/06/17 02:54:53  fringer
- * Added new Monterey density field which uses the swstate m-file to obtain
- * the density from salinity and temperature.
- *
- * Revision 1.7  2004/06/15 18:24:40  fringer
- * Cleaned up and removed extraneous code for testing.
- *
- * Revision 1.6  2004/06/14 07:56:41  fringer
- * Changes made during debugging.
- *
- * Revision 1.5  2004/06/01 04:31:29  fringer 
- * Initialization for entrainment problem:
- * D = 2 m when x>4 & x<7, 1 m otherwise
- * s -> -.005*tanh((x-3)/.01), +.01 for s<-1
- *
- * Revision 1.4  2004/05/31 06:59:33  fringer
- * Added vertical diffusion of scalar.  Left in Ftop and Fbot
- * as commented out terms.  These are where top and bottom diffusive
- * fluxes are included.
- *
- * Revision 1.3  2004/05/29 20:25:02  fringer
- * Revision before converting to CVS.
- *
- * Revision 1.2  2003/04/29 00:19:22  fringer
- * Added all initialization functions.
- *
- * Revision 1.1  2003/04/26 14:16:59  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "math.h"

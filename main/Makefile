@@ -7,6 +7,8 @@
 #
 # Need to define appropriate directories in Makefile.in first!
 #
+# Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior University. All Rights Reserved.
+#
 include Makefile.in
 
 CC = $(MPIHOME)/bin/mpicc
@@ -93,13 +95,17 @@ report.o: report.h grid.h suntans.h fileio.h mympi.h
 util.o: grid.h suntans.h fileio.h mympi.h util.h
 fileio.o: fileio.h
 phys.o: suntans.h phys.h grid.h fileio.h mympi.h util.h initialization.h
-phys.o: memory.h turbulence.h boundaries.h
+phys.o: memory.h turbulence.h boundaries.h check.h scalars.h
 suntans.o: suntans.h mympi.h fileio.h grid.h phys.h report.h
 initialization.o: fileio.h suntans.h initialization.h
 memory.o: memory.h
 turbulence.o: phys.h suntans.h grid.h fileio.h mympi.h util.h turbulence.h
-turbulence.o: boundaries.h
+turbulence.o: boundaries.h scalars.h
 boundaries.o: boundaries.h suntans.h phys.h grid.h fileio.h mympi.h
-triangulate.o: suntans.h mympi.h fileio.h grid.h triangulate.h
+check.o: check.h grid.h suntans.h fileio.h mympi.h phys.h
+scalars.o: scalars.h suntans.h grid.h fileio.h mympi.h phys.h util.h tvd.h
+tvd.o: suntans.h phys.h grid.h fileio.h mympi.h tvd.h util.h
+triangulate-notriangle.o: suntans.h mympi.h fileio.h grid.h
+partition-noparmetis.o: suntans.h partition.h grid.h fileio.h mympi.h
 sunplot.o: suntans.h fileio.h
 fileio.o: fileio.h

@@ -1,11 +1,13 @@
-/* 
+/*
  * File: tvd.c
- * Author: Zhonghua Zhang
+ * Author: Zhonghua Zhang and Oliver B. Fringer
  * Institution: Stanford University
- * Date: 07/07/05
  * --------------------------------
- * This file contains scalar-computing functions
- * 
+ * This file contains the TVD scalar-computing functions.
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
+ *
  */
 #include "suntans.h"
 #include "phys.h"

@@ -1,17 +1,12 @@
 /*
- * Header file for boundaries.c
+ * File: boundaries.h
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Header file for boundaries.c.
  *
- * $Id: boundaries.h,v 1.4 2005-04-01 22:39:35 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.3  2004/07/27 20:36:28  fringer
- * Added SetBoundaryScalars function prototype.
- *
- * Revision 1.2  2004/05/29 20:25:02  fringer
- * Revision before converting to CVS.
- *
- * Revision 1.1  2004/03/12 06:22:13  fringer
- * Initial revision
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #ifndef _boundaries_h

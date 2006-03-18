@@ -1,69 +1,12 @@
 /*
  * File: turbulence.c
- * Description:  Contains the Mellor-Yamad level 2.5 turbulence model.
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Contains the Mellor-Yamada level 2.5 turbulence model.
  *
- * $Id: turbulence.c,v 1.10 2006-03-06 18:34:40 fringer Exp $
- * $Log: not supported by cvs2svn $
- * Revision 1.9  2005/12/02 22:56:56  fringer
- * Fixed bug found by Ed Gross for BCs for q2.  Cd was being multiplied
- * by uc^2 and not (uc^2 + vc^2).
- *
- * Revision 1.8  2005/10/31 05:48:35  fringer
- * Set turb quantities nuT, kappaT, q, and l to zero in
- * dry cells.
- *
- * Revision 1.7  2005/10/28 23:44:07  fringer
- * Fixed the following bugs:
- * 1) when pow was used it was truncating since pow(x,1/3) truncates
- * to pow(x,0)=1, so changed it to pow(x,1.0/3.0), which fixed the
- * calculation of Sm and Sh to produce the correct values and hence
- * reduce the eddy-viscosity to its correct value.
- * 2) Set the length scale to its background value of LBACKGROUND
- * which is defined in turbulence.h.
- *
- * Revision 1.6  2005/07/06 00:28:56  fringer
- * Fixed a bug in which the buoyancy frequency was being set at
- * N[grid->Nk[i]] even though that cell is never used.  Changed this
- * to set N at grid->ctop[i] since this was not being set before and
- * was causing the wetting/drying test to blow up.
- *
- * Revision 1.5  2005/04/01 20:55:23  fringer
- * Changed thetaQ to 1.0 instead of 0.75 since 0.75 is not always stable.
- *
- * Added the ability to specify incoming turbulence quantities.  Right now
- * they are set so that there is no gradient on the turbulent quantitites
- * for boundary_flag values of open or not open.  In order to change this
- * the code must be changed in the loops that loop over edgedist[4] to
- * edgedist[5].
- *
- * Also changed the (completely ad-hoc) initialization of the turbulent
- * length scale so that it grows for the first 30 time steps instead of
- * the first 3.
- *
- * Revision 1.4  2004/09/27 01:04:31  fringer
- * Removed functions that opened up files for printing out debugging profiles.
- *
- * Also changed i loops so that they contain all points instead of only
- * compuational cells (i.e. i=0;i<grid->Nc instead of iptr=celldist[0];iptr<celldist[1])
- * Because this does not require a send/recv call but instead incurs slightly
- * more computational overhead.
- *
- * Also corrected a bug which used the iplot variable instead of i.
- *
- * Revision 1.3  2004/09/22 06:29:33  fringer
- * Latest version of my25 function with several changes.  The previous
- * version was checked in too soon and was not yet working properly.
- *
- * Revision 1.2  2004/09/15 01:10:47  fringer
- * Added MY25 but it seems to have problems predicting the log layer
- * correctly for a channel flow.  For some reason the velocity is
- * underpredicted by the code because the eddy viscosity is overpredicted
- * when compared to its theoretical value.
- *
- * Revision 1.1  2004/09/13 04:14:36  fringer
- * Contains functions that compute the eddy viscosity and scalar
- * diffusivity.
- *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
  *
  */
 #include "math.h"
