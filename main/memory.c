@@ -27,23 +27,20 @@
  * variable TotSpace.
  *
  */
-void *SunMalloc(const int bytes, const char *function) {
+void *SunMalloc(const unsigned bytes, const char *function) {
   void *ptr = malloc(bytes);
 
-  //VerboseMemory=1;
-
-  if(TotSpace==-1)
-    TotSpace=0;
+  //  VerboseMemory=1;
 
   if(ptr==NULL) {
     printf("Error.  Out of memory!\n");
-    printf("Total memory: %d, attempted to allocate: %d in function %s\n",
+    printf("Total memory: %u, attempted to allocate: %u in function %s\n",
 	   TotSpace,bytes,function);
     exit(1);
   } else {
     TotSpace+=bytes;
     if(VerboseMemory)
-      printf("Allocated %d, Total: %d (%s)\n",
+      printf("Allocated %u, Total: %u (%s)\n",
 	     bytes,TotSpace,function);
     return ptr;
   }
@@ -58,15 +55,18 @@ void *SunMalloc(const int bytes, const char *function) {
  * variable TotSpace.
  *
  */
-void SunFree(void *ptr, const int bytes, const char *function) {
+void SunFree(void *ptr, const unsigned bytes, const char *function) {
   if(ptr==NULL) {
     printf("Error!  Attempting to free a NULL pointer in funciton %s\n",function);
     exit(1);
   } else {
     free(ptr);
-    TotSpace-=bytes;
-    if(VerboseMemory)
-      printf("Freed %d, Total: %d (%s)\n",
-	     bytes,TotSpace,function);
+    if(bytes<=TotSpace) {
+      TotSpace-=bytes;
+      if(VerboseMemory)
+	printf("Freed %u, Total: %u (%s)\n",
+	       bytes,TotSpace,function);
+    } else if(VerboseMemory)
+      printf("Warning! Negative TotSpace!\n");
   }
 }
