@@ -12,7 +12,8 @@
 #ifndef _memory_h
 #define _memory_h
 
-int TotSpace, VerboseMemory;
+unsigned TotSpace;
+int VerboseMemory;
 
 /*
  * Function: SunMalloc
@@ -23,7 +24,7 @@ int TotSpace, VerboseMemory;
  * variable TotSpace.
  *
  */
-void *SunMalloc(const int bytes, const char *function);
+void *SunMalloc(const unsigned bytes, const char *function);
 
 /*
  * Function: SunFree
@@ -34,6 +35,6 @@ void *SunMalloc(const int bytes, const char *function);
  * variable TotSpace.
  *
  */
-void SunFree(void *ptr, const int bytes, const char *function);
+void SunFree(void *ptr, const unsigned bytes, const char *function);
 
 #endif
