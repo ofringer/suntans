@@ -18,6 +18,7 @@
 
 int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
 int CheckDZ(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
-void Progress(propT *prop, int myproc);
+void Progress(propT *prop, int myproc, int numprocs);
+void MemoryStats(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 
 #endif
