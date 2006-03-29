@@ -13,6 +13,8 @@
 #include "check.h"
 #include "suntans.h"
 #include "stdio.h"
+#include "timer.h"
+#include "memory.h"
 
 #define DASHES "----------------------------------------------------------------------\n"
 #define CMAXSUGGEST 0.5
@@ -246,11 +248,13 @@ int CheckDZ(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI
  * Output the progress of the calculation to the terminal.
  *
  */
-void Progress(propT *prop, int myproc) 
+void Progress(propT *prop, int myproc, int numprocs) 
 {
   int progout, prog;
   char filename[BUFFERLENGTH];
   FILE *fid;
+  REAL timeperstep = (Timer()-t_start)/(prop->n-prop->nstart);
+  REAL t_sim, t_rem;
   
   MPI_GetFile(filename,DATAFILE,"ProgressFile","Progress",myproc);
 
@@ -261,14 +265,74 @@ void Progress(propT *prop, int myproc)
 	    1+(prop->n-prop->nstart)/prop->ntout);
     fclose(fid);
   }
-
+  
   if(myproc==0 && prop->ntprog>0 && VERBOSE>0) {
     progout = (int)(prop->nsteps*(double)prop->ntprog/100);
     prog=(int)(100.0*(double)(prop->n-prop->nstart)/(double)prop->nsteps);
     if(progout>0)
       if(!(prop->n%progout))
-	printf("%d%% Complete.\n",prog);
+	printf("%d%% Complete. %.2e s/step; %.2f s remaining.\n",
+	       prog,timeperstep,timeperstep*(prop->nsteps+prop->nstart-prop->n));
+    if(prop->n==prop->nsteps+prop->nstart) {
+      t_sim = Timer()-t_start;
+      t_rem = t_sim-t_nonhydro-t_predictor-t_source-t_transport-t_turb-t_io-t_check;
+
+      printf("Total simulation time: %.2f s\n",t_sim);
+      printf("Average per time step: %.2e s\n",t_sim/prop->nsteps);
+      printf("Timing Summary:\n");
+      if(prop->nonhydrostatic)
+	printf("  Nonhydrostatic pressure: %.2f s (%.2f\%)\n",t_nonhydro,
+	       100*t_nonhydro/t_sim);
+      printf("  Free surface and vertical friction: %.2f s (%.2f\%)\n",t_predictor,
+	     100*t_predictor/t_sim);
+      printf("  Explicit terms: %.2f s (%.2f\%)\n",t_source,
+	     100*t_source/t_sim);
+      if(prop->beta || prop->gamma)
+	printf("  Scalar transport: %.2f s (%.2f\%)\n",t_transport,
+	       100*t_transport/t_sim);
+      if(prop->turbmodel)
+	printf("  Turbulence: %.2f s (%.2f\%)\n", t_turb,
+	       100*t_turb/t_sim);
+      printf("  Bounds checking: %.2f s (%.2f\%)\n", t_check,
+	     100*t_check/t_sim);
+      printf("  I/O: %.2f s (%.2f\%)\n", t_io,
+	     100*t_io/t_sim);
+      printf("  Remainder: %.2f s (%.2f\%)\n", t_rem,
+	     100*t_rem/t_sim);
+      if(numprocs>1) {
+	printf("  Communication time: %.2e s\n",t_comm);
+	printf("  Computation/Communication: %.2e\n",(t_sim-t_comm)/t_comm);
+      }
+    }
   }
 }
 
+/*
+ * Function: MemoryStats
+ * Usage: MemoryStats(myproc,numprocs,comm);
+ * -----------------------------------------
+ * Print out statistics on total memory and grid points.
+ *
+ */
+void MemoryStats(gridT *grid, int myproc, int numprocs, MPI_Comm comm) {
+  int i, ncells, allncells;
+  unsigned AllSpace;
+  
+  ncells=0;
+  for(i=0;i<grid->Nc;i++)
+    ncells+=grid->Nk[i];
+
+  MPI_Reduce(&TotSpace,&(AllSpace),1,MPI_INT,MPI_SUM,0,comm);
+  MPI_Bcast(&AllSpace,1,MPI_INT,0,comm);
+  MPI_Reduce(&ncells,&(allncells),1,MPI_INT,MPI_SUM,0,comm);
+  MPI_Bcast(&allncells,1,MPI_INT,0,comm);
+
+  if(numprocs>0)
+    printf("Processor %d,  Total memory: %.2f Mb, %d cells\n",
+	   myproc,TotSpace/(1024*1e3),ncells);
+  if(myproc==0) 
+    printf("All processors: %.2f Mb, %d cells (%d bytes/cell)\n",
+	   AllSpace/(1024*1e3),allncells,
+	   (int)(AllSpace/(REAL)allncells));
+}
 
