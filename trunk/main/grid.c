@@ -15,6 +15,7 @@
 #include "memory.h"
 #include "triangulate.h"
 #include "report.h"
+#include "timer.h"
 
 #define VTXDISTMAX 100
 
@@ -2694,6 +2695,7 @@ void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc,
 			 MPI_Comm comm)
 {
   int n, neigh, neighproc;
+  REAL t0=Timer();
 
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
     neighproc = grid->myneighs[neigh];
@@ -2716,6 +2718,7 @@ void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc,
     for(n=0;n<grid->num_cells_recv[neigh];n++)
       celldata[grid->cell_recv[neigh][n]]=grid->recv[neigh][n];
   }
+  t_comm+=Timer()-t0;
 }
 
 /*
@@ -2730,6 +2733,7 @@ void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc,
 			MPI_Comm comm)
 {
   int k, n, nstart, neigh, neighproc;
+  REAL t0=Timer();
 
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
     neighproc = grid->myneighs[neigh];
@@ -2760,6 +2764,7 @@ void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc,
       nstart+=grid->Nk[grid->cell_recv[neigh][n]];
     }
   }
+  t_comm+=Timer()-t0;
 }
 
 /*
@@ -2774,6 +2779,7 @@ void ISendRecvWData(REAL **celldata, gridT *grid, int myproc,
 		   MPI_Comm comm)
 {
   int k, n, nstart, neigh, neighproc;
+  REAL t0=Timer();
 
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
     neighproc = grid->myneighs[neigh];
@@ -2804,6 +2810,7 @@ void ISendRecvWData(REAL **celldata, gridT *grid, int myproc,
       nstart+=(1+grid->Nk[grid->cell_recv[neigh][n]]);
     }
   }
+  t_comm+=Timer()-t0;
 }
 
 /*
@@ -2818,6 +2825,7 @@ void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
 			MPI_Comm comm)
 {
   int k, n, nstart, neigh, neighproc;
+  REAL t0=Timer();
 
   for(neigh=0;neigh<grid->Nneighs;neigh++) {
     neighproc = grid->myneighs[neigh];
@@ -2849,4 +2857,5 @@ void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
       nstart+=grid->Nke[grid->edge_recv[neigh][n]];
     }
   }
+  t_comm+=Timer()-t0;
 }
