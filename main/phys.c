@@ -19,6 +19,7 @@
 #include "boundaries.h"
 #include "check.h"
 #include "scalars.h"
+#include "timer.h"
 
 /*
  * Private Function declarations.
@@ -726,17 +727,19 @@ REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind) {
 void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
   int i, k, n, blowup=0;
-  extern int TotSpace;
+  REAL t0;
 
   // Compute the initial quantities for comparison to determine conservative properties
   prop->n=0;
   ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
 
-  // Print out memory usage per processor if this is the first time step
-  if(VERBOSE>1) printf("Processor %d,  Total memory: %d Mb\n",myproc,(int)(TotSpace/(1024*1e3)));
-  
+  // Print out memory usage per processor and total memory if this is the first time step
+  if(VERBOSE>1) MemoryStats(grid,myproc,numprocs,comm);
+
   prop->theta0=prop->theta;
 
+  t_start=Timer();
+  t_source=t_predictor=t_nonhydro=t_turb=t_transport=t_io=t_comm=t_check=0;
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
     prop->n = n;
     prop->rtime = (n-1)*prop->dt;
@@ -759,23 +762,33 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
       // Compute the horizontal source term phys->utmp which contains the explicit part
       // or the right hand side of the free-surface equation. 
+      t0=Timer();
       HorizontalSource(grid,phys,prop,myproc,numprocs,comm);
+      t_source+=Timer()-t0;
 
       // Use the explicit part created in HorizontalSource and solve for the free-surface
       // and hence compute the predicted or hydrostatic horizontal velocity field.  Then
       // send and receive the free surface interprocessor boundary data to the neighboring processors.
       // The predicted horizontal velocity is now in phys->u
+      t0=Timer();
       UPredictor(grid,phys,prop,myproc,numprocs,comm);
       ISendRecvCellData2D(phys->h,grid,myproc,comm);
 
       // Adjust the velocity field in the new cells if the newcells variable is set to 1 in
       // suntans.dat.  Once this is done, send the interprocessor u-velocities to the neighboring
       // processors.
-      if(prop->newcells) NewCells(grid,phys,prop);
-      ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
-
+      if(prop->newcells) {
+	NewCells(grid,phys,prop);
+	ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
+      }
+      t_predictor+=Timer()-t0;
+      
+      t0=Timer();
       blowup = CheckDZ(grid,phys,prop,myproc,numprocs,comm);
+      t_check+=Timer()-t0;
+
       // Compute vertical momentum and the nonhydrostatic pressure
+      t0=Timer();
       if(prop->nonhydrostatic && !blowup) {
 
 	// Predicted vertical velocity field is in phys->w
@@ -789,7 +802,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	// phys->stmp contains the source term
 	// phys->stmp3 is used for temporary storage
 	CGSolveQ(phys->qc,phys->stmp,phys->stmp3,grid,phys,prop,myproc,numprocs,comm);
-	
+
 	// Correct the nonhydrostatic velocity field with the nonhydrostatic pressure
 	// correction field phys->stmp2.  This will correct phys->u so that it is now
 	// the volume-conserving horizontal velocity field.  phys->w is not corrected since
@@ -808,22 +821,29 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       }
       // Send/recv the vertical velocity data 
       ISendRecvWData(phys->w,grid,myproc,comm);
+      t_nonhydro+=Timer()-t0;
 
       // Compute the eddy viscosity
+      t0=Timer();
       EddyViscosity(grid,phys,prop,comm,myproc);
+      t_turb+=Timer()-t0;
 
       // Update the salinity only if beta is nonzero in suntans.dat
       if(prop->beta) {
+	t0=Timer();
 	UpdateScalars(grid,phys,prop,phys->s,phys->boundary_s,phys->Cn_R,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->thetaS,
 		      NULL,NULL,NULL,NULL,0,0);
 	ISendRecvCellData3D(phys->s,grid,myproc,comm);
+	t_transport+=Timer()-t0;
       }
 
       // Update the temperature only if gamma is nonzero in suntans.dat
       if(prop->gamma) {
+	t0=Timer();
 	UpdateScalars(grid,phys,prop,phys->T,phys->boundary_T,phys->Cn_T,prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->thetaS,
 		      NULL,NULL,NULL,NULL,0,0);
 	ISendRecvCellData3D(phys->T,grid,myproc,comm);
+	t_transport+=Timer()-t0;
       }
 
       // utmp2 contains the velocity field at time step n, u contains
@@ -835,12 +855,16 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       ISendRecvCellData3D(phys->vc,grid,myproc,comm);
     }
 
-    // Output progress
-    Progress(prop,myproc);
     // Check whether or not run is blowing up
+    t0=Timer();
     blowup=(Check(grid,phys,prop,myproc,numprocs,comm) || blowup);
+    t_check+=Timer()-t0;
     // Output data based on ntout specified in suntans.dat
+    t0=Timer();
     OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
+    t_io+=Timer()-t0;
+    // Output progress
+    Progress(prop,myproc,numprocs);
 
     if(blowup)
       break;
@@ -2307,14 +2331,18 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   //    on the right hand side acting as forcing terms.
   // 3) After b=b-z for the interior points, then need to
   //    set b=0 for the boundary points.
-  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-    i = grid->cellp[iptr];
+  if(grid->celldist[1]!=grid->celldist[2]) {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+      
+      x[i]=0;
+    }
+    ISendRecvCellData2D(x,grid,myproc,comm);
+    OperatorH(x,z,grid,phys,prop);
+  } else
+    for(i=0;i<grid->Nc;i++)
+      z[i]=0;
 
-    x[i]=0;
-  }
-  ISendRecvCellData2D(x,grid,myproc,comm);
-  OperatorH(x,z,grid,phys,prop);
-  
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
 
