@@ -2333,17 +2333,13 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   //    on the right hand side acting as forcing terms.
   // 3) After b=b-z for the interior points, then need to
   //    set b=0 for the boundary points.
-  if(grid->celldist[1]!=grid->celldist[2]) {
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i = grid->cellp[iptr];
-      
-      x[i]=0;
-    }
-    ISendRecvCellData2D(x,grid,myproc,comm);
-    OperatorH(x,z,grid,phys,prop);
-  } else
-    for(i=0;i<grid->Nc;i++)
-      z[i]=0;
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+    
+    x[i]=0;
+  }
+  ISendRecvCellData2D(x,grid,myproc,comm);
+  OperatorH(x,z,grid,phys,prop);
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
