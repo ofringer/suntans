@@ -75,6 +75,15 @@ static int ContainsCharacter(char *string, char c);
  *
  * Omitting the DataLocations variable from suntans.dat ignores all code in this file.
  *
+ * Here is an example of entries in suntans.dat:
+ *
+ * ProfileVariables	default          # Output u, s, s0, and h
+ * DataLocations	dataxy.dat       # dataxy.dat contains column x-y data
+ * ProfileDataFile	profdata.dat     # Information about profiles is in profdata.dat
+ * ntoutProfs		10               # Output profile data every 10 time steps
+ * NkmaxProfs		10               # Only output the top 10 z-levels
+ * numInterpPoints	3                # Output data at the three nearest neighbors to each input point.
+ *
  */
 void InterpData(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int numprocs, int myproc) {
   char filename[BUFFERLENGTH], str[BUFFERLENGTH];
