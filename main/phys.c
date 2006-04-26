@@ -20,6 +20,7 @@
 #include "check.h"
 #include "scalars.h"
 #include "timer.h"
+#include "profiles.h"
 
 /*
  * Private Function declarations.
@@ -862,6 +863,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     // Output data based on ntout specified in suntans.dat
     t0=Timer();
     OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
+    InterpData(grid,phys,prop,comm,numprocs,myproc);
     t_io+=Timer()-t0;
     // Output progress
     Progress(prop,myproc,numprocs);
