@@ -1,8 +1,54 @@
 \section{Downloading and installing SUNTANS}
 
-In order to use SUNTANS, you must also install the message-passing
-interface (MPI), the parallel graph partitioning libraries (ParMetis~\cite{PARMETIS[1998]}),
-the grid generation package Triangle~\cite{TRIANGLE[1996]}.  Instructions for 
+\subsection{Downloading and installing the latest source} \label{sec:download}
+
+To obtain a copy of SUNTANS, download the latest version from the cvs server
+using the directions in Section \ref{sec:cvs}.  Once you have a working key, you should
+be able to download the latest source with
+\begin{verbatim}
+cvs checkout suntans
+\end{verbatim}
+which will download the following three directories (not including the \verb+CVS+ directory):
+\begin{itemize}
+\item \verb+suntans/main+: Contains the main source code and some examples in \verb+main/examples+.
+\item \verb+suntans/mfiles+: Some useful m-files for use with matlab.
+\item \verb+suntans/papers+: Contains this user guide.
+\end{itemize}
+
+If you have the GNU C compiler installed (\verb+gcc+) you should be able to enter \verb+suntans/main+ and
+compile SUNTANS with
+\begin{verbatim}
+make
+\end{verbatim}
+Otherwise, you will need to specify the correct C compiler with the variable \verb+CC+ in\\
+\verb+suntans/main/Makefile+.  With an appropriate C compiler, the example in \\
+\verb+suntans/main/examples/iwaves+ should also compile without any further
+installation (after changing \verb+CC+ in \verb+suntans/main/examples/iwaves/Makefile+ if necessary).  
+To run the example, enter that directory and type
+\begin{verbatim}
+make test
+\end{verbatim}
+This will run an internal waves example on a one-dimensional grid of equilateral
+triangles.  To view the results, return to \verb+suntans/main+ and compile the graphical
+user interface with
+\begin{verbatim}
+make sunplot
+\end{verbatim}
+This will create the \verb+sunplot+ executable, which can then be used to view the
+results of the internal waves example with
+\begin{verbatim}
+./sunplot --datadir=examples/iwaves/data
+\end{verbatim}
+Note:  This GUI requires the
+existence of the \verb+Xlib+ libraries and it is assumed that these are located
+in \verb+/usr/X11R6+.  Make sure the \verb+XINC+ and \verb+XLIBDIR+ variables
+are specified correctly in the \verb+suntans/main/Makefile+ if \verb+sunplot+ does not compile.
+
+In order to run the other examples (as described in Section \ref{sec:examples}), the
+grid generation package Triangle~\cite{TRIANGLE[1996]} must be installed, and to
+run them in parallel, the message-passing
+interface (MPI) and the parallel graph partitioning libraries (ParMetis~\cite{PARMETIS[1998]})
+must be installed. Instructions for 
 downloading and installing these packages are available from the individual websites
 for each package:
 \begin{tabbing}
@@ -13,21 +59,8 @@ Triangle \> \verb+http://www-2.cs.cmu.edu/~quake/triangle.html+
 Note that you must compile the triangle libraries as object files by making them
 with \verb+make trilibrary+.  Currently SUNTANS compiles and runs with Parmetis-2.0.
 
-\subsection{Downloading and installing the latest source} \label{sec:download}
-
-To obtain a copy of SUNTANS, download the latest version from the SUNTANS
-web page at \verb+http://suntans.stanford.edu/downloads+.  Follow the following
-steps to install the software.  {\bf Note: Do not continue beyond this point unless
-you have installed the required packages mentioned in the previous paragraph!
-SUNTANS will not compile unless you do so, even if you do not intend to run it in
-parallel.}
-\begin{enumerate}
-\item First unpack the gzipped tar archive with
-\begin{verbatim}
-tar xzvf suntans-X.X.tgz
-\end{verbatim}
-where \verb+X.X+ is the latest version of SUNTANS.  
-\item In the suntans-X.X directory, edit Makefile.in so that the directories containing the appropriate packages
+After installing the above software, edit \verb+suntans/main/Makefile.in+ 
+so that the directories containing the appropriate packages
 are correctly specified as follows:
 \begin{itemize}
 \item \verb+MPIHOME+ should contain the base directory of the mpich distribution.
@@ -43,31 +76,37 @@ MPIHOME=/usr/local/mpich-1.2.7
 PARMETISHOME=/usr/local/packages/ParMetis-2.0
 TRIANGLEHOME=/usr/local/packages/triangle
 \end{verbatim}
-\item Once these locations are properly specified, compile the SUNTANS executable with
+Once these locations are properly specified, compile the SUNTANS executable in \verb+suntans/main+ and
+link it with the software that has been installed with
 \begin{verbatim}
 make
 \end{verbatim}
-This will create the main executable \verb+sun+.
-\item Compile the SUNTANS graphical user interface with
-\begin{verbatim}
-make sunplot
-\end{verbatim}
-This will create the gui executable \verb+sunplot+.  Note:  This GUI requires the
-existence of the \verb+Xlib+ libraries and it is assumed that these are located
-in \verb+/usr/X11R6+.  Make sure the \verb+XINC+ and \verb+XLIBDIR+ variables
-are specified correctly in the \verb+Makefile+ if \verb+sunplot+ does not compile.
-\item In order to remove the object files, use
+This will create the main executable \verb+sun+.  
+To remove the object files, use
 \begin{verbatim}
 make clean
 \end{verbatim}
-\item To clean up the directory even further (remove \verb+*~, #*#, PI*, sun, sunplot+),
+To clean up the distribution and return it to the original state it was in upon downloading,
 use
 \begin{verbatim}
 make clobber
 \end{verbatim}
-\end{enumerate}
 
-\subsection{Keeping up to date with CVS}
+The original source for SUNTANS contains empty macro definitions in \\
+\verb+suntans/main/Makefile.in+, i.e.
+\begin{verbatim}
+MPIHOME=
+PARMETISHOME=
+TRIANGLEHOME=
+\end{verbatim}
+Undefined macros in this file imply that the software is not installed, and suntans will compile
+accordingly.  Note that you cannot run SUNTANS in parallel unless both MPICH and ParMETIS are
+installed, since ParMETIS performs the parallel grid partitioning.  However, SUNTANS does not
+require the Triangle libraries to run in its serial or parallel modes.  Omission of the Triangle 
+libraries requires the generation of grid files using an alternate grid generation package, 
+as described in Section  \ref{sec:readgrid}.
+
+\subsection{Keeping up to date with CVS} \label{sec:cvs}
 
 You can keep an up to date copy of the SUNTANS distribution on your machine by using the
 cvs repository.  To do so, you need to send your ssh public key to the suntans server administrator so that
