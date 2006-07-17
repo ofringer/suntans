@@ -11,7 +11,15 @@
 #
 include Makefile.in
 
-CC = $(MPIHOME)/bin/mpicc
+ifneq ($(MPIHOME),)
+  CC = $(MPIHOME)/bin/mpicc
+  MPIFILE = 
+  MPIDEF = 
+else
+  CC = gcc
+  MPIFILE = no-mpi.c
+  MPIDEF = -DNOMPI
+endif
 OPTFLAGS = -O2
 
 XLDFLAGS=-lX11 -lm
@@ -51,15 +59,17 @@ LIBS = $(PARMETISLIB) $(TRIANGLELIB)
 LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR)
 LDFLAGS = -lm $(LIBDIR) $(LIBS)
 INCLUDES = $(PARMETISINCLUDE) $(TRIANGLEINCLUDE)
-CFLAGS = $(OPTFLAGS) $(INCLUDES)
+DEFINES = $(MPIDEF)
+CFLAGS = $(OPTFLAGS) $(INCLUDES) $(DEFINES)
 
 EXEC = sun
 PEXEC = sunplot
 
 DEPFLAGS = -Y
 
-SRCS = mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
-	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c $(TRIANGLESRC) $(PARMETISSRC)
+SRCS = 	mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
+	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c $(TRIANGLESRC) $(PARMETISSRC) \
+	$(MPIFILE)
 OBJS = $(SRCS:.c=.o)
 
 PLOTSRCS = sunplot.c fileio.c

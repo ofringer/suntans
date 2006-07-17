@@ -1,7 +1,20 @@
 SUNTANSHOME=../..
 include $(SUNTANSHOME)/Makefile.in
 
-CC = $(MPIHOME)/bin/mpicc
+ifneq ($(MPIHOME),)
+  CC = $(MPIHOME)/bin/mpicc
+  MPIDEF = 
+  MPIINC = -I$(MPIHOME)
+else
+  CC = gcc
+  MPIDEF = -DNOMPI
+  MPIINC = 
+endif
+
+ifneq ($(PARMETISHOME),)
+  PARMETISINC = -I$(PARMETISHOME)/ParMETISLib
+endif
+
 LD = $(CC) 
 CFLAGS = 
 MATHLIB = -lm
@@ -9,7 +22,7 @@ MATHLIB = -lm
 EXEC = accuracy
 OBJS = 
 SUN = $(SUNTANSHOME)/sun
-INCLUDES = -I$(SUNTANSHOME) -I$(MPIHOME) -I$(PARMETISHOME)/ParMETISLib
+INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 NUMPROCS = 1
 
 all:	data

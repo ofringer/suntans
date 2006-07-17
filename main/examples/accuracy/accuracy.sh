@@ -11,10 +11,23 @@ function calc () {
 }
 
 SUNTANSHOME=../..
+SUN=$SUNTANSHOME/sun
 maindatadir=rundata
 datadir=data
 
 . $SUNTANSHOME/Makefile.in
+
+if [ -z "$MPIHOME" ] ; then
+    EXEC=$SUN
+else
+    EXEC="$MPIHOME/bin/mpirun -np 1 $SUN"
+fi
+
+if [ -z $TRIANGLEHOME ] ; then
+    echo Error: This example will not run without the triangle libraries.
+    echo Make sure TRIANGLEHOME is set in $SUNTANSHOME/Makefile.in
+    exit 1
+fi
 
 nmax=6
 n=1
@@ -45,7 +58,7 @@ do
   echo "dt $dt \#" >> $datadir/suntans.dat
   echo "nsteps $nsteps \#" >> $datadir/suntans.dat
 
-  $MPIHOME/bin/mpirun -np 1 $SUNTANSHOME/sun -t -g -s -vvv --datadir=$datadir >& $datadir/t$np/run.out
+  $EXEC -t -g -s -vvv --datadir=$datadir >& $datadir/t$np/run.out
   'cp' $datadir/{fs.dat.0,q.dat.0,s.dat.0,u.dat.0,w.dat.0} $datadir/t$np
   
   nsteps=`calc "$nsteps * 2"`
