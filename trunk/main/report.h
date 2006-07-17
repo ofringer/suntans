@@ -12,7 +12,7 @@
 #ifndef _report_h
 #define _report_h
 
-#include<mpi.h>
+#include "mympi.h"
 #include "grid.h"
 
 void ReportPartition(gridT *maingrid, 

@@ -1,7 +1,20 @@
 SUNTANSHOME=../..
 include $(SUNTANSHOME)/Makefile.in
 
-CC = $(MPIHOME)/bin/mpicc
+ifneq ($(MPIHOME),)
+  CC = $(MPIHOME)/bin/mpicc
+  MPIDEF = 
+  MPIINC = -I$(MPIHOME)
+else
+  CC = gcc
+  MPIDEF = -DNOMPI
+  MPIINC = 
+endif
+
+ifneq ($(PARMETISHOME),)
+  PARMETISINC = -I$(PARMETISHOME)/ParMETISLib
+endif
+
 LD = $(CC) 
 CFLAGS = 
 MATHLIB = -lm
@@ -9,8 +22,9 @@ MATHLIB = -lm
 EXEC = lockexchange
 OBJS = 
 SUN = $(SUNTANSHOME)/sun
-INCLUDES = -I$(SUNTANSHOME) -I$(MPIHOME) -I$(PARMETISHOME)/ParMETISLib
-NUMPROCS = 1
+INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
+DEFS = $(MPIDEF)
+NUMPROCS = 2
 
 all:	data
 
@@ -20,9 +34,9 @@ test:	data
 data:	$(SUN)
 
 .c.o:	
-	$(LD) -c $(INCLUDES) $*.c
+	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 
-$(SUN):	initialization.o
+$(SUN):	initialization.o 
 	cp initialization.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 

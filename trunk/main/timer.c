@@ -9,7 +9,7 @@
  * University. All Rights Reserved.
  *
  */
-#include<mpi.h>
+#include "mympi.h"
 #include "timer.h"
 
 /*

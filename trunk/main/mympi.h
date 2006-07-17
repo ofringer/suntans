@@ -12,7 +12,12 @@
 #ifndef _mympi_h
 #define _mympi_h
 
-#include<mpi.h>
+#ifndef NOMPI
+#include "mpi.h"
+#else
+#include "no-mpi.h"
+#endif
+
 #include "suntans.h"
 #include "fileio.h"
 
