@@ -9,3 +9,4 @@ clobber:
 	make -C iwaves clobber
 	make -C lockexchange clobber
 	make -C wetdry clobber
+	make -C windstress clobber
