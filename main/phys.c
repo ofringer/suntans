@@ -2018,7 +2018,8 @@ static void UPredictor(gridT *grid, physT *phys,
       nc2=nc1;
 
     // Add the shear stress from the top cell
-    phys->utmp[j][grid->etop[j]]+=dt*phys->tau_T[j];
+    phys->utmp[j][grid->etop[j]]+=2.0*dt*phys->tau_T[j]/
+      (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]]);
 
     // Create the tridiagonal entries and formulate U***
     if(!(grid->dzz[nc1][grid->etop[j]]==0 && grid->dzz[nc2][grid->etop[j]]==0)) {
