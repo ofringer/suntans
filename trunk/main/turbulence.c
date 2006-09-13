@@ -30,8 +30,8 @@ static void StabilityFunctions(REAL *Sm, REAL *Sh, REAL Gh, REAL A1, REAL A2, RE
  *
  */
 void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q, REAL **Cn_l, REAL **nuT, REAL **kappaT, MPI_Comm comm, int myproc) {
-  int i, ib, j, iptr, jptr, k, nf, nc1, nc2;
-  REAL thetaQ=1, CdAvgT, CdAvgB, *dudz, *dvdz, *drdz, z, *N, *Gh;
+  int i, ib, j, iptr, jptr, k, nf, nc1, nc2, ne;
+  REAL thetaQ=1, CdAvgT, CdAvgB, *dudz, *dvdz, *drdz, z, *N, *Gh, tauAvgT;
   REAL A1, A2, B1, B2, C1, E1, E2, E3, Sq, Sm, Sh;
 
   N = dudz = phys->a;
@@ -89,11 +89,15 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     // The drag coefficient is the average of the coefficients on the cell faces
     CdAvgT=0;
     CdAvgB=0;
+    tauAvgT=0;
     for(nf=0;nf<NFACES;nf++) {
-      CdAvgT+=phys->CdT[grid->face[i*NFACES+nf]]/3;
-      CdAvgB+=phys->CdB[grid->face[i*NFACES+nf]]/3;
+      ne = grid->face[i*NFACES+nf];
+      CdAvgT+=phys->CdT[ne]/3;
+      CdAvgB+=phys->CdB[ne]/3;
+      tauAvgT+=fabs(phys->tau_T[ne])/3;
     }
-    phys->htmp[i]=pow(B1,2.0/3.0)*CdAvgT*(pow(phys->uc[i][grid->ctop[i]],2)+pow(phys->vc[i][grid->ctop[i]],2));
+    phys->htmp[i]=pow(B1,2.0/3.0)*(CdAvgT*(pow(phys->uc[i][grid->ctop[i]],2)+pow(phys->vc[i][grid->ctop[i]],2))+
+				   tauAvgT);
     phys->hold[i]=pow(B1,2.0/3.0)*CdAvgB*(pow(phys->uc[i][grid->Nk[i]-1],2)+pow(phys->vc[i][grid->Nk[i]-1],2));
   }
   // Specify turbulence at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
