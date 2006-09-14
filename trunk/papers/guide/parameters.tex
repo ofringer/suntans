@@ -189,20 +189,26 @@ Same as $kappa\_TH$ but for T.
 
 \subsubsection{nu: $\nu\ge 0$}
 
-Laminar vertical diffusivity of momentum in units of m$^2$ s$^{-1}$.  Does not affect stability.
+Vertical diffusivity of momentum in units of m$^2$ s$^{-1}$.  Does not affect stability unless
+central-differencing is employed for momentum advection (see Section \ref{sec:nonlinear}).
 
 \subsubsection{nu\_H: $\nu_{H}\ge 0$}
 
-Laminar horizontal diffusivity of momentum in units of m$^2$ s$^{-1}$.  For stability 
-\[
-\frac{\nu_{H}}{\Delta t}{\mbox{min}(D_g^2)}<\frac{1}{2}\,,
-\]
-where $D_g$ is the distance between Voronoi points.  
+Horizontal diffusivity of momentum in units of m$^2$ s$^{-1}$.  See \ref{sec:dt} and \ref{sec:nonlinear}
+for details on stability.
 
 \subsubsection{tau\_T: $\tau_T$}
 
-Parameter used in boundaries.c to employ a surface wind stress in units of m$^2$ s$^{-2}$.
-See Section \ref{sec:boundary}
+Parameter used in boundaries.c to employ a surface wind stress in units of m$^2$ s$^{-2}$,
+i.e. $\mbox{tau\_T}=(u^*)^2$.  Note that if the surface wind stress due to a wind speed at 10 m
+is given by
+\begin{eqnarray*}
+\tau_{\mbox{wind}} = \rho_{\mbox{air}}C_d U_{10}^2\,,
+\end{eqnarray*}
+then to obtain the value for \mbox{tau\_T}, one must use
+\begin{eqnarray*}
+\mbox{tau\_T} = \frac{\tau_{\mbox{wind}}}{\rho_0}\,.
+\end{eqnarray*}
 
 \subsubsection{z0T: $z_{0T}$}
 
@@ -246,7 +252,7 @@ drag is only computed in the channel and not on the shoals.}{fig:compoundchannel
 If turbmodel is 1 then the Mellor-Yamada level 2.5 turbulence model is used, otherwise
 no turbulence model is employed.  
 
-\subsubsection{dt: $\Delta t$}
+\subsubsection{dt: $\Delta t$} \label{sec:dt}
 
 Time step. Assuming $\theta>0.5$, stability is limited by
 \[
@@ -258,7 +264,9 @@ Time step. Assuming $\theta>0.5$, stability is limited by
 \right]\,,
 \]
 where $c_i$ is the internal wave speed, $C$ is the relevant Courant number, and $D_g$
-is the minimum Voronoi distance.
+is the minimum Voronoi distance.  Note that this assumes first-order upwind is used
+for advection of momentum.  If central-differencing is used, stability is further
+constrained by the grid Peclet number (see Section \ref{sec:nonlinear} for details).
 
 \subsubsection{Cmax: $C_{max}>0$}
 
@@ -366,7 +374,7 @@ Prints regardless of verbosity setting at command line.
 if volume is not conserved to within the tolerance defined by \verb+CONSERVED+ in \verb+suntans.h+.
 Prints regardless of verbosity setting at command line.
 
-\subsubsection{nonlinear: 0,1, or 2}
+\subsubsection{nonlinear: 0,1, or 2} \label{sec:nonlinear}
 
 Advection scheme for momentum:
 \begin{enumerate}
@@ -379,10 +387,14 @@ grid Peclet number according to
 \[
 Pe_\Delta<\frac{2}{C}\,,
 \]
-where $Pe_\Delta = \frac{\max(|U|)\max(D_g)}{\min(\kappa_H)}$ and $C=\frac{\max(|U|)\Delta t}{\max(D_g)}$,
+where $Pe_\Delta = \frac{\max(|U|)\max(D_g)}{\min(\nu_H)}$ and $C=\frac{\max(|U|)\Delta t}{\max(D_g)}$,
 which translates into the requirement that the horizontal diffusion be restricted to
 \[
-\kappa_H>\frac{\max(|U|)^2\Delta t}{2}\,.
+\nu_H>\frac{\max(|U|)^2\Delta t}{2}\,.
+\]
+Equivalently, the vertical diffusion is restricted by
+\[
+\nu>\frac{\max(|w|)^2\Delta t}{2}\,.
 \]
 
 \end{enumerate}
@@ -407,7 +419,10 @@ with continuity, the $\theta$ method must be used for scalar advection.  This is
 accurate in time, so results are more accurate when second-order Adams-Bashforth is used if there
 is no wetting and drying.  Therefore, the wetdry Boolean is set according to:\\
 (0): No wetting and drying, employ AB2 for horizontal scalar advection\\
-(1): Wetting and drying: employ $\theta$-method for horizontal scalar advection.
+(1): Wetting and drying: employ $\theta$-method for horizontal scalar advection.\\
+Depending on the stratification at the surface and the grid size it is often desirable to employ
+\mbox{wetdry = 1} so as to ensure consistency with continuity and avoid spurious oscillations in
+the temperature and salinity fields.
 
 \subsubsection{Coriolis\_f: $f\ge 0$}
 
