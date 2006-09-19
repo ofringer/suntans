@@ -57,7 +57,7 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
       dudz[k]=2.0*(phys->uc[i][k-1]-phys->uc[i][k])/(grid->dzz[i][k-1]+grid->dzz[i][k]);
       dvdz[k]=2.0*(phys->vc[i][k-1]-phys->vc[i][k])/(grid->dzz[i][k-1]+grid->dzz[i][k]);
-      drdz[k]=2.0*prop->beta*(phys->s[i][k-1]-phys->s[i][k])/(grid->dzz[i][k-1]+grid->dzz[i][k]);
+      drdz[k]=2.0*(phys->rho[i][k-1]-phys->rho[i][k])/(grid->dzz[i][k-1]+grid->dzz[i][k]);
     }
     dudz[grid->ctop[i]]=dudz[grid->ctop[i]+1];
     dvdz[grid->ctop[i]]=dvdz[grid->ctop[i]+1];
@@ -167,7 +167,7 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
   for(i=0;i<grid->Nc;i++) {
 
     for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-      drdz[k]=-2.0*GRAV*prop->beta*(phys->s[i][k-1]-phys->s[i][k])/(grid->dzz[i][k-1]+grid->dzz[i][k]);
+      drdz[k]=-2.0*GRAV*(phys->rho[i][k-1]-phys->rho[i][k])/(grid->dzz[i][k-1]+grid->dzz[i][k]);
       if(drdz[k]<0) drdz[k]=0;
       N[k]=sqrt(drdz[k]);
     }
