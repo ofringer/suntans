@@ -68,8 +68,8 @@ PEXEC = sunplot
 DEPFLAGS = -Y
 
 SRCS = 	mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
-	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c $(TRIANGLESRC) $(PARMETISSRC) \
-	$(MPIFILE)
+	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c \
+	$(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE)
 OBJS = $(SRCS:.c=.o)
 
 PLOTSRCS = sunplot.c fileio.c
@@ -101,11 +101,12 @@ clobber:	clean
 mympi.o: mympi.h suntans.h fileio.h
 grid.o: grid.h suntans.h fileio.h mympi.h util.h initialization.h memory.h
 grid.o: triangulate.h report.h timer.h
-report.o: report.h grid.h suntans.h fileio.h mympi.h
+report.o: report.h mympi.h suntans.h fileio.h grid.h
 util.o: grid.h suntans.h fileio.h mympi.h util.h
 fileio.o: fileio.h
 phys.o: suntans.h phys.h grid.h fileio.h mympi.h util.h initialization.h
 phys.o: memory.h turbulence.h boundaries.h check.h scalars.h timer.h
+phys.o: profiles.h state.h
 suntans.o: suntans.h mympi.h fileio.h grid.h phys.h report.h
 initialization.o: fileio.h suntans.h initialization.h
 memory.o: memory.h
@@ -115,8 +116,11 @@ boundaries.o: boundaries.h suntans.h phys.h grid.h fileio.h mympi.h
 check.o: check.h grid.h suntans.h fileio.h mympi.h phys.h timer.h memory.h
 scalars.o: scalars.h suntans.h grid.h fileio.h mympi.h phys.h util.h tvd.h
 tvd.o: suntans.h phys.h grid.h fileio.h mympi.h tvd.h util.h
-timer.o: timer.h suntans.h
-triangulate.o: suntans.h mympi.h fileio.h grid.h triangulate.h
+timer.o: mympi.h suntans.h fileio.h timer.h
+profiles.o: util.h grid.h suntans.h fileio.h mympi.h memory.h phys.h
+profiles.o: profiles.h
+state.o: state.h grid.h suntans.h fileio.h mympi.h phys.h
+triangulate-notriangle.o: suntans.h mympi.h fileio.h grid.h
 partition.o: partition.h grid.h suntans.h fileio.h mympi.h memory.h
 sunplot.o: suntans.h fileio.h
 fileio.o: fileio.h

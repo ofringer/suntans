@@ -34,6 +34,7 @@ typedef struct _physT {
   REAL **s;
   REAL **T;
   REAL **s0;
+  REAL **rho;
   REAL *h;
 
   REAL **boundary_u;
@@ -42,6 +43,7 @@ typedef struct _physT {
   REAL **boundary_s;
   REAL **boundary_T;
   REAL **boundary_tmp;
+  REAL **boundary_rho;
   REAL *boundary_h;
   REAL *boundary_flag;
 

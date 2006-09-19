@@ -21,6 +21,7 @@
 #include "scalars.h"
 #include "timer.h"
 #include "profiles.h"
+#include "state.h"
 
 /*
  * Private Function declarations.
@@ -60,6 +61,7 @@ static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid);
 static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, int blowup, MPI_Comm comm);
 static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);
+static void SetDensity(gridT *grid, physT *phys, propT *prop);
 
 /*
  * Function: AllocatePhysicalVariables
@@ -119,6 +121,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->s = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s0 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->rho = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_R = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->stmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -153,6 +156,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->s[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s0[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->rho[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_R[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     if(prop->turbmodel) {
@@ -173,6 +177,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->boundary_w = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_s = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_T = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_rho = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_tmp = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_h = (REAL *)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->boundary_flag = (REAL *)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
@@ -185,6 +190,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->boundary_s[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_T[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_tmp[jptr-grid->edgedist[2]] = (REAL *)SunMalloc((grid->Nke[j]+1)*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->boundary_rho[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
   }
 
   (*phys)->ap = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
@@ -257,6 +263,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     free(phys->s[i]);
     free(phys->T[i]);
     free(phys->s0[i]);
+    free(phys->rho[i]);
     free(phys->Cn_R[i]);
     free(phys->Cn_T[i]);
     if(prop->turbmodel) {
@@ -286,6 +293,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   free(phys->s);
   free(phys->T);
   free(phys->s0);
+  free(phys->rho);
   free(phys->Cn_R);
   free(phys->Cn_T);
   if(prop->turbmodel) {
@@ -484,7 +492,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
       }
     }
   }
-  
+
   // Initialize the velocity field 
   for(j=0;j<grid->Ne;j++) {
     z = 0;
@@ -502,7 +510,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
   ComputeVelocityVector(phys->u,phys->uold,phys->vold,grid);
 
-  // Determine minimum and maximum scalar values.
+  // Determine minimum and maximum salinity
   phys->smin=phys->s[0][0];
   phys->smax=phys->s[0][0];
   for(i=0;i<grid->Nc;i++)
@@ -510,6 +518,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
       if(phys->s[i][k]<phys->smin) phys->smin=phys->s[i][k];      
       if(phys->s[i][k]>phys->smax) phys->smax=phys->s[i][k];      
     }
+
+  // Set the density from s and T using the equation of state 
+  SetDensity(grid,phys,prop);
 
   // Initialize the eddy-viscosity and scalar diffusivity
   for(i=0;i<grid->Nc;i++) 
@@ -847,6 +858,9 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	t_transport+=Timer()-t0;
       }
 
+      if(prop->beta || prop->gamma)
+	SetDensity(grid,phys,prop);
+
       // utmp2 contains the velocity field at time step n, u contains
       // it at time step n+1.  This is so that at the next time step
       // phys->uold contains velocity at time step n-1 and phys->uc contains
@@ -1025,9 +1039,9 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	k0=grid->etop[j];
 	
 	for(k0=grid->etop[j];k0<k;k0++)
-	  phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->s[nc2][k0])*
+	  phys->Cn_U[j][k]-=0.5*GRAV*prop->dt*(phys->rho[nc1][k0]-phys->rho[nc2][k0])*
 	    (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
-	phys->Cn_U[j][k]-=0.25*GRAV*prop->beta*prop->dt*(phys->s[nc1][k]-phys->s[nc2][k])*
+	phys->Cn_U[j][k]-=0.25*GRAV*prop->dt*(phys->rho[nc1][k]-phys->rho[nc2][k])*
 	  (grid->dzz[nc1][k]+grid->dzz[nc2][k])/grid->dg[j];
       }
   }
@@ -1039,9 +1053,9 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       k0=grid->etop[j];
       
       for(k0=grid->etop[j];k0<k;k0++)
-	phys->Cn_U[j][k]-=GRAV*prop->beta*prop->dt*(phys->s[nc1][k0]-phys->boundary_s[jptr-grid->edgedist[2]][k0])*
+	phys->Cn_U[j][k]-=GRAV*prop->dt*(phys->rho[nc1][k0]-phys->boundary_rho[jptr-grid->edgedist[2]][k0])*
 	  grid->dzz[nc1][k0]/grid->dg[j];
-      phys->Cn_U[j][k]-=0.5*GRAV*prop->beta*prop->dt*(phys->s[nc1][k]-phys->boundary_s[jptr-grid->edgedist[2]][k])*
+      phys->Cn_U[j][k]-=0.5*GRAV*prop->dt*(phys->rho[nc1][k]-phys->boundary_rho[jptr-grid->edgedist[2]][k])*
 	grid->dzz[nc1][k]/grid->dg[j];
     }
   }
@@ -3522,4 +3536,40 @@ static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid) {
     return (phi[nc1][k]*def2+phi[nc2][k]*def1)/(def1+def2);
 }
 
+/*
+ * Function: SetDensity
+ * Usage: SetDensity(grid,phys,prop);
+ * ----------------------------------
+ * Sets the values of the density in the density array rho and
+ * at the boundaries.
+ *
+ */
+static void SetDensity(gridT *grid, physT *phys, propT *prop) {
+  int i, j, k, jptr, ib;
+  REAL z, p;
 
+  for(i=0;i<grid->Nc;i++) {
+    z=phys->h[i];
+    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      z+=0.5*grid->dzz[i][k];
+      p=RHO0*GRAV*z;
+      phys->rho[i][k]=StateEquation(prop,phys->s[i][k],phys->T[i][k],p);
+      z+=0.5*grid->dzz[i][k];
+    }
+  }
+
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+      j=grid->edgep[jptr];
+      ib=grid->grad[2*j];
+
+      z=phys->h[ib];
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+	z+=0.5*grid->dzz[ib][k];
+	p=RHO0*GRAV*z;
+	phys->boundary_rho[jptr-grid->edgedist[2]][k]=
+	  StateEquation(prop,phys->boundary_s[jptr-grid->edgedist[2]][k],
+			phys->boundary_T[jptr-grid->edgedist[2]][k],p);
+	z+=0.5*grid->dzz[ib][k];
+      }
+  }
+}
