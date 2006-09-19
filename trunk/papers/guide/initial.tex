@@ -37,9 +37,8 @@ is also supplied to the \verb+ReturnFreeSurface+ function in case the free surfa
 \item \verb+ReturnSalinity+ and \verb+ReturnTemperature+  These are similar functions in that they return the
 specified scalar field as a function of the x, y, and z coordinates.  Note that if \verb+beta+ is 0 in \verb+suntans.dat+,
 then salinity transport is not computed, likewise if \verb+gamma+ is 0, then temperature transport is not computed.  
-As it is now, the code computes the temperature as a passive scalar while the density anomaly $\rho$ is computed solely as a function of 
-the salinity anomoly $s$, such that
-\[\frac{\rho}{\rho_0}=\beta s\,.\]
+As it is now, the code computes the temperature as a passive scalar while the density anomaly $\rho$ is computed solely as a function of the salinity anomoly $s$, such that
+\[\frac{\rho}{\rho_0}=\beta s\,.\]  This equation of state is specified in the file \verb+state.c+.
 \item \verb+ReturnHorizontalVelocity+ This returns the horizontal velocity defined at the faces of each cell.  The initial vertical velocity is
 computed by continuity from this initial velocity field.  Since this function returns the velocity normal to a cell face, then
 you must specify both velocity components \verb+u+ and \verb+v+ and then return the component normal to the face, which is

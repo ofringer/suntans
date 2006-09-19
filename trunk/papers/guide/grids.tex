@@ -62,6 +62,16 @@ then the Voronoi points are adjusted so that the distance between them is half t
 distance between the cell centroids.  If \verb+VoronoiRatio+ is set to \verb+1+,
 then the Voronoi points correspond to the cell centroids.
 
+A useful m-file \verb+checkgrid.m+ is provided in the suntans/mfiles directory that
+determines the shortest distance between Voronoi points on a grid as well as a histogram
+of the Voronoi distances on the entire grid.  It is important to remember that most
+grid generation packages, including triangle, are meant for finite-element calculations
+in which calculations are usually node-based (i.e. everything is stored at the Delaunay points).
+Because SUNTANS is Voronoi-based, this places a strong constraint on the distance between
+the Voronoi points and as a result it can be quite difficult to generate good grids in
+highly complex domains.  We have found a great deal of success with the grid generation
+package GAMBIT from Fluent, Inc. and use it for most of our production-scale SUNTANS runs.
+
 \subsection{Reading triangular grids from a file} \label{sec:readgrid}
 
 Use of the \verb+-t+ flag creates three files specified in \verb+suntans.dat+: 
