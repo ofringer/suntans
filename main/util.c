@@ -9,6 +9,7 @@
  * University. All Rights Reserved.
  *
  */
+#include<math.h>
 #include "grid.h"
 #include "util.h"
 
@@ -81,23 +82,28 @@ int IsMember(int i, int *points, int numpoints)
 
 void Interp(REAL *x, REAL *y, REAL *z, int N, REAL *xi, REAL *yi, REAL *zi, int Ni)
 {
-  int j, n, numpoints=3, *points=(int *)malloc(numpoints*sizeof(int));
-  REAL r;
+  int j, n, numpoints=NFACES+1, *points=(int *)malloc(numpoints*sizeof(int));
+  REAL r, r0, dist;
 
   for(n=0;n<Ni;n++) {
-    FindNearest(points,x,y,N,numpoints,xi[n],yi[n]);
-    zi[n]=0;
-    r=0;
-    for(j=0;j<numpoints;j++) 
-      r += sqrt(x[points[j]]*x[points[j]]+0*y[points[j]]*y[points[j]]);
-    for(j=0;j<numpoints;j++)
-      zi[n] += z[points[j]]*sqrt(x[points[j]]*x[points[j]]+0*y[points[j]]*y[points[j]])/r;
+    if(FindNearest(points,x,y,N,numpoints,xi[n],yi[n])) {
+      zi[n]=0;
+      r=0;
+      for(j=0;j<numpoints;j++) {
+	dist = pow(x[points[j]]-xi[n],2.0)+pow(y[points[j]]-yi[n],2.0);
+	r0 = 1.0/dist;
+	zi[n]+=z[points[j]]*r0;
+	r+=r0;
+      }
+      zi[n]/=r;
+    } else 
+      zi[n]=z[points[0]];
   }
 
   free(points);
 }
 
-void FindNearest(int *points, REAL *x, REAL *y, int N, int np, REAL xi, REAL yi)
+int FindNearest(int *points, REAL *x, REAL *y, int N, int np, REAL xi, REAL yi)
 {
   int i, n;
   REAL dist, d;
@@ -110,9 +116,13 @@ void FindNearest(int *points, REAL *x, REAL *y, int N, int np, REAL xi, REAL yi)
       if(d<dist & IsMember(i,points,np)==-1) {
 	dist=d;
 	points[n]=i;
+      } else if(d==0) {
+	points[0]=i;
+	return 0;
       }
     }
   }
+  return 1;
 }
 
 
