@@ -1,22 +1,18 @@
 file=user_guide
 
-all:	
-	make dvi
-	make bib
-	make dvi
-	make dvi
+all:	pdf
 
-dvi:	$(file).tex
+dvi:	
+	latex $(file)
+	bibtex $(file)
+	latex $(file)
 	latex $(file)
 
-bib:	bibliography.bib
-	bibtex $(file)
-
 ps:	dvi
-	dvips $(file) -o
+	dvips -Ppdf $(file) -o
 
-pdf:	dvi bib
-	pdflatex $(file)
+pdf:	ps
+	ps2pdf $(file).ps $(file).pdf
 
 edit:	all
 	xdvi $(file) &
