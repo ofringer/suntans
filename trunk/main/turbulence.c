@@ -109,7 +109,8 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
       phys->boundary_tmp[jptr-grid->edgedist[2]][k]=q[ib][k];
   }    
-  UpdateScalars(grid,phys,prop,q,phys->boundary_tmp,phys->Cn_q,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
+  UpdateScalars(grid,phys,prop,q,phys->boundary_tmp,phys->Cn_q,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,
+		phys->htmp,phys->hold,1,1,comm,myproc);
 
   // q now contains q^2
   for(i=0;i<grid->Nc;i++) {
@@ -145,7 +146,8 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
       phys->boundary_tmp[jptr-grid->edgedist[2]][k]=l[ib][k];
   }
-  UpdateScalars(grid,phys,prop,l,phys->boundary_tmp,phys->Cn_l,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,phys->htmp,phys->hold,1,1);
+  UpdateScalars(grid,phys,prop,l,phys->boundary_tmp,phys->Cn_l,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,
+		phys->htmp,phys->hold,1,1,comm,myproc);
 
   // Set l to a background value if it gets too small.
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {

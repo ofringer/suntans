@@ -844,7 +844,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       if(prop->beta) {
 	t0=Timer();
 	UpdateScalars(grid,phys,prop,phys->s,phys->boundary_s,phys->Cn_R,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->thetaS,
-		      NULL,NULL,NULL,NULL,0,0);
+		      NULL,NULL,NULL,NULL,0,0,comm,myproc);
 	ISendRecvCellData3D(phys->s,grid,myproc,comm);
 	t_transport+=Timer()-t0;
       }
@@ -853,7 +853,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       if(prop->gamma) {
 	t0=Timer();
 	UpdateScalars(grid,phys,prop,phys->T,phys->boundary_T,phys->Cn_T,prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->thetaS,
-		      NULL,NULL,NULL,NULL,0,0);
+		      NULL,NULL,NULL,NULL,0,0,comm,myproc);
 	ISendRecvCellData3D(phys->T,grid,myproc,comm);
 	t_transport+=Timer()-t0;
       }
