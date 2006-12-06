@@ -45,8 +45,9 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs);
 static void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int Nc, int Ne);
 static void CreateNormalArray(int *grad, int *face, int *normal, int Nc);
 static void ReadDepth(gridT *grid, int myproc);
-
-void CorrectVoronoi(gridT *grid);
+static int CorrectVoronoi(gridT *grid);
+static int CorrectAngles(gridT *grid);
+static void VoronoiStats(gridT *grid);
 
 /************************************************************************/
 /*                                                                      */
@@ -63,7 +64,7 @@ void CorrectVoronoi(gridT *grid);
  */
 void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
 {
-  int Np, Ne, Nc;
+  int Np, Ne, Nc, numcorr;
   gridT *maingrid;
 
   ReadFileNames(myproc);
@@ -89,10 +90,32 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
     }
   }
 
-  // Set the voronoi points to be the centroids of the
-  // cells if the CORRECTVORONOI flag is 1.
-  if((int)MPI_GetValue(DATAFILE,"CorrectVoronoi","ReadMainGrid",0))
-    CorrectVoronoi(maingrid);
+  // Adjust Voronoi points for obtuse triangles (CorrectVoronoi==-1) 
+  // or for small Voronoi edge lengths (CorrectVoronoi==+1).
+  if(myproc==0 && VERBOSE>1) {
+    printf("Voronoi statistics:\n");
+    VoronoiStats(maingrid);
+  }
+  if((int)MPI_GetValue(DATAFILE,"CorrectVoronoi","ReadMainGrid",0)>0) {
+    numcorr=CorrectVoronoi(maingrid);
+    if(myproc==0 && VERBOSE>1) {
+      if(numcorr) {
+	printf("Voronoi statistics after correction:\n");
+	VoronoiStats(maingrid);
+      } else 
+	printf("No Voronoi points were corrected.\n");
+    }
+  }
+  if((int)MPI_GetValue(DATAFILE,"CorrectVoronoi","ReadMainGrid",0)<0) {
+    numcorr=CorrectAngles(maingrid);
+    if(myproc==0 && VERBOSE>1) {
+      if(numcorr) {
+	printf("Voronoi statistics after correction:\n");
+	VoronoiStats(maingrid);
+      } else 
+	printf("No Voronoi points were corrected.\n");
+    }
+  }
 
   if(myproc==0 && VERBOSE>0) printf("Getting the depth for graph weights...\n");
   GetDepth(maingrid,myproc,numprocs,comm);
@@ -2265,8 +2288,8 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
 
 static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 {
-  int n, nf, k, j, Nc=(*grid)->Nc, Ne=(*grid)->Ne;
-  REAL xt[NFACES], yt[NFACES], xc, yc, den, R0;
+  int n, nf, ne, k, j, Nc=(*grid)->Nc, Ne=(*grid)->Ne, p1, p2;
+  REAL xt[NFACES], yt[NFACES], xc, yc, den, R0, tx, ty, tmag, xdott;
   
   (*grid)->Ac = (REAL *)SunMalloc(Nc*sizeof(REAL),"Geometry");
   (*grid)->df = (REAL *)SunMalloc(Ne*sizeof(REAL),"Geometry");
@@ -2297,12 +2320,31 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 	   pow(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]-
 	       maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]],2));
 
-  /* Compute the centers of each edge. */
+  // Compute the centers of each edge, which are defined by the intersection
+  // of the Voronoi Edge with the Delaunay Edge.  Note that this point is
+  // not the midpoint of the edge when one of the neighboring triangles is obtuse 
+  // and it has been corrected.
   for(n=0;n<Ne;n++) {
+    p1 = (*grid)->edges[NUMEDGECOLUMNS*n];
+    p2 = (*grid)->edges[NUMEDGECOLUMNS*n+1];
+
+    tx = maingrid->xp[p2]-maingrid->xp[p1];
+    ty = maingrid->yp[p2]-maingrid->yp[p1];
+    tmag = sqrt(tx*tx+ty*ty);
+    tx = tx/tmag;
+    ty = ty/tmag;
+    xdott = ((*grid)->xv[(*grid)->grad[2*n]]-maingrid->xp[p1])*tx+
+      ((*grid)->yv[(*grid)->grad[2*n]]-maingrid->yp[p1])*ty;
+    (*grid)->xe[n] = maingrid->xp[p1]+xdott*tx;
+    (*grid)->ye[n] = maingrid->yp[p1]+xdott*ty;
+
+    // This is the midpoint of the edge and is not used.
+    /*
     (*grid)->xe[n] = 0.5*(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
-		       maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+			  maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
     (*grid)->ye[n] = 0.5*(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
-		       maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+			  maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+    */
   }
 
   /* Compute the normal distances between Voronoi points to compute the 
@@ -2324,10 +2366,8 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
       }
     }
     else {
-      xc = 0.5*(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
-		maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
-      yc = 0.5*(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
-		maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+      xc = (*grid)->xe[n];
+      yc = (*grid)->ye[n];      
       if((*grid)->grad[2*n]==-1) {
         (*grid)->n1[n] = xc-(*grid)->xv[(*grid)->grad[2*n+1]];
         (*grid)->n2[n] = yc-(*grid)->yv[(*grid)->grad[2*n+1]];
@@ -2348,11 +2388,24 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
     }
   }
 
-  /* Compute the distance from the cell circumcenter to the edge center */
+  // Compute the length of the perpendicular bisector.  Note that this is not necessarily
+  // the distance to the edge midpoint unless both triangles have not been corrected.  
+  // Note that def points outward, so if def<0 then uc and vc will be 
+  // computed correctly for obtuse triangles and advection of momentum is conservative.  
+  // However, the method is unstable for obtuse triangles and correction must be used.  
   for(n=0;n<Nc;n++) {
     for(nf=0;nf<NFACES;nf++) {
-      (*grid)->def[n*NFACES+nf]=sqrt(pow((*grid)->xv[n]-(*grid)->xe[(*grid)->face[n*NFACES+nf]],2)+
-				     pow((*grid)->yv[n]-(*grid)->ye[(*grid)->face[n*NFACES+nf]],2));
+      ne = (*grid)->face[n*NFACES+nf];
+      (*grid)->def[n*NFACES+nf] = 
+      	-(((*grid)->xv[n]-maingrid->xp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n1[ne]+
+	  ((*grid)->yv[n]-maingrid->yp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n2[ne])*
+	(*grid)->normal[n*NFACES+nf];
+
+      // Distance to the edge midpoint. Not used.
+      /*
+      (*grid)->def[n*NFACES+nf]=sqrt(pow((*grid)->xv[n]-(*grid)->xe[ne],2)+
+				     pow((*grid)->yv[n]-(*grid)->ye[ne],2));
+      */
     }
   }
     /*
@@ -2510,9 +2563,9 @@ static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   free(d);
 }
 
-void CorrectVoronoi(gridT *grid)
+static int CorrectVoronoi(gridT *grid)
 {
-  int n, nf, nc1, nc2;
+  int n, nf, nc1, nc2, numcorr=0;
   REAL xc, yc, xv1, xv2, yv1, yv2, xc1, xc2, yc1, yc2, dg, dg0;
   REAL VoronoiRatio=MPI_GetValue(DATAFILE,"VoronoiRatio","CorrectVoronoi",0);
 
@@ -2545,6 +2598,7 @@ void CorrectVoronoi(gridT *grid)
 	grid->xv[nc2]=xc+VoronoiRatio*(xc2-xc);
 	grid->yv[nc1]=yc+VoronoiRatio*(yc1-yc);
 	grid->yv[nc2]=yc+VoronoiRatio*(yc2-yc);
+	numcorr++;
       }
     } else {
       xc = 0.5*(grid->xp[grid->edges[NUMEDGECOLUMNS*n]]+
@@ -2566,6 +2620,7 @@ void CorrectVoronoi(gridT *grid)
 	  if(VERBOSE>3) printf("Correcting Voronoi point %d.\n",nc2);
 	  grid->xv[nc2]=xc+VoronoiRatio*(xc2-xc);
 	  grid->yv[nc2]=yc+VoronoiRatio*(yc2-yc);
+	  numcorr++;
 	}
       } else {
 	xv1 = grid->xv[nc1];
@@ -2582,10 +2637,112 @@ void CorrectVoronoi(gridT *grid)
 	  if(VERBOSE>3) printf("Correcting Voronoi point %d.\n",nc1);
 	  grid->xv[nc1]=xc+VoronoiRatio*(xc1-xc);
 	  grid->yv[nc1]=yc+VoronoiRatio*(yc1-yc);
+	  numcorr++;
 	}
       }
     }
   }
+  if(numcorr>0 && VERBOSE>1)
+    printf("Corrected %d of %d edges with dg < %.2f dg0 (%.2f%%).\n",
+	   numcorr,grid->Ne,VoronoiRatio,(REAL)numcorr/(REAL)grid->Ne*100.0);
+  
+  return numcorr;
+}
+
+static int CorrectAngles(gridT *grid)
+{
+  int n, nf, nc1, nc2, numcorr;
+  REAL xc, yc, xv1, xv2, yv1, yv2, xc1, xc2, xc3, yc1, yc2, yc3, dg, dg0, ang1, ang2,
+    dot1, dot2, dot3, mag1, mag2, mag3, cosVoronoiRatio;
+  REAL VoronoiRatio=MPI_GetValue(DATAFILE,"VoronoiRatio","CorrectVoronoi",0);
+  cosVoronoiRatio = cos(VoronoiRatio*PI/180.0);
+
+  numcorr=0;
+  for(n=0;n<grid->Nc;n++) {
+    xc1 = grid->xp[grid->cells[n*NFACES]];
+    xc2 = grid->xp[grid->cells[n*NFACES+1]];
+    xc3 = grid->xp[grid->cells[n*NFACES+2]];
+    yc1 = grid->yp[grid->cells[n*NFACES]];
+    yc2 = grid->yp[grid->cells[n*NFACES+1]];
+    yc3 = grid->yp[grid->cells[n*NFACES+2]];
+    mag1 = sqrt(pow(xc2-xc1,2)+pow(yc2-yc1,2));
+    mag2 = sqrt(pow(xc3-xc1,2)+pow(yc3-yc1,2));
+    mag3 = sqrt(pow(xc3-xc2,2)+pow(yc3-yc2,2));
+    dot1 = (mag1*mag1+mag2*mag2-mag3*mag3)/(2*mag1*mag2);
+    dot2 = (mag2*mag2+mag3*mag3-mag1*mag1)/(2*mag2*mag3);
+    dot3 = (mag3*mag3+mag1*mag1-mag2*mag2)/(2*mag3*mag1);
+
+    if(dot1<=cosVoronoiRatio ||
+       dot2<=cosVoronoiRatio ||
+       dot3<=cosVoronoiRatio) {
+      numcorr++;
+      grid->xv[n] = (xc1+xc2+xc3)/NFACES;
+      grid->yv[n] = (yc1+yc2+yc3)/NFACES;
+    }
+  }
+  if(numcorr>0 && VERBOSE>1)
+    printf("Corrected %d of %d cells with angles > %.1f degrees (%.2f%%).\n",
+	   numcorr,grid->Nc,VoronoiRatio,(REAL)numcorr/(REAL)grid->Nc*100.0);
+
+  return numcorr;
+}
+
+static void VoronoiStats(gridT *grid) {
+  int i, n, nc1, nc2, numdg, dghist;
+  REAL *dg, dgmin, dgmax, dgmean, dgstd, deldg, histmin, histmax;
+  dg = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"VoronoiStats");
+
+  numdg=0;
+  for(n=0;n<grid->Ne;n++) {
+    nc1=grid->grad[2*n];
+    nc2=grid->grad[2*n+1];
+    if(nc2>=0) {
+      dg[numdg] = sqrt(pow(grid->xv[nc1]-grid->xv[nc2],2)+
+		       pow(grid->yv[nc2]-grid->yv[nc1],2));
+      numdg++;
+    }
+  }
+
+  dgmin=INFTY;
+  dgmax=dgmean=0;
+  for(n=0;n<numdg;n++) {
+    if(dg[n]<dgmin)
+      dgmin=dg[n];
+    if(dg[n]>dgmax)
+      dgmax=dg[n];
+    dgmean+=dg[n];
+  }
+  dgmean/=(REAL)numdg;
+
+  dgstd=0;
+  for(n=0;n<numdg;n++) 
+    dgstd+=pow(dg[n]-dgmean,2);
+  dgstd=sqrt(dgstd/(REAL)numdg);
+
+  printf("\tMinimum distance: %.2e\n",dgmin);
+  printf("\tMaximum distance: %.2e\n",dgmax);
+  printf("\tMean distance: %.2e\n",dgmean);
+  printf("\tStandard deviation: %.2e\n",dgstd);
+
+  if(VERBOSE>2) {
+    printf("\tVoronoi histogram:\n");
+    printf("\t\t%.2e\t0\n",dgmin);
+    deldg = (dgmax-dgmin)/(REAL)(NUMDGHIST-1);
+    for(i=0;i<NUMDGHIST-1;i++) {
+      dghist=0;
+      histmin = dgmin+deldg*(REAL)i;
+      histmax = histmin+deldg;
+      for(n=0;n<numdg;n++) {
+	if((dg[n]>=histmin &&
+	    dg[n]<histmax) || 
+	   (i==NUMDGHIST-2 && dg[n]==histmax))
+	  dghist++;
+      }
+      printf("\t\t%.2e\t%d\n",histmax,dghist);
+    }
+  }
+
+  SunFree(dg,grid->Ne*sizeof(REAL),"VoronoiStats");
 }
 
 /*

@@ -933,7 +933,7 @@ static void StoreVariables(gridT *grid, physT *phys) {
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 			     int myproc, int numprocs, MPI_Comm comm) {
   int i, iptr, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin, kmax;
-  REAL *a, *b, *c, fab, sum;
+  REAL *a, *b, *c, fab, sum, def1, def2, dgf;
 
   a = phys->a;
   b = phys->b;
@@ -1339,6 +1339,11 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     nc2 = grid->grad[2*j+1];
     if(nc1==-1) nc1=nc2;
     if(nc2==-1) nc2=nc1;
+
+    // Note that dgf==dg only when the cells are orthogonal!
+    def1 = grid->def[nc1*NFACES+grid->gradf[2*j]];
+    def2 = grid->def[nc2*NFACES+grid->gradf[2*j+1]];
+    dgf = def1+def2;
     
     if(grid->ctop[nc1]>grid->ctop[nc2])
       k0=grid->ctop[nc1];
@@ -1346,11 +1351,11 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       k0=grid->ctop[nc2];
     
     for(k=k0;k<grid->Nk[nc1];k++) 
-      phys->Cn_U[j][k]-=grid->def[nc1*NFACES+grid->gradf[2*j]]/grid->dg[j]
+      phys->Cn_U[j][k]-=def1/dgf
 	*prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
     
     for(k=k0;k<grid->Nk[nc2];k++) 
-      phys->Cn_U[j][k]-=grid->def[nc2*NFACES+grid->gradf[2*j+1]]/grid->dg[j]
+      phys->Cn_U[j][k]-=def2/dgf
 	*prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
   }
   
@@ -3513,12 +3518,8 @@ void OpenFiles(propT *prop, int myproc)
  * 
  * uface = 1/Dj*(def1*u2 + def2*u1);
  *
- * Since some cells may be degenerate, it is safer to use the following:
- *
- * uface = 1/(def1+def2)*(def1*u2 + def2*u1);
- *
- * If the triangle is a right triangle, then first-order upwinded interpolation
- * is used.
+ * Note that def1 and def2 are not the same as grid->def[] unless the
+ * triangles have not been corrected.
  *
  */
 static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid) {
@@ -3527,8 +3528,9 @@ static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid) {
   nc1 = grid->grad[2*j];
   nc2 = grid->grad[2*j+1];
   Dj = grid->dg[j];
-  def1 = grid->def[nc1*NFACES+grid->gradf[2*j]];
-  def2 = grid->def[nc2*NFACES+grid->gradf[2*j+1]];
+  def1 = sqrt(pow(grid->xv[nc1]-grid->xe[j],2)+
+	      pow(grid->yv[nc1]-grid->ye[j],2));
+  def2 = Dj-def1;
 
   if(def1==0 || def2==0)
     return UpWind(u[j][k],phi[nc1][k],phi[nc2][k]);
