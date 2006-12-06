@@ -22,12 +22,6 @@ else
     EXEC="$MPIHOME/bin/mpirun -np $NUMPROCS $SUN"
 fi
 
-if [ -z "$TRIANGLEHOME" ] ; then
-    echo Error: This example will not run without the triangle libraries.
-    echo Make sure TRIANGLEHOME is set in $SUNTANSHOME/Makefile.in
-    exit 1
-fi
-
 if [ ! -d $datadir ] ; then
     cp -r $maindatadir $datadir
     echo Creating grid...
