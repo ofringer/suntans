@@ -18,6 +18,7 @@
 
 #define MAXBCTYPES 4
 #define MAXMARKS 7
+#define NUMDGHIST 10
 
 /*
  * Main grid struct.
