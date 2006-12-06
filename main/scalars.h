@@ -18,6 +18,7 @@
 
 void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
 		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
-		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot);
+		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot,
+		   MPI_Comm comm, int myproc);
 
 #endif

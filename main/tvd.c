@@ -31,7 +31,8 @@ static REAL Psi(REAL r, int TVD);
  *       Ne--the number of horizontal edges, Nk--the number of vertical layers. 
  *
  */
-void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundary_scal, int TVD) 
+void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundary_scal, int TVD, 
+			   MPI_Comm comm, int myproc) 
 {
   int i, k, nf, iptr;
   int normal, nc1, nc2, ne;
@@ -80,23 +81,26 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundar
       for(k=0;k<grid->Nke[ne];k++) {
 	// Judge the velocity direction  
         if(phys->utmp2[ne][k]>0) {  
-	  gradSx[i][k]+= 1/(Ac*grid->dzzold[i][k])*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n1[ne]*normal*grid->dzzold[nc2][k]*df; 
-	  gradSy[i][k]+= 1/(Ac*grid->dzzold[i][k])*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n2[ne]*normal*grid->dzzold[nc2][k]*df; 
+	  gradSx[i][k]+= 1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n1[ne]*normal*df; 
+	  gradSy[i][k]+= 1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n2[ne]*normal*df; 
 	}
 	else {
-          gradSx[i][k]+= 1/(Ac*grid->dzzold[i][k])*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n1[ne]*normal*grid->dzzold[nc1][k]*df;
-	  gradSy[i][k]+= 1/(Ac*grid->dzzold[i][k])*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n2[ne]*normal*grid->dzzold[nc1][k]*df; 
+          gradSx[i][k]+= 1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n1[ne]*normal*df;
+	  gradSy[i][k]+= 1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n2[ne]*normal*df; 
 	}
       }
 
       // The edges that only have one cell neighbor
       for(k=grid->Nke[ne];k<grid->Nk[i];k++) {
-	gradSx[i][k]+= 1/(Ac*grid->dzzold[i][k])*phys->stmp[i][k]*grid->n1[ne]*normal*grid->dzzold[i][k]*df;
-	gradSy[i][k]+= 1/(Ac*grid->dzzold[i][k])*phys->stmp[i][k]*grid->n2[ne]*normal*grid->dzzold[i][k]*df;
+	gradSx[i][k]+= 1/Ac*phys->stmp[i][k]*grid->n1[ne]*normal*df;
+	gradSy[i][k]+= 1/Ac*phys->stmp[i][k]*grid->n2[ne]*normal*df;
       }
 	  
     } // End of the face loop
   } // End of the cell loop
+
+  ISendRecvCellData3D(gradSx,grid,myproc,comm);  
+  ISendRecvCellData3D(gradSy,grid,myproc,comm);  
  
   gradflag=1;
   // !!! Check the gradSx

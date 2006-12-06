@@ -29,7 +29,8 @@
  */
 void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
 		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
-		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot) 
+		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot,
+		   MPI_Comm comm, int myproc) 
 {
   int i, iptr, j, jptr, ib, k, nf, ktop;
   int Nc=grid->Nc, normal, nc1, nc2, ne;
@@ -87,7 +88,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 
   // Compute the scalar on the vertical faces (for horiz. advection)
   if(prop->TVD && prop->horiTVD)
-    HorizontalFaceScalars(grid,phys,prop,boundary_scal,prop->TVD); 
+    HorizontalFaceScalars(grid,phys,prop,boundary_scal,prop->TVD,comm,myproc); 
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
