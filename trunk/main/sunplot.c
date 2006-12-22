@@ -2925,78 +2925,88 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	dummy=(double *)malloc(data->Nkmax*sizeof(double));
 
       if(data->timestep==1) {
-      GetFile(string,DATADIR,DATAFILE,"BGSalinityFile",proc);
-	fid = MyFOpen(string,"r","ReadData");
-	for(i=0;i<data->Nkmax;i++) {
-	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	  for(j=0;j<data->Nc[proc];j++) 
-	    if(dummy[j]!=EMPTY)
-	      data->s0[proc][i][j]=dummy[j];
-	    else
-	      data->s0[proc][i][j]=EMPTY;
+	GetFile(string,DATADIR,DATAFILE,"BGSalinityFile",proc);
+	fid = fopen(string,"r");
+	if(fid) {
+	  for(i=0;i<data->Nkmax;i++) {
+	    fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	    for(j=0;j<data->Nc[proc];j++) 
+	      if(dummy[j]!=EMPTY)
+		data->s0[proc][i][j]=dummy[j];
+	      else
+		data->s0[proc][i][j]=EMPTY;
+	  }
+	  fclose(fid);
 	}
-	fclose(fid);
       }
       
       GetFile(string,DATADIR,DATAFILE,"SalinityFile",proc);
-      fid = MyFOpen(string,"r","ReadData");
-      fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
-      for(i=0;i<data->Nkmax;i++) {
-	fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	for(j=0;j<data->Nc[proc];j++) {
-	  data->s[proc][i][j]=dummy[j];
-	  if(dummy[j]!=EMPTY)
-	    data->sd[proc][i][j]=dummy[j]-data->s0[proc][i][j];
-	  else
-	    data->sd[proc][i][j]=EMPTY;
+      fid = fopen(string,"r");
+      if(fid) {
+	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+	for(i=0;i<data->Nkmax;i++) {
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	  for(j=0;j<data->Nc[proc];j++) {
+	    data->s[proc][i][j]=dummy[j];
+	    if(dummy[j]!=EMPTY)
+	      data->sd[proc][i][j]=dummy[j]-data->s0[proc][i][j];
+	    else
+	      data->sd[proc][i][j]=EMPTY;
+	  }
 	}
+	fclose(fid);
       }
-      fclose(fid);
 
       GetFile(string,DATADIR,DATAFILE,"TemperatureFile",proc);
-      fid = MyFOpen(string,"r","ReadData");
-      fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
-      for(i=0;i<data->Nkmax;i++) {
-	fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	for(j=0;j<data->Nc[proc];j++) 
-	  data->T[proc][i][j]=dummy[j];
+      fid = fopen(string,"r");
+      if(fid) {
+	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+	for(i=0;i<data->Nkmax;i++) {
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	  for(j=0;j<data->Nc[proc];j++) 
+	    data->T[proc][i][j]=dummy[j];
+	}
+	fclose(fid);
       }
-      fclose(fid);
 
       GetFile(string,DATADIR,DATAFILE,"PressureFile",proc);
-      fid = MyFOpen(string,"r","ReadData");
-      fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
-      for(i=0;i<data->Nkmax;i++) {
-	fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	for(j=0;j<data->Nc[proc];j++) 
-	  data->q[proc][i][j]=dummy[j];
+      fid = fopen(string,"r");
+      if(fid) {
+	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+	for(i=0;i<data->Nkmax;i++) {
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	  for(j=0;j<data->Nc[proc];j++) 
+	    data->q[proc][i][j]=dummy[j];
+	}
+	fclose(fid);
       }
-      fclose(fid);
 
       GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",proc);
-      fid = MyFOpen(string,"r","ReadData");
-      fseek(fid,3*(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
-      for(i=0;i<data->Nkmax;i++) {
-
-	fread(dummy,sizeof(double),data->Nc[proc],fid);     
-	for(j=0;j<data->Nc[proc];j++) 
-	  data->u[proc][i][j]=dummy[j];
-
-	fread(dummy,sizeof(double),data->Nc[proc],fid);     
-	for(j=0;j<data->Nc[proc];j++) 
-	  data->v[proc][i][j]=dummy[j];
-
-	fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	for(j=0;j<data->Nc[proc];j++) 
-	  data->wf[proc][i][j]=dummy[j];
-
-	for(j=0;j<data->Nc[proc];j++) 
-	  if(data->s0[proc][i][j]==EMPTY) {
-	    data->u[proc][i][j]=EMPTY;
-	    data->v[proc][i][j]=EMPTY;
-	  }
+      fid = fopen(string,"r");
+      if(fid) {
+	fseek(fid,3*(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+	for(i=0;i<data->Nkmax;i++) {
+	  
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);     
+	  for(j=0;j<data->Nc[proc];j++) 
+	    data->u[proc][i][j]=dummy[j];
+	  
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);     
+	  for(j=0;j<data->Nc[proc];j++) 
+	    data->v[proc][i][j]=dummy[j];
+	  
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	  for(j=0;j<data->Nc[proc];j++) 
+	    data->w[proc][i][j]=dummy[j];
+	  
+	  for(j=0;j<data->Nc[proc];j++) 
+	    if(data->s0[proc][i][j]==EMPTY) {
+	      data->u[proc][i][j]=EMPTY;
+	      data->v[proc][i][j]=EMPTY;
+	    }
+	}
+	fclose(fid);
       }
-      fclose(fid);
 
       //      printf("Computing ubar and vbar at step %d, proc %d\n",nstep,proc);
 
@@ -3013,33 +3023,15 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	}
       }
 
-      GetFile(string,DATADIR,DATAFILE,"VerticalVelocityFile",proc);
-      fid = MyFOpen(string,"r","ReadData");
-      for(i=0;i<data->Nkmax;i++) {
-	for(j=0;j<data->Nc[proc];j++) 
-	  data->w[proc][i][j]=0;
-      }
-      fseek(fid,(nstep-1)*data->Nc[proc]*(data->Nkmax+1)*sizeof(double),0);
-      fread(dummy,sizeof(double),data->Nc[proc],fid);      
-      for(i=0;i<data->Nkmax;i++) {
-	for(j=0;j<data->Nc[proc];j++) 
-	  data->w[proc][i][j]=0.5*dummy[j];
-	fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	for(j=0;j<data->Nc[proc];j++) {
-	  data->w[proc][i][j]+=0.5*dummy[j];
-	  if(data->s[proc][i][j]==EMPTY)
-	    data->w[proc][i][j]=EMPTY;
-	}
-      }
-      fclose(fid);
-
       GetFile(string,DATADIR,DATAFILE,"FreeSurfaceFile",proc);
-      fid = MyFOpen(string,"r","ReadData");
-      fseek(fid,(nstep-1)*data->Nc[proc]*sizeof(double),0);
-      fread(dummy,sizeof(double),data->Nc[proc],fid);      
-      for(i=0;i<data->Nc[proc];i++)
-	data->h[proc][i]=dummy[i];
-      fclose(fid);
+      fid = fopen(string,"r");
+      if(fid) {
+	fseek(fid,(nstep-1)*data->Nc[proc]*sizeof(double),0);
+	fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	for(i=0;i<data->Nc[proc];i++)
+	  data->h[proc][i]=dummy[i];
+	fclose(fid);
+      }
 
       for(i=0;i<data->Nc[proc];i++) {
 	data->h_d[proc][i]=data->h[proc][i]+data->depth[proc][i];
@@ -3050,30 +3042,34 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       turbmodel=(int)GetValue(DATAFILE,"turbmodel",&status);
       if(turbmodel) {
 	GetFile(string,DATADIR,DATAFILE,"EddyViscosityFile",proc);
-	fid = MyFOpen(string,"r","ReadData");
-	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
-	for(i=0;i<data->Nkmax;i++) {
-	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	  for(j=0;j<data->Nc[proc];j++) {
-	    data->nut[proc][i][j]=dummy[j];
-	    if(data->s[proc][i][j]==EMPTY)
-	      data->nut[proc][i][j]=EMPTY;
+	fid = fopen(string,"r");
+	if(fid) {
+	  fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+	  for(i=0;i<data->Nkmax;i++) {
+	    fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	    for(j=0;j<data->Nc[proc];j++) {
+	      data->nut[proc][i][j]=dummy[j];
+	      if(data->s[proc][i][j]==EMPTY)
+		data->nut[proc][i][j]=EMPTY;
+	    }
 	  }
+	  fclose(fid);
 	}
-	fclose(fid);
-	
+
 	GetFile(string,DATADIR,DATAFILE,"ScalarDiffusivityFile",proc);
-	fid = MyFOpen(string,"r","ReadData");
-	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
-	for(i=0;i<data->Nkmax;i++) {
-	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	  for(j=0;j<data->Nc[proc];j++) {
-	    data->kt[proc][i][j]=dummy[j];
-	    if(data->s[proc][i][j]==EMPTY)
-	      data->kt[proc][i][j]=EMPTY;
+	fid = fopen(string,"r");
+	if(fid) {
+	  fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
+	  for(i=0;i<data->Nkmax;i++) {
+	    fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	    for(j=0;j<data->Nc[proc];j++) {
+	      data->kt[proc][i][j]=dummy[j];
+	      if(data->s[proc][i][j]==EMPTY)
+		data->kt[proc][i][j]=EMPTY;
+	    }
 	  }
+	  fclose(fid);
 	}
-	fclose(fid);
       }
 
       free(dummy);
