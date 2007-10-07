@@ -68,7 +68,7 @@ PEXEC = sunplot
 DEPFLAGS = -Y
 
 SRCS = 	mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
-	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c \
+	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c tides.c \
 	$(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE)
 OBJS = $(SRCS:.c=.o)
 

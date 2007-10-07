@@ -758,7 +758,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     if(prop->nsteps>0) {
 
       // Set boundary values
-      BoundaryVelocities(grid,phys,prop);
+      BoundaryVelocities(grid,phys,prop,myproc);
       BoundaryScalars(grid,phys,prop);
       WindStress(grid,phys,prop);
 
