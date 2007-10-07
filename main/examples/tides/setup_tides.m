@@ -1,5 +1,5 @@
-addpath /home/fringer/suntans-mfiles
-addpath /home/fringer/suntans-mfiles/suntides
+addpath ../../../mfiles
+addpath ../../../mfiles/suntides
 addpath /home/fringer/research/SUNTANS/tides/m_map
 
 % Load the m_map files to convert from x,y to lon,lat using UTM
