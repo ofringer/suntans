@@ -74,12 +74,12 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
 
 /*
  * Function: BoundaryVelocities
- * Usage: BoundaryVelocities(grid,phys,prop);
- * ------------------------------------------
+ * Usage: BoundaryVelocities(grid,phys,prop,myproc);
+ * -------------------------------------------------
  * This will set the values of u,v,w, and h at the boundaries.
  * 
  */
-void BoundaryVelocities(gridT *grid, physT *phys, propT *prop) {
+void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
   int jptr, j, ib, k, iptr, i;
   REAL z, cb, u0=0.1;
   
