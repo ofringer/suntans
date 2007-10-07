@@ -10,3 +10,5 @@ clobber:
 	make -C wetdry clobber
 	make -C windstress clobber
 	make -C cylinder clobber
+	make -C tides clobber
+
