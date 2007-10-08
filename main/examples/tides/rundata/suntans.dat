@@ -115,4 +115,4 @@ DataLocations	dataxy.dat       # dataxy.dat contains column x-y data
 ProfileDataFile	profdata.dat     # Information about profiles is in profdata.dat
 ntoutProfs		1       # Output profile data every 1 time step
 NkmaxProfs		1        # Only output the top 1 z-level
-numInterpPoints 	1        # Output data at the three nearest neighbors to each input point.
+numInterpPoints 	1        # Output data at the nearest neighbor.
