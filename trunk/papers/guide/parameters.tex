@@ -52,11 +52,13 @@ bottom, otherwise it is refined at the free-surface.
 
 \subsubsection{CorrectVoronoi: Boolean}
 
-If CorrectVoronoi is 1 then degenerate triangles are corrected using
-the VoronoiRatio parameter defined below.  For a given triangulation,
-stability is dictated by the smallest distance between Voronoi
-points.  The worst case occurs when two right triangles abut each
-other, since they have coincident Voronoi points.  In SUNTANS, the
+Typical triangulations will always contain degenerate triangles in which
+one of the angles are close to or greater than 90 degrees.  For near-right neighboring
+triangles, the distance between their Voronoi points can be quite small (zero when
+two right triangles abut one another), while for obtuse triangles,
+the Voronoi point lies outside the triangle.  This can be corrected in one of two ways.
+
+In the first method, CorrectVoronoi is 1, and the
 Voronoi points are corrected if they are too close to each other
 relative to the distance between the centroids of the neighboring triangles.
 If triangle $1$ and $2$ have centroids defined by $(xc_1,yc_1)$ and $(xc_2,yc_2)$
@@ -80,11 +82,32 @@ yv_2 &=& yc + V_r(yc_2-yc)\,,\nonumber
 where $xc=(xc_1+xc_2)/2$ and $yc=(yc_1+yc_2)/2$.  Using this correction methodology,
 setting $V_r=1$ moves the Voronoi points to the centroids of the cells.
 
-\subsubsection{VoronoiRatio: $0\le V_r\le 1$}
+In the second method, CorrectVoronoi is set to -1 and triangles
+with angles greater than or equal to the angle defined by VoronoiRatio are corrected by moving the Voronoi point
+to the triangle centroid.  While the centroid is guaranteed to be inside the triangle and the distance between
+centroids is on the same order as the triangle edge lengths, the disadvantage is that the Voronoi edge connecting
+the Voronoi points is no longer perpendicular to the Delaunay edges.  This reduces the accuracy of the gradients
+defined by differences between values at Voronoi points because it is assumed that the Voronoi-Delaunay intersection
+is orthogonal.
 
-Adjustment factor for degenerate triangles.  If $V_r=1$, then
-all Voronoi points are moved to the centroids, while if $V_r=0$, 
-then no correction is performed.  See CorrectVoronoi.
+\subsubsection{VoronoiRatio}
+
+Adjustment factor for degenerate triangles.  Use of this parameter depends on the value of 
+CorrectVoronoi defined above:
+
+\medskip
+\noindent
+if CorrectVoronoi=1, $0\le \mbox{VoronoiRatio} \le 1$: Voronoi points are moved by this amount towards the
+triangle centroids.
+
+\medskip
+\noindent
+if CorrectVoronoi=-1 $0\le \mbox{VoronoiRatio} \le 90$: Move Voronoi points to centroids for triangles with
+angles greater than or equal to VoronoiRatio.
+
+\medskip
+\noindent
+if CorrectVoronoi=0:no correction is performed.
 
 \subsubsection{vertgridcorrect: Boolean}
 
