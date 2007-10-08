@@ -1,5 +1,5 @@
-How to run this example:
-------------------------
+How to run this example.  For details please see the user guide.
+----------------------------------------------------------------
 1) Edit ../../Makefile.in
 
 2) Make sure the paths in the first three lines of setup_tides.m are correct.
