@@ -1,6 +1,12 @@
-all:	clobber
+all:	test
 
-clobber:
+test:
+	sh testall.sh
+
+clean:
+	rm -f *~ *.out
+
+clobber:	clean
 	make -C accuracy clobber
 	make -C boundaries clobber
 	make -C channel clobber
@@ -11,4 +17,5 @@ clobber:
 	make -C windstress clobber
 	make -C cylinder clobber
 	make -C tides clobber
+	make -C tides-restart clobber
 
