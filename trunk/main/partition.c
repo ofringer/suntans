@@ -10,8 +10,12 @@
  *
  */
 #include "partition.h"
-#include "parmetis.h"
 #include "memory.h"
+
+//Parmetis 2.0
+#include "parmetis.h"
+//Parmetis 3.1
+//#include "parmetislib.h"
 
 // Private function
 static void GetGraph(GraphType *graph, gridT *grid, MPI_Comm comm);

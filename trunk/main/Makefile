@@ -12,6 +12,8 @@
 include Makefile.in
 
 ifneq ($(MPIHOME),)
+  # For the SGI Altix
+  # CC = icc
   CC = $(MPIHOME)/bin/mpicc
   MPIFILE = 
   MPIDEF = 
@@ -54,7 +56,9 @@ else
   PARMETISSRC = partition-noparmetis.c
 endif
 
-LD = $(CC) 
+# For the Altix
+#LD = $(CC) -lmpi
+LD = $(CC)
 LIBS = $(PARMETISLIB) $(TRIANGLELIB)
 LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR)
 LDFLAGS = -lm $(LIBDIR) $(LIBS)
