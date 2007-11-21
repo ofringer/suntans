@@ -6,10 +6,7 @@ How to run this example.  For details please see the user guide.
 Also make sure the suntides data is uncompressed by entering the suntides
 directory and typing "make".
 
-3) Run suntans and create the tidexy.dat files. (note that the 
-tidecomponents.dat.* files have been added to the rundata directory
-so this step can be skipped.  However this step is required if the
-tidecomponents.dat.* files are not there).
+3) Run suntans and create the tidexy.dat files. 
 
 make test
 
