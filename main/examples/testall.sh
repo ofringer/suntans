@@ -1,5 +1,9 @@
 testdirs="boundaries channel cylinder estuary iwaves lockexchange tides tides-restart wetdry windstress"
 
+# Need to copy tidal data over to tides/rundata directory in order to
+# make that example work without crashing.
+cp tides-restart/rundata/tidecomponents.dat.* tides/rundata/.
+
 for dir in `echo $testdirs`
 do
   echo Testing $dir
