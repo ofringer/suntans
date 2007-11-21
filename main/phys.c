@@ -356,7 +356,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
  * from the restart file defined by prop->StartFID.
  *
  */
-void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm) {
+void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc) {
 
   int i, j;
 
@@ -396,8 +396,6 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
     fread(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StartFID);
   for(i=0;i<grid->Nc;i++) 
     fread(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
-  for(i=0;i<grid->Nc;i++) 
-    fread(phys->qc[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
 
   for(i=0;i<grid->Nc;i++) 
     fread(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
@@ -409,12 +407,6 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
 
   UpdateDZ(grid,phys,0);
   ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
-
-  ISendRecvCellData3D(phys->uc,grid,myproc,comm);
-  ISendRecvCellData3D(phys->vc,grid,myproc,comm);
-
-  // Set the density from s and T using the equation of state
-  SetDensity(grid,phys,prop);
 }
 
 /*
@@ -760,21 +752,15 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
   t_start=Timer();
   t_source=t_predictor=t_nonhydro=t_turb=t_transport=t_io=t_comm=t_check=0;
-
-  // Set all boundary values at time t=nstart*dt;
-  prop->n=prop->nstart;
-  prop->rtime=prop->nstart*prop->dt;
-  BoundaryVelocities(grid,phys,prop,myproc);
-  OpenBoundaryFluxes(NULL,phys->u,NULL,grid,phys,prop);
-  BoundaryScalars(grid,phys,prop);
-  WindStress(grid,phys,prop);
-  SetDragCoefficients(grid,phys,prop);
-
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
     prop->n = n;
-    prop->rtime = n*prop->dt;
-
+    prop->rtime = (n-1)*prop->dt;
     if(prop->nsteps>0) {
+
+      // Set boundary values
+      BoundaryVelocities(grid,phys,prop,myproc);
+      BoundaryScalars(grid,phys,prop);
+      WindStress(grid,phys,prop);
 
       // Ramp down theta from 1 to the value specified in suntans.dat over
       // the time thetaramptime specified in suntans.dat to damp out transient
@@ -872,15 +858,13 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	t_transport+=Timer()-t0;
       }
 
-      // Set scalar and wind stress boundary values at new time step n; (n-1) is old time step.
-      BoundaryScalars(grid,phys,prop);
-      WindStress(grid,phys,prop);
-      SetDragCoefficients(grid,phys,prop);
-
       if(prop->beta || prop->gamma)
 	SetDensity(grid,phys,prop);
 
-      // u now contains velocity on all edges at the new time step
+      // utmp2 contains the velocity field at time step n, u contains
+      // it at time step n+1.  This is so that at the next time step
+      // phys->uold contains velocity at time step n-1 and phys->uc contains
+      // that at time step n.
       ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
       ISendRecvCellData3D(phys->uc,grid,myproc,comm);
       ISendRecvCellData3D(phys->vc,grid,myproc,comm);
@@ -923,7 +907,7 @@ static void StoreVariables(gridT *grid, physT *phys) {
   for(j=0;j<grid->Ne;j++) {
     phys->D[j]=0;
     for(k=0;k<grid->Nke[j];k++)
-      phys->utmp[j][k]=phys->utmp2[j][k]=phys->u[j][k];
+      phys->utmp2[j][k]=phys->u[j][k];
   }
 }
 
@@ -2206,9 +2190,9 @@ static void UPredictor(gridT *grid, physT *phys,
   // So far we have U*** and D.  Now we need to create h* in htmp.   This
   // will comprise the source term for the free-surface solver.  Before we
   // do this we need to set the new velocity at the open boundary faces and
-  // place them into utmp.  
-  BoundaryVelocities(grid,phys,prop,myproc);
-  OpenBoundaryFluxes(NULL,phys->utmp,NULL,grid,phys,prop);
+  // place them into utmp.  These need the velocity from the old time step uold
+  // As well as the current vectors.
+  OpenBoundaryFluxes(phys->q,phys->utmp,phys->utmp2,grid,phys,prop);
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -3073,7 +3057,7 @@ static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
 static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, int blowup, MPI_Comm comm)
 {
-  int i, j, jptr, k, nwritten;
+  int i, j, k, nwritten;
   REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData");
 
   if(!(prop->n%prop->ntconserve) && !blowup) {
@@ -3374,8 +3358,6 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       fwrite(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->qc[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
 
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
@@ -3383,7 +3365,6 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       fwrite(phys->T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->s0[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
     fclose(prop->StoreFID);
   }
 

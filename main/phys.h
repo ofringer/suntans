@@ -140,7 +140,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop);
 void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop);
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop);
 void InitializeVerticalGrid(gridT **grid);
-void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
+void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc);
 void OpenFiles(propT *prop, int myproc);
 void ReadProperties(propT **prop, int myproc);
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
