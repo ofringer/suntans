@@ -145,7 +145,7 @@ double getfield(FILE *file, char *str)
     return;
   }
 
-  while(c != ' ' & c != '\t' & c != '\n' & c != '\r' & c != EOF) {
+  while(c != ' ' & c != '\n' & c != EOF) {
     str[i++] = c;
     c = fgetc(file);
   }
