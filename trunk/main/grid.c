@@ -1033,10 +1033,9 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 
   sprintf(str,"%s.%d",CELLSFILE,myproc);
   if(VERBOSE>2) printf("Outputting %s...\n",str);
-
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(j=0;j<grid->Nc;j++) {
-    fprintf(ofile,"%f %f ",grid->xv[j],grid->yv[j]);
+    fprintf(ofile,"%e %e ",grid->xv[j],grid->yv[j]);
     for(nf=0;nf<NFACES;nf++)
       fprintf(ofile,"%d ",grid->cells[j*NFACES+nf]);
     for(nf=0;nf<NFACES;nf++)
@@ -1064,7 +1063,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(n=0;n<Nc;n++) {
-    fprintf(ofile,"%f %f %f %f %d ",grid->xv[n],grid->yv[n],
+    fprintf(ofile,"%e %e %e %e %d ",grid->xv[n],grid->yv[n],
 	    grid->Ac[n],grid->dv[n],grid->Nk[n]);
     for(nf=0;nf<NFACES;nf++)
       fprintf(ofile,"%d ",grid->face[NFACES*n+nf]);
@@ -1073,7 +1072,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     for(nf=0;nf<NFACES;nf++) 
       fprintf(ofile,"%d ",grid->normal[NFACES*n+nf]);
     for(nf=0;nf<NFACES;nf++) 
-      fprintf(ofile,"%f ",grid->def[NFACES*n+nf]);
+      fprintf(ofile,"%e ",grid->def[NFACES*n+nf]);
     // Removed this line since it is never reloaded...
     //fprintf(ofile,"%d ",grid->mnptr[n]);
     fprintf(ofile,"\n");
@@ -1086,8 +1085,8 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(n=0;n<Ne;n++) {
     // Removed the two zeros because they are redundant
-    // fprintf(ofile,"%f %f 0 0 %f %f %d %d %d %d ",
-    fprintf(ofile,"%f %f %f %f %f %f %d %d %d %d %d %d %d ",
+    // fprintf(ofile,"%e %e 0 0 %e %e %d %d %d %d ",
+    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d ",
 	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
 	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
 	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n]);
