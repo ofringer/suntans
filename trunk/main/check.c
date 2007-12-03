@@ -316,23 +316,23 @@ void Progress(propT *prop, int myproc, int numprocs)
  */
 void MemoryStats(gridT *grid, int myproc, int numprocs, MPI_Comm comm) {
   int i, ncells, allncells;
-  unsigned AllSpace;
+  unsigned AllSpace, TotSpacekb = TotSpace>>10;
   
   ncells=0;
   for(i=0;i<grid->Nc;i++)
     ncells+=grid->Nk[i];
 
-  MPI_Reduce(&TotSpace,&(AllSpace),1,MPI_INT,MPI_SUM,0,comm);
+  MPI_Reduce(&TotSpacekb,&(AllSpace),1,MPI_INT,MPI_SUM,0,comm);
   MPI_Bcast(&AllSpace,1,MPI_INT,0,comm);
   MPI_Reduce(&ncells,&(allncells),1,MPI_INT,MPI_SUM,0,comm);
   MPI_Bcast(&allncells,1,MPI_INT,0,comm);
 
   if(numprocs>0)
-    printf("Processor %d,  Total memory: %.2f Mb, %d cells\n",
-	   myproc,TotSpace/(1024*1e3),ncells);
+    printf("Processor %d,  Total memory: %u Mb, %d cells\n",
+	   myproc,TotSpacekb>>10,ncells);
   if(myproc==0) 
-    printf("All processors: %.2f Mb, %d cells (%d bytes/cell)\n",
-	   AllSpace/(1024*1e3),allncells,
-	   (int)(AllSpace/(REAL)allncells));
+    printf("All processors: %u Mb, %d cells (%d bytes/cell)\n",
+	   AllSpace>>10,allncells,
+	   (int)(1024.0*(REAL)AllSpace/(REAL)allncells));
 }
 
