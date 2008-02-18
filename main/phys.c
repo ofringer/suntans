@@ -61,6 +61,7 @@ static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid);
 static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, int blowup, MPI_Comm comm);
 static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);
+static REAL UFaceFlux(int j, int k, REAL **phi, REAL **u, gridT *grid, REAL dt, int method);
 static void SetDensity(gridT *grid, physT *phys, propT *prop);
 
 /*
@@ -951,7 +952,7 @@ static void StoreVariables(gridT *grid, physT *phys) {
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 			     int myproc, int numprocs, MPI_Comm comm) {
   int i, iptr, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin, kmax;
-  REAL *a, *b, *c, fab, sum, def1, def2, dgf;
+  REAL *a, *b, *c, fab, sum, def1, def2, dgf, Cz;
 
   a = phys->a;
   b = phys->b;
@@ -1125,7 +1126,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=phys->uc[nc][k]*grid->dzz[nc][k];
 	}
       }
-    else // Central
+    else if(prop->nonlinear==2 || prop->nonlinear==4) 
       for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	j = grid->edgep[jptr];
 	
@@ -1141,11 +1142,12 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=0;
 	
 	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=0.5*InterpToFace(j,k,phys->uc,phys->u,grid)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.5*UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
-    
+
     // Now compute the cell-centered source terms and put them into stmp
-    for(i=0;i<grid->Nc;i++) {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i=grid->cellp[iptr];
       
       for(nf=0;nf<NFACES;nf++) {
 	
@@ -1199,7 +1201,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=phys->vc[nc][k]*grid->dzz[nc][k];
 	}
       }
-    else // Central
+    else if(prop->nonlinear==2 || prop->nonlinear==4)
       for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	j = grid->edgep[jptr];
 	
@@ -1215,11 +1217,12 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=0;
 	
 	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=0.5*InterpToFace(j,k,phys->vc,phys->u,grid)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.5*UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
-    
+
     // Now compute the cell-centered source terms and put them into stmp.
-    for(i=0;i<grid->Nc;i++) {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i=grid->cellp[iptr];
       
       for(k=0;k<grid->Nk[i];k++) 
 	phys->stmp2[i][k]=0;
@@ -1240,7 +1243,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     }
     
     // Now do vertical advection
-    for(i=0;i<grid->Nc;i++) {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i=grid->cellp[iptr];
       
       if(prop->nonlinear==1)  // Upwind
 	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
@@ -1249,12 +1253,22 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
 		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
 	}
-      else  // Central
+      else if(prop->nonlinear==2) // Central
 	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
 	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
 				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
 	  b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
 				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
+	}
+      else if(prop->nonlinear==4) // Lax-Wendroff
+	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	  Cz = 2.0*phys->w[i][k]*prop->dt/(grid->dzz[i][k]+grid->dzz[i][k-1]);
+	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
+				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1])
+				-0.5*Cz*(phys->uc[i][k-1]-phys->uc[i][k]));
+	  b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
+				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1])
+				-0.5*Cz*(phys->vc[i][k-1]-phys->vc[i][k]));
 	}
       
       for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++) {
@@ -1349,7 +1363,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       phys->stmp2[i][k]*=sum;
     }
   }
-      
+
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr]; 
     
@@ -1376,7 +1390,24 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       phys->Cn_U[j][k]-=def2/dgf
 	*prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
   }
-  
+
+  // Now add on stmp and stmp2 from the boundaries
+  for(jptr=grid->edgedist[3];jptr<grid->edgedist[4];jptr++) {
+    j = grid->edgep[jptr]; 
+    
+    nc1 = grid->grad[2*j];
+    k0=grid->ctop[nc1];
+
+    for(nf=0;nf<NFACES;nf++) {
+      if((nc2=grid->neigh[nc1*NFACES+nf])!=-1) {
+	ne=grid->face[nc1*NFACES+nf];
+	for(k=k0;k<grid->Nk[nc1];k++) 
+	  phys->Cn_U[ne][k]-=grid->def[nc1*NFACES+nf]/grid->dg[ne]*
+	    prop->dt*(phys->stmp[nc2][k]*grid->n1[ne]+phys->stmp2[nc2][k]*grid->n2[ne]);
+      }
+    }
+  }
+
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr]; 
     
@@ -1478,7 +1509,7 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
 static void WPredictor(gridT *grid, physT *phys, propT *prop,
 		       int myproc, int numprocs, MPI_Comm comm) {
   int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin;
-  REAL fab, sum, *a, *b, *c;
+  REAL fab, sum, *a, *b, *c, Cz;
 
   a = phys->a;
   b = phys->b;
@@ -1556,7 +1587,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=0.5*(phys->w[nc][k]+phys->w[nc][k+1])*grid->dzz[nc][k];
 	}
       }
-    else // Central 
+    else if(prop->nonlinear==2 || prop->nonlinear==4)
       for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	j = grid->edgep[jptr];
 	
@@ -1571,11 +1602,12 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 	for(k=0;k<kmin;k++)
 	  phys->ut[j][k]=0;
 	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=0.25*(InterpToFace(j,k,phys->w,phys->u,grid)+
-			       InterpToFace(j,k+1,phys->w,phys->u,grid))*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.25*(UFaceFlux(j,k,phys->w,phys->u,grid,prop->dt,prop->nonlinear)+
+			       UFaceFlux(j,k+1,phys->w,phys->u,grid,prop->dt,prop->nonlinear))*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
-    
-    for(i=0;i<grid->Nc;i++) {
+
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i=grid->cellp[iptr];
       
       for(nf=0;nf<NFACES;nf++) {
 	
@@ -1590,13 +1622,16 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 	  phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	    (grid->Ac[i]*grid->dzz[i][grid->ctop[i]]);
       }
-      
-      // Vertical advection
-      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-	phys->stmp[i][k]+=(pow(phys->w[i][k],2)-pow(phys->w[i][k+1],2))/grid->dzz[i][k];
+
+      // Vertical advection; note that in this formulation first-order upwinding is not implemented.
+      if(prop->nonlinear==1 || prop->nonlinear==2) {
+	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	  phys->stmp[i][k]+=(pow(phys->w[i][k],2)-pow(phys->w[i][k+1],2))/grid->dzz[i][k];
+	}
+
+	// Top cell
+	phys->stmp[i][grid->ctop[i]]-=pow(phys->w[i][grid->ctop[i]+1],2)/grid->dzz[i][grid->ctop[i]];
       }
-      // Top cell
-      phys->stmp[i][grid->ctop[i]]-=pow(phys->w[i][grid->ctop[i]+1],2)/grid->dzz[i][grid->ctop[i]];
     }
     
     // Check to make sure integrated fluxes are 0 for conservation
@@ -1649,6 +1684,20 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     phys->Cn_W[i][k]-=prop->dt*phys->stmp[i][k];
   }
 
+  // Vertical advection using Lax-Wendroff
+  if(prop->nonlinear==4) 
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr]; 
+      
+      for(k=grid->ctop[i]+1;k<grid->Nk[i]+1;k++) {
+	Cz = 0.5*(phys->w[i][k-1]+phys->w[i][k])*prop->dt/grid->dzz[i][k-1];
+	a[k]=0.5*(phys->w[i][k-1]+phys->w[i][k])*(0.5*(phys->w[i][k-1]+phys->w[i][k])-0.5*Cz*(phys->w[i][k-1]-phys->w[i][k]));
+      }
+      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	phys->Cn_W[i][k]-=2.0*prop->dt*(a[k]-a[k+1])/(grid->dzz[i][k]+grid->dzz[i][k+1]);
+      }
+    }
+  
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr]; 
     
@@ -1756,6 +1805,10 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
   int i, iptr, j, jptr, k, nf, ne, nc1, nc2;
   REAL *ap=phys->a, *am=phys->b;
 
+  for(i=0;i<grid->Nc;i++)
+    for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+      src[i][k] = 0;
+    
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
     
@@ -1792,13 +1845,6 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
   // at the hydrostatic faces.
   for(j=0;j<grid->Ne;j++) {
     phys->D[j]=grid->df[j]/grid->dg[j];
-  }
-
-  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    i = grid->cellp[iptr];
-
-    for(nf=0;nf<NFACES;nf++)
-      phys->D[grid->face[i*NFACES+nf]]=0;
   }
 }
 
@@ -3039,10 +3085,13 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
  */
 static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
   
-  int k, n, ne, nf;
+  int k, n, ne, nf, iptr;
   REAL sum;
 
-  for(n=0;n<grid->Nc;n++) {
+  //  for(n=0;n<grid->Nc;n++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    n=grid->cellp[iptr];
+
     for(k=0;k<grid->Nk[n];k++) {
       uc[n][k]=0;
       vc[n][k]=0;
@@ -3557,6 +3606,33 @@ static REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid) {
     return UpWind(u[j][k],phi[nc1][k],phi[nc2][k]);
   else    
     return (phi[nc1][k]*def2+phi[nc2][k]*def1)/(def1+def2);
+}
+
+/*
+ * Function: UFaceFlux
+ * Usage: UFaceFlux(j,k,phi,phys->u,grid,prop->dt,prop->nonlinear);
+ * ---------------------------------------------------------------------
+ * Interpolation to obtain the flux of the scalar field phi (of type REAL **) on 
+ * face j, k;  method==2: Central-differencing, method==4: Lax-Wendroff.
+ *
+ */
+static REAL UFaceFlux(int j, int k, REAL **phi, REAL **u, gridT *grid, REAL dt, int method) {
+  int nc1, nc2;
+  REAL def1, def2, Dj, C=0;
+  nc1 = grid->grad[2*j];
+  nc2 = grid->grad[2*j+1];
+  Dj = grid->dg[j];
+  def1 = sqrt(pow(grid->xv[nc1]-grid->xe[j],2)+
+	      pow(grid->yv[nc1]-grid->ye[j],2));
+  def2 = Dj-def1;
+
+  if(method==4) C = u[j][k]*dt/Dj;
+
+  if(def1==0 || def2==0)
+    return UpWind(u[j][k],phi[nc1][k],phi[nc2][k]);
+  else    
+    return (phi[nc1][k]*def2+phi[nc2][k]*def1)/(def1+def2)
+      -C/2*(phi[nc1][k]-phi[nc2][k]);
 }
 
 /*
