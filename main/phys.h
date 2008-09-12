@@ -71,6 +71,10 @@ typedef struct _physT {
 
   REAL *htmp;
   REAL *hold;
+  REAL *htmp2;
+  REAL *htmp3;
+  REAL *hcoef;
+  REAL *hfcoef;
   REAL **stmp;
   REAL **stmp2;
   REAL **stmp3;
@@ -122,7 +126,7 @@ typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
     thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
     dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f;
-  int ntout, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, qprecond, volcheck, masscheck,
+  int ntout, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, hprecond, qprecond, volcheck, masscheck,
     nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
     TVD, horiTVD, vertTVD;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
