@@ -34,6 +34,8 @@ static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int mypr
 static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, int myproc, int numprocs);
 static void CGSolve(gridT *grid, physT *phys, propT *prop, 
 		    int myproc, int numprocs, MPI_Comm comm);
+static void HPreconditioner(REAL *x, REAL *y, gridT *grid, physT *phys, propT *prop);
+static void HCoefficients(REAL *coef, REAL *fcoef, gridT *grid, physT *phys, propT *prop);
 static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, propT *prop, 
 		     int myproc, int numprocs, MPI_Comm comm);
 static void ConditionQ(REAL **x, gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
@@ -43,7 +45,7 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop,
 		    int myproc, int numprocs, MPI_Comm comm);
 static REAL InnerProduct(REAL *x, REAL *y, gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 static REAL InnerProduct3(REAL **x, REAL **y, gridT *grid, int myproc, int numprocs, MPI_Comm comm);
-static void OperatorH(REAL *x, REAL *y, gridT *grid, physT *phys, propT *prop);
+static void OperatorH(REAL *x, REAL *y, REAL *coef, REAL *fcoef, gridT *grid, physT *phys, propT *prop);
 static void OperatorQC(REAL **coef, REAL **fcoef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
 static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid, physT *phys, propT *prop);
 static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, physT *phys, propT *prop);
@@ -111,6 +113,10 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->h = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->hold = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->htmp = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->htmp2 = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->htmp3 = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->hcoef = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->hfcoef = (REAL *)SunMalloc(NFACES*Nc*sizeof(REAL),"AllocatePhysicalVariables");
   
   (*phys)->w = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->wtmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -282,6 +288,10 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
 
   free(phys->h);
   free(phys->htmp);
+  free(phys->htmp2);
+  free(phys->htmp3);
+  free(phys->hcoef);
+  free(phys->hfcoef);
   free(phys->uc);
   free(phys->vc);
   free(phys->w);
@@ -2278,7 +2288,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	  fluxheight*grid->df[ne]*normal;
       }
     }
-    phys->htmp[i]=phys->h[i]-dt/grid->Ac[i]*sum;
+    phys->htmp[i]=grid->Ac[i]*phys->h[i]-dt*sum;
   }
 
   // Now we have the required components for the CG solver for the free-surface:
@@ -2396,18 +2406,21 @@ static void UPredictor(gridT *grid, physT *phys,
  * the free surface upon entry is in phys->h, which is placed into x.
  *
  */
-static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
-{
-  int i, iptr, n, niters;
-  REAL *x, *r, *D, *p, *z, mu, nu, eps, eps0;
+static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm) {
 
-  z = (REAL *)SunMalloc(grid->Nc*sizeof(REAL),"CGSolve");
+  int i, iptr, n, niters;
+  REAL *x, *r, *rtmp, *p, *z, mu, nu, eps, eps0, alpha, alpha0;
+
   x = phys->h;
   r = phys->hold;
-  D = phys->D;
+  rtmp = phys->htmp2;
+  z = phys->htmp3;
   p = phys->htmp;
 
   niters = prop->maxiters;
+
+  // Create the coefficients for the operator
+  HCoefficients(phys->hcoef,phys->hfcoef,grid,phys,prop);
 
   // For the boundary term (marker of type 3):
   // 1) Need to set x to zero in the interior points, but
@@ -2423,47 +2436,85 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
     x[i]=0;
   }
   ISendRecvCellData2D(x,grid,myproc,comm);
-  OperatorH(x,z,grid,phys,prop);
+  OperatorH(x,z,phys->hcoef,phys->hfcoef,grid,phys,prop);
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
 
-    p[i] = p[i] - z[i];
+    p[i] = p[i] - z[i];    
     r[i] = p[i];
     x[i] = 0;
   }    
-  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    i = grid->cellp[iptr];
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) { 
+    i = grid->cellp[iptr]; 
+ 
+    p[i] = 0; 
+  }     
 
-    p[i] = 0;
-  }    
-  eps0 = eps = InnerProduct(r,r,grid,myproc,numprocs,comm);
-  if(!prop->resnorm) eps0 = 1;
+  if(prop->hprecond==1) {
+    HPreconditioner(r,rtmp,grid,phys,prop);
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
 
-  for(n=0;n<niters && eps!=0;n++) {
+      p[i] = rtmp[i];
+    }
+    alpha = alpha0 = InnerProduct(r,rtmp,grid,myproc,numprocs,comm);
+  } else {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+
+      p[i] = r[i];
+    }
+    alpha = alpha0 = InnerProduct(r,r,grid,myproc,numprocs,comm);
+  }
+  if(!prop->resnorm) alpha0 = 1;
+
+  if(prop->hprecond==1)
+    eps=eps0=InnerProduct(r,r,grid,myproc,numprocs,comm);
+  else
+    eps=eps0=alpha0;
+
+  // Iterate until residual is less than prop->epsilon
+  for(n=0;n<niters && eps!=0 && alpha!=0;n++) {
 
     ISendRecvCellData2D(p,grid,myproc,comm);
-    OperatorH(p,z,grid,phys,prop);
+    OperatorH(p,z,phys->hcoef,phys->hfcoef,grid,phys,prop);
+    
+    mu = 1/alpha;
+    nu = alpha/InnerProduct(p,z,grid,myproc,numprocs,comm);
 
-    mu = 1/eps;
-    nu = eps/InnerProduct(p,z,grid,myproc,numprocs,comm);
-
+    //    printf("mu = %f, nu = %f, IP = %f\n",mu,nu,InnerProduct(p,z,grid,myproc,numprocs,comm));
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
 
       x[i] += nu*p[i];
       r[i] -= nu*z[i];
     }
-    eps = InnerProduct(r,r,grid,myproc,numprocs,comm);
-    mu*=eps;
+    if(prop->hprecond==1) {
+      HPreconditioner(r,rtmp,grid,phys,prop);
+      alpha = InnerProduct(r,rtmp,grid,myproc,numprocs,comm);
+      mu*=alpha;
+      for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	i = grid->cellp[iptr];
 
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i = grid->cellp[iptr];
+	p[i] = rtmp[i] + mu*p[i];
+      }
+    } else {
+      alpha = InnerProduct(r,r,grid,myproc,numprocs,comm);
+      mu*=alpha;
+      for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	i = grid->cellp[iptr];
 
-      p[i] = r[i] + mu*p[i];
+	p[i] = r[i] + mu*p[i];
+      }
     }
 
-    if(VERBOSE>3) printf("CGSolve Iteration: %d, resid=%e, proc=%d\n",n,sqrt(eps/eps0),myproc);
+    if(prop->hprecond==1)
+      eps=InnerProduct(r,r,grid,myproc,numprocs,comm);
+    else
+      eps=alpha;
+
+    if(VERBOSE>3) printf("CGSolve free-surface Iteration: %d, resid=%e, proc=%d\n",n,sqrt(eps/eps0),myproc);
     if(sqrt(eps/eps0)<prop->epsilon) 
       break;
   }
@@ -2472,12 +2523,64 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
       printf("Warning...Time step %d, norm of free-surface source is 0.\n",prop->n);
     else
       if(n==niters)  printf("Warning... Time step %d, Free-surface iteration not converging after %d steps! RES=%e > %.2e\n",
-			    prop->n,n,sqrt(eps/eps0),prop->epsilon);
-      else printf("Time step %d, CGSolve surface converged after %d iterations, res=%e < %.2e\n",
+			    prop->n,n,sqrt(eps/eps0),prop->qepsilon);
+      else printf("Time step %d, CGSolve free-surface converged after %d iterations, res=%e < %.2e\n",
 		  prop->n,n,sqrt(eps/eps0),prop->epsilon);
 
+  // Send the solution to the neighboring processors
   ISendRecvCellData2D(x,grid,myproc,comm);
-  SunFree(z,grid->Nc*sizeof(REAL),"CGSolve");
+}
+
+/*
+ * Function: HPreconditioner
+ * Usage: HPreconditioner(r,rtmp,grid,phys,prop);
+ * ----------------------------------------------
+ * Multiply the vector x by the inverse of the preconditioner M with
+ * xc = M^{-1} x
+ *
+ */
+static void HPreconditioner(REAL *x, REAL *y, gridT *grid, physT *phys, propT *prop) {
+  int i, iptr;
+  
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+
+    y[i]=x[i]/phys->hcoef[i];
+  }
+}
+
+/*
+ * Function: HCoefficients
+ * Usage: HCoefficients(coef,fcoef,grid,phys,prop);
+ * --------------------------------------------------
+ * Compute coefficients for the free-surface solver.  fcoef stores
+ * coefficients at the flux faces while coef stores coefficients
+ * at the cell center.  If L is the linear operator on x, then
+ *
+ * L(x(i)) = coef(i)*x(i) + sum(m=1:3) fcoef(ne)*x(neigh)
+ * coef(i) = (Ac(i) + sum(m=1:3) tmp*D(ne)*df(ne)/dg(ne))
+ * fcoef(ne) = tmp*D(ne)*df(ne)/dg(ne)
+ *
+ * where tmp = GRAV*(theta*dt)^2
+ *
+ */
+static void HCoefficients(REAL *coef, REAL *fcoef, gridT *grid, physT *phys, propT *prop) {
+  
+  int i, j, iptr, jptr, ne, nf;
+  REAL tmp = GRAV*pow(prop->theta*prop->dt,2), h0, boundary_flag;
+
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+
+      coef[i] = grid->Ac[i];
+      for(nf=0;nf<NFACES;nf++) 
+	if(grid->neigh[i*NFACES+nf]!=-1) {
+	  ne = grid->face[i*NFACES+nf];
+
+	  fcoef[i*NFACES+nf]=tmp*phys->D[ne]*grid->df[ne]/grid->dg[ne];
+	  coef[i]+=fcoef[i*NFACES+nf];
+	}
+  }
 }
 
 /*
@@ -2534,10 +2637,16 @@ static REAL InnerProduct3(REAL **x, REAL **y, gridT *grid, int myproc, int numpr
  * Usage: OperatorH(x,y,grid,phys,prop);
  * -------------------------------------
  * Given a vector x, computes the left hand side of the free surface 
- * Poisson equation and places it into y with y = L(x).
+ * Poisson equation and places it into y with y = L(x), where
+ *
+ * L(x(i)) = coef(i)*x(i) + sum(m=1:3) fcoef(ne)*x(neigh)
+ * coef(i) = (Ac(i) + sum(m=1:3) tmp*D(ne)*df(ne)/dg(ne))
+ * fcoef(ne) = tmp*D(ne)*df(ne)/dg(ne)
+ *
+ * where tmp = GRAV*(theta*dt)^2
  *
  */
-static void OperatorH(REAL *x, REAL *y, gridT *grid, physT *phys, propT *prop) {
+static void OperatorH(REAL *x, REAL *y, REAL *coef, REAL *fcoef, gridT *grid, physT *phys, propT *prop) {
   
   int i, j, iptr, jptr, ne, nf;
   REAL tmp = GRAV*pow(prop->theta*prop->dt,2), h0, boundary_flag;
@@ -2545,14 +2654,10 @@ static void OperatorH(REAL *x, REAL *y, gridT *grid, physT *phys, propT *prop) {
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
 
-      y[i] = x[i];
+      y[i] = coef[i]*x[i];
       for(nf=0;nf<NFACES;nf++) 
-	if(grid->neigh[i*NFACES+nf]!=-1) {
-	  ne = grid->face[i*NFACES+nf];
-
-	  y[i]+=tmp*phys->D[ne]*grid->df[ne]/grid->dg[ne]*
-	    (x[i]-x[grid->neigh[i*NFACES+nf]])/grid->Ac[i];
-	}
+	if(grid->neigh[i*NFACES+nf]!=-1)
+	  y[i]-=fcoef[i*NFACES+nf]*x[grid->neigh[i*NFACES+nf]];
   }
 
   for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
@@ -3501,6 +3606,8 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->sponge_decay = MPI_GetValue(DATAFILE,"sponge_decay","ReadProperties",myproc);
   (*prop)->readSalinity = MPI_GetValue(DATAFILE,"readSalinity","ReadProperties",myproc);
   (*prop)->readTemperature = MPI_GetValue(DATAFILE,"readTemperature","ReadProperties",myproc);
+
+  (*prop)->hprecond = DEFAULT_hprecond;
 }
 
 /* 
