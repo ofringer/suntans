@@ -1711,7 +1711,7 @@ void UnSurf(float *xc, float *yc, int *cells, float *data, int N) {
     vertices[3].y = vertices[0].y;
 
     ind = (data[i]-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
-    if(data[i]==EMPTY || (plottype=='D' && data[i]==0))
+    if(data[i]==EMPTY || (plottype=='D' && data[i]==0) || ind>=NUMCOLORS)
       ind = NUMCOLORS-1;
 
     Fill(vertices,3,ind,edgelines);
