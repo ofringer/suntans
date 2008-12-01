@@ -189,7 +189,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
     for(k=ktop+1;k<grid->Nk[i]-1;k++) 
       d[k-ktop]-=(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
 			       (ap[k]-am[k+1])*phys->stmp[i][k]-
-			       ap[k+1]*phys->stmp[i][k+1])+
+			       ap[k+1]*phys->stmp[i][k+1])-
 	(1-theta)*dt*(bd[k]*phys->stmp[i][k-1]
 		      -(bd[k]+bd[k+1])*phys->stmp[i][k]
 		      +bd[k+1]*phys->stmp[i][k+1]);
@@ -198,7 +198,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
       //Flux through bottom of top cell
       k=ktop;
       d[0]=d[0]-(1-theta)*dt*(-am[k+1]*phys->stmp[i][k]-
-			   ap[k+1]*phys->stmp[i][k+1])-
+			   ap[k+1]*phys->stmp[i][k+1])+
 	(1-theta)*dt*(-(2*alpha_top*bd[k+1]+bd[k+1])*phys->stmp[i][k]+
 		      bd[k+1]*phys->stmp[i][k+1]);
       if(Ftop) d[0]+=dt*(1-alpha_top+2*alpha_top*bd[k+1])*Ftop[i];
@@ -206,7 +206,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
       // Through top of bottom cell
       k=grid->Nk[i]-1;
       d[k-ktop]-=(1-theta)*dt*(am[k]*phys->stmp[i][k-1]+
-			       ap[k]*phys->stmp[i][k])+
+			       ap[k]*phys->stmp[i][k])-
 	(1-theta)*dt*(bd[k]*phys->stmp[i][k-1]-
 		      (bd[k]+2*alpha_bot*bd[k])*phys->stmp[i][k]);
       if(Fbot) d[k-ktop]+=dt*(-1+alpha_bot+2*alpha_bot*bd[k])*Fbot[i];
@@ -230,7 +230,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 
     if(src2)
       for(k=grid->ctop[i];k<grid->Nk[i];k++) 
-	Cn[i][k]=dt*src2[i][k]*grid->dzzold[i][k];
+	Cn[i][k-ktop]=dt*src2[i][k]*grid->dzzold[i][k];
     else
       for(k=grid->ctop[i];k<grid->Nk[i];k++)
 	Cn[i][k]=0;
