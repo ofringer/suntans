@@ -430,13 +430,13 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
 
 /*
  * Function: InitializePhyiscalVariables
- * Usage: InitializePhyiscalVariables(grid,phys,prop);
- * ---------------------------------------------------
+ * Usage: InitializePhyiscalVariables(grid,phys,prop,myproc,comm);
+ * ---------------------------------------------------------------
  * This function initializes the physical variables by calling
  * the routines defined in the file initialize.c
  *
  */
-void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
+void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm)
 {
   int i, j, k, Nc=grid->Nc;
   REAL z, *stmp;
@@ -528,6 +528,11 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   // on the initialized velocities at the faces.
   ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
   ComputeVelocityVector(phys->u,phys->uold,phys->vold,grid);
+
+  ISendRecvCellData3D(phys->uc,grid,myproc,comm);
+  ISendRecvCellData3D(phys->vc,grid,myproc,comm);
+  ISendRecvCellData3D(phys->uold,grid,myproc,comm);
+  ISendRecvCellData3D(phys->vold,grid,myproc,comm);
 
   // Determine minimum and maximum salinity
   phys->smin=phys->s[0][0];
@@ -1101,9 +1106,14 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     // U-fluxes at boundary cells
     for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
       j = grid->edgep[jptr];
-      
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-	phys->ut[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->dzz[grid->grad[2*j]][k];
+      i = grid->grad[2*j];
+
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	if(phys->utmp2[j][k]>0)
+	  phys->ut[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->dzz[grid->grad[2*j]][k];
+	else
+	  phys->ut[j][k]=phys->uc[i][k]*grid->dzz[grid->grad[2*j]][k];
+      }
     }
     for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
       j = grid->edgep[jptr];
@@ -1154,6 +1164,35 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	for(k=kmin;k<grid->Nke[j];k++) 
 	  phys->ut[j][k]=0.5*UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
+    // Faces on type 3 cells are always updated with first-order upwind
+    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+      i = grid->cellp[iptr];
+
+      for(nf=0;nf<NFACES;nf++) {
+	if((ne=grid->neigh[i*NFACES+nf])!=-1) {
+	  j=grid->face[i*NFACES+nf];
+
+	  nc1 = grid->grad[2*j];
+	  nc2 = grid->grad[2*j+1];
+	
+	  if(grid->ctop[nc1]>grid->ctop[nc2])
+	    kmin = grid->ctop[nc1];
+	  else
+	    kmin = grid->ctop[nc2];
+	
+	  for(k=0;k<kmin;k++)
+	    phys->ut[j][k]=0;
+	
+	  for(k=kmin;k<grid->Nke[j];k++) {
+	    if(phys->u[j][k]>0)
+	      nc=nc2;
+	    else
+	      nc=nc1;
+	    phys->ut[j][k]=phys->uc[nc][k]*grid->dzz[nc][k];
+	  }
+	}
+      }
+    }
 
     // Now compute the cell-centered source terms and put them into stmp
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
@@ -1177,9 +1216,14 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     // V-fluxes at boundary cells
     for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
       j = grid->edgep[jptr];
-      
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-	phys->ut[j][k]=phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->dzz[grid->grad[2*j]][k];
+      i = grid->grad[2*j];
+
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	if(phys->utmp2[j][k]>0)
+	  phys->ut[j][k]=phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->dzz[grid->grad[2*j]][k];
+	else
+	  phys->ut[j][k]=phys->vc[i][k]*grid->dzz[grid->grad[2*j]][k];
+      }
     }
     for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
       j = grid->edgep[jptr];
@@ -1229,6 +1273,35 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	for(k=kmin;k<grid->Nke[j];k++) 
 	  phys->ut[j][k]=0.5*UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
+    // Faces on type 3 cells are always updated with first-order upwind
+    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+      i = grid->cellp[iptr];
+
+      for(nf=0;nf<NFACES;nf++) {
+	if((ne=grid->neigh[i*NFACES+nf])!=-1) {
+	  j=grid->face[i*NFACES+nf];
+
+	  nc1 = grid->grad[2*j];
+	  nc2 = grid->grad[2*j+1];
+	
+	  if(grid->ctop[nc1]>grid->ctop[nc2])
+	    kmin = grid->ctop[nc1];
+	  else
+	    kmin = grid->ctop[nc2];
+	
+	  for(k=0;k<kmin;k++)
+	    phys->ut[j][k]=0;
+	
+	  for(k=kmin;k<grid->Nke[j];k++) {
+	    if(phys->u[j][k]>0)
+	      nc=nc2;
+	    else
+	      nc=nc1;
+	    phys->ut[j][k]=phys->vc[nc][k]*grid->dzz[nc][k];
+	  }
+	}
+      }
+    }
 
     // Now compute the cell-centered source terms and put them into stmp.
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
@@ -1280,19 +1353,14 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1])
 				-0.5*Cz*(phys->vc[i][k-1]-phys->vc[i][k]));
 	}
-      
-      for(k=grid->ctop[i]+1;k<grid->Nk[i]-1;k++) {
+
+      a[grid->ctop[i]]=phys->w[i][grid->ctop[i]]*phys->uc[i][grid->ctop[i]];
+      b[grid->ctop[i]]=phys->w[i][grid->ctop[i]]*phys->vc[i][grid->ctop[i]];
+      a[grid->Nk[i]]=0;
+      b[grid->Nk[i]]=0;
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
 	phys->stmp[i][k]+=(a[k]-a[k+1])/grid->dzz[i][k];
 	phys->stmp2[i][k]+=(b[k]-b[k+1])/grid->dzz[i][k];
-      }
-      
-      if(grid->ctop[i]!=grid->Nk[i]-1) {
-	// Top - advection only comes in through bottom of cell.
-	phys->stmp[i][grid->ctop[i]]-=a[grid->ctop[i]+1]/grid->dzz[i][grid->ctop[i]];
-	phys->stmp2[i][grid->ctop[i]]-=b[grid->ctop[i]+1]/grid->dzz[i][grid->ctop[i]];
-	// Bottom - advection only comes in through top of cell.
-	phys->stmp[i][grid->Nk[i]-1]+=a[grid->Nk[i]-1]/grid->dzz[i][grid->Nk[i]-1];
-	phys->stmp2[i][grid->Nk[i]-1]+=b[grid->Nk[i]-1]/grid->dzz[i][grid->Nk[i]-1];
       }
     }
   }
@@ -1558,14 +1626,19 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
   if(prop->nonlinear) {
     // Compute the w-component fluxes at the faces
 
-    // Fluxes at boundary faces
+    // Fluxes at boundary faces of type 2
     for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
       j = grid->edgep[jptr];
+      i = grid->grad[2*j];
       
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-	phys->ut[j][k]=phys->boundary_w[jptr-grid->edgedist[2]][k]*grid->dzz[grid->grad[2*j]][k];
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	if(phys->utmp2[j][k]>0)
+	  phys->ut[j][k]=phys->boundary_w[jptr-grid->edgedist[2]][k]*grid->dzz[grid->grad[2*j]][k];
+	else
+	  phys->ut[j][k]=0.5*(phys->w[i][k]+phys->w[i][k+1])*grid->dzz[i][k];
+      }
     }
-    // Fluxes at boundary faces
+    // Fluxes at boundary faces of type 4
     for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
       j = grid->edgep[jptr];
       
@@ -1612,9 +1685,38 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 	for(k=0;k<kmin;k++)
 	  phys->ut[j][k]=0;
 	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=0.25*(UFaceFlux(j,k,phys->w,phys->u,grid,prop->dt,prop->nonlinear)+
-			       UFaceFlux(j,k+1,phys->w,phys->u,grid,prop->dt,prop->nonlinear))*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+	  phys->ut[j][k]=0.25*(UFaceFlux(j,k,phys->w,phys->utmp2,grid,prop->dt,prop->nonlinear)+
+			       UFaceFlux(j,k+1,phys->w,phys->utmp2,grid,prop->dt,prop->nonlinear))*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
       }
+    // Faces on type 3 cells are always updated with first-order upwind
+    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+      i = grid->cellp[iptr];
+
+      for(nf=0;nf<NFACES;nf++) {
+	if((ne=grid->neigh[i*NFACES+nf])!=-1) {
+	  j=grid->face[i*NFACES+nf];
+
+	  nc1 = grid->grad[2*j];
+	  nc2 = grid->grad[2*j+1];
+	
+	  if(grid->ctop[nc1]>grid->ctop[nc2])
+	    kmin = grid->ctop[nc1];
+	  else
+	    kmin = grid->ctop[nc2];
+	
+	  for(k=0;k<kmin;k++)
+	    phys->ut[j][k]=0;
+	
+	  for(k=kmin;k<grid->Nke[j];k++) {
+	    if(phys->u[j][k]>0)
+	      nc=nc2;
+	    else
+	      nc=nc1;
+	    phys->ut[j][k]=0.5*(phys->w[nc][k]+phys->w[nc][k+1])*grid->dzz[nc][k];
+	  }
+	}
+      }
+    }
 
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i=grid->cellp[iptr];
@@ -1624,23 +1726,20 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 	ne = grid->face[i*NFACES+nf];
 	
 	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
-	  phys->stmp[i][k]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
+	  phys->stmp[i][k]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	    (grid->Ac[i]*grid->dzz[i][k]);
 	
 	// Top cell is filled with momentum from neighboring cells
 	for(k=grid->etop[ne];k<=grid->ctop[i];k++) 
-	  phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
+	  phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/
 	    (grid->Ac[i]*grid->dzz[i][grid->ctop[i]]);
       }
 
       // Vertical advection; note that in this formulation first-order upwinding is not implemented.
       if(prop->nonlinear==1 || prop->nonlinear==2) {
-	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
 	  phys->stmp[i][k]+=(pow(phys->w[i][k],2)-pow(phys->w[i][k+1],2))/grid->dzz[i][k];
 	}
-
-	// Top cell
-	phys->stmp[i][grid->ctop[i]]-=pow(phys->w[i][grid->ctop[i]+1],2)/grid->dzz[i][grid->ctop[i]];
       }
     }
     

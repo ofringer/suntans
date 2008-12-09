@@ -142,7 +142,7 @@ typedef struct _propT {
 void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
 void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop);
 void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop);
-void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop);
+void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void InitializeVerticalGrid(gridT **grid);
 void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void OpenFiles(propT *prop, int myproc);
