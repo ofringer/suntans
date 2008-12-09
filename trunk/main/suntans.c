@@ -99,7 +99,7 @@ main(int argc, char *argv[])
     if(RESTART)
       ReadPhysicalVariables(grid,phys,prop,myproc,comm);
     else
-      InitializePhysicalVariables(grid,phys,prop);
+      InitializePhysicalVariables(grid,phys,prop,myproc,comm);
     Solve(grid,phys,prop,myproc,numprocs,comm);
     //    FreePhysicalVariables(grid,phys,prop);
     //    FreeTransferArrays(grid,myproc,numprocs,comm);
