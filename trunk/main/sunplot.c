@@ -257,7 +257,7 @@ float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4], cmapAxesP
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
 bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, goprocs,
   vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, cmaphold, getcmap, raisewindow;
-char str[BUFFERLENGTH], message[BUFFERLENGTH];
+char str[BUFFERLENGTH], message[BUFFERLENGTH], PATH[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
 sliceT sliceType;
@@ -289,7 +289,8 @@ int main(int argc, char *argv[]) {
 
   InitializeGraphics();
 
-  ReadColorMap(CMAPFILE);
+  sprintf(str,"%s/%s",PATH,CMAPFILE);
+  ReadColorMap(str);
 
   XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask );
 
@@ -2555,6 +2556,17 @@ void ParseCommandLine(int N, char *argv[], int *numprocs, int *n, int *k, dimT *
   *numprocs=1;
   *dimensions=three_d;
   *go=nomovie;
+
+  // Compute path for proper location of cmap file
+  for(i=strlen(argv[0])-1;i>=0;i--) 
+    if(argv[0][i]=='/')
+      break;
+  if(i<=0) {
+    printf("Error: Must use absolute path in call to %s (e.g. ./%s) \n",argv[0],argv[0]);
+    exit(1);
+  }
+  for(j=0;j<i;j++)
+    PATH[j]=argv[0][j];
 
   sprintf(DATADIR,".");
   sprintf(DATAFILE,"%s/%s",DATADIR,DEFAULTDATAFILE);
