@@ -26,7 +26,9 @@
 #define CONSERVED 1e-10
 #define EMPTY 999999
 #define SMALL 1e-15
+#define CHECKCONSISTENCY 1
 #define DEFAULT_hprecond 1
+#define DRYCELLHEIGHT 1e-10
 
 // Error/Exit codes
 #define EXIT_WRITING 1
