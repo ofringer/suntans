@@ -13,7 +13,9 @@
 #include "util.h"
 #include "tvd.h"
 
-#define SMALL_CONSISTENCY 1e-5
+#define SMALL_CONSISTENCY 1e-10
+
+const REAL smin_value = 0, smax_value = 32;
 
 /*
  * Function: UpdateScalars
@@ -37,8 +39,8 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
   int i, iptr, j, jptr, ib, k, nf, ktop;
   int Nc=grid->Nc, normal, nc1, nc2, ne;
   REAL df, dg, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, *bd, *uflux, dznew, mass, *sp, *temp;
-  REAL div, smin=INFTY, smax=-INFTY;
-  int k1, k2, kmin, imin, kmax, imax;
+  REAL div, smin=INFTY, smax=-INFTY, div0;
+  int k1, k2, kmin, imin, kmax, imax, mincount, maxcount, flag;
 
   prop->TVD = TVDMACRO;
   // These are used mostly debugging to turn on/off vertical and horizontal TVD.
@@ -288,6 +290,12 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
     for(k=0;k<grid->Nk[i]-ktop;k++) 
       d[k]+=fab*Cn[i][k];
 
+    // Add on the volume correction if h was < -d
+    /*
+    if(grid->ctop[i]==grid->Nk[i]-1)
+      d[grid->Nk[i]-ktop-1]+=phys->hcorr[i]*phys->stmp[i][grid->ctop[i]];
+    */
+
     for(k=ktop;k<grid->Nk[i];k++)
       ap[k]=Cn[i][k-ktop];
     for(k=0;k<=ktop;k++)
@@ -299,7 +307,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 
     if(grid->Nk[i]-ktop>1) 
       TriSolve(a,b,c,d,&(scal[i][ktop]),grid->Nk[i]-ktop);
-    else if(b[0]!=0)
+    else if(b[0]>0)// && phys->active[i])
       scal[i][ktop]=d[0]/b[0];
 
     for(k=0;k<grid->ctop[i];k++)
@@ -311,6 +319,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 
   // Code to check divergence change CHECKCONSISTENCY to 1 in suntans.h
   if(CHECKCONSISTENCY) {
+    div=-INFTY;
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
       
@@ -325,27 +334,49 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 	  imin=i; 
 	  kmin=k; 
 	}
-	div=grid->Ac[i]*(theta*(phys->w[i][k]-phys->w[i][k+1])+
-			 (1-theta)*(phys->wtmp2[i][k]-phys->wtmp2[i][k+1]));
+	//	div=grid->Ac[i]*(theta*(phys->w[i][k]-phys->w[i][k+1])+
+	//			 (1-theta)*(phys->wtmp2[i][k]-phys->wtmp2[i][k+1]));
+	div0=grid->Ac[i]*(grid->dzz[i][0]-grid->dzzold[i][0])/prop->dt;
+	flag=0;
 	for(nf=0;nf<NFACES;nf++) {
 	  ne=grid->face[i*NFACES+nf];
-	  div+=(theta*phys->u[ne][k]+(1-theta)*phys->utmp2[ne][k])
+	  div0+=(theta*phys->u[ne][k]+(1-theta)*phys->utmp2[ne][k])
 	    *grid->dzf[ne][k]*grid->normal[i*NFACES+nf]*grid->df[ne];
+	  if(grid->mark[ne]==2)
+	    flag=1;
 	}
-	//	if(fabs(div)>SMALL_CONSISTENCY) printf("Not divergence-free! div = %e, i,k=%d,%d, x=%f\n",div,i,k,grid->xv[i]);
+	if(fabs(div0)>div) {
+	  div=fabs(div0);
+	  imin=i;
+	}
       }
     }
+    if(fabs(div)>1e-8 && flag==0) 
+      printf("Not divergence-free! div = %e, dzz = %f\n",div,grid->dzz[imin][0]);
 
+    mincount=0;
+    maxcount=0;
+    for(i=0;i<grid->Nc;i++) {
+      if(scal[i][0]<-1e-5) mincount++;
+      if(scal[i][0]-32>1e-5) maxcount++;
+    }
+    if(!(prop->n%10)) printf("n=%d, smin = %e (%d,i=%d,H=%e), smax = %e (%d,i=%d,H=%e)\n",
+			     prop->n,
+			     smin,mincount,imin,phys->h[imin]+grid->dv[imin],
+			     smax-32,maxcount,imax,phys->h[imax]+grid->dv[imax]);
+  
     // Only show warnings of inconsistency for relatively large cells.  Cells with very small
     // vertical spacing will not be consistent due to roundoff errors.    
-    if((fabs(smin-1)>SMALL_CONSISTENCY && grid->dzz[imin][kmin]>SMALL_CONSISTENCY*grid->dz[kmin]) ||
-       (fabs(smax-1)>SMALL_CONSISTENCY && grid->dzz[imax][kmax]>SMALL_CONSISTENCY*grid->dz[kmax])) {
-      printf("Time step: %d, smin=%f (%d,%d;%d,%d), smax=%f (%d,%d;%d,%d) dz=(%f,%f)\n",prop->n,smin,imin,kmin,
+    /*
+    if((fabs(smin-smin_value)/smin_value>SMALL_CONSISTENCY) ||
+       (fabs(smax-smax_value)/smax_value>SMALL_CONSISTENCY)) {
+      printf("Time step: %d, Dsmin=%e (%d,%d;%d,%d), Dsmax=%e (%d,%d;%d,%d) dz=(%e,%e)\n",prop->n,smin-smin_value,imin,kmin,
 	     grid->ctopold[imin],grid->ctop[imin],
-	     smax,imax,kmax,grid->ctopold[imax],grid->ctop[imax],
+	     smax-smax_value,imax,kmax,grid->ctopold[imax],grid->ctop[imax],
 	     grid->dzz[imin][kmin]/grid->dz[kmin],
 	     grid->dzz[imax][kmax]/grid->dz[kmax]);
       printf("Not consistent!\n");
     }
+    */
   }
 }

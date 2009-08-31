@@ -2964,6 +2964,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	      data->sd[proc][i][j]=dummy[j]-data->s0[proc][i][j];
 	    else
 	      data->sd[proc][i][j]=EMPTY;
+	    if(data->s[proc][i][j]<0) data->s[proc][i][j]=0;
 	  }
 	}
 	fclose(fid);
@@ -3048,7 +3049,9 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       for(i=0;i<data->Nc[proc];i++) {
 	data->h_d[proc][i]=data->h[proc][i]+data->depth[proc][i];
 	if(data->h_d[proc][i]/data->depth[proc][i]<SMALLHEIGHT)
-	  data->h_d[proc][i]=EMPTY;
+	  data->h_d[proc][i]=0;
+	else
+	  data->h_d[proc][i]=1;
       }
 
       turbmodel=(int)GetValue(DATAFILE,"turbmodel",&status);

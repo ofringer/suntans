@@ -79,7 +79,7 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
 
   CmaxU=0;
   for(i=0;i<Ne;i++) 
-    for(k=grid->etop[i]+1;k<grid->Nke[i];k++) {
+    for(k=grid->etop[i];k<grid->Nke[i];k++) {
       C = fabs(phys->u[i][k])*prop->dt/grid->dg[i];
       if(C>CmaxU) {
 	icu = i;
@@ -188,7 +188,7 @@ int CheckDZ(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI
 
   for(i=0;i<Nc;i++) {
     for(k=grid->ctop[i];k<grid->Nk[i];k++)
-      if(grid->dzz[i][k]<=0) {
+      if(0) {//grid->dzz[i][k]<=0) {
 	zflag=0;
 	iz=i;
 	kz=k;
