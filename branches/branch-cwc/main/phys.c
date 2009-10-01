@@ -2177,7 +2177,7 @@ static void UPredictor(gridT *grid, physT *phys,
 {
   int i, iptr, j, jptr, ne, nf, nf1, normal, nc1, nc2, k;
   REAL sum, dt=prop->dt, theta=prop->theta, h0, boundary_flag;
-  REAL *a, *b, *c, *d, *e1, **E, *a0, *b0, *c0, *d0;
+  REAL *a, *b, *c, *d, *e1, **E, *a0, *b0, *c0, *d0, theta0;
 
   a = phys->a;
   b = phys->b;
@@ -2235,6 +2235,9 @@ static void UPredictor(gridT *grid, physT *phys,
 	+2.0*GRAV*(1-boundary_flag)*dt/grid->dg[j]*phys->boundary_h[jptr-grid->edgedist[2]];
   }
 
+  // Drag term must be fully implicit
+  theta0=theta;
+  theta=1;
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
@@ -2386,6 +2389,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	phys->D[j]+=E[j][k]*grid->dzf[j][k];
     }
   }
+  theta=theta0;
 
   for(j=0;j<grid->Ne;j++) 
     for(k=grid->etop[j];k<grid->Nke[j];k++) 

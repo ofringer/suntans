@@ -307,7 +307,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 
     if(grid->Nk[i]-ktop>1) 
       TriSolve(a,b,c,d,&(scal[i][ktop]),grid->Nk[i]-ktop);
-    else if(b[0]>0)// && phys->active[i])
+    else if(b[0]>0 && phys->active[i] && prop->n>1)
       scal[i][ktop]=d[0]/b[0];
 
     for(k=0;k<grid->ctop[i];k++)

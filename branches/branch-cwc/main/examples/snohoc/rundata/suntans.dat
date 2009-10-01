@@ -15,9 +15,9 @@ scaledepth 		0 	# Scale the depth by scalefactor
 scaledepthfactor 	0 	# Depth scaling factor (to test deep grids with explicit methods)
 thetaramptime	        0  	# Timescale over which theta is ramped from 1 to theta (fs theta only)
 beta			5e-4	# Expansivity of salt
-theta			1 0.55	# 0: fully explicit, 1: fully implicit
-thetaS			1 0.55	# For scalar advection
-thetaB			1 0.55	# For scalar advection
+theta			0.55	# 0: fully explicit, 1: fully implicit
+thetaS			0.55	# For scalar advection
+thetaB			0.55	# For scalar advection
 kappa_s                 0       # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
 gamma 			0.0 	# Coefficient of expansivity of temperature.
