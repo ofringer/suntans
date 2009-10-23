@@ -58,7 +58,7 @@ static void ReadTidalArrays(FILE *ifid, char *istr, int N);
  *
  */
 int SetTideComponents(gridT *grid, int myproc) {
-  int j, jptr, numboundaryedges;
+  int i, j, iptr, jptr, numboundaryedges;
   char istr[BUFFERLENGTH], ostr[BUFFERLENGTH], filename[BUFFERLENGTH];
   FILE *ifid, *ofid;
 
@@ -77,6 +77,11 @@ int SetTideComponents(gridT *grid, int myproc) {
       
       fprintf(ofid,"%f %f\n",grid->xe[j],grid->ye[j]);
     }
+    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+      i=grid->cellp[iptr];
+      
+      fprintf(ofid,"%f %f\n",grid->xv[i],grid->yv[i]);
+    }
     fclose(ofid);
 
     MPI_Finalize();
@@ -89,8 +94,9 @@ int SetTideComponents(gridT *grid, int myproc) {
     // Read in number of edges in file
     fread(&numboundaryedges,sizeof(int),1,ifid);
 
-    if(numboundaryedges!=grid->edgedist[3]-grid->edgedist[2]) {
+    if(numboundaryedges!=grid->edgedist[3]-grid->edgedist[2]+grid->celldist[2]-grid->celldist[1]) {
       printf("Error reading %s.  Number of edges does not match current run!\n",istr);
+
       MPI_Finalize();
       exit(EXIT_FAILURE);
     } else {
