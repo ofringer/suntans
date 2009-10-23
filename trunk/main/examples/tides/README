@@ -24,3 +24,6 @@ make test
 
 6) Compare the output to OTIS with compare_to_otis.m
 
+Note that the edges-3.dat file in rundata/ contains edges of type 3.  This
+can be used to test tidal boundaries of type 3.
+

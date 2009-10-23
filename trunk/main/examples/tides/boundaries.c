@@ -83,7 +83,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
  * 
  */
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
-  int j, jind, jptr, n, k;
+  int i, j, jind, iptr, jptr, n, k;
   REAL h, u, v, toffSet, secondsPerDay = 86400.0;
 
   if(prop->n==prop->nstart+1) 
@@ -112,6 +112,25 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
       phys->boundary_u[jind][k]=u*(1-exp(-prop->rtime/prop->thetaramptime))/100.0;
       phys->boundary_v[jind][k]=v*(1-exp(-prop->rtime/prop->thetaramptime))/100.0;
       phys->boundary_w[jind][k]=0;
+    }
+  }
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    jind = iptr-grid->celldist[1]+grid->edgedist[3]-grid->edgedist[2];
+    i = grid->cellp[iptr];
+
+    u=v=h=0;
+    for(n=0;n<numtides;n++) {
+      h = h + h_amp[jind][n]*cos(omegas[n]*(toffSet+prop->rtime) + h_phase[jind][n]);
+      u = u + u_amp[jind][n]*cos(omegas[n]*(toffSet+prop->rtime) + u_phase[jind][n]);
+      v = v + v_amp[jind][n]*cos(omegas[n]*(toffSet+prop->rtime) + v_phase[jind][n]);
+    }
+
+    // Velocities from tides.c are in cm/s and h is in cm!
+    phys->h[i]=h*(1-exp(-prop->rtime/prop->thetaramptime))/100.0;
+    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      phys->uc[i][k]=u*(1-exp(-prop->rtime/prop->thetaramptime))/100.0;
+      phys->vc[i][k]=v*(1-exp(-prop->rtime/prop->thetaramptime))/100.0;
+      phys->w[i][k]=0;
     }
   }
 }
