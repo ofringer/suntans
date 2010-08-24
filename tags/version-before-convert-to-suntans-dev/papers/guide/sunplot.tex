@@ -1,0 +1,346 @@
+\section{Using the sunplot GUI}
+
+The sunplot GUI is meant to be a debugging tool and hence it does not have the ability to output
+results into a figure file, such as postscript, jpeg, or eps.  It is, however, a handy tool to
+quickly view results without having to execute third-party software.  Sunplot has the ability to
+view all of the data output from SUNTANS on several processors, and it only requires the X11 libraries.
+
+This howto describes how to view the results presented in the two-dimensional river plume
+example and assumes that the data has been created in the respective data directory
+in \verb+examples/boundaries/data+.  Details on how to create this data is given in 
+Section \ref{sec:boundary_ex},
+and details on how to compile \verb+sunplot+ are described in Section \ref{sec:download}.
+
+\subsection{Starting up the GUI}
+
+The \verb+sunplot+ GUI can be started while a simulation is running as long as the data files
+are not empty.  To view the data with the default settings in a given directory, use
+\begin{verbatim}
+./sunplot --datadir=examples/boundaries/data
+\end{verbatim}
+This will bring up a planview of the salinity data at the first time step $n=1$ in the upper layer $k=1$ (note
+that the GUI does not use C-style indexing, so the first index starts at k=1).  If more than one processor
+is being viewed, that should be specified at the command line, as in
+\begin{verbatim}
+./sunplot -np 8 --datadir=examples/boundaries/data
+\end{verbatim}
+For multiprocessor output, the processors being displayed will start at 0 and end at \verb+np-1+. 
+For example, for a 64 processor job, the command
+\begin{verbatim}
+./sunplot -np 3 --datadir=examples/boundaries/data
+\end{verbatim}
+will show data on processors 0, 1, and 2.
+
+\subsection{Moving around in time}
+
+The three buttons beneath \verb+''Step: 1 of 41''+ on the upper left of the GUI control the time stepping.
+\begin{list}{}
+\item \button{$<--$}
+\begin{list}{}
+\item {\bf Left button:} Moves one step backward in time.
+\item {\bf Middle button:} No effect
+\item {\bf Right button:} Moves to time step 1.
+\end{list}
+\item \button{M}: 
+\begin{list}{}
+\item {\bf Left button:} Animates forward in time from begining to end.
+\item {\bf Middle button:} Asks the user to input a desired time step at the command line.
+\item {\bf Right button:} Animates backward in time from the end to the begining.
+\end{list}
+\item \button{$-->$};
+\begin{list}{}
+\item {\bf Left button:} Moves one step forward in time.
+\item {\bf Middle button:} No effect
+\item {\bf Right button:} Moves to the last step (in this case step 41).
+\end{list}
+\end{list}
+
+\subsection{Displaying different vertical levels}
+
+The two buttons beneath \verb+''Level: 1 of 20''+ on the upper left of the GUI control the vertical level
+being shown.  Level 1 is the top level, while level 20 is level $N_{kmax}$.
+\begin{list}{}
+\item \button{$<--$}
+\begin{list}{}
+\item {\bf Left button:} Displays level up (decreasing k).
+\item {\bf Middle button:} No effect
+\item {\bf Right button:} Displays level 1.
+\end{list}
+\item \button{$-->$}:
+\begin{list}{}
+\item {\bf Left button:} Displays one level down (increasing k).
+\item {\bf Middle button:} No effect
+\item {\bf Right button:} Displays level $N_{kmax}$.
+\end{list}
+\end{list}
+
+\subsection{Displaying different processors}
+
+The three buttons beneath \verb+''Showing all 1 Procs''+ on the upper left of the GUI control the processor
+being shown.  The default is to show all processors.  
+\begin{list}{}
+\item \button{$<--$}
+\begin{list}{}
+\item {\bf Left button:} Decreases the processor being displayed.  Loops around if on processor 1.
+\item {\bf Middle button:} No effect
+\item {\bf Right button:} Displays processor 1 (no C-style indexing).
+\end{list}
+\item \button{All}:
+\begin{list}{}
+\item {\bf Left button:} Displays all processors.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{$-->$}:
+\begin{list}{}
+\item {\bf Left button:} Increases the processor number being displayed.  Loops around if on the last processor.
+\item {\bf Middle button:} No effect
+\item {\bf Right button:} Displays the last processor.
+\end{list}
+\end{list}
+
+\subsection{Surface plots of data}
+
+The default quantity to display is the salinity, or s, in planview, at level 1 and time step 1.  Color axes
+are scaled to the minimum and maximum of the profile being shown.  They may also be specified by
+parameters in \verb+suntans.dat+, as described in Section \ref{sec:caxis}. The following
+buttons control their respective plots:
+\begin{list}{}
+\item \button{S}: Salinity
+\begin{list}{}
+\item {\bf Left button:} Displays the salinity $s$.
+\item {\bf Middle button:} Displays the salinity anomoly $s-s_0$.
+\item {\bf Right button:} Displays the background salinity $s_0$.
+\end{list}
+\item \button{T}: Temperature
+\begin{list}{}
+\item {\bf Left button:} Displays the temperature $T$.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{q}: Nonhydrostatic pressure
+\begin{list}{}
+\item {\bf Left button:} Displays the nonhydrostatic pressure $q$.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{h}: Free surface
+\begin{list}{}
+\item {\bf Left button:} Displays the free surface $h$.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{n}:  Eddy viscosity 
+\begin{list}{}
+\item {\bf Left button:} Displays the eddy viscosity $\nu_t$ at the center of the cell.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{k}: Scalar diffusivity
+\begin{list}{}
+\item {\bf Left button:} Displays the scalar diffusivity $\kappa_t$ at the center of the cell.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{U}: 
+\begin{list}{}
+\item {\bf Left button:} Displays the horizontal cartesian velocity component $u$, at the center of the cell.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} Displays the horizontal cartesian baroclinic velocity component $u_b$, at the center of the cell.
+This is calculated with
+\[
+u_b = u - \frac{1}{D}\int_{-D}^h u\,dz\,.
+\]
+\end{list}
+\item \button{V}: 
+\begin{list}{}
+\item {\bf Left button:} Displays the horizontal cartesian velocity component $v$, at the center of the cell.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} Displays the horizontal cartesian baroclinic velocity component $v_b$, at the center of the cell.
+This is calculated with
+\[
+v_b = v - \frac{1}{D}\int_{-D}^h v\,dz\,.
+\]
+\end{list}
+\item \button{W}: 
+\begin{list}{}
+\item {\bf Left button:} Displays the vertical cartesian velocity component $w$, at the center of the cell.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{Depth}: 
+\begin{list}{}
+\item {\bf Left button:} Displays the depth d beneath the 0 datum.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} Displays the water depth $h+d$.
+\end{list}
+\item \button{None}: 
+\begin{list}{}
+\item {\bf Left button:} No surface plot is shown.  Useful for only showing vector field.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\end{list}
+
+\subsection{Vector plots}
+
+Vector plotting is controlled with the Vectors, iskip, and kskip buttons.
+\begin{list}{}
+\item \button{Vectors}:
+\begin{list}{}
+\item {\bf Left button:} Toggle vectors on/off.
+\item {\bf Middle button:} Shorten the vectors by half their length.
+\item {\bf Right button:} Double the length of the vectors.
+\end{list}
+\begin{list}{}
+\item \verb+iskip/kskip+: Number of indices to skip to clarify the vector plot.
+When in planview mode of the data, only every \verb+iskip+ vector on the unstructured
+grid will be shown. Changing \verb+kskip+ has no
+effect on the planview plot.
+In profile mode, every \verb+iskip+ vector in the x-direction is shown and 
+every \verb+kskip+ vector in the z-direction is shown.  The value of \verb+iskip+
+and \verb+kskip+ are changed with their respective arrow buttons:
+\begin{list}{}
+\item \button{$<$}: Decrease skip amount.
+\begin{list}{}
+\item {\bf Left button:} Decrease skip by 1.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} Set skip amount to 1.
+\end{list}
+\item \button{$>$}: Increase skip amount.
+\begin{list}{}
+\item {\bf Left button:} Increase skip by 1.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} Planview mode: set skip amount to 5.  In profile mode, set skip
+amount to maximum index size.
+\end{list}
+\end{list}
+\end{list}
+\end{list}
+
+\subsection{Displaying the grid}
+
+The grid can be viewed with the following buttons:
+\begin{list}{}
+\item \button{Edges}:
+\begin{list}{}
+\item {\bf Left button:} Toggle display of Delaunay edges.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{Voro}:
+\begin{list}{}
+\item {\bf Left button:} Toggle display of Voronoi points.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{Dela}:
+\begin{list}{}
+\item {\bf Left button:} Toggle display of Delaunay points.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\end{list}
+
+\subsection{Zooming in on data and obtaining profile plots}
+
+By default, zooming is on.  The effect of using the mouse and selecting a point on the
+plotted data depends on whether zooming is on or off or if you are viewing a profile plot.
+\begin{list}{}
+\item \button{ZOOM}
+\begin{list}{}
+\item {\bf Left button:} Toggle turning zoom on/off.  
+\begin{list}{}
+\item When zooming is {\bf on}:
+\begin{list}{}
+\item {\bf Left button:}  Can be used either to select an area in the plot to zoom into, or
+it can be used to zoom into an area by a factor of 2, centered about the clicking point.
+\item {\bf Middle button:} Returns to the default in which the entire domain is displayed.
+\item {\bf Right button:} Zooms out by a factor of 2.
+\end{list}
+\item When zooming is {\bf off}:
+\begin{list}{}
+\item {\bf Left button:}  Used to select a line along which a 2-d x-z transect of the data
+is displayed.  Note that the transect uses a simple nearest-neighbor interpolation to
+display the data in the transect.  If you press the mouse button once in the domain
+while zooming is off, you may get a message that says \verb+''Cannot plot this slice''+.
+This occurs because the length of the transect you have chosen is effectively zero by
+clicking once on the plot window when zooming is off.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} Displays the processor number and the value of the data at the selected point.
+\end{list}
+\end{list}
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:} No effect.
+\end{list}
+\item \button{Profile}
+\begin{list}{}
+\item {\bf Left button:} This will toggle back and forth between the surface plot and the previous
+transect that was displayed.  In the event that no transect has been displayed, the error
+message \verb+Need two points for a profile first!+ will be displayed.  In this case, turn
+zooming off and select two points for a profile.
+\item {\bf Middle button:} Display the default west-east transect along the middle of the data set.
+This is useful when you have a channel flow in the x-direction and want to see the data in
+the x-z plane.
+\item {\bf Right button:} Display the default north-south transect along the middle of the data set.
+This is useful when you have a channel flow in the x-direction and want to see the cross-channel data in
+the x-y plane.
+\end{list}
+\end{list}
+
+\subsection{Changing the axes scaling}
+
+By default, the x-y axes are scaled equally in ``Image'' mode (If the
+\verb+-2d+ flag is supplied at the command line, however, the default mode is ``Normal'').  This
+makes profile plots in x-z difficult to view especially for high
+aspect ratio grids.  Hitting the \button{Aspect} button with the left
+mouse button will toggle between ``image'' mode and ``normal'' mode,
+in which the data is scaled to fit the plot area.  You can also do
+this by hitting the ``a'' key.  The middle and right mouse buttons have
+no effect here.
+
+\subsection{Changing the color axes} \label{sec:caxis}
+
+By default, the color axes are scaled with the maximum and minimum values of the data.
+This can be changed with the Caxis button as follows:
+\begin{list}{}
+\item \button{Caxis}
+\begin{list}{}
+\item {\bf Left button:} Toggle between scaling with the maximum and minimum data values and
+using the values specified in \verb+suntans.dat+.  Specifically, if you add the following
+lines to your \verb+suntans.dat+ file, the data can be scaled with these color axes values
+when pressing the Caxis button:
+\begin{verbatim}
+caxismin   -0.25      # Minimum value for color axes
+caxismax    0.25      # Maximum value for color axes
+\end{verbatim}
+If these values are not in \verb+suntans.dat+, an error will be indicated each time data
+is plotted until the Caxis button is hit again to return to the default scaling mode.
+\item {\bf Middle button:} No effect.
+\item {\bf Right button:}  Enter color axes values at the command line.  The format must be
+in the form \verb+cmin cmax+ followed by a carriage return.  Carriage returns may also
+exist between the entries of \verb+cmin+ and \verb+cmax+.
+\end{list}
+\end{list}
+
+\subsection{Quitting out of sunplot}
+
+You can either hit the \button{Quit} button or the ``q'' key to quit out of sunplot.
+
+\subsection{Command line options}
+
+Options can be passed to sunplot at the command line to reduce the number of key strokes
+required to obtain a desired view of data.  The following is a list of command line arguments:
+\begin{list}{}
+\item \verb+--datadir=path+: This is the path to the directory containing the sunplot.dat
+data file.  If this is not specified, then it is assumed that the data file is in the local
+directory.
+\item \verb+-np 2+: Specify the number of processors included in the data.  For a multi-processor
+data set, if this is not specified then only the data from processor \verb+0+ will be displayed.
+\item \verb+-2d+: Display an x-z profile plot of the data in axis Normal mode.  This is equivalent
+to starting sunplot with no command line options and hitting the Axes button with the left mouse
+button and the Profile button with the middle mouse button.
+\item \verb+-g+: Only display the grid.  This is useful for debugging the grid without loading
+in any other data.
+\item \verb+-m+: Step forward through the data as an animation.
+\end{list}
