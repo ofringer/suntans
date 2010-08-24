@@ -15,9 +15,9 @@ scaledepth 		0 	# Scale the depth by scalefactor
 scaledepthfactor 	0 	# Depth scaling factor (to test deep grids with explicit methods)
 thetaramptime	        0  	# Timescale over which theta is ramped from 1 to theta (fs theta only)
 beta			1	# Expansivity of salt
-theta			0.5	# 0: fully explicit, 1: fully implicit
-thetaS			0.5	# For scalar advection
-thetaB			0.5	# For scalar advection
+theta			0.55	# 0: fully explicit, 1: fully implicit
+thetaS			0.55	# For scalar advection
+thetaB			0.55	# For scalar advection
 kappa_s                 0 1e-4    # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
 gamma 			1.0 	# Coefficient of expansivity of temperature.
@@ -54,8 +54,8 @@ timescale		0	# timescale for open boundary condition
 volcheck		1	# Check for volume conservation
 masscheck		1	# Check for mass conservation
 nonlinear		2	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
-newcells		1	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
-wetdry			0       # 1 if wetting and drying, 0 otherwise
+newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
+wetdry			1       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0	# Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        0 	# Decay distance scale for sponge layer
 sponge_decay	        0	# Decay time scale for sponge layer
