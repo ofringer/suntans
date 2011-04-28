@@ -56,15 +56,18 @@ if [ $RUNNUM -eq 1 ] ; then
 
     if [ ! -d $GRIDDIR ] ; then
 	cp -r rundata $GRIDDIR
-	$EXEC -g $VERBOSE --datadir=$GRIDDIR
+	$EXEC -g $VERBOSE --datadir=$GRIDDIR >& crash.txt
     fi
 
-    $EXEC -s $VERBOSE --datadir=$TODIR >& crash.txt
+    $EXEC -s $VERBOSE --datadir=$TODIR >& crash2.txt
+    cat crash2.txt >> crash.txt
 else
     $EXEC -s -r $VERBOSE --datadir=$TODIR >& crash.txt
 fi
 
-blowup=`grep -c -H blowing crash.txt | awk -F: '{ print $2}'`
+count1=`grep -c blowing crash.txt`
+count2=`grep -c Error crash.txt`
+blowup=`expr $count1 + $count2`
 
 if [ ! -z $VERBOSE ] ; then
     cat crash.txt
@@ -100,5 +103,9 @@ else
 	    echo Finished with $MAXRUNS runs!
 	fi
     fi
+fi
+
+if [ $RUNNUM -eq $MAXRUNS ] ; then
+    sh concat.sh $MAXRUNS
 fi
 

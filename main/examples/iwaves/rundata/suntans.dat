@@ -4,7 +4,7 @@
 #
 ########################################################################
 Nkmax			100	# Number of cells in the vertical
-stairstep		1	# 1 if stair-stepping, 0 if partial-stepping
+stairstep		0	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1.025	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
 VoronoiRatio		0	# Adjust the voronoi points by this amount if 1 then = centroid.
@@ -18,21 +18,21 @@ beta			1	# Expansivity of salt
 theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
-kappa_s                 1e-4    # Vertical mass diffusivity
+kappa_s                 0       # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
 gamma 			1.0 	# Coefficient of expansivity of temperature.
-kappa_T                 1e-3    # Vertical thermal diffusivity
-kappa_TH                1e-3    # Horizontal thermal diffusivity
-nu 			1e-3  	# Laminar viscosity of water (m^2 s^-1)
-nu_H 			10      # Horizontal laminar viscosity of water (m^2 s^-1)
+kappa_T                 0       # Vertical thermal diffusivity
+kappa_TH                0       # Horizontal thermal diffusivity
+nu 			0  	# Laminar viscosity of water (m^2 s^-1)
+nu_H 			0       # Horizontal laminar viscosity of water (m^2 s^-1)
 tau_T			0 	# Wind shear stress
 z0T	                0.0 	# Top roughness
 z0B	                0.0	# Bottom roughness
 CdT	                0.0 	# Drag coefficient at surface
 CdB	                0.005	# Drag coefficient at bottom
 CdW			0.005	# Drag coefficient at sidewalls
-turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
-dt 			29.808	# Time step 
+turbmodel		0	# Turbulence model (0 for none, 1 for MY25)
+dt 			120 	# Time step 
 Cmax 			1  	# Maximum permissible Courant number
 nsteps 			3000    # Number of steps
 ntout   		150  	# How often to output data
@@ -47,16 +47,16 @@ epsilon			1e-10 	# Tolerance for CG convergence
 qepsilon		1e-5	# Tolerance for CG convergence for nonhydrostatic pressure
 resnorm			0	# Normalized or non-normalized residual
 relax			1	# Relaxation parameter for GS solver.	
-amp 			0.004	# amplitude
+amp 			0.005	# amplitude
 omega 			1.4026e-4	# frequency
 flux 			0	# flux
 timescale		0	# timescale for open boundary condition
 volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
-nonlinear		2	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
-newcells		1	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
-wetdry			0       # 1 if wetting and drying, 0 otherwise
-Coriolis_f              7.25e-5 # Coriolis frequency f=2*Omega*sin(phi)
+nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
+wetdry			1       # 1 if wetting and drying, 0 otherwise
+Coriolis_f              0       # Coriolis frequency f=2*Omega*sin(phi) (hard coded into sources.c for 2d implementation)
 sponge_distance	        5000 	# Decay distance scale for sponge layer
 sponge_decay	        7200	# Decay time scale for sponge layer
 readSalinity		0	# Whether or not to read initial salinity profile from file InitSalinityFile
@@ -101,3 +101,15 @@ ScalarDiffusivityFile	kappat.dat
 ########################################################################
 InitSalinityFile	sinit.dat
 InitTemperatureFile	Tinit.dat
+########################################################################
+#
+# Output data to analyze time series of u(z,t) and s(z,t) at 3
+# locations.
+#
+########################################################################
+ProfileVariables	su       # Only output free surface and currents
+DataLocations	dataxy.dat       # dataxy.dat contains column x-y data
+ProfileDataFile	profdata.dat     # Information about profiles is in profdata.dat
+ntoutProfs		5        # Output profile data every 1 time step
+NkmaxProfs		0        # Only output the top 1 z-level
+numInterpPoints 	1        # Output data at the nearest neighbor.

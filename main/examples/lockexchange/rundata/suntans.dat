@@ -18,11 +18,11 @@ beta			1	# Expansivity of salt
 theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
-kappa_s                 0 1e-4    # Vertical mass diffusivity
+kappa_s                 0       # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
 gamma 			1.0 	# Coefficient of expansivity of temperature.
-kappa_T                 1e-4    # Vertical thermal diffusivity
-kappa_TH                1e-4    # Horizontal thermal diffusivity
+kappa_T                 0       # Vertical thermal diffusivity
+kappa_TH                0       # Horizontal thermal diffusivity
 nu 			0.025  	# Laminar viscosity of water (m^2 s^-1)
 nu_H 			0.016   # Horizontal laminar viscosity of water (m^2 s^-1)
 tau_T			0.0 	# Wind shear stress
@@ -53,9 +53,9 @@ flux 			0	# flux
 timescale		0	# timescale for open boundary condition
 volcheck		1	# Check for volume conservation
 masscheck		1	# Check for mass conservation
-nonlinear		2	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
+nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
 newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
-wetdry			1       # 1 if wetting and drying, 0 otherwise
+wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0	# Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        0 	# Decay distance scale for sponge layer
 sponge_decay	        0	# Decay time scale for sponge layer

@@ -36,8 +36,8 @@ data:	$(SUN)
 .c.o:	
 	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 
-$(SUN):	initialization.o 
-	cp initialization.o $(SUNTANSHOME)
+$(SUN):	initialization.o state.o
+	cp initialization.o state.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 
 clean:

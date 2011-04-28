@@ -14,6 +14,7 @@
 #include "grid.h"
 #include "tvd.h"
 #include "util.h"
+#include <math.h>
 
 // To prevent denominators from going to zero.
 #define EPS 1e-12
@@ -79,55 +80,21 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundar
         sp=phys->stmp[nc2];
 
       for(k=0;k<grid->Nke[ne];k++) {
-	// Judge the velocity direction  
-        if(phys->utmp2[ne][k]>0) {  
-	  gradSx[i][k]+= 1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n1[ne]*normal*df; 
-	  gradSy[i][k]+= 1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n2[ne]*normal*df; 
-	}
-	else {
-          gradSx[i][k]+= 1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n1[ne]*normal*df;
-	  gradSy[i][k]+= 1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n2[ne]*normal*df; 
-	}
+	gradSx[i][k]+=1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n1[ne]*normal*df; 
+	gradSy[i][k]+=1/Ac*0.5*(phys->stmp[nc1][k]+sp[k])*grid->n2[ne]*normal*df; 
       }
-
-      // The edges that only have one cell neighbor
       for(k=grid->Nke[ne];k<grid->Nk[i];k++) {
-	gradSx[i][k]+= 1/Ac*phys->stmp[i][k]*grid->n1[ne]*normal*df;
-	gradSy[i][k]+= 1/Ac*phys->stmp[i][k]*grid->n2[ne]*normal*df;
+	gradSx[i][k]+=1/Ac*phys->stmp[i][k]*grid->n1[ne]*normal*df; 
+	gradSy[i][k]+=1/Ac*phys->stmp[i][k]*grid->n2[ne]*normal*df; 	
       }
-	  
-    } // End of the face loop
-  } // End of the cell loop
-
+    } 
+  } 
   ISendRecvCellData3D(gradSx,grid,myproc,comm);  
   ISendRecvCellData3D(gradSy,grid,myproc,comm);  
  
-  gradflag=1;
-  // !!! Check the gradSx
-  for(i=0;i<grid->Nc;i++) {
-    for(k=0;k<grid->Nk[i];k++)
-      if(phys->gradSx[i][k]!=phys->gradSx[i][k] || phys->gradSy[i][k]!=phys->gradSy[i][k] ) {
-	gradflag=0;
-	iu=i;
-	ku=k;
-	break;
-      }
-    if(!gradflag)
-      break;
-  }
-  if(!gradflag)  {
-    printf("GradSx/gradSy(%d, %d) is Null.\n",iu, ku);
-    exit(1);
-  }
-  //else   printf("GradSx/gradSy is okay.\n");
-
-
-
-  // Loop through all cells 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
 
-    // Loop through all faces of each cell
     for(nf=0;nf<NFACES;nf++) {
       ne = grid->face[i*NFACES+nf];
       normal = grid->normal[i*NFACES+nf];
@@ -146,53 +113,21 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundar
 	sp=phys->stmp[nc2];
 
 
-      // Compute the Courant number for TVD schemes
       for(k=0;k<grid->Nke[ne];k++) {
 	Cp[k]= 0.5*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*dt/dg;
 	Cm[k]= 0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*dt/dg;
       }
 
-      Cflag=1;
-      for(k=0;k<grid->Nk[i];k++){
-	if(Cp[k]!=Cp[k] || Cm[k]!=Cm[k] ) {
-	  Cflag=0;
-	  iu=i;
-	  ku=k;
-	  nfu=nf;
-	  break;
-	}
-      }
-      if(!Cflag)
-	break;
-
-
-      // Compute the upwind gradient ratio for TVD schemes
       for(k=0;k<grid->Nke[ne];k++) {	
-	rp[k]= 2*(gradSx[nc2][k]*grid->n1[ne]*dg + gradSy[nc2][k]*grid->n2[ne]*dg + EPS )/(phys->stmp[nc1][k]-sp[k]+EPS)-1;
-	rm[k]= 2*(gradSx[nc1][k]*grid->n1[ne]*dg + gradSy[nc1][k]*grid->n2[ne]*dg + EPS )/(phys->stmp[nc1][k]-sp[k]+EPS)-1;
-
-	//rp[k]= 2*(gradSx[nc2][k]*grid->n1[ne]*dg + gradSy[nc2][k]*grid->n2[ne]*dg + EPS)/(phys->stmp[nc1][k]-sp[k]+EPS) - 1;
-	//rm[k]= 2*(gradSx[nc1][k]*grid->n1[ne]*dg + gradSy[nc1][k]*grid->n2[ne]*dg + EPS)/(phys->stmp[nc1][k]-sp[k]+EPS) - 1;
-	//printf("rp=%f  rm=%f\n",rp[k], rm[k]);
+	rp[k]= 2*(gradSx[nc2][k]*grid->n1[ne]*dg + gradSy[nc2][k]*grid->n2[ne]*dg + EPS )/
+	  (phys->stmp[nc1][k]-sp[k]+EPS)-1;
+	rm[k]= 2*(gradSx[nc1][k]*grid->n1[ne]*dg + gradSy[nc1][k]*grid->n2[ne]*dg + EPS )/
+	  (phys->stmp[nc1][k]-sp[k]+EPS)-1;
       }
-
-      Rflag=1;
-      for(k=0;k<grid->Nke[ne];k++){
-	if(rp[k]!=rp[k] || rm[k]!=rm[k] ) {
-	  Rflag=0;
-	  iu=i;
-	  ku=k;
-	  nfu=nf;
-	  break;
-	}
-      }
-      if(!Rflag)
-	break;
 
       for(k=0;k<grid->Nke[ne];k++) {
 	phys->SfHp[ne][k] = sp[k]+0.5*Psi(rp[k],TVD)*(1-Cp[k])*(phys->stmp[nc1][k]-sp[k]);
 	phys->SfHm[ne][k] = phys->stmp[nc1][k]-0.5*Psi(rm[k],TVD)*(1+Cm[k])*(phys->stmp[nc1][k]-sp[k]);
-	//printf("psi for rp %f\n",Cp[k]);
       }
 
       for(k=grid->Nke[ne];k<grid->Nk[nc1];k++) 
@@ -200,46 +135,8 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundar
 
       for(k=grid->Nke[ne];k<grid->Nk[nc2];k++) 
 	phys->SfHp[ne][k] = sp[k];
-
-    } // End of face loop
-	
-
-    if(!Cflag)   break;  // Check for Cp/Cm
-    if(!Rflag)   break;  // Check for Rp/Rm
-
-  } // End of cell loop
-
-
-  if(!Cflag) printf("Cp/Cm is NULL at (%d, %d) at edge %d.\n", iu, ku, nfu);
-  if(!Rflag) printf("Rp/Rm is NULL at (%d, %d) at edge %d.\n", iu, ku, nfu);
-
-  // !!! Check the gradSx
-  faceflag=1;
-  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-    i = grid->cellp[iptr];
-    // Loop through all faces of each cell
-    for(nf=0;nf<NFACES;nf++) {
-      ne = grid->face[i*NFACES+nf];
-      for(k=0;k<grid->Nkc[i];k++)
-	if(phys->SfHp[ne][k]!=phys->SfHp[ne][k] || phys->SfHm[ne][k]!=phys->SfHm[ne][k] ) {
-	  faceflag=0;
-	  iu=i;
-	  ku=k;
-	  nfu=nf;
-	  break;
-	}
-      if(!faceflag)
-	break;
-    }
-    if(!faceflag)
-      break;
+    } 
   }
-
-  if(!faceflag)   {
-    printf("SfHp/SfHm(%d, %d) at face %d is Null.\n\n",iu, ku, nfu);
-    exit (1);
-  }
-
 }
 
 /*
@@ -262,7 +159,10 @@ static REAL Psi(REAL r, int TVD){
     return ( Max(0, Max(Min(2*(r),1), Min(r,2))));
     break;
   case 4:
-    return ( ((r)+fabs(r)+EPS)/(1+r+EPS) );
+    if(r>0)
+      return Min(r,1);
+    else
+      return 0;
     break;
   default:
     return 0;

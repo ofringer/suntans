@@ -66,7 +66,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
       phys->T[i][k]=1;
     } 
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      phys->s[i][k]=1;
+      phys->s[i][k]=32;
       phys->T[i][k]=1;
     }
   }
@@ -81,7 +81,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
  */
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
   int jptr, j, ib, k, iptr, i;
-  REAL z, cb, u0=0.1;
+  REAL z, cb, u0=0.075;
   
   // At the upstream boundary
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
@@ -130,13 +130,12 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
 	
 /*
  * Function: WindStress
- * Usage: WindStress(grid,phys,prop);
- * ----------------------------------
- * Set the wind stress as well as the bottom stress.
- * tau_B is not currently in use (4/1/05).
+ * Usage: WindStress(grid,phys,prop,myproc);
+ * -----------------------------------------
+ * Set the wind stress.
  *
  */
-void WindStress(gridT *grid, physT *phys, propT *prop) {
+void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
   int j, jptr;
 
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {

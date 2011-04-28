@@ -12,10 +12,15 @@
 #include "scalars.h"
 #include "util.h"
 #include "tvd.h"
+#include "initialization.h"
+
+#define SMALL_CONSISTENCY 1e-5
+
+REAL smin_value, smax_value;
 
 /*
  * Function: UpdateScalars
- * Usage: UpdateScalars(grid,phys,prop,scalar,Cn,kappa,kappaH,kappa_tv,theta);
+ * Usage: UpdateScalars(grid,phys,prop,wnew,scalar,Cn,kappa,kappaH,kappa_tv,theta);
  * ---------------------------------------------------------------------------
  * Update the scalar quantity stored in the array denoted by scal using the
  * theta method for vertical advection and vertical diffusion and Adams-Bashforth
@@ -27,16 +32,18 @@
  * kappa_tv denotes the vertical turbulent scalar diffusivity
  *
  */
-void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
+void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **scal, REAL **boundary_scal, REAL **Cn, 
 		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
 		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot,
-		   MPI_Comm comm, int myproc) 
+		   MPI_Comm comm, int myproc, int checkflag, int TVDscheme) 
 {
   int i, iptr, j, jptr, ib, k, nf, ktop;
   int Nc=grid->Nc, normal, nc1, nc2, ne;
-  REAL df, dg, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, *bd, dznew, mass, *sp, *temp;
+  REAL df, dg, Ac, dt=prop->dt, fab, *a, *b, *c, *d, *ap, *am, *bd, *uflux, dznew, mass, *sp, *temp;
+  REAL smin, smax, div_local, div_da;
+  int k1, k2, kmin, imin, kmax, imax, mincount, maxcount, allmincount, allmaxcount, flag;
 
-  prop->TVD = TVDMACRO;
+  prop->TVD = TVDscheme;
   // These are used mostly debugging to turn on/off vertical and horizontal TVD.
   prop->horiTVD = 1;
   prop->vertTVD = 1;
@@ -50,9 +57,8 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
   c = phys->c;
   d = phys->d;
 
-  // Don't use AB2 when wetting and drying is employed or if
-  // using the TVD schemes.
-  if(prop->n==1 || prop->wetdry || prop->TVD!=0) {
+  // Never use AB2
+  if(1) {
     fab=1;
     for(i=0;i<grid->Nc;i++)
       for(k=0;k<grid->Nk[i];k++)
@@ -108,12 +114,12 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
     // at the new time step.
     if(!(prop->TVD && prop->vertTVD))
       for(k=0;k<grid->Nk[i]+1;k++) {
-	ap[k] = 0.5*(phys->w[i][k]+fabs(phys->w[i][k]));
-	am[k] = 0.5*(phys->w[i][k]-fabs(phys->w[i][k]));
+	ap[k] = 0.5*(wnew[i][k]+fabs(wnew[i][k]));
+	am[k] = 0.5*(wnew[i][k]-fabs(wnew[i][k]));
       }
     else  // Compute the ap/am for TVD schemes
       GetApAm(ap,am,phys->wp,phys->wm,phys->Cp,phys->Cm,phys->rp,phys->rm,
-	      phys->w,grid->dzz,scal,i,grid->Nk[i],ktop,prop->dt,prop->TVD);
+	      wnew,grid->dzz,scal,i,grid->Nk[i],ktop,prop->dt,prop->TVD);
 
     for(k=ktop+1;k<grid->Nk[i];k++) {
       a[k-ktop]=theta*dt*am[k];
@@ -239,62 +245,40 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
     for(k=0;k<grid->Nk[i];k++)
       ap[k]=0;
 
-    if(!(prop->TVD && prop->horiTVD))
-      for(nf=0;nf<NFACES;nf++) {
-	ne = grid->face[i*NFACES+nf];
-	normal = grid->normal[i*NFACES+nf];
-	df = grid->df[ne];
-	dg = grid->dg[ne];
-	nc1 = grid->grad[2*ne];
-	nc2 = grid->grad[2*ne+1];
-	if(nc1==-1) nc1=nc2;
-	if(nc2==-1) {
-	  nc2=nc1;
-	  if(boundary_scal && grid->mark[ne]==2)
-	    sp=phys->stmp2[nc1];
-	  else
-	    sp=phys->stmp[nc1];
-	} else 
-	  sp=phys->stmp[nc2];
+    for(nf=0;nf<NFACES;nf++) {
+      ne = grid->face[i*NFACES+nf];
+      normal = grid->normal[i*NFACES+nf];
+      df = grid->df[ne];
+      dg = grid->dg[ne];
+      nc1 = grid->grad[2*ne];
+      nc2 = grid->grad[2*ne+1];
+      if(nc1==-1) nc1=nc2;
+      if(nc2==-1) {
+	nc2=nc1;
+	if(boundary_scal && grid->mark[ne]==2)
+	  sp=phys->stmp2[nc1];
+	else
+	  sp=phys->stmp[nc1];
+      } else 
+	sp=phys->stmp[nc2];
 	
+      if(!(prop->TVD && prop->horiTVD)) {
 	for(k=0;k<grid->Nke[ne];k++) 
 	  temp[k]=UpWind(phys->utmp2[ne][k],
-			 grid->dzzold[nc1][k]*phys->stmp[nc1][k],
-			 grid->dzzold[nc2][k]*sp[k]);
+			 phys->stmp[nc1][k],
+			 sp[k]);
+      } else {
+	for(k=0;k<grid->Nke[ne];k++) 
+	  if(phys->utmp2[ne][k]>0)
+	    temp[k]=phys->SfHp[ne][k];
+	  else
+	    temp[k]=phys->SfHm[ne][k];	    
+      }
 	
-	if(prop->wetdry) {
-	  for(k=0;k<grid->Nke[ne];k++)
-	    ap[k] += dt*df*normal/Ac*
-	      (theta*phys->u[ne][k]+(1-theta)*phys->utmp2[ne][k])*temp[k];
-	} else {
-	  for(k=0;k<grid->Nk[nc2];k++) 
-	    ap[k] += 0.5*dt*df*normal/Ac*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*
-	      sp[k]*grid->dzzold[nc2][k];
-	  for(k=0;k<grid->Nk[nc1];k++) 
-	    ap[k] += 0.5*dt*df*normal/Ac*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*
-	      phys->stmp[nc1][k]*grid->dzzold[nc1][k];
-	}	  
-      }
-    else
-      for(nf=0;nf<NFACES;nf++) {
-	ne = grid->face[i*NFACES+nf];
-	normal = grid->normal[i*NFACES+nf];
-	df = grid->df[ne];
-	dg = grid->dg[ne];
-	nc1 = grid->grad[2*ne];
-	nc2 = grid->grad[2*ne+1];
-	if(nc1==-1) nc1=nc2;
-	if(nc2==-1) nc2=nc1;
-
-	for(k=0;k<grid->Nk[nc2];k++) 
-	  ap[k] += 0.5*dt*df*normal/Ac*(theta*(phys->u[ne][k]+fabs(phys->u[ne][k]))+
-					(1-theta)*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k])))*
-	    phys->SfHp[ne][k]*grid->dzzold[nc2][k];
-	for(k=0;k<grid->Nk[nc1];k++) 
-	  ap[k] += 0.5*dt*df*normal/Ac*(theta*(phys->u[ne][k]-fabs(phys->u[ne][k]))+
-					(1-theta)*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k])))*
-	    phys->SfHm[ne][k]*grid->dzzold[nc1][k];
-      }
+      for(k=0;k<grid->Nke[ne];k++)
+	ap[k] += dt*df*normal/Ac*(theta*phys->u[ne][k]+(1-theta)*phys->utmp2[ne][k])
+	  *temp[k]*grid->dzf[ne][k];
+    }
 
     for(k=ktop+1;k<grid->Nk[i];k++) 
       Cn[i][k-ktop]-=ap[k];
@@ -305,6 +289,12 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
     // Add on the source from the current time step to the rhs.
     for(k=0;k<grid->Nk[i]-ktop;k++) 
       d[k]+=fab*Cn[i][k];
+
+    // Add on the volume correction if h was < -d
+    /*
+    if(grid->ctop[i]==grid->Nk[i]-1)
+      d[grid->Nk[i]-ktop-1]+=phys->hcorr[i]*phys->stmp[i][grid->ctop[i]];
+    */
 
     for(k=ktop;k<grid->Nk[i];k++)
       ap[k]=Cn[i][k-ktop];
@@ -317,13 +307,135 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **bo
 
     if(grid->Nk[i]-ktop>1) 
       TriSolve(a,b,c,d,&(scal[i][ktop]),grid->Nk[i]-ktop);
-    else if(b[0]!=0)
-      scal[i][ktop]=d[0]/b[0];
+    else if(prop->n>1) {
+      if(b[0]>0 && phys->active[i])
+	scal[i][ktop]=d[0]/b[0];
+      else 
+	scal[i][ktop]=0;
+    }
 
     for(k=0;k<grid->ctop[i];k++)
       scal[i][k]=0;
 
     for(k=grid->ctop[i];k<grid->ctopold[i];k++) 
       scal[i][k]=scal[i][ktop];
+  }
+
+  // Code to check divergence change CHECKCONSISTENCY to 1 in suntans.h
+  if(CHECKCONSISTENCY && checkflag) {
+
+    if(prop->n==1+prop->nstart) {
+      smin=INFTY;
+      smax=-INFTY;
+      for(i=0;i<grid->Nc;i++) {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	  if(phys->stmp[i][k]>smax) { 
+	    smax=phys->stmp[i][k]; 
+	    imax=i; 
+	    kmax=k; 
+	  }
+	  if(phys->stmp[i][k]<smin) { 
+	    smin=phys->stmp[i][k]; 
+	    imin=i; 
+	    kmin=k; 
+	  }
+	}
+      }
+      MPI_Reduce(&smin,&smin_value,1,MPI_DOUBLE,MPI_MIN,0,comm);
+      MPI_Reduce(&smax,&smax_value,1,MPI_DOUBLE,MPI_MAX,0,comm);
+      MPI_Bcast(&smin_value,1,MPI_DOUBLE,0,comm);
+      MPI_Bcast(&smax_value,1,MPI_DOUBLE,0,comm);
+
+      if(myproc==0)
+	printf("Minimum scalar: %.2f, maximum: %.2f\n",smin_value,smax_value);
+    }      
+	
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+
+      flag=0;
+      for(nf=0;nf<NFACES;nf++) {
+	if(grid->mark[grid->face[i*NFACES+nf]]==2 || 
+	   grid->mark[grid->face[i*NFACES+nf]]==3) {
+	  flag=1;
+	  break;
+	}
+      }
+
+      if(!flag) {
+	div_da=0;
+
+	for(k=0;k<grid->Nk[i];k++) {
+	  div_da+=grid->Ac[i]*(grid->dzz[i][k]-grid->dzzold[i][k])/prop->dt;
+	  
+	  div_local=0;
+	  for(nf=0;nf<NFACES;nf++) {
+	    ne=grid->face[i*NFACES+nf];
+	    div_local+=(theta*phys->u[ne][k]+(1-theta)*phys->utmp2[ne][k])
+	      *grid->dzf[ne][k]*grid->normal[i*NFACES+nf]*grid->df[ne];
+	  }
+	  div_da+=div_local;
+	  div_local+=grid->Ac[i]*(theta*(wnew[i][k]-wnew[i][k+1])+
+				  (1-theta)*(phys->wtmp2[i][k]-phys->wtmp2[i][k+1]));
+	  
+	  if(k>=grid->ctop[i]) {
+	    if(fabs(div_local)>SMALL_CONSISTENCY && grid->dzz[imin][0]>DRYCELLHEIGHT) 
+	      printf("Step: %d, proc: %d, locally-divergent at %d, %d, div=%e\n",
+		     prop->n,myproc,i,k,div_local);
+	  }
+	}
+	if(fabs(div_da)>SMALL_CONSISTENCY && phys->h[i]+grid->dv[i]>DRYCELLHEIGHT)
+	  printf("Step: %d, proc: %d, Depth-Ave divergent at i=%d, div=%e\n",
+		 prop->n,myproc,i,div_da);
+      }
+    }
+
+    mincount=0;
+    maxcount=0;
+    smin=INFTY;
+    smax=-INFTY;
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+
+      flag=0;
+      for(nf=0;nf<NFACES;nf++) {
+	if(grid->mark[grid->face[i*NFACES+nf]]==2 || grid->mark[grid->face[i*NFACES+nf]]==3) {
+	  flag=1;
+	  break;
+	}
+      }
+
+      if(!flag) {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	  if(scal[i][k]>smax) { 
+	    smax=scal[i][k]; 
+	    imax=i; 
+	    kmax=k; 
+	  }
+	  if(scal[i][k]<smin) { 
+	    smin=scal[i][k]; 
+	    imin=i; 
+	    kmin=k; 
+	  }
+
+	  if(scal[i][k]>smax_value+SMALL_CONSISTENCY && grid->dzz[i][k]>DRYCELLHEIGHT)
+	    maxcount++;
+	  if(scal[i][k]<smin_value-SMALL_CONSISTENCY && grid->dzz[i][k]>DRYCELLHEIGHT)
+	    mincount++;
+	}
+      }
+    }
+    MPI_Reduce(&mincount,&allmincount,1,MPI_INT,MPI_SUM,0,comm);
+    MPI_Reduce(&maxcount,&allmaxcount,1,MPI_INT,MPI_SUM,0,comm);
+
+    if(mincount!=0 || maxcount!=0) 
+      printf("Not CWC, step: %d, proc: %d, smin = %e at i=%d,H=%e, smax = %e at i=%d,H=%e\n",
+	     prop->n,myproc,
+	     smin,imin,phys->h[imin]+grid->dv[imin],
+	     smax,imax,phys->h[imax]+grid->dv[imax]);
+
+    if(myproc==0 && (allmincount !=0 || allmaxcount !=0))
+      printf("Total number of CWC violations (all procs): s<s_min: %d, s>s_max: %d\n",
+	     allmincount,allmaxcount);
   }
 }

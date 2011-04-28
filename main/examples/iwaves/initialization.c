@@ -63,10 +63,12 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
 REAL ReturnDepth(REAL x, REAL y) {
   REAL Ls, xmid, Ds, D0;
 
-  Ls = 20000;
-  xmid = 65000;
+  Ls = 30000;
+  xmid = 100000;
   D0 = 3000;
-  Ds = 500;
+  Ds = 200;
+  return D0 - 0.5*(D0-Ds)*(1+tanh(4*(x-xmid)/Ls));
+
   if(x<=xmid-Ls/2)
     return D0;
   else if(x>xmid+Ls/2)

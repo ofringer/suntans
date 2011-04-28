@@ -17,6 +17,9 @@
 #define MPI_COMM_WORLD 0
 #define MPI_SUM 3
 #define MPI_STATUS_IGNORE NULL
+#define MPI_MIN 0
+#define MPI_MAX 0
+#define MPI_IN_PLACE 0
 
 typedef int MPI_Comm;
 typedef int MPI_Status;

@@ -34,6 +34,8 @@ typedef struct _gridT {
   REAL *dv;
   REAL *dz;
   REAL **dzz;
+  REAL **dzf;
+  REAL *dzfB;
   REAL **dzzold;
   REAL *dztop;
   int *face;

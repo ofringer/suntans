@@ -33,7 +33,6 @@ all:	data
 test:	data
 	echo 1 > runnum.txt
 	sh $(EXEC).sh $(NUMPROCS) $(MAXRUNS)
-	sh concat.sh $(MAXRUNS)
 
 data:	$(SUN)
 
@@ -46,8 +45,8 @@ status:
 .c.o:	
 	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 
-$(SUN):	initialization.o boundaries.o
-	cp initialization.o boundaries.o $(SUNTANSHOME)
+$(SUN):	initialization.o boundaries.o state.o
+	cp initialization.o boundaries.o state.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 	cp $(SUNTANSHOME)/sun .
 
@@ -55,5 +54,5 @@ clean:
 	rm -f *.o sun
 
 clobber: clean
-	rm -rf *~ \#*\# PI* $(EXEC) status.sh gmon.out data* rundata/*~ crash.txt runnum.txt grid
+	rm -rf *~ \#*\# PI* $(EXEC) status.sh gmon.out data* rundata/*~ crash*.txt runnum.txt grid
 

@@ -25,9 +25,8 @@
  */
 REAL StateEquation(const propT *prop, const REAL s, const REAL T, const REAL p) {
   // If temperature is a passive scalar
-  return prop->beta*s;
-  // Otherwise temperature is not passive
-  // return prop->beta*s - prop->alpha*T;
+  //  return -prop->gamma*T;
+  return -prop->gamma*T;
 }
 
 

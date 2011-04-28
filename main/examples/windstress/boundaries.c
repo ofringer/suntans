@@ -100,19 +100,23 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
 	
 /*
  * Function: WindStress
- * Usage: WindStress(grid,phys,prop);
- * ----------------------------------
- * Set the wind stress as well as the bottom stress.
- * tau_B is not currently in use (4/1/05).
+ * Usage: WindStress(grid,phys,prop,myproc);
+ * -----------------------------------------
+ * Set the wind stress.
  *
  */
-void WindStress(gridT *grid, physT *phys, propT *prop) {
+void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
   int j, jptr;
+  REAL tau, twind=20000;
 
+  if(prop->rtime>twind)
+    tau = 0;
+  else
+    tau = prop->tau_T;
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
     
-    phys->tau_T[j]=grid->n1[j]*prop->tau_T;
+    phys->tau_T[j]=grid->n1[j]*tau;
     phys->tau_B[j]=0;
   }
 }

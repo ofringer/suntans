@@ -31,13 +31,16 @@ all:	data
 test:	data
 	sh $(EXEC).sh $(NUMPROCS)
 
+tides:	
+	sh make_tides.sh
+
 data:	$(SUN)
 
 .c.o:	
 	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 
-$(SUN):	initialization.o boundaries.o
-	cp initialization.o boundaries.o $(SUNTANSHOME)
+$(SUN):	initialization.o boundaries.o state.o
+	cp initialization.o boundaries.o state.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 
 clean:

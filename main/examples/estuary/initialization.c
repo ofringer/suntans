@@ -88,7 +88,7 @@ REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
  *
  */
 REAL ReturnSalinity(REAL x, REAL y, REAL z) {
-  return 1;
+  return 32;
 }
 
 /*

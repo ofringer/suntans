@@ -9,7 +9,7 @@
 %
 
 % datadir where suntans data is stored
-datadir = './data';
+datadir = '../tides-restart/data';
 suntansdatafile = [datadir,'/suntans.dat'];
 
 % Load in required data and default values

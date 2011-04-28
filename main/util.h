@@ -28,5 +28,6 @@ REAL UpWind(REAL u, REAL dz1, REAL dz2);
 void Copy(REAL **from, REAL **to, gridT *grid);
 REAL Max(REAL x1, REAL x2);
 REAL Min(REAL x, REAL y);
+void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction);
 
 #endif

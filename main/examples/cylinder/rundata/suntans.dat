@@ -21,10 +21,10 @@ thetaB			0.55	# For scalar advection
 kappa_s                 0       # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
 gamma 			1.0 	# Coefficient of expansivity of temperature.
-kappa_T                 1e-4    # Vertical thermal diffusivity
-kappa_TH                1e-4    # Horizontal thermal diffusivity
-nu 			5e-4  	# Laminar viscosity of water (m^2 s^-1)
-nu_H 			5e-4	# Horizontal laminar viscosity of water (m^2 s^-1)
+kappa_T                 0       # Vertical thermal diffusivity
+kappa_TH                0       # Horizontal thermal diffusivity
+nu 			0   	# Laminar viscosity of water (m^2 s^-1)
+nu_H 			5e-4 	# Horizontal laminar viscosity of water (m^2 s^-1)
 tau_T			0 	# Wind shear stress
 z0T	                0.0 	# Top roughness
 z0B	                0.0	# Bottom roughness
@@ -32,9 +32,9 @@ CdT	                0.0 	# Drag coefficient at surface
 CdB	                0.0	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		0	# Turbulence model (0 for none, 1 for MY25)
-dt 			0.0011	# Time step
+dt 			1e-3	# Time step
 Cmax 			1  	# Maximum permissible Courant number
-nsteps 			2000    # Number of steps
+nsteps 			4000    # Number of steps
 ntout   		200  	# How often to output data
 ntprog   		5 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
@@ -47,13 +47,14 @@ epsilon			1e-10 	# Tolerance for CG convergence
 qepsilon		1e-5	# Tolerance for CG convergence for nonhydrostatic pressure
 resnorm			0	# Normalized or non-normalized residual
 relax			1	# Relaxation parameter for GS solver.	
-amp 			1.0	# amplitude
+amp 			0.8	# amplitude
 omega 			0	# frequency
 flux 			0	# flux
 timescale		0	# timescale for open boundary condition
 volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
-nonlinear		2	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
+nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+laxWendroff		0       # Dont' use Lax Wendroff diffusion coefficients
 newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0	# Coriolis frequency f=2*Omega*sin(phi)
@@ -101,3 +102,14 @@ ScalarDiffusivityFile	kappat.dat
 ########################################################################
 InitSalinityFile	sinit.dat
 InitTemperatureFile	Tinit.dat
+########################################################################
+#
+# Use output to calculate Strouhal number in mfiles/strouhal.m
+#
+########################################################################
+ProfileVariables	u	         # Output u
+DataLocations		dataxy.dat       # dataxy.dat contains column x-y data
+ProfileDataFile		profdata.dat     # Information about profiles is in profdata.dat
+ntoutProfs		10               # Output profile data every 10 time steps
+NkmaxProfs		0                # Output all levels
+numInterpPoints		1                # Only output nearest point
