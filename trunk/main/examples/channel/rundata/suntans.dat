@@ -53,7 +53,8 @@ flux 			0	# flux
 timescale		0	# timescale for open boundary condition
 volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
-nonlinear		2	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
+nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+laxWendroff_Vertical    0       # No Lax Wendroff in vertical
 newcells		1	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0	# Coriolis frequency f=2*Omega*sin(phi)

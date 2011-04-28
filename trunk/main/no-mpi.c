@@ -14,6 +14,7 @@
 #include<stdlib.h>
 #include<sys/time.h>
 #include "suntans.h"
+#include "string.h"
 #include "no-mpi.h"
 
 #define evaltime(timeval_time) (double)timeval_time.tv_sec \

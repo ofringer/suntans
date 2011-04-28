@@ -18,6 +18,8 @@ to create tidecomponent.dat.* files.
 
 matlab < tides.m
 
+If matlab is installed locally then you can type "make tides"
+
 5) Run the example again with
 
 make test

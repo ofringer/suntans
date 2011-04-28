@@ -1,6 +1,6 @@
 addpath ../../../mfiles
 addpath ../../../mfiles/suntides
-addpath /home/fringer/research/SUNTANS/tides/m_map
+addpath packages/m_map
 
 % Load the m_map files to convert from x,y to lon,lat using UTM
 m_proj('utm','lon',[-128 -119],'lat',[34 40],'zon',[10],'hem',[0],'ell',['wgs84']);
@@ -13,7 +13,7 @@ tideprefix = './data/tidexy.dat';
 outputprefix = './data/tidecomponents.dat';
 
 % Location of OTIS data; This example is for the Southern Pacific Ocean
-tidespath = '/home/fringer/research/SUNTANS/tides/pacpred/pac';
+tidespath = './tide_data/pac';
 
 % Year of simulation (so that phases are relative to start of year)
 year = 2006;

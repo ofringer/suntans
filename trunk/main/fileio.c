@@ -14,7 +14,7 @@
 #include <string.h>
 #include "fileio.h"
 #include <errno.h>
-
+#include "defaults.h"
 
 #define BUFFERLENGTH 256
 #define THISFILE "fileio.c"
@@ -74,7 +74,7 @@ double getelement(FILE *ifile)
 {
   char istr[BUFFERLENGTH], ostr[BUFFERLENGTH];
   int i=0;
-  getline(ifile,istr,"");
+  mygetline(ifile,istr,"");
   getchunk(istr,ostr);
   return strtod(ostr,(char **)NULL);
 }
@@ -97,15 +97,15 @@ void getchunk(char *istr, char *ostr)
 }
 
 /*
- * Function: getline()
- * Usage: c = getline(file,str,omit);
+ * Function: mygetline()
+ * Usage: c = mygetline(file,str,omit);
  * ----------------------------------
  * Gets the first line of a file that does not contain
  * any one of the characters in the omit string.  Returns 
  * the last character found.
  * 
  */    
-char getline(FILE *file, char *line, char *omit)
+char mygetline(FILE *file, char *line, char *omit)
 {
   char c, *start;
   int i, found=0, N=strlen(omit);
@@ -118,7 +118,7 @@ char getline(FILE *file, char *line, char *omit)
       if(c==omit[i]) { found=1; break; }
   }
   if(found) {
-    getline(file,start,omit);
+    mygetline(file,start,omit);
   }
   *line='\0';
   return c;
@@ -202,7 +202,7 @@ double GetValue(char *filename, char *str, int *status)
   *status = 0;
 
   while(1) {
-    getline(ifile,istr,"");
+    mygetline(ifile,istr,"");
     if(strlen(istr)==0)
       break;
     getchunk(istr,ostr);
@@ -227,6 +227,55 @@ double GetValue(char *filename, char *str, int *status)
 }
 
 /*
+ * Function: GetDefaultValue
+ * Usage: Nkmax = (int)GetDefaultValue("Nkmax",&status);
+ * -----------------------------------------------------
+ * Returns the default value of the specified variable.  This is required
+ * if the requested value is not in the specified datafile.
+ * 
+ */
+double GetDefaultValue(char *str, int *status) {
+  *status=1;
+
+  if(!strcmp(str,"minimum_depth")) {
+
+    return minimum_depth_DEFAULT;
+
+  } else if(!strcmp(str,"fixdzz")) {
+
+    return fixdzz_DEFAULT;
+
+  } else if(!strcmp(str,"TVDsalt")) {
+
+    return TVDsalt_DEFAULT;
+
+  } else if(!strcmp(str,"TVDtemp")) {
+
+    return TVDtemp_DEFAULT;
+
+  } else if(!strcmp(str,"TVDturb")) {
+
+    return TVDturb_DEFAULT;
+
+  } else if(!strcmp(str,"laxWendroff")) {
+
+    return laxWendroff_DEFAULT;
+
+  } else if(!strcmp(str,"laxWendroff_Vertical")) {
+
+    return laxWendroff_Vertical_DEFAULT;
+
+  } else if(!strcmp(str,"hprecond")) {
+
+    return hprecond_DEFAULT;
+
+  } else {
+    *status=0;
+    return 0;
+  }
+}
+
+/*
  * Function: GetString
  * Usage: GetString(string,"file.dat","ufile",&status);
  * ----------------------------------------------------
@@ -242,7 +291,7 @@ void GetString(char *string, char *filename, char *str, int *status)
   *status = 0;
 
   while(1) {
-    getline(ifile,istr,"");
+    mygetline(ifile,istr,"");
     if(strlen(istr)==0)
       break;
     getchunk(istr,ostr);

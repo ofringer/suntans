@@ -10,6 +10,7 @@
  *
  */
 #include "grid.h"
+#include "partition.h"
 #include "util.h"
 #include "initialization.h"
 #include "memory.h"
@@ -45,9 +46,10 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs);
 static void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int Nc, int Ne);
 static void CreateNormalArray(int *grad, int *face, int *normal, int Nc);
 static void ReadDepth(gridT *grid, int myproc);
-static int CorrectVoronoi(gridT *grid);
-static int CorrectAngles(gridT *grid);
+static int CorrectVoronoi(gridT *grid, int myproc);
+static int CorrectAngles(gridT *grid, int myproc);
 static void VoronoiStats(gridT *grid);
+static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int myproc);
 
 /************************************************************************/
 /*                                                                      */
@@ -97,7 +99,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
     VoronoiStats(maingrid);
   }
   if((int)MPI_GetValue(DATAFILE,"CorrectVoronoi","ReadMainGrid",0)>0) {
-    numcorr=CorrectVoronoi(maingrid);
+    numcorr=CorrectVoronoi(maingrid,myproc);
     if(myproc==0 && VERBOSE>1) {
       if(numcorr) {
 	printf("Voronoi statistics after correction:\n");
@@ -107,7 +109,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
     }
   }
   if((int)MPI_GetValue(DATAFILE,"CorrectVoronoi","ReadMainGrid",0)<0) {
-    numcorr=CorrectAngles(maingrid);
+    numcorr=CorrectAngles(maingrid,myproc);
     if(myproc==0 && VERBOSE>1) {
       if(numcorr) {
 	printf("Voronoi statistics after correction:\n");
@@ -172,7 +174,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   //  ResortBoundaries(*localgrid,myproc);
 
   if(VERBOSE>3) ReportConnectivity(*localgrid,maingrid,myproc);
-  if(VERBOSE>1) ReportPartition(maingrid,*localgrid,myproc,comm);
+  if(VERBOSE>2) ReportPartition(maingrid,*localgrid,myproc,comm);
 }
 
 /*
@@ -759,14 +761,19 @@ static void ReadDepth(gridT *grid, int myproc) {
   
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
 {
-  int n, maxgridweight=100, IntDepth, Nkmax;
-  REAL mindepth, maxdepth;
+  int n, maxgridweight=100, IntDepth, Nkmax, stairstep, fixdzz, kount=0;
+  REAL mindepth, maxdepth, maxdepth0, minimum_depth, *dz;
 
   Nkmax = MPI_GetValue(DATAFILE,"Nkmax","GetDepth",myproc);
+  stairstep = MPI_GetValue(DATAFILE,"stairstep","GetDepth",myproc);
+
+  dz = (REAL *)SunMalloc(Nkmax*sizeof(REAL),"GetDepth");
 
   maxdepth=0.0;
   mindepth=INFTY;
   IntDepth=(int)MPI_GetValue(DATAFILE,"IntDepth","GetDepth",myproc);
+  minimum_depth=(REAL)MPI_GetValue(DATAFILE,"minimum_depth","GetDepth",myproc);
+  fixdzz=(REAL)MPI_GetValue(DATAFILE,"fixdzz","GetDepth",myproc);
 
   if(IntDepth==1) 
     InterpDepth(grid,myproc,numprocs,comm);
@@ -777,13 +784,49 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
       grid->dv[n]=ReturnDepth(grid->xv[n],grid->yv[n]);
     }
   }
+
+  for(n=0;n<grid->Nc;n++) 
+    if(grid->dv[n]>maxdepth)
+      maxdepth = grid->dv[n];
+  maxdepth0 = maxdepth;
+
+  GetDZ(dz,maxdepth,maxdepth,Nkmax,myproc);  
+
+  if(!stairstep && fixdzz) 
+    FixDZZ(grid,maxdepth,Nkmax,myproc);
+
+  if(minimum_depth!=0) {
+    if(minimum_depth>0) {
+      printf("Setting minimum depth to %f\n",minimum_depth);
+      for(n=0;n<grid->Nc;n++) {
+	if(grid->dv[n]<minimum_depth) {
+	  grid->dv[n]=minimum_depth;
+	  kount++;
+	}
+      }
+      if(VERBOSE>0 && myproc==0 && kount>0) 
+	printf("Increased the depth to the minimum set value of %.2f %d times.\n",minimum_depth,kount);
+    } else if(minimum_depth<0) {
+      for(n=0;n<grid->Nc;n++) {
+	if(grid->dv[n]<dz[0]) {
+	  grid->dv[n]=dz[0];
+	  kount++;
+	}
+      }
+      if(VERBOSE>0 && myproc==0 && kount>0) 
+	printf("Increased the depth to the minimum set value of dz[0]=%.2f %d times.\n",dz[0],kount);
+    }
+  }
+  
   for(n=0;n<grid->Nc;n++) {
     if(grid->dv[n]>maxdepth)
       maxdepth = grid->dv[n];
     if(grid->dv[n]<mindepth)
       mindepth = grid->dv[n];
   }
-    
+
+  if(maxdepth!=maxdepth0 && myproc==0) printf("WARNING!!!!!!!!!  Maximum depth changed after fixing vertical spacing...\n");
+
   if(Nkmax>1) {
     if(mindepth!=maxdepth) 
       for(n=0;n<grid->Nc;n++) {
@@ -800,6 +843,8 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   if(VERBOSE>3) 
     for(n=0;n<grid->Nc;n++) 
       printf("grid->vwgt[%d]=%d\n",n,grid->vwgt[n]);
+
+  SunFree(dz,Nkmax*sizeof(REAL),"GetDepth");
 }
 
 void CreateCellGraph(gridT *grid)
@@ -974,14 +1019,14 @@ int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
   }
   if(maingrid->part[mgptr]==myproc) {
     for(nf=0;nf<NFACES;nf++) {
+      if(maingrid->mark[maingrid->face[mgptr*NFACES+nf]]==3)
+	return 1;
+    }
+    for(nf=0;nf<NFACES;nf++) {
       nei = maingrid->neigh[mgptr*NFACES+nf];
       if(nei != -1)
 	if(maingrid->part[nei] != myproc)
 	  return 2;
-    }
-    for(nf=0;nf<NFACES;nf++) {
-      if(maingrid->mark[maingrid->face[mgptr*NFACES+nf]]==3)
-	return 1;
     }
     return 0;
   } else
@@ -1413,15 +1458,13 @@ static void FreeGrid(gridT *grid, int numprocs)
 static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 {
   int i, j, k, ne, myproc, numprocs, vertgridcorrect, stairstep;
-  REAL dz0, dmin, dmax, dmaxtest, dzsmall;
+  REAL dz0, dmin, dmax, dmaxtest;
 
   MPI_Comm_size(comm,&numprocs);
   MPI_Comm_rank(comm,&myproc);
 
-  
   maingrid->Nkmax = MPI_GetValue(DATAFILE,"Nkmax","VertGrid",myproc);
   vertgridcorrect = MPI_GetValue(DATAFILE,"vertgridcorrect","VertGrid",myproc);
-  dzsmall = MPI_GetValue(DATAFILE,"dzsmall","VertGrid",myproc);
   stairstep = MPI_GetValue(DATAFILE,"stairstep","VertGrid",myproc);
 
   if(myproc==0) {
@@ -2562,7 +2605,7 @@ static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   free(d);
 }
 
-static int CorrectVoronoi(gridT *grid)
+static int CorrectVoronoi(gridT *grid, int myproc)
 {
   int n, nf, nc1, nc2, numcorr=0;
   REAL xc, yc, xv1, xv2, yv1, yv2, xc1, xc2, yc1, yc2, dg, dg0;
@@ -2641,14 +2684,14 @@ static int CorrectVoronoi(gridT *grid)
       }
     }
   }
-  if(numcorr>0 && VERBOSE>1)
+  if(numcorr>0 && VERBOSE>1 && myproc==0)
     printf("Corrected %d of %d edges with dg < %.2f dg0 (%.2f%%).\n",
 	   numcorr,grid->Ne,VoronoiRatio,(REAL)numcorr/(REAL)grid->Ne*100.0);
   
   return numcorr;
 }
 
-static int CorrectAngles(gridT *grid)
+static int CorrectAngles(gridT *grid, int myproc)
 {
   int n, nf, nc1, nc2, numcorr;
   REAL xc, yc, xv1, xv2, yv1, yv2, xc1, xc2, xc3, yc1, yc2, yc3, dg, dg0, ang1, ang2,
@@ -2679,7 +2722,7 @@ static int CorrectAngles(gridT *grid)
       grid->yv[n] = (yc1+yc2+yc3)/NFACES;
     }
   }
-  if(numcorr>0 && VERBOSE>1)
+  if(numcorr>0 && VERBOSE>1 && myproc==0)
     printf("Corrected %d of %d cells with angles > %.1f degrees (%.2f%%).\n",
 	   numcorr,grid->Nc,VoronoiRatio,(REAL)numcorr/(REAL)grid->Nc*100.0);
 
@@ -3014,4 +3057,44 @@ void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
     }
   }
   t_comm+=Timer()-t0;
+}
+
+/*
+ * Function: FixDZZ
+ * Usage: FixDZZ(grid,maxdepth,Nkmax,myproc);
+ * --------------------------------------------
+ * Check to make sure that the deepest vertical grid spacing is not too small.
+ * and if so then increase the depth.
+ *
+ */
+static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int myproc) {
+  int i, k, kount=0, mindepth0;
+  REAL z, dzz, dzsmall, *dz = (REAL *)SunMalloc(Nkmax*sizeof(REAL),"FixDZZ");
+
+  dzsmall=(REAL)MPI_GetValue(DATAFILE,"dzsmall","FixDZZ",myproc);
+
+  GetDZ(dz,maxdepth,maxdepth,Nkmax,myproc);  
+  for(i=0;i<grid->Nc;i++) {
+    z=0;
+    for(k=0;k<Nkmax;k++) {
+      if(z>-grid->dv[i] && z-dz[k]<-grid->dv[i]) {
+	dzz=z+grid->dv[i];
+	
+	if(dzz<dz[k]*dzsmall && k>0) {
+	  if(myproc==0 && VERBOSE>2) printf("Fixing small bottom dz of %.2e by increasing the depth from %.2f to %.2f\n",
+					    dzz,grid->dv[i],-z+dz[k]*dzsmall);
+	  kount++;
+	  grid->dv[i]=-z+dz[k]*dzsmall;
+	}
+	break;
+      }
+      z-=dz[k];
+    }
+  }
+  if(VERBOSE>0 && myproc==0 && kount!=0) {
+    printf("Fixed %d bottom cells with heights < %.2e dz.\n",kount,dzsmall);
+    printf("To eliminate this action set fixdzz to 0 in suntans.dat.\n");
+  }
+
+  SunFree(dz,Nkmax*sizeof(REAL),"FixDZZ");
 }

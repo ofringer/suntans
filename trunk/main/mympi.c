@@ -57,6 +57,13 @@ REAL MPI_GetValue(char *file, char *str, char *call, int myproc)
   REAL val = GetValue(file,str,&status);
 
   if(!status) {
+    val = GetDefaultValue(str,&status);
+
+    if(status && myproc==0 && VERBOSE)
+      printf("Warning in MPI_GetValue...retrieved default value of %s=%.2f which was not specified in %s.\n",str,val,file);
+  }
+
+  if(!status) {
     if(myproc==0) {
       printf("Error in MPI_GetValue (called from %s) while reading %s.\n",call,file);
       printf("Couldn't find value for %s!\n",str);

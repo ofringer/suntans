@@ -115,6 +115,6 @@ REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
  *
  */
 REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
-  return 0;
+  return n1;
 }
 

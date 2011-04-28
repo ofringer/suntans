@@ -16,9 +16,9 @@
 #include "grid.h"
 #include "phys.h"
 
-void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, REAL **Cn, 
+void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **scal, REAL **boundary_scal, REAL **Cn, 
 		   REAL kappa, REAL kappaH, REAL **kappa_tv, REAL theta,
 		   REAL **src1, REAL **src2, REAL *Ftop, REAL *Fbot, int alpha_top, int alpha_bot,
-		   MPI_Comm comm, int myproc);
+		   MPI_Comm comm, int myproc, int checkflag, int TVDscheme);
 
 #endif

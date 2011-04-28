@@ -23,10 +23,12 @@
 #define GRAV 9.81
 #define RHO0 1000.0
 #define INFTY 1e20
-#define CONSERVED 1e-10
+#define CONSERVED 1e-5
 #define EMPTY 999999
 #define SMALL 1e-15
-#define DEFAULT_hprecond 1
+#define CHECKCONSISTENCY 0
+#define DRYCELLHEIGHT 1e-10
+#define BUFFERHEIGHT 1e-2
 
 // Error/Exit codes
 #define EXIT_WRITING 1

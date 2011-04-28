@@ -85,11 +85,7 @@ REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
  *
  */
 REAL ReturnSalinity(REAL x, REAL y, REAL z) {
-  REAL drho = 5, thermocline_depth = 5, depth = 20;
-  if(z<-thermocline_depth)
-    return -drho*(z+thermocline_depth)/(depth-thermocline_depth);
-  else
-    return 0;
+  return 1;
 }
 
 /*
@@ -101,7 +97,12 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
  *
  */
 REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
-  return 1;
+  REAL dT = 10, T0 = 20, thermocline_depth = 5, depth0 = 20;
+
+  if(z<-thermocline_depth)
+    return T0 + dT*(z+thermocline_depth)/(depth0-thermocline_depth);
+  else
+    return T0;
 }
 
 /*

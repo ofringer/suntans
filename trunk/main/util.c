@@ -186,3 +186,39 @@ REAL Min(REAL x, REAL y) {
     return x;
   return y;
 }
+
+void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction) {
+  int i, k, nf, ne, neigh, nc1, nc2, kmin;
+  REAL coordinate;
+
+  for(i=0;i<grid->Nc;i++) {
+
+    for(k=0;k<grid->Nk[i];k++)
+      gradient[i][k]=0;
+
+    for(nf=0;nf<NFACES;nf++) {
+      if((neigh=grid->neigh[i*NFACES+nf])!=-1) {
+
+	ne=grid->face[i*NFACES+nf];
+	nc1 = grid->grad[2*ne];
+	nc2 = grid->grad[2*ne+1];
+
+	if(grid->ctop[nc1]>grid->ctop[nc2])
+	  kmin = grid->ctop[nc1];
+	else
+	  kmin = grid->ctop[nc2];
+	
+	if(direction==1)
+	  coordinate=grid->n1[ne];
+	else
+	  coordinate=grid->n2[ne];
+
+	for(k=kmin;k<grid->Nke[ne];k++) 
+	  gradient[i][k]+=0.5/grid->Ac[i]*(phi[nc1][k]+phi[nc2][k])*coordinate*grid->normal[i*NFACES+nf]*grid->df[ne];
+      }
+    }
+  }
+}
+	  
+      
+      

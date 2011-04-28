@@ -28,9 +28,9 @@
  */    
 int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, k, icu, kcu, icw, kcw, Nc=grid->Nc, Ne=grid->Ne, ih, is, ks, iu, ku, iw, kw;
-  int uflag=1, wflag=1, sflag=1, hflag=1, myalldone, alldone;
-  REAL C, CmaxU, CmaxW, dtsuggestU, dtsuggestW;
+  int i, k, icu, kcu, icw, kcw, Nc=grid->Nc, Ne=grid->Ne, ih, is, ks, iu, ku, iw, kw, nc1, nc2;
+  int uflag=1, wflag=1, sflag=1, hflag=1, myalldone, alldone, progout;
+  REAL C, CmaxU, CmaxW, allCmaxU, allCmaxW, dtsuggestU, dtsuggestW;
 
   icu=kcu=icw=kcw=ih=is=ks=iu=ku=iw=kw=0;
 
@@ -79,7 +79,7 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
 
   CmaxU=0;
   for(i=0;i<Ne;i++) 
-    for(k=grid->etop[i]+1;k<grid->Nke[i];k++) {
+    for(k=grid->etop[i];k<grid->Nke[i];k++) {
       C = fabs(phys->u[i][k])*prop->dt/grid->dg[i];
       if(C>CmaxU) {
 	icu = i;
@@ -89,9 +89,9 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
     }
 
   CmaxW=0;
-  if(!prop->wetdry)
+  if(prop->nonlinear!=0) {
     for(i=0;i<Nc;i++) 
-      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
 	C = 0.5*fabs(phys->w[i][k]+phys->w[i][k+1])*prop->dt/grid->dzz[i][k];
 	if(C>CmaxW) {
 	  icw = i;
@@ -99,20 +99,39 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
 	  CmaxW = C;
 	}
       }
-  
+  }
+
+  progout = (int)(prop->nsteps*(double)prop->ntprog/100);
+  if(progout>0 && !(prop->n%progout)) {
+    MPI_Reduce(&CmaxU,&allCmaxU,1,MPI_DOUBLE,MPI_MAX,0,comm);
+    MPI_Reduce(&CmaxW,&allCmaxW,1,MPI_DOUBLE,MPI_MAX,0,comm);
+  }
+
+  if(myproc==0) {
+    prop->CmaxU = allCmaxU;
+    prop->CmaxW = allCmaxW;
+  }
+
   myalldone=0;
   if(!uflag || !wflag || !sflag || !hflag || CmaxU>prop->Cmax || CmaxW>prop->Cmax) {
     printf(DASHES);
     printf("Time step %d: Processor %d, Run is blowing up!\n",prop->n,myproc);
 
     if(CmaxU>prop->Cmax) {
+      nc1 = grid->grad[2*icu];
+      nc2 = grid->grad[2*icu+1];
+      if(nc1==-1) nc1=nc2;
+      if(nc2==-1) nc2=nc1;
+
       dtsuggestU = CMAXSUGGEST*grid->dg[icu]/fabs(phys->u[icu][kcu]);
 
       printf("Horizontal Courant number problems:\n");
-      printf("  Grid indices: j=%d k=%d\n", icu, kcu);
+      printf("  Grid indices: j=%d k=%d (Nke=%d)\n", icu, kcu, grid->Nke[icu]);
       printf("  Location: x=%.3e, y=%.3e, z=%.3e\n",grid->xe[icu],grid->ye[icu],
 	     0.5*(DepthFromDZ(grid,phys,grid->grad[2*icu],kcu)+
 		  DepthFromDZ(grid,phys,grid->grad[2*icu+1],kcu)));
+      printf("  Free-surface heights (on either side): %.3e, %.3e\n",phys->h[nc1],phys->h[nc2]);
+      printf("  Depths (on either side): %.3e, %.3e\n",grid->dv[nc1],grid->dv[nc2]);
       printf("  Umax = %.3e\n",phys->u[icu][kcu]);
       printf("  Horizontal grid spacing grid->dg[%d] = %.3e\n",icu,grid->dg[icu]);
       printf("  Horizontal Courant number is CmaxU = %.2f.\n",CmaxU);
@@ -123,7 +142,7 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
     
     if(!uflag) {
 	printf("Problem with U (U=NaN):\n");
-	printf("  Grid indices: j=%d k=%d\n", iu, ku);
+	printf("  Grid indices: j=%d k=%d (Nke=%d)\n", iu, ku, grid->Nke[iu]);
 	printf("  Location: x=%.3e, y=%.3e, z=%.3e\n",grid->xe[iu],grid->ye[iu],
 	       0.5*(DepthFromDZ(grid,phys,grid->grad[2*iu],ku)+
 		    DepthFromDZ(grid,phys,grid->grad[2*iu+1],ku)));	
@@ -133,10 +152,12 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
       dtsuggestW = CMAXSUGGEST*grid->dzz[icw][kcw]/fabs(0.5*(phys->w[icw][kcw]+phys->w[icw][kcw]));
 
       printf("Vertical Courant number problems:\n");
-      printf("  Grid indices: i=%d k=%d\n", icw, kcw);
+      printf("  Grid indices: i=%d k=%d (Nkc=%d)\n", icw, kcw, grid->Nkc[icw]);
       printf("  Location: x=%.3e, y=%.3e, z=%.3e\n",grid->xv[icw],grid->yv[icw],DepthFromDZ(grid,phys,icw,kcw));
+      printf("  Free-surface height: %.3e\n",phys->h[icw]);
+      printf("  Depth: %.3e\n",grid->dv[icw]);
       printf("  Wmax = %.3e (located half-way between faces)\n",0.5*(phys->w[icw][kcw]+phys->w[icw][kcw+1]));
-      printf("  Vertical grid spacing dz = %.3e\n",icu,grid->dzz[icw][kcw]);
+      printf("  Vertical grid spacing dz = %.3e\n",grid->dzz[icw][kcw]);
       printf("  Vertical Courant number is CmaxW = %.2f.\n",CmaxW);
       printf("  You specified a maximum of %.2f in suntans.dat\n",prop->Cmax);
       printf("  Your time step size is %.2f.\n",prop->dt);
@@ -145,19 +166,19 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
 
     if(!wflag) {
       printf("Problem with W (W=NaN):\n");
-      printf("  Grid indices: i=%d k=%d\n", iw, kw);
+      printf("  Grid indices: i=%d k=%d (Nkc=%d)\n", iw, kw, grid->Nkc[iw]);
       printf("  Location: x=%.3e, y=%.3e, z=%.3e\n",grid->xv[iw],grid->yv[iw],DepthFromDZ(grid,phys,iw,kw));
     }
 
     if(!sflag) {
       printf("Problem with the scalar s (s=NaN):\n");
-      printf("  Grid indices: i=%d k=%d\n", is, ks);
+      printf("  Grid indices: i=%d k=%d (Nkc=%d)\n", is, ks, grid->Nkc[is]);
       printf("  Location: x=%.3e, y=%.3e, z=%.3e\n",grid->xv[is],grid->yv[is],DepthFromDZ(grid,phys,is,ks));
     }
 
     if(!hflag) {
       printf("Problem with the free surface (h=NaN):\n");
-      printf("  Grid indices: i=%d k=%d\n", ih);
+      printf("  Grid index: i=%d\n", ih);
       printf("  Location: x=%.3e, y=%.3e\n",grid->xv[ih],grid->yv[ih]);
     }
     printf(DASHES);
@@ -262,7 +283,7 @@ void Progress(propT *prop, int myproc, int numprocs)
     fid = fopen(filename,"w");
     fprintf(fid,"On %d of %d, t=%.2f (%d%% Complete, %d output)",
 	    prop->n,prop->nstart+prop->nsteps,prop->rtime,100*(prop->n-prop->nstart)/prop->nsteps,
-	    1+(prop->n-prop->nstart)/prop->ntout);
+	    1+(prop->n-prop->nstart)/prop->ntout);      
     fclose(fid);
   }
   
@@ -270,9 +291,15 @@ void Progress(propT *prop, int myproc, int numprocs)
     progout = (int)(prop->nsteps*(double)prop->ntprog/100);
     prog=(int)(100.0*(double)(prop->n-prop->nstart)/(double)prop->nsteps);
     if(progout>0)
-      if(!(prop->n%progout))
-	printf("%d%% Complete. %.2e s/step; %.2f s remaining.\n",
-	       prog,timeperstep,timeperstep*(prop->nsteps+prop->nstart-prop->n));
+      if(!(prop->n%progout)) {
+	if(prop->nonlinear) {
+	  printf("%d%% Complete. CmaxU=%.2e, CmaxW=%.2e, %.2e s/step; %.2f s remaining.\n",
+		 prog,prop->CmaxU,prop->CmaxW,timeperstep,timeperstep*(prop->nsteps+prop->nstart-prop->n));
+	} else {
+	  printf("%d%% Complete. CmaxU=%.2e, %.2e s/step; %.2f s remaining.\n",
+		 prog,prop->CmaxU,timeperstep,timeperstep*(prop->nsteps+prop->nstart-prop->n));	  
+	}
+      }
     if(prop->n==prop->nsteps+prop->nstart) {
       t_sim = Timer()-t_start;
       t_rem = t_sim-t_nonhydro-t_predictor-t_source-t_transport-t_turb-t_io-t_check;
@@ -281,23 +308,23 @@ void Progress(propT *prop, int myproc, int numprocs)
       printf("Average per time step: %.2e s\n",t_sim/prop->nsteps);
       printf("Timing Summary:\n");
       if(prop->nonhydrostatic)
-	printf("  Nonhydrostatic pressure: %.2f s (%.2f\%)\n",t_nonhydro,
+	printf("  Nonhydrostatic pressure: %.2f s (%.2f%)\n",t_nonhydro,
 	       100*t_nonhydro/t_sim);
-      printf("  Free surface and vertical friction: %.2f s (%.2f\%)\n",t_predictor,
+      printf("  Free surface and vertical friction: %.2f s (%.2f%)\n",t_predictor,
 	     100*t_predictor/t_sim);
-      printf("  Explicit terms: %.2f s (%.2f\%)\n",t_source,
+      printf("  Explicit terms: %.2f s (%.2f%)\n",t_source,
 	     100*t_source/t_sim);
       if(prop->beta || prop->gamma)
-	printf("  Scalar transport: %.2f s (%.2f\%)\n",t_transport,
+	printf("  Scalar transport: %.2f s (%.2f%)\n",t_transport,
 	       100*t_transport/t_sim);
       if(prop->turbmodel)
-	printf("  Turbulence: %.2f s (%.2f\%)\n", t_turb,
+	printf("  Turbulence: %.2f s (%.2f%)\n", t_turb,
 	       100*t_turb/t_sim);
-      printf("  Bounds checking: %.2f s (%.2f\%)\n", t_check,
+      printf("  Bounds checking: %.2f s (%.2f%)\n", t_check,
 	     100*t_check/t_sim);
-      printf("  I/O: %.2f s (%.2f\%)\n", t_io,
+      printf("  I/O: %.2f s (%.2f%)\n", t_io,
 	     100*t_io/t_sim);
-      printf("  Remainder: %.2f s (%.2f\%)\n", t_rem,
+      printf("  Remainder: %.2f s (%.2f%)\n", t_rem,
 	     100*t_rem/t_sim);
       if(numprocs>1) {
 	printf("  Communication time: %.2e s\n",t_comm);

@@ -36,6 +36,8 @@ typedef struct _physT {
   REAL **s0;
   REAL **rho;
   REAL *h;
+  REAL *hcorr;
+  unsigned char *active;
 
   REAL **boundary_u;
   REAL **boundary_v;
@@ -49,6 +51,7 @@ typedef struct _physT {
 
   REAL **nu_tv;
   REAL **kappa_tv;
+  REAL **nu_lax;
   REAL *tau_T;
   REAL *tau_B;
   REAL *CdT;
@@ -62,6 +65,7 @@ typedef struct _physT {
   REAL volume0;
   REAL Ep;
   REAL Ep0;
+  REAL Ek;
   REAL Eflux1;
   REAL Eflux2;
   REAL Eflux3;
@@ -87,6 +91,7 @@ typedef struct _physT {
   REAL **Cn_W;
   REAL **Cn_q;
   REAL **Cn_l;
+  REAL **wnew;
   REAL **wtmp;
   REAL **wtmp2;
   REAL **qtmp;
@@ -95,7 +100,6 @@ typedef struct _physT {
   REAL *am;
   REAL *bp;
   REAL *bm;
-
 
   REAL *a;
   REAL *b;
@@ -125,10 +129,10 @@ typedef struct _physT {
 typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
     thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
-    dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f;
+    dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, Coriolis_f, CmaxU, CmaxW, laxWendroff_Vertical;
   int ntout, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, hprecond, qprecond, volcheck, masscheck,
     nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
-    TVD, horiTVD, vertTVD;
+    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
     *SalinityFID, *BGSalinityFID, *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
     *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;
@@ -149,5 +153,6 @@ void OpenFiles(propT *prop, int myproc);
 void ReadProperties(propT **prop, int myproc);
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
 REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind);
+REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);
 
 #endif

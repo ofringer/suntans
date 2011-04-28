@@ -25,7 +25,7 @@ fi
 if [ ! -d $datadir ] ; then
     cp -r $maindatadir $datadir
     echo Creating grid...
-    $EXEC -g -vv --datadir=$datadir
+    $EXEC -g -vvv --datadir=$datadir
 else
     cp $maindatadir/suntans.dat $datadir/.
 fi

@@ -57,7 +57,7 @@ static void ReadTidalArrays(FILE *ifid, char *istr, int N);
  * h_phase[numboundaryedges-1] (numtides X REAL) phase of free surface at last location 
  *
  */
-int SetTideComponents(gridT *grid, int myproc) {
+void SetTideComponents(gridT *grid, int myproc) {
   int i, j, iptr, jptr, numboundaryedges;
   char istr[BUFFERLENGTH], ostr[BUFFERLENGTH], filename[BUFFERLENGTH];
   FILE *ifid, *ofid;
@@ -67,6 +67,7 @@ int SetTideComponents(gridT *grid, int myproc) {
   MPI_GetFile(filename,DATAFILE,"TideOutput","SetTideComponents",myproc);
   sprintf(ostr,"%s.%d",filename,myproc);
   
+  if(VERBOSE>2) printf("Set Tidecomponents on proc %d\n",myproc);
   if((ifid=fopen(istr,"r"))==NULL) {
     printf("Error opening %s!\n",istr);
     printf("Writing x-y boundary locations to %s instead.\n",ostr);
@@ -77,6 +78,7 @@ int SetTideComponents(gridT *grid, int myproc) {
       
       fprintf(ofid,"%f %f\n",grid->xe[j],grid->ye[j]);
     }
+
     for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
       i=grid->cellp[iptr];
       

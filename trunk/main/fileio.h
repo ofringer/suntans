@@ -37,15 +37,15 @@ FILE *MyFOpen(char *file, char *perms, char *caller);
 FILE *getfile(void);
 
 /*
- * Function: getline()
- * Usage: c = getline(file,str,omit);
+ * Function: mygetline()
+ * Usage: c = mygetline(file,str,omit);
  * ----------------------------------
  * Gets the first line of a file that does not contain
  * any one of the characters in the omit string.  Returns 
  * the last character found.
  * 
  */    
-char getline(FILE *file, char *line, char *omit);
+char mygetline(FILE *file, char *line, char *omit);
 
 /*
  * Function: getchunk()
@@ -91,6 +91,16 @@ int getsize(char *filename);
  *
  */
 double GetValue(char *filename, char *str, int *status);
+
+/*
+ * Function: GetDefaultValue
+ * Usage: Nkmax = (int)GetDefaultValue("Nkmax",&status);
+ * -----------------------------------------------------
+ * Returns the default value of the specified variable.  This is required
+ * if the requested value is not in the specified datafile.
+ * 
+ */
+double GetDefaultValue(char *str, int *status);
 
 /*
  * Function: GetString

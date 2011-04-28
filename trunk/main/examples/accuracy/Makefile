@@ -36,8 +36,8 @@ data:	$(EXEC) $(SUN)
 .c.o:	
 	$(LD) -c $(INCLUDES) $*.c
 
-$(SUN):	initialization.o
-	cp initialization.o $(SUNTANSHOME)
+$(SUN):	initialization.o state.o 
+	cp initialization.o state.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 
 $(EXEC):	accuracy.o

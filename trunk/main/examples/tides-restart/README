@@ -1,7 +1,8 @@
 This is the same as the ../tides example except it employs
-10 restart runs.  Since the tidecomponents.dat.* files
-are already in the rundata directory, tides.m does not
-need to be run.
+10 restart runs.  You will need to obtain the tidecomponents.dat.* files
+from ../tides by running tides.m in that directory and placing
+tidecomponents.dat.* into rundata/.  (or just copy over from
+./tide_data).
 ----------------------------------------------------------------
 1) Edit ../../Makefile.in
 

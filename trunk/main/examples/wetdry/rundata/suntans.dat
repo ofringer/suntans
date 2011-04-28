@@ -4,7 +4,7 @@
 #
 ########################################################################
 Nkmax			20	# Number of cells in the vertical
-stairstep		1	# 1 if stair-stepping, 0 if partial-stepping
+stairstep		0	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
 VoronoiRatio		0	# Adjust the voronoi points by this amount if 1 then = centroid.
@@ -19,7 +19,7 @@ theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
 kappa_s                 1e-4 	# Vertical mass diffusivity
-kappa_sH                1e-4       # Horizontal mass diffusivity
+kappa_sH                1e-4    # Horizontal mass diffusivity
 gamma 			1 	# Coefficient of expansivity of temperature.
 kappa_T                 0	# Vertical thermal diffusivity
 kappa_TH                0       # Horizontal thermal diffusivity
@@ -44,7 +44,7 @@ maxiters		1000	# Maximum number of CG iterations
 qmaxiters		2000	# Maximum number of CG iterations for nonhydrostatic pressure
 qprecond		2	# 1 = preconditioned, 0 = not preconditioned
 epsilon			1e-20 	# Tolerance for CG convergence
-qepsilon		1e-5	# Tolerance for CG convergence for nonhydrostatic pressure
+qepsilon		1e-10	# Tolerance for CG convergence for nonhydrostatic pressure
 resnorm			1	# Normalized or non-normalized residual
 relax			1	# Relaxation parameter for GS solver.	
 amp 			0	# amplitude
@@ -53,9 +53,11 @@ flux 			0	# flux
 timescale		0	# timescale for open boundary condition
 volcheck		1	# Check for volume conservation
 masscheck		1	# Check for mass conservation
-nonlinear		0	# 1 if ELM for horizontal velocity, 0 for u^(n+1)=u^n
+nonlinear		0	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
 newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			1       # 1 if wetting and drying, 0 otherwise
+TVDsalt			0	# Use first-order upwind for salt
+TVDtemp 		0	# Use first-order upwind for temperature
 Coriolis_f              0	# Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        0 	# Decay distance scale for sponge layer
 sponge_decay	        0	# Decay time scale for sponge layer

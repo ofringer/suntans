@@ -83,16 +83,15 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
 
     if(grid->xv[ib]>1)
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	// Maintain a constant free-surface height at the right boundary.
-	phys->boundary_u[jptr-grid->edgedist[2]][k]=prop->amp;phys->uc[ib][k] + 
-	  2*(sqrt(GRAV*(grid->dv[ib]+phys->h[ib]))-sqrt(GRAV*(grid->dv[ib]+0.0)));
+	// Right boundary
+	phys->boundary_u[jptr-grid->edgedist[2]][k]=1;
 	phys->boundary_v[jptr-grid->edgedist[2]][k]=phys->vc[ib][k];
 	phys->boundary_w[jptr-grid->edgedist[2]][k]=phys->w[ib][k];
       }
     else
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	// Maintain a constant inflow volume flux at the left boundary.
-	phys->boundary_u[jptr-grid->edgedist[2]][k]=prop->amp;
+	// Left boundary
+	phys->boundary_u[jptr-grid->edgedist[2]][k]=1;
 	phys->boundary_v[jptr-grid->edgedist[2]][k]=0.0;
 	phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
       }
@@ -121,13 +120,12 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
 	
 /*
  * Function: WindStress
- * Usage: WindStress(grid,phys,prop);
- * ----------------------------------
- * Set the wind stress as well as the bottom stress.
- * tau_B is not currently in use (4/1/05).
+ * Usage: WindStress(grid,phys,prop,myproc);
+ * -----------------------------------------
+ * Set the wind stress.
  *
  */
-void WindStress(gridT *grid, physT *phys, propT *prop) {
+void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
   int j, jptr;
 
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {

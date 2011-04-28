@@ -23,13 +23,14 @@ static void StabilityFunctions(REAL *Sm, REAL *Sh, REAL Gh, REAL A1, REAL A2, RE
 
 /*
  * Function: my25
- * Usage: my25(grid,phys,prop,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv);
+ * Usage: my25(grid,phys,prop,wnew,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv);
  * -----------------------------------------------------------------------------------------------
  * Computes the eddy viscosity and scalar diffusivity via the MY25 closure.  Advection of the turbulent
  * quantities q^2 and q^2l is included with the use of UpdateScalars
  *
  */
-void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q, REAL **Cn_l, REAL **nuT, REAL **kappaT, MPI_Comm comm, int myproc) {
+void my25(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **q, REAL **l, REAL **Cn_q, REAL **Cn_l, 
+	  REAL **nuT, REAL **kappaT, MPI_Comm comm, int myproc) {
   int i, ib, j, iptr, jptr, k, nf, nc1, nc2, ne;
   REAL thetaQ=1, CdAvgT, CdAvgB, *dudz, *dvdz, *drdz, z, *N, *Gh, tauAvgT;
   REAL A1, A2, B1, B2, C1, E1, E2, E3, Sq, Sm, Sh;
@@ -109,8 +110,8 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
       phys->boundary_tmp[jptr-grid->edgedist[2]][k]=q[ib][k];
   }    
-  UpdateScalars(grid,phys,prop,q,phys->boundary_tmp,phys->Cn_q,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,
-		phys->htmp,phys->hold,1,1,comm,myproc);
+  UpdateScalars(grid,phys,prop,wnew,q,phys->boundary_tmp,phys->Cn_q,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,
+		phys->htmp,phys->hold,1,1,comm,myproc,0,prop->TVDturb);
 
   // q now contains q^2
   for(i=0;i<grid->Nc;i++) {
@@ -146,8 +147,8 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **q, REAL **l, REAL **Cn_q
     for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
       phys->boundary_tmp[jptr-grid->edgedist[2]][k]=l[ib][k];
   }
-  UpdateScalars(grid,phys,prop,l,phys->boundary_tmp,phys->Cn_l,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,
-		phys->htmp,phys->hold,1,1,comm,myproc);
+  UpdateScalars(grid,phys,prop,wnew,l,phys->boundary_tmp,phys->Cn_l,0,0,kappaT,thetaQ,phys->uold,phys->wtmp,
+		phys->htmp,phys->hold,1,1,comm,myproc,0,prop->TVDturb);
 
   // Set l to a background value if it gets too small.
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
