@@ -18,7 +18,7 @@
 
 #define TRIANGLEFORMAT 0
 
-void GetPoints(struct triangulateio *in, REAL *minarea, REAL *minangle, int myproc);
+void GetPoints(struct triangulateio *in, REAL *minarea, int myproc);
 void InitializeTriangle(struct triangulateio *mid, struct triangulateio *vorout);
 
 /*
@@ -31,10 +31,10 @@ void InitializeTriangle(struct triangulateio *mid, struct triangulateio *vorout)
 int GetTriangulation(gridT **grid, int myproc) {
   int n, j, nf, Np, Ne, Nc;
   struct triangulateio in, out, vorout;
-  REAL minarea, minangle;
+  REAL minarea;
   char str[BUFFERLENGTH];
 
-  GetPoints(&in,&minarea,&minangle,myproc);
+  GetPoints(&in,&minarea,myproc);
   InitializeTriangle(&out,&vorout);
 
   // Options for the triangulation:
@@ -49,12 +49,8 @@ int GetTriangulation(gridT **grid, int myproc) {
   //    Adds points to the mesh to ensure that no angles smaller than 20 degrees occur.
   if(in.numberofsegments==0) 
     sprintf(str,"Qznevc");//Qpzq33.8evc
-  else {
-    if(minangle==0)
-      sprintf(str,"Qpzqnev");//Qpzq33.8nev
-    else
-      sprintf(str,"Qpzq%.2fnev",minangle);
-  }
+  else
+    sprintf(str,"Qpzqnev");//Qpzq33.8nev
   if(minarea>0)
     sprintf(str,"%sa%.5f",str,minarea);
   else
@@ -107,7 +103,7 @@ int GetTriangulation(gridT **grid, int myproc) {
   return 1;
 }
 
-void GetPoints(struct triangulateio *in, REAL *minarea, REAL *minangle, int myproc)
+void GetPoints(struct triangulateio *in, REAL *minarea, int myproc)
 {
   int i, dummy, dimensions;
   char str[BUFFERLENGTH], c;
@@ -151,10 +147,6 @@ void GetPoints(struct triangulateio *in, REAL *minarea, REAL *minangle, int mypr
   }
 
   *minarea=getfield(infile,str);
-  if(ftell(infile)!=EOF) 
-    *minangle=getfield(infile,str);
-  else
-    *minangle=0;
   fclose(infile);
 }
 
