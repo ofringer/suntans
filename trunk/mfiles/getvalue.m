@@ -3,6 +3,7 @@ function value = getvalue(fname,str)
   fid = fopen(fname,'r');
   if(fid==-1)
     fprintf('Error opening %s\n',fname);
+    value=-1;
     return;
   end
   
@@ -14,7 +15,7 @@ function value = getvalue(fname,str)
       if(line(1)~='#')
         strs=strread(line,'%s');
         if(strcmp(strs{1},str))
-          value=str2num(strs{2});
+          value = strs{2};
           break;
         end
       end
