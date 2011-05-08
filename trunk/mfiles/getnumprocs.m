@@ -33,4 +33,6 @@ function np = getnumprocs(datadir)
     end
   end
 
-  np=-1;
+  if(np==0)
+    np=-1;
+  end
