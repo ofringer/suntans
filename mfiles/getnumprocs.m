@@ -1,7 +1,8 @@
 % 
 % GETNUMPROCS Determine number of processors in a suntans run.
 %   NP = GETNUMPROCS(datadir) returns the number of processors in a
-%   suntans run with data in datadir.
+%   suntans run with data in datadir.  Returns -1 if no data exists
+%   in the directory or if the directory does not exist.
 % 
 function np = getnumprocs(datadir)
 
@@ -31,3 +32,5 @@ function np = getnumprocs(datadir)
       end
     end
   end
+
+  np=-1;
