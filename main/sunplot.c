@@ -2158,10 +2158,10 @@ void DrawColorBar(dataT *data, int procnum, int numprocs, plottypeT plottype) {
       sprintf(str,"V");
       break;
     case nut:
-      sprintf(str,"nu_t");
+      sprintf(str,"log10(nu)");
       break;
     case kt:
-      sprintf(str,"k_t");
+      sprintf(str,"log10(k)");
       break;
     case v_baroclinic: 
       sprintf(str,"V baro");
@@ -3049,7 +3049,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  for(i=0;i<data->Nkmax;i++) {
 	    fread(dummy,sizeof(double),data->Nc[proc],fid);      
 	    for(j=0;j<data->Nc[proc];j++) {
-	      data->nut[proc][i][j]=dummy[j];
+	      if(dummy[j]!=0)
+		data->nut[proc][i][j]=log10(fabs(dummy[j]));
 	      if(data->s[proc][i][j]==EMPTY)
 		data->nut[proc][i][j]=EMPTY;
 	    }
@@ -3064,7 +3065,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  for(i=0;i<data->Nkmax;i++) {
 	    fread(dummy,sizeof(double),data->Nc[proc],fid);      
 	    for(j=0;j<data->Nc[proc];j++) {
-	      data->kt[proc][i][j]=dummy[j];
+	      if(dummy[j]!=0)
+		data->kt[proc][i][j]=log10(fabs(dummy[j]));
 	      if(data->s[proc][i][j]==EMPTY)
 		data->kt[proc][i][j]=EMPTY;
 	    }
