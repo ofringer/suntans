@@ -25,11 +25,18 @@ function np = getnumprocs(datadir)
     root=getvalue(suntansfile,fval);
     np=0;
     while(true)
-      if(~exist(sprintf('%s/%s.%d',datadir,root,np)))
+      fname=sprintf('%s/%s.%d',datadir,root,np);
+      if(~exist(fname,'file'))
+        if(np==0)
+          np=-1;
+        end
         break;
       else
         np=np+1;
       end
+    end
+    if(np~=-1)
+      return;
     end
   end
 
