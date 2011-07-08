@@ -862,7 +862,8 @@ int main(int argc, char *argv[]) {
 			    axesPosition[3]*height,DefaultDepthOfScreen(screen));
       }
       RedrawWindows();
-      redraw=false;
+      // Set the following line to redraw=false; if plotting huge datasets
+      LoopDraw(data,plottype,procnum,numprocs);
       break;
     case KeyPress:
       switch(keysym=XLookupKeysym(&report.xkey, 0)) {
