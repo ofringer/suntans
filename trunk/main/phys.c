@@ -603,41 +603,25 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
  *
  */
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop) {
-  int i, j, jptr, nc1, nc2;
+  int i, j;
 
   if(prop->z0T==0) 
     for(j=0;j<grid->Ne;j++) 
       phys->CdT[j]=prop->CdT;
   else
-    for(j=0;j<grid->Ne;j++) {
-      nc1=grid->grad[2*j];
-      nc2=grid->grad[2*j+1];
-      if(nc1==-1) nc1=nc2; 
-      if(nc2==-1) nc2=nc1; 
-      if(grid->Nk[nc2]>grid->Nk[nc1]) nc1=nc2;
-      if(grid->Nk[nc1]>grid->Nk[nc2]) nc2=nc1;
-      
-      phys->CdT[j]=pow(log(0.25*(grid->dzz[nc1][grid->ctop[nc1]]+grid->dzz[nc2][grid->ctop[nc2]])/prop->z0T)/KAPPA_VK,-2);
-    }
+    for(j=0;j<grid->Ne;j++) 
+      phys->CdT[j]=pow(log(0.5*grid->dzf[j][grid->etop[j]]/prop->z0T)/KAPPA_VK,-2);
 
   if(prop->z0B==0) 
     for(j=0;j<grid->Ne;j++) 
       phys->CdB[j]=prop->CdB;
   else
-    for(j=0;j<grid->Ne;j++) {
-      nc1=grid->grad[2*j];
-      nc2=grid->grad[2*j+1];
-      if(nc1==-1) nc1=nc2; 
-      if(nc2==-1) nc2=nc1; 
-      if(grid->Nk[nc2]>grid->Nk[nc1]) nc1=nc2;
-      if(grid->Nk[nc1]>grid->Nk[nc2]) nc2=nc1;
-      
-      phys->CdB[j]=pow(log(0.25*fabs(grid->dzz[nc1][grid->Nke[j]-1]+grid->dzz[nc2][grid->Nke[j]-1])/prop->z0B)/KAPPA_VK,-2);
+    for(j=0;j<grid->Ne;j++) 
+      phys->CdB[j]=pow(log(0.5*grid->dzf[j][grid->Nke[j]-1]/prop->z0B)/KAPPA_VK,-2);
 
-      if(phys->h[nc1]+grid->dv[nc1]<BUFFERHEIGHT ||
-	 phys->h[nc2]+grid->dv[nc2]<BUFFERHEIGHT)
-	phys->CdB[j]=100;
-    }
+  for(j=0;j<grid->Ne;j++)
+    if(grid->dzf[j][grid->Nke[j]-1]<BUFFERHEIGHT && grid->etop[j]==grid->Nke[j]-1)
+      phys->CdB[j]=100;
 }
 
 /*
@@ -857,6 +841,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   OpenBoundaryFluxes(NULL,phys->u,NULL,grid,phys,prop);
   BoundaryScalars(grid,phys,prop);
   WindStress(grid,phys,prop,myproc);
+  SetFluxHeight(grid,phys,prop);
   SetDragCoefficients(grid,phys,prop);
   if(prop->laxWendroff && prop->nonlinear==2) LaxWendroff(grid,phys,prop,myproc,comm);
 
@@ -2354,7 +2339,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	// Bottom cell
 	c[grid->Nke[j]-1]=0;
 	b[grid->Nke[j]-1]=1.0+theta*dt*(a[grid->Nke[j]-1]+
-					2.0*phys->CdB[j]*fabs(phys->u[j][grid->Nke[j]-1])/
+					2.0*phys->CdB[j]*fabs(phys->utmp[j][grid->Nke[j]-1])/
 					(grid->dzz[nc1][grid->Nke[j]-1]+
 					 grid->dzz[nc2][grid->Nke[j]-1]));
 	a[grid->Nke[j]-1]=-theta*dt*a[grid->Nke[j]-1];
@@ -2366,7 +2351,7 @@ static void UPredictor(gridT *grid, physT *phys,
 	  a[k]=-theta*dt*a[k];
 	}
       } else {
-	b[grid->etop[j]]=1.0+2.0*theta*dt*fabs(phys->u[j][grid->etop[j]])/
+	b[grid->etop[j]]=1.0+2.0*theta*dt*fabs(phys->utmp[j][grid->etop[j]])/
 	  (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
 	  (phys->CdB[j]+phys->CdT[j]);
       }	  
@@ -3388,6 +3373,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 		int myproc, int numprocs, int blowup, MPI_Comm comm)
 {
   int i, j, jptr, k, nwritten;
+  char str[BUFFERLENGTH], filename[BUFFERLENGTH];
   REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData");
 
   if(!(prop->n%prop->ntconserve) && !blowup) {
@@ -3651,9 +3637,14 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     if(myproc==0) fclose(prop->ConserveFID);
   }
 
-  if(prop->n==prop->nsteps+prop->nstart || blowup) {
-    if(VERBOSE>1 && myproc==0) printf("Writing to rstore...\n");
+  if(!(prop->n%prop->ntoutStore) || blowup) {
+    if(VERBOSE>1 && myproc==0) 
+      printf("Outputting restart data at step %d\n",prop->n);
     
+    MPI_GetFile(filename,DATAFILE,"StoreFile","OutputData",myproc);
+    sprintf(str,"%s.%d",filename,myproc);
+    prop->StoreFID = MPI_FOpen(str,"w","OpenFiles",myproc);
+
     nwritten=fwrite(&(prop->n),sizeof(int),1,prop->StoreFID);
 
     fwrite(phys->h,sizeof(REAL),grid->Nc,prop->StoreFID);
@@ -3739,6 +3730,11 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->Cmax = MPI_GetValue(DATAFILE,"Cmax","ReadProperties",myproc);
   (*prop)->nsteps = (int)MPI_GetValue(DATAFILE,"nsteps","ReadProperties",myproc);
   (*prop)->ntout = (int)MPI_GetValue(DATAFILE,"ntout","ReadProperties",myproc);
+  (*prop)->ntoutStore = (int)MPI_GetValue(DATAFILE,"ntoutStore","ReadProperties",myproc);
+
+  if((*prop)->ntoutStore==0)
+    (*prop)->ntoutStore=(*prop)->nsteps;
+
   (*prop)->ntprog = (int)MPI_GetValue(DATAFILE,"ntprog","ReadProperties",myproc);
   (*prop)->ntconserve = (int)MPI_GetValue(DATAFILE,"ntconserve","ReadProperties",myproc);
   (*prop)->nonhydrostatic = (int)MPI_GetValue(DATAFILE,"nonhydrostatic","ReadProperties",myproc);
@@ -3768,6 +3764,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->TVDtemp = MPI_GetValue(DATAFILE,"TVDtemp","ReadProperties",myproc);
   (*prop)->TVDturb = MPI_GetValue(DATAFILE,"TVDturb","ReadProperties",myproc);
   (*prop)->stairstep = MPI_GetValue(DATAFILE,"stairstep","ReadProperties",myproc);
+
   if((*prop)->nonlinear==2) {
     (*prop)->laxWendroff = MPI_GetValue(DATAFILE,"laxWendroff","ReadProperties",myproc);
     if((*prop)->laxWendroff!=0)
@@ -3778,6 +3775,7 @@ void ReadProperties(propT **prop, int myproc)
     (*prop)->laxWendroff = 0;
     (*prop)->laxWendroff_Vertical = 0;
   }
+
   (*prop)->hprecond = MPI_GetValue(DATAFILE,"hprecond","ReadProperties",myproc);
 }
 
@@ -3840,10 +3838,6 @@ void OpenFiles(propT *prop, int myproc)
   MPI_GetFile(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->VerticalGridFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"StoreFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->StoreFID = MPI_FOpen(str,"w","OpenFiles",myproc);
 
   if(RESTART) {
     MPI_GetFile(filename,DATAFILE,"StartFile","OpenFiles",myproc);
