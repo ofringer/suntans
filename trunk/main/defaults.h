@@ -19,8 +19,9 @@
 const REAL minimum_depth_DEFAULT=0;   
 
 /* fixdzz:
-   0: Do not adjust bottom cell height if less than dzmall*dz[grid->Nk[i]-1];
-   1: Do the adjustment.
+   0: Do not adjust bottom cell height.
+   1: Do the adjustment but assume bottom cell height must be greater than dzsmall*dz[Nkmax-1];
+  -1: Do the adjustment but assume bottom cell height must be greater than dzsmall (i.e. not relative).
 */
 const int fixdzz_DEFAULT=1;   
 
@@ -55,3 +56,8 @@ const REAL laxWendroff_Vertical_DEFAULT = 1;
    1: Jacobi preconditioner
 */
 const int hprecond_DEFAULT = 1;
+
+/* ntoutStore:
+   How often to save restart data.  If 0 then just save at the last time step.
+*/
+const int ntoutStore_DEFAULT = 0;

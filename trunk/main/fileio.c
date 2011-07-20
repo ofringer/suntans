@@ -269,6 +269,10 @@ double GetDefaultValue(char *str, int *status) {
 
     return hprecond_DEFAULT;
 
+  } else if(!strcmp(str,"ntoutStore")) {
+
+    return ntoutStore_DEFAULT;
+
   } else {
     *status=0;
     return 0;
