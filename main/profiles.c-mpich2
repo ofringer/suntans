@@ -227,12 +227,14 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   total3dtemp = NkmaxProfs*numLocalDataPoints*numInterpPoints;
 
   // All processors need to know how much data they store
+  total2d[myproc]=total2dtemp;
   if(myproc==0)
     MPI_Gather(MPI_IN_PLACE,1,MPI_INT,total2d,1,MPI_INT,0,comm); 
   else
     MPI_Gather(&total2dtemp,1,MPI_INT,total2d,1,MPI_INT,0,comm); 
   MPI_Bcast(total2d,numprocs,MPI_INT,0,comm);
 
+  total3d[myproc]=total3dtemp;
   if(myproc==0)
     MPI_Gather(MPI_IN_PLACE,1,MPI_INT,total3d,1,MPI_INT,0,comm); 
   else
