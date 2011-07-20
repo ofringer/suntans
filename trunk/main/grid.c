@@ -49,7 +49,8 @@ static void ReadDepth(gridT *grid, int myproc);
 static int CorrectVoronoi(gridT *grid, int myproc);
 static int CorrectAngles(gridT *grid, int myproc);
 static void VoronoiStats(gridT *grid);
-static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int myproc);
+static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int fixdzz, int myproc);
+static int GetNk(REAL *dz, REAL localdepth, int Nkmax);
 
 /************************************************************************/
 /*                                                                      */
@@ -761,7 +762,7 @@ static void ReadDepth(gridT *grid, int myproc) {
   
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
 {
-  int n, maxgridweight=100, IntDepth, Nkmax, stairstep, fixdzz, kount=0;
+  int n, maxgridweight=1000, IntDepth, Nkmax, stairstep, fixdzz, kount=0;
   REAL mindepth, maxdepth, maxdepth0, minimum_depth, *dz;
 
   Nkmax = MPI_GetValue(DATAFILE,"Nkmax","GetDepth",myproc);
@@ -793,7 +794,7 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   GetDZ(dz,maxdepth,maxdepth,Nkmax,myproc);  
 
   if(!stairstep && fixdzz) 
-    FixDZZ(grid,maxdepth,Nkmax,myproc);
+    FixDZZ(grid,maxdepth,Nkmax,fixdzz,myproc);
 
   if(minimum_depth!=0) {
     if(minimum_depth>0) {
@@ -830,7 +831,7 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   if(Nkmax>1) {
     if(mindepth!=maxdepth) 
       for(n=0;n<grid->Nc;n++) {
-	grid->vwgt[n]=(int)(maxgridweight*(float)GetDZ(NULL,maxdepth,grid->dv[n],Nkmax,myproc)/(float)Nkmax);
+	grid->vwgt[n]=(int)(maxgridweight*(float)GetNk(dz,grid->dv[n],Nkmax)/(float)Nkmax);
 	//	grid->vwgt[n] = (int)(maxgridweight*(grid->dv[n]-mindepth)/(maxdepth-mindepth));
     } else
       for(n=0;n<grid->Nc;n++) 
@@ -3061,18 +3062,18 @@ void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
 
 /*
  * Function: FixDZZ
- * Usage: FixDZZ(grid,maxdepth,Nkmax,myproc);
- * --------------------------------------------
+ * Usage: FixDZZ(grid,maxdepth,Nkmax,fixdzz,myproc);
+ * -------------------------------------------------
  * Check to make sure that the deepest vertical grid spacing is not too small.
  * and if so then increase the depth.
  *
  */
-static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int myproc) {
+static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int fixdzz, int myproc) {
   int i, k, kount=0, mindepth0;
   REAL z, dzz, dzsmall, *dz = (REAL *)SunMalloc(Nkmax*sizeof(REAL),"FixDZZ");
 
   dzsmall=(REAL)MPI_GetValue(DATAFILE,"dzsmall","FixDZZ",myproc);
-
+  
   GetDZ(dz,maxdepth,maxdepth,Nkmax,myproc);  
   for(i=0;i<grid->Nc;i++) {
     z=0;
@@ -3080,12 +3081,21 @@ static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int myproc) {
       if(z>-grid->dv[i] && z-dz[k]<-grid->dv[i]) {
 	dzz=z+grid->dv[i];
 	
-	if(dzz<dz[k]*dzsmall && k>0) {
-	  if(myproc==0 && VERBOSE>2) printf("Fixing small bottom dz of %.2e by increasing the depth from %.2f to %.2f\n",
-					    dzz,grid->dv[i],-z+dz[k]*dzsmall);
-	  kount++;
-	  grid->dv[i]=-z+dz[k]*dzsmall;
-	}
+	if(fixdzz>0) {
+	  if(dzz<dz[k]*dzsmall && k>0) {
+	    if(myproc==0 && VERBOSE>2) printf("Fixing small bottom dz of %.2e by increasing the depth from %.2f to %.2f\n",
+					      dzz,grid->dv[i],-z+dz[k]*dzsmall);
+	    kount++;
+	    grid->dv[i]=-z+dz[k]*dzsmall;
+	  }
+	} else {
+	  if(dzz<dzsmall && k>0) {
+	    if(myproc==0 && VERBOSE>2) printf("Fixing small bottom dz of %.2e by increasing the depth from %.2f to %.2f\n",
+					      dzz,grid->dv[i],-z+dzsmall);
+	    kount++;
+	    grid->dv[i]=-z+dzsmall;
+	  }
+	}	  
 	break;
       }
       z-=dz[k];
@@ -3098,3 +3108,18 @@ static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int myproc) {
 
   SunFree(dz,Nkmax*sizeof(REAL),"FixDZZ");
 }
+
+static int GetNk(REAL *dz, REAL localdepth, int Nkmax) {
+  int k;
+  REAL z=0;
+
+  for(k=0;k<Nkmax;k++) {
+    z-=dz[k];
+    if(z < -localdepth)
+      break;
+  }
+  return k;
+}
+  
+  
+
