@@ -132,6 +132,7 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
 		  DepthFromDZ(grid,phys,grid->grad[2*icu+1],kcu)));
       printf("  Free-surface heights (on either side): %.3e, %.3e\n",phys->h[nc1],phys->h[nc2]);
       printf("  Depths (on either side): %.3e, %.3e\n",grid->dv[nc1],grid->dv[nc2]);
+      printf("  Flux-face height = %.3e, CdB = %.3e\n",grid->dzf[icu][kcu],phys->CdB[icu]);
       printf("  Umax = %.3e\n",phys->u[icu][kcu]);
       printf("  Horizontal grid spacing grid->dg[%d] = %.3e\n",icu,grid->dg[icu]);
       printf("  Horizontal Courant number is CmaxU = %.2f.\n",CmaxU);
