@@ -24,6 +24,7 @@
 #include "state.h"
 #include "diffusion.h"
 #include "sources.h"
+#include "heat.h"
 
 /*
  * Private Function declarations.
@@ -914,9 +915,12 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // Update the temperature only if gamma is nonzero in suntans.dat
       if(prop->gamma) {
 	t0=Timer();
+
+	HeatSource(phys->wtmp,phys->uold,grid,phys,prop);
+
 	UpdateScalars(grid,phys,prop,phys->wnew,phys->T,phys->boundary_T,phys->Cn_T,
-		      prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->theta,
-		      NULL,NULL,NULL,NULL,0,0,comm,myproc,0,prop->TVDtemp);
+		     prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->theta,
+		     phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDtemp);
 	ISendRecvCellData3D(phys->T,grid,myproc,comm);
 	t_transport+=Timer()-t0;
       }

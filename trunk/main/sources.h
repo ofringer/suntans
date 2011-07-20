@@ -19,6 +19,7 @@ REAL **v_coriolis;
 REAL *rSponge;
 
 void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop);
+void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop);
 void InitSponge(gridT *grid, int myproc);
 
 #endif

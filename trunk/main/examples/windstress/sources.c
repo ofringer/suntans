@@ -75,25 +75,46 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
 
 /*
  * Function: HeatSource
- * Usage: HeatSource(grid,phys,prop,A,B);
+ * Usage: HeatSource(A,B,grid,phys,prop);
  * --------------------------------------
  * Source terms for heat equation of the form
  *
  * dT/dt + u dot grad T = d/dz ( kappaT dT/dz) + A + B*T
  *
- * Assuming adiabatic top and bottom.  Horizontal advection is
- * explicit while all other terms use the theta method.
- *
- * Note that they must be set to zero if there is no heat
- * flux since these are temporary variables with values that may
- * be assigned elsewhere.
+ * Assuming adiabatic top and bottom.  This is a very simple example for testing only.
  *
  */
 void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop) {
-  int i, k;
-  for(i=0;i<grid->Nc;i++)
-    for(k=0;k<grid->Nk[i];k++)
-      A[i][k]=B[i][k]=0;
+  int i, iptr, k;
+  REAL z, T0 = 20, kalpha = 5, alpha = 1e-4;
+
+  /* Assume heat flux is of the form
+
+  Q = -alpha*exp(kalpha*z)*(T-T0), so that 
+  A = alpha*exp(kalpha*z)*T0
+  B = -alpha*exp(kalpha*z)
+  
+  OR
+  
+  B = -alpha*exp(kalpha*z)
+  A = -B*T0
+
+  */
+
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+    
+    z=0;
+    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      z-=grid->dzz[i][k]/2;
+      
+      // Set the coefficients of the sources term here
+      B[i][k] = -alpha*exp(kalpha*z);
+      A[i][k] = -B[i][k]*T0;
+      
+      z-=grid->dzz[i][k]/2;
+    }
+  }
 }
 
 /*

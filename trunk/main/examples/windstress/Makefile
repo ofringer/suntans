@@ -36,8 +36,8 @@ data:	$(SUN)
 .c.o:	
 	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 
-$(SUN):	initialization.o boundaries.o state.o
-	cp initialization.o boundaries.o state.o $(SUNTANSHOME)
+$(SUN):	initialization.o boundaries.o state.o sources.o
+	cp initialization.o boundaries.o state.o sources.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 
 clean:
