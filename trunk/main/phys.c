@@ -24,7 +24,6 @@
 #include "state.h"
 #include "diffusion.h"
 #include "sources.h"
-#include "heat.h"
 
 /*
  * Private Function declarations.
