@@ -72,6 +72,29 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
 }
 
 /*
+ * Function: HeatSource
+ * Usage: HeatSource(grid,phys,prop,A,B);
+ * --------------------------------------
+ * Source terms for heat equation of the form
+ *
+ * dT/dt + u dot grad T = d/dz ( kappaT dT/dz) + A + B*T
+ *
+ * Assuming adiabatic top and bottom.  Horizontal advection is
+ * explicit while all other terms use the theta method.
+ *
+ * Note that they must be set to zero if there is no heat
+ * flux since these are temporary variables with values that may
+ * be assigned elsewhere.
+ *
+ */
+void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop) {
+  int i, k;
+  for(i=0;i<grid->Nc;i++)
+    for(k=0;k<grid->Nk[i];k++)
+      A[i][k]=B[i][k]=0;
+}
+
+/*
  * Function: InitSponge
  * Usage: InitSponge(grid,myproc);
  * -------------------------------
