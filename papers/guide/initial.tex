@@ -178,3 +178,48 @@ normal vector at the boundary edge, which points into the domain by definition.
 Examples of how to employ velocity boundary conditions are described in Sections \ref{sec:boundary_ex}
 and \ref{sec:internalwaves}.  Section \ref{sec:boundary_ex} also demonstrates 
 how to specify salinity and temperature at the boundaries.
+
+\subsection{Specifying heat flux} \label{sec:heatflux}
+
+To specify source terms in the temperature equation, you will need to edit the
+HeatSource() function in suntans/main/sources.c.  The implementation assumes
+adiabatic surface and bottom boundary conditions, and so all heat fluxes are implemnted
+as source terms in the temperature equation of the form
+\begin{eqnarray*}
+\D{T}{t} + \ub\cdot\nabla T &=& \D{}{z}\left[\left(\kappa_T + \kappa_{tv}\right) \D{T}{z}\right] + Q(T)\,,
+\end{eqnarray*}
+where $\kappa_T$ is the molecular diffusivity (defined in suntans.dat) and $\kappa_{tv}$ is the
+vertical turbulent eddy-diffusivity, computed in turbulence.c.  
+terms to simplify the discussion, the temperature equation is given by
+\begin{equation}\label{eq:T}
+\D{T}{t}  = Q(T)\,.
+\end{equation}
+The source term can be linearized about some temperature $T_0$ so that, defining $T=T_0 + \Delta T$,
+we have
+\begin{eqnarray*}
+Q(T) &=& Q(T_0 + \Delta T)\,,\\
+     &=& Q(T_0) + \left(\D{Q}{T}\right)_{T_0}\Delta T  + O(\Delta T^2)\,,\\
+     &=& Q(T_0) + \left(\D{Q}{T}\right)_{T_0}\left(T - T_0\right)  + O(\Delta T^2)\,,\\
+     &=& Q(T_0) - \left(\D{Q}{T}\right)_{T_0}T_0 + \left(\D{Q}{T}\right)_{T_0} T + O(\Delta T^2)\,,\\
+     &=& A(T_0) + B(T_0) T + O(\Delta T^2)\,,
+\end{eqnarray*}
+where
+\begin{eqnarray*}
+A(T_0) = Q(T_0) - \left(\D{Q}{T}\right)_{T_0}T_0\,,\\
+B(T_0) = \left(\D{Q}{T}\right)_{T_0}\,.
+\end{eqnarray*}
+The heat equation is discretized with the theta method so that equation~(\ref{eq:T}) becomes
+\begin{eqnarray*}
+\frac{T^{n+1} - T^n}{\Delta t} &=& A(T_0) + B(T_0)\left[\theta T^{n+1}+(1-\theta)T^n\right]\,,
+\end{eqnarray*}
+where $\theta$ is specified by the value of \verb+theta+ in suntans.dat.
+After rearranging, the temperature at the new time step is obtained with
+\begin{eqnarray*}
+T^{n+1} = \left[1 - \theta \Delta t B(T_0)\right]^{-1}\left[T^n + \Delta t A(T_0) 
+                  + (1-\theta) \Delta t B(T_0)T^n\right]\,.
+\end{eqnarray*}
+Typically the best linerization is to linerize about the temperature at time step $n$ so
+that $T_0=T^n$. A simple implementation of heat flux is provided in the windstress example
+in \verb+suntans/main/examples/windstress+ and the code is in the HeatSource() function in
+\verb+suntans/main/examples/windstress/sources.c+.
+

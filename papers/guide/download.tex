@@ -57,7 +57,22 @@ ParMetis \> \verb+http://www-users.cs.umn.edu/~karypis/metis/parmetis/+\\
 Triangle \> \verb+http://www-2.cs.cmu.edu/~quake/triangle.html+
 \end{tabbing}
 Note that you must compile the triangle libraries as object files by making them
-with \verb+make trilibrary+.  Currently SUNTANS compiles and runs with Parmetis-2.0.
+with \verb+make trilibrary+.  
+
+\subsubsection{Notes on Parmetis}
+
+Currently SUNTANS compiles and runs with both Parmetis-2
+and Parmetis-3.  If you are using Parmetis-3 you will need to edit suntans/main/partition.c
+to include the correct parmetis header file.  For Parmetis-2, the header file is parmetis.h,
+while for version 3 it is parmetislib.h.
+
+\subsubsection{Notes on mpich}
+
+SUNTANS works with both mpich-1 and mpich-2. However, if you are using mpich-2, you will
+need to use suntans/main/profiles.c-mpich2 instead of suntans/main/profiles.c.  Just replace
+profiles.c with profiles.c-mpich2 if you are using mpich2.
+
+\medskip
 
 After installing the above software, edit \verb+suntans/main/Makefile.in+ 
 so that the directories containing the appropriate packages
