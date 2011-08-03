@@ -35,7 +35,22 @@ test directories to ensure that you are recompiling the \verb+../../sun+ executa
 with the correct initial and boundary condition files each time.  Without clobbering,
 rerunning \verb+make test+ will run the test case while only reflecting changes in \verb+suntans.dat+.
 Therefore, it is not necessary to clobber if the same test is being run with different 
-parameters in \verb+suntans.dat+.
+parameters in \verb+suntans.dat+.  The following test cases exist in the examples
+directory.  The first 5 are discussed in detail in what follows.  Note that many examples
+directories also contain an \verb+mfile+ directory that has useful mfiles for analyzing output.
+\begin{enumerate}
+\item tides: Example tidal forcing in Monterey Bay
+\item accuracy: Demonstrates second-order time accuracy using an internal waves seiche
+\item boundaries: River plume example
+\item lockexchange: Lock exchange flow with closed boundaries
+\item iwaves: Internal tide generation over a simplified continental shelf
+\item channel: Simple channel flow demonstrating use of the turbulence model
+\item cylinder: Formation of vortex street in lee of a cylinder
+\item estuary: Tidal flow in a simple estuary with specified river inflow
+\item tides-restart: Same as tides, but shows how to use restart filed
+\item wetdry: Example of wetting and drying
+\item windstress: Constant wind and heat forcing over a parabolic lake
+\end{enumerate}
 
 \subsection{Tidal forcing} \label{sec:tidalforcing}
 
