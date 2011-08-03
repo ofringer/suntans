@@ -218,7 +218,7 @@ After rearranging, the temperature at the new time step is obtained with
 T^{n+1} = \left[1 - \theta \Delta t B(T_0)\right]^{-1}\left[T^n + \Delta t A(T_0) 
                   + (1-\theta) \Delta t B(T_0)T^n\right]\,.
 \end{eqnarray*}
-Typically the best linerization is to linerize about the temperature at time step $n$ so
+Typically the best linearization is to linearize about the temperature at time step $n$ so
 that $T_0=T^n$. A simple implementation of heat flux is provided in the windstress example
 in \verb+suntans/main/examples/windstress+ and the code is in the HeatSource() function in
 \verb+suntans/main/examples/windstress/sources.c+.
