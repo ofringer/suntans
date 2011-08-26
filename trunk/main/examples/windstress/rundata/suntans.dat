@@ -4,7 +4,7 @@
 #
 ########################################################################
 Nkmax			40	# Number of cells in the vertical
-stairstep		1	# 1 if stair-stepping, 0 if partial-stepping
+stairstep		0	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
 VoronoiRatio		1	# Adjust the voronoi points by this amount if 1 then = centroid.
@@ -14,18 +14,18 @@ dzsmall			0.1	# Smallest grid spacing ratio before correction
 scaledepth 		0 	# Scale the depth by scalefactor
 scaledepthfactor 	0 	# Depth scaling factor (to test deep grids with explicit methods)
 thetaramptime	        0  	# Timescale over which theta is ramped from 1 to theta (fs theta only)
-beta			1	# Expansivity of salt
+beta			0	# Expansivity of salt
 theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
 kappa_s                 0       # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
 gamma 			2.0e-4 	# Coefficient of expansivity of temperature.
-kappa_T                 1e-4    # Vertical thermal diffusivity
-kappa_TH                1e-4    # Horizontal thermal diffusivity
-nu 			2.5e-5 	# Laminar viscosity of water (m^2 s^-1)
-nu_H 			1.875	# Horizontal laminar viscosity of water (m^2 s^-1)
-tau_T			1.0e-4 	# Wind shear stress
+kappa_T                 1.0e-4  # Vertical thermal diffusivity
+kappa_TH                0       # Horizontal thermal diffusivity
+nu 			1e-5 	# Laminar viscosity of water (m^2 s^-1)
+nu_H 			2.0	# Horizontal laminar viscosity of water (m^2 s^-1)
+tau_T			1.0e-5 	# Wind shear stress
 z0T	                0.0 	# Top roughness
 z0B	                0.005	# Bottom roughness
 CdT	                0.0 	# Drag coefficient at surface

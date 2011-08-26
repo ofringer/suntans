@@ -107,12 +107,10 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
  */
 void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
   int j, jptr;
-  REAL tau, twind=20000;
+  REAL tau, T_day = 5000;
 
-  if(prop->rtime>twind)
-    tau = 0;
-  else
-    tau = prop->tau_T;
+  tau = prop->tau_T*0.5*(1+cos(2*PI*prop->rtime/T_day)); // Diurnal incoming shortwave radiation
+
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
     

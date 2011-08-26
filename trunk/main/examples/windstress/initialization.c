@@ -73,7 +73,7 @@ REAL ReturnDepth(REAL x, REAL y) {
   *
   */
 REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
-  return 0;
+  return 0;cos(PI*x/2000);
 }
 
 /*
