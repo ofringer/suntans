@@ -56,7 +56,7 @@
 #define MINAXESASPECT 1e-2
 
 typedef enum {
-  in, out, box, none
+  in, out, box, pan, none
 } zoomT;
 
 typedef enum {
@@ -256,7 +256,7 @@ float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4], cmapAxesP
   zoomratio, vlengthfactor=1.0;
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
 bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, goprocs,
-  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, cmaphold, getcmap, raisewindow;
+  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, panning, cmaphold, getcmap, raisewindow;
 char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
@@ -275,6 +275,7 @@ int main(int argc, char *argv[]) {
   vectorplot = false;
   zoomratio = 1;
   zooming = true;
+  panning = false;
   procplottype = oneproc;
   vertprofile = false;
   gridread = false;
@@ -371,8 +372,14 @@ int main(int argc, char *argv[]) {
       XCopyArea(dis,cmappix,cmapwin,gc,0,0,
 		cmapAxesPosition[2]*width,
 		cmapAxesPosition[3]*height,0,0);
-      if(zooming)
-	DrawZoomBox();
+      if(zooming){
+        // PJW added code to account for panning behavior
+        if(panning){
+          DrawArrow(xstart,ystart,(xend-xstart),-(yend-ystart),axeswin,white);
+        }
+        else
+          DrawZoomBox();
+      }
       else {
 	DrawSliceLine(0);
 	vertprofile=true;
@@ -817,9 +824,11 @@ int main(int argc, char *argv[]) {
 	yend=report.xbutton.y;
 	if(zooming==true) {
 	  if(report.xbutton.button==left_button) {
-	    if(xend==xstart && yend==ystart) 
+	    if(panning)
+        zoom=pan;
+      else if(xend==xstart && yend==ystart) 
 	      zoom=in;
-	    else 
+      else 
 	      zoom=box;
 	    redraw=true;
 	  } else if(report.xbutton.button==right_button) {
@@ -867,6 +876,13 @@ int main(int argc, char *argv[]) {
       break;
     case KeyPress:
       switch(keysym=XLookupKeysym(&report.xkey, 0)) {
+        case XK_m:
+          panning=!panning;
+          if(panning)
+            sprintf(message,"Panning enabled, zoom to box disabled...");
+          else
+            sprintf(message,"Panning disabled, zoom to box enabled...");
+          break;
       case XK_q:
 	quit=true;
 	break;
@@ -1850,6 +1866,16 @@ void SetDataLimits(dataT *data) {
 	zoomratio*=2;
       } else 
 	printf("Cannot zoom further.  Beyond zoom limits!\n");
+      break;
+    case pan:
+      //      if(zoomratio>=MINZOOMRATIO) {
+      if(true) {
+        dataLimits[0]=dataLimits[0] - (float)(xend-xstart)/((float)axesPosition[2]*width)*dx;
+        dataLimits[1]=dataLimits[1] - (float)(xend-xstart)/((float)axesPosition[2]*width)*dx; 
+        dataLimits[2]=dataLimits[2] + (float)(yend-ystart)/((float)axesPosition[3]*height)*dy;
+        dataLimits[3]=dataLimits[3] + (float)(yend-ystart)/((float)axesPosition[3]*height)*dy;
+      } else 
+        printf("Too fine a zooming area.  Please try again!\n");
       break;
     case box:
       a1 = dx*dy;
