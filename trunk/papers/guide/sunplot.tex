@@ -255,7 +255,10 @@ plotted data depends on whether zooming is on or off or if you are viewing a pro
 \begin{list}{}
 \item {\bf Left button:}  Can be used either to select an area in the plot to zoom into, or
 it can be used to zoom into an area by a factor of 2, centered about the clicking point.
-\item {\bf Middle button:} Returns to the default in which the entire domain is displayed.
+\item {\bf Middle button:} Returns to the default in which the entire domain is displayed 
+provided that there is no mouse movement.  If there is mouse movement, the view will pan 
+corresponding to the mouse motion on the button release.  Alternatively, the user can toggle 
+a panning mode via pressing the `m' key.
 \item {\bf Right button:} Zooms out by a factor of 2.
 \end{list}
 \item When zooming is {\bf off}:
