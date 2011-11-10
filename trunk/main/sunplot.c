@@ -835,11 +835,17 @@ int main(int argc, char *argv[]) {
 	    zoom=out;
 	    redraw=true;
 	  } else if(report.xbutton.button==middle_button) {
-	    zoom=none;
-	    zoomratio=1;
-	    redraw=true;
-	    setdatalimits=false;
-	    setdatalimitsslice=false;
+      if(xend==xstart && yend==ystart){
+        zoom=none;
+        zoomratio=1;
+        setdatalimits=false;
+        setdatalimitsslice=false;
+      }
+      else{ // panning
+        DrawArrow(xstart,ystart,(xend-xstart),-(yend-ystart),axeswin,white);
+        zoom=pan;
+      }
+      redraw=true;
 	  }
 	} else {
 	  if(report.xbutton.button==left_button) {
