@@ -96,8 +96,8 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
       phys->boundary_v[jptr-grid->edgedist[2]][k]=phys->vc[ib][k];
       phys->boundary_w[jptr-grid->edgedist[2]][k]=phys->w[ib][k];
     }
-    cb = sqrt(GRAV*(grid->dv[ib]+phys->h[ib]))+0.5*(phys->uc[ib][0]-phys->boundary_u[jptr-grid->edgedist[2]][0]);
-    phys->boundary_h[jptr-grid->edgedist[2]]=cb*cb/GRAV-grid->dv[ib];
+    cb = sqrt(prop->grav*(grid->dv[ib]+phys->h[ib]))+0.5*(phys->uc[ib][0]-phys->boundary_u[jptr-grid->edgedist[2]][0]);
+    phys->boundary_h[jptr-grid->edgedist[2]]=cb*cb/prop->grav-grid->dv[ib];
   }
 
   // At the ocean boundary
