@@ -85,8 +85,8 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
     if(grid->xv[ib]>1000)
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	// Maintain a constant free-surface height at the right boundary.
-	phys->boundary_u[jptr-grid->edgedist[2]][k]=phys->uc[ib][k] + 2*(sqrt(GRAV*(grid->dv[ib]+phys->h[ib]))-
-									 sqrt(GRAV*(grid->dv[ib]+0.0)));
+	phys->boundary_u[jptr-grid->edgedist[2]][k]=phys->uc[ib][k] + 2*(sqrt(prop->grav*(grid->dv[ib]+phys->h[ib]))-
+									 sqrt(prop->grav*(grid->dv[ib]+0.0)));
 	phys->boundary_v[jptr-grid->edgedist[2]][k]=phys->vc[ib][k];
 	phys->boundary_w[jptr-grid->edgedist[2]][k]=phys->w[ib][k];
       }

@@ -34,7 +34,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 
     if(grid->yv[ib]>50) {
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	ub[j][k]=-phys->h[ib]*sqrt(GRAV/grid->dv[ib]);
+	ub[j][k]=-phys->h[ib]*sqrt(prop->grav/grid->dv[ib]);
     } else {
       if(grid->xv[ib]>900&&grid->xv[ib]<1200)
 	for(k=grid->etop[j];k<grid->Nke[j];k++) 
