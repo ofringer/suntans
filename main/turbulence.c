@@ -72,7 +72,7 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **q, REAL **l
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       phys->uold[i][k]=2.0*q[i][k]/B1/(l[i][k]+SMALL);
       phys->wtmp[i][k]=2.0*fabs((prop->nu+nuT[i][k])*(pow(0.5*(dudz[k]+dudz[k+1]),2)+pow(0.5*(dvdz[k]+dvdz[k+1]),2))+
-      				GRAV*(prop->kappa_s+kappaT[i][k])*0.5*(drdz[k]+drdz[k+1]));
+      				prop->grav*(prop->kappa_s+kappaT[i][k])*0.5*(drdz[k]+drdz[k+1]));
     }
 
     // kappaT will store the diffusion coefficient for q^2
@@ -170,7 +170,7 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **q, REAL **l
   for(i=0;i<grid->Nc;i++) {
 
     for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-      drdz[k]=-2.0*GRAV*(phys->rho[i][k-1]-phys->rho[i][k])/(grid->dzz[i][k-1]+grid->dzz[i][k]);
+      drdz[k]=-2.0*prop->grav*(phys->rho[i][k-1]-phys->rho[i][k])/(grid->dzz[i][k-1]+grid->dzz[i][k]);
       if(drdz[k]<0) drdz[k]=0;
       N[k]=sqrt(drdz[k]);
     }
