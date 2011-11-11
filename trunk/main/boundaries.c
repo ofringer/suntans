@@ -29,7 +29,7 @@ static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, R
   // For Monterey
   if(x<1000) {
     *ub=0.002445*cos(omega*t)+.00182*cos(2*PI/(24*3600)*t+.656);
-    //*ub=-2.9377*sqrt(GRAV/d)*(cos(omega*t)+0.00182/.002445*cos(2*PI/(24*3600)*t+.656));
+    //*ub=-2.9377*sqrt(prop->grav/d)*(cos(omega*t)+0.00182/.002445*cos(2*PI/(24*3600)*t+.656));
     *forced=1;
   } else 
     *forced=0;
@@ -39,13 +39,13 @@ static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, R
   /*
   if(y>1500) // Northern boundary
     if(cos(omega*t)>0) {
-      *ub = -h*sqrt(GRAV/d);
+      *ub = -h*sqrt(prop->grav/d);
     } else {
       *ub = amp*fabs(cos(omega*t));
     }
   else
     if(cos(omega*t)<0) {
-      *ub = -h*sqrt(GRAV/d);
+      *ub = -h*sqrt(prop->grav/d);
     } else {
       *ub = amp*fabs(cos(omega*t));
     }
@@ -80,7 +80,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 
     GetBoundaryVelocity(&ub0,&forced,grid->xv[ib],grid->yv[ib],prop->rtime,phys->h[ib],grid->dv[ib],prop->omega,prop->amp);
 
-    c0 = sqrt(GRAV*grid->dv[ib]);
+    c0 = sqrt(prop->grav*grid->dv[ib]);
     c1 = 1.94;//0.5533; <- for openbc NH/pi
     
     // First compute u0, uc0, vc0, uc0old, vcd0ld;
@@ -153,48 +153,11 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
   int jptr, j, ib, k, boundary_index;
   REAL z, amp=prop->amp, rtime=prop->rtime, omega=prop->omega, boundary_flag;
 
-  /* For three-mile slough */
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    boundary_index = jptr-grid->edgedist[2];
-    j=grid->edgep[jptr];
-    ib=grid->grad[2*j];
-
-    if(cos(omega*rtime)>=0) { // Ebb (northward)
-      if(grid->yv[ib]>1500) 
-	boundary_flag=open;
-      else
-	boundary_flag=specified;
-    } else {
-      if(grid->yv[ib]>1500) 
-	boundary_flag=specified;
-      else
-	boundary_flag=open;
-    }
-
-    phys->boundary_flag[boundary_index]=boundary_flag;
-
-    SetUVWH(grid,phys,prop,ib,j,boundary_index,boundary_flag);
-  }
 }
 
 static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag) {
   int k;
 
-  if(boundary_flag==open) {
-    phys->boundary_h[boundary_index]=phys->h[ib];
-    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
-      phys->boundary_u[boundary_index][k]=phys->uc[ib][k];
-      phys->boundary_v[boundary_index][k]=phys->vc[ib][k];
-      phys->boundary_w[boundary_index][k]=0.5*(phys->w[ib][k]+phys->w[ib][k+1]);
-    }
-  } else {
-    phys->boundary_h[boundary_index]=prop->amp*fabs(cos(prop->omega*prop->rtime));
-    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
-      phys->boundary_u[boundary_index][k]=phys->u[j][k]*grid->n1[j];
-      phys->boundary_v[boundary_index][k]=phys->u[j][k]*grid->n2[j];
-      phys->boundary_w[boundary_index][k]=0.5*(phys->w[ib][k]+phys->w[ib][k+1]);
-    }
-  }
 }
 	
 /*
