@@ -70,9 +70,9 @@ while for version 3 it is parmetislib.h.
 
 \subsubsection{Notes on mpich}
 
-SUNTANS works with both mpich-1 and mpich-2. However, if you are using mpich-2, you will
-need to use suntans/main/profiles.c-mpich2 instead of suntans/main/profiles.c.  Just replace
-profiles.c with profiles.c-mpich2 if you are using mpich2.
+SUNTANS works with both mpich-1 and mpich-2 and macro definitions are used to automatically
+select the applicable version, although profiles.c-mpich1 and profiles.c-mpich2 are files known
+to work for these respective versions for mpich. 
 
 \medskip
 
