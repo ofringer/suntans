@@ -227,10 +227,34 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   total3dtemp = NkmaxProfs*numLocalDataPoints*numInterpPoints;
 
   // All processors need to know how much data they store
+#if defined(MPICH2)
+// #error "MPICH2!"
+  total2d[myproc]=total2dtemp;
+  if(myproc==0)
+    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,total2d,1,MPI_INT,0,comm); 
+  else
+    MPI_Gather(&total2dtemp,1,MPI_INT,total2d,1,MPI_INT,0,comm); 
+#elif defined(_mympi_h)
+// #error "MPI1"
   MPI_Gather(&total2dtemp,1,MPI_INT,total2d,1,MPI_INT,0,comm); 
+#else
+#error "Error: Could not recognize MPI version!"
+#endif
   MPI_Bcast(total2d,numprocs,MPI_INT,0,comm);
 
+#if defined(MPICH2)
+// #error "MPICH2!"
+  total3d[myproc]=total3dtemp;
+  if(myproc==0)
+    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,total3d,1,MPI_INT,0,comm); 
+  else
+    MPI_Gather(&total3dtemp,1,MPI_INT,total3d,1,MPI_INT,0,comm); 
+#elif defined(_mympi_h)
+// #error "MPI1"
   MPI_Gather(&total3dtemp,1,MPI_INT,total3d,1,MPI_INT,0,comm); 
+#else
+#error "Error: Could not recognize MPI version!"
+#endif
   MPI_Bcast(total3d,numprocs,MPI_INT,0,comm);
 
   // all2d is the total number of points to be output on all processors.
@@ -463,13 +487,35 @@ static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int 
   // Indices of data points indicating their locations in the original data file.  This
   // is used to reorder the data once it is sent back to processor 0.
   allN[myproc]=numLocalDataPoints;
+#if defined(MPICH2)
+// #error "MPICH2!"
+  if(myproc==0)
+    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,allN,1,MPI_INT,0,comm);   
+  else
+    MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);       
+#elif defined(_mympi_h)
+// #error "MPI1"
   MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);   
+#else
+#error "Error: Could not recognize MPI version!"
+#endif
   size=Merge2dIntData(dataIndices,numLocalDataPoints,allIndices,allN,comm,numprocs,myproc);
   if(myproc==0) fwrite(allIndices,sizeof(int),size,ProfileDataFID);
 
   // Original data points specified in the file ProfileData in suntans.dat.
   allN[myproc]=2*numLocalDataPoints;
+#if defined(MPICH2)
+// #error "MPICH2!"
+  if(myproc==0)
+    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,allN,1,MPI_INT,0,comm);   
+  else
+    MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);       
+#elif defined(_mympi_h)
+// #error "MPI1"
   MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);   
+#else
+#error "Error: Could not recognize MPI version!"
+#endif
   size=Merge2dRealData(dataXY,2*numLocalDataPoints,tmp_real,allN,comm,numprocs,myproc);
   if(myproc==0) {
     ResortRealData(tmp_real,tmp_real2,allIndices,numTotalDataPoints,2);
@@ -478,7 +524,18 @@ static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int 
 
   // x-coordinates of nearest-neighbors.
   allN[myproc]=numInterpPoints*numLocalDataPoints;
+#if defined(MPICH2)
+// #error "MPICH2!"
+  if(myproc==0)
+    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,allN,1,MPI_INT,0,comm);   
+  else
+    MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);   
+#elif defined(_mympi_h)
+// #error "MPI1"
   MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);   
+#else
+#error "Error: Could not recognize MPI version!"
+#endif
   for(i=0;i<numLocalDataPoints;i++)
     for(ni=0;ni<numInterpPoints;ni++) 
       tmp_real2[i*numInterpPoints+ni] = grid->xv[interpIndices[i*numInterpPoints+ni]];
