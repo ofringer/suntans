@@ -142,6 +142,9 @@ double getfield(FILE *file, char *str)
   c = fgetc(file);
 
   if(c==EOF) {
+    if(VERBOSE > 2)
+      printf("End of file obtained, if  an error follows it is 
+          possible geometry is not consistent.\n");
     return;
   }
 
@@ -237,7 +240,11 @@ double GetValue(char *filename, char *str, int *status)
 double GetDefaultValue(char *str, int *status) {
   *status=1;
 
-  if(!strcmp(str,"minimum_depth")) {
+  if(!strcmp(str,"grav")){
+
+    return grav_DEFAULT;
+
+  } else if(!strcmp(str,"minimum_depth")) {
 
     return minimum_depth_DEFAULT;
 
