@@ -20,7 +20,6 @@
 #define NUMEDGECOLUMNS 3
 #define BREAK printf("%d\n",*((int *)0));
 #define PI 3.141592654
-#define GRAV 9.81
 #define RHO0 1000.0
 #define INFTY 1e20
 #define CONSERVED 1e-5
