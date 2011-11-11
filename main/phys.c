@@ -620,8 +620,10 @@ void SetDragCoefficients(gridT *grid, physT *phys, propT *prop) {
       phys->CdB[j]=pow(log(0.5*grid->dzf[j][grid->Nke[j]-1]/prop->z0B)/KAPPA_VK,-2);
 
   for(j=0;j<grid->Ne;j++)
-    if(grid->dzf[j][grid->Nke[j]-1]<BUFFERHEIGHT && grid->etop[j]==grid->Nke[j]-1)
+    if(grid->dzf[j][grid->Nke[j]-1]<BUFFERHEIGHT && grid->etop[j]==grid->Nke[j]-1){
       phys->CdB[j]=100;
+      //printf("Making CdB a large value due to small cell!\n");
+    }
 }
 
 /*
@@ -848,6 +850,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   // Initialize the Sponge Layer
   InitSponge(grid,myproc);
 
+  // main time loop
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
     prop->n = n;
     prop->rtime = n*prop->dt;
@@ -1036,7 +1039,8 @@ static void StoreVariables(gridT *grid, physT *phys) {
  */
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 			     int myproc, int numprocs, MPI_Comm comm) {
-  int i, iptr, nf, j, jptr, k, nc, nc1, nc2, ne, k0, kmin, kmax;
+  int i, ib, iptr, boundary_index, nf, j, jptr, k, nc, nc1, nc2, ne, 
+  k0, kmin, kmax;
   REAL *a, *b, *c, fab, sum, def1, def2, dgf, Cz;
 
   a = phys->a;
@@ -1113,25 +1117,11 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	k0=grid->etop[j];
 	
 	for(k0=Max(grid->ctop[nc1],grid->ctop[nc2]);k0<k;k0++)
-	  phys->Cn_U[j][k]-=0.5*GRAV*prop->dt*(phys->rho[nc1][k0]-phys->rho[nc2][k0])*
+	  phys->Cn_U[j][k]-=0.5*prop->grav*prop->dt*(phys->rho[nc1][k0]-phys->rho[nc2][k0])*
 	    (grid->dzz[nc1][k0]+grid->dzz[nc2][k0])/grid->dg[j];
-	phys->Cn_U[j][k]-=0.25*GRAV*prop->dt*(phys->rho[nc1][k]-phys->rho[nc2][k])*
+	phys->Cn_U[j][k]-=0.25*prop->grav*prop->dt*(phys->rho[nc1][k]-phys->rho[nc2][k])*
 	  (grid->dzz[nc1][k]+grid->dzz[nc2][k])/grid->dg[j];
       }
-  }
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr];
-    
-    nc1 = grid->grad[2*j];
-    for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      k0=grid->etop[j];
-      
-      for(k0=grid->etop[j];k0<k;k0++)
-	phys->Cn_U[j][k]-=GRAV*prop->dt*(phys->rho[nc1][k0]-phys->boundary_rho[jptr-grid->edgedist[2]][k0])*
-	  grid->dzz[nc1][k0]/grid->dg[j];
-      phys->Cn_U[j][k]-=0.5*GRAV*prop->dt*(phys->rho[nc1][k]-phys->boundary_rho[jptr-grid->edgedist[2]][k])*
-	grid->dzz[nc1][k]/grid->dg[j];
-    }
   }
 
   // Set stmp and stmp2 to zero since these are used as temporary variables for advection and
@@ -1155,6 +1145,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=phys->uc[i][k]*grid->dzf[j][k];
       }
     }
+    // type 4 boundary conditions used for no slip 
     for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
       j = grid->edgep[jptr];
       
@@ -1265,6 +1256,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=phys->vc[i][k]*grid->dzf[j][k];
       }
     }
+
+    // type 4 boundary conditions can be used for no slip
     for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
       j = grid->edgep[jptr];
       
@@ -1413,8 +1406,34 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	phys->stmp2[i][k]+=(b[k]-b[k+1])/grid->dzz[i][k];
       }
     }
-  }
+  } // end of nonlinear computation
+  
+  // now compute for no slip regions for type 4 boundary conditions
+  for (jptr = grid->edgedist[4]; jptr < grid->edgedist[5]; jptr++)
+  {
+    // get index for edge pointers
+    j = grid->edgep[jptr];
+    ib=grid->grad[2*j];
+    boundary_index = jptr-grid->edgedist[2];
 
+    // get neighbor indices
+    nc1 = grid->grad[2*j];
+    nc2 = grid->grad[2*j+1];
+
+    // check to see which of the neighboring cells is the ghost cell
+    if (nc1 == -1)  // indicating boundary
+      nc = nc2;
+    else
+      nc = nc1;
+
+    // loop over the entire depth
+    for (k=grid->ctop[nc]; k<grid->Nk[nc]; k++){
+      phys->stmp[nc][k]  += -2.0*prop->nu_H*(phys->boundary_u[boundary_index][k] - phys->uc[nc][k])/(2.0*grid->dg[j])*
+        grid->df[j]/grid->Ac[nc];
+      phys->stmp2[nc][k] += -2.0*prop->nu_H*(phys->boundary_v[boundary_index][k] - phys->vc[nc][k])/(2.0*grid->dg[j])*
+        grid->df[j]/grid->Ac[nc];
+    }
+  }
   // Now add on horizontal diffusion to stmp and stmp2
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
@@ -1470,6 +1489,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
   ISendRecvCellData3D(phys->stmp,grid,myproc,comm);
   ISendRecvCellData3D(phys->stmp2,grid,myproc,comm);
 
+  // type 2 boundary condition
   for(jptr=grid->edgedist[2];jptr<0*grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
     
@@ -1494,6 +1514,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     }
   }
 
+  // computational cells
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr]; 
     
@@ -1521,7 +1542,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	*prop->dt*(phys->stmp[nc2][k]*grid->n1[j]+phys->stmp2[nc2][k]*grid->n2[j]);
   }
 
-  // Now add on stmp and stmp2 from the boundaries
+  // Now add on stmp and stmp2 from the boundaries 
+  // for type 3 boundary condition
   for(jptr=grid->edgedist[3];jptr<grid->edgedist[4];jptr++) {
     j = grid->edgep[jptr]; 
     
@@ -1538,31 +1560,12 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     }
   }
 
+  // update utmp 
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr]; 
     
     for(k=grid->etop[j];k<grid->Nke[j];k++)
       phys->utmp[j][k]+=fab*phys->Cn_U[j][k];
-  }
-
-  // Now add on to the open boundaries
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr]; 
-    
-    nc1 = grid->grad[2*j];
-    k0=grid->ctop[nc1];
-
-    if(phys->boundary_flag[jptr-grid->edgedist[2]]==open)
-      for(k=k0;k<grid->Nk[nc1];k++) 
-	phys->Cn_U[j][k]-=0.5*prop->dt*(phys->stmp[nc1][k]*grid->n1[j]+phys->stmp2[nc1][k]*grid->n2[j]);
-  }
-  
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr]; 
-    
-    if(phys->boundary_flag[jptr-grid->edgedist[2]]==open)
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-	phys->utmp[j][k]+=fab*phys->Cn_U[j][k];
   }
 }
 
@@ -1603,21 +1606,6 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
 	  (0.5*(grid->dzzold[nc1][k]+grid->dzzold[nc2][k]));
     }
   }
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr];
- 
-    nc1 = grid->grad[2*j];
- 
-    if(grid->etop[j]<=grid->etopold[j]) {
-      dz = 0;
-      for(k=grid->etop[j];k<=grid->etopold[j];k++)
-        dz+=grid->dzz[nc1][k];
- 
-      for(k=grid->etop[j];k<=grid->etopold[j];k++)
-        phys->u[j][k]=phys->u[j][grid->etopold[j]]/dz*
-	  grid->dzzold[nc1][k];
-    }
-  }
 }
 
 /*
@@ -1638,7 +1626,7 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
  */
 static void WPredictor(gridT *grid, physT *phys, propT *prop,
 		       int myproc, int numprocs, MPI_Comm comm) {
-  int i, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin;
+  int i, ib, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin, boundary_index;
   REAL fab, sum, *a, *b, *c, Cz;
 
   a = phys->a;
@@ -1691,6 +1679,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
       }
     }
     // Fluxes at boundary faces of type 4
+    // type 4 boundary conditions used for no slip 
     for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
       j = grid->edgep[jptr];
       
@@ -1832,6 +1821,31 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
       phys->stmp[nc2][k]+=0.25*prop->CdW*fabs(phys->w[nc2][k]+phys->w[nc2][k+1])*
 	(phys->w[nc2][k]+phys->w[nc2][k+1])*grid->df[j]/grid->Ac[nc2];
   }
+  
+  // do the same for type 4 boundary conditions but utilize no-slip boundary condition
+  for (jptr = grid->edgedist[4]; jptr < grid->edgedist[5]; jptr++){
+    // get index for edge pointers
+    j = grid->edgep[jptr];
+    ib=grid->grad[2*j];
+    boundary_index = jptr-grid->edgedist[2];
+
+    // get neighbor indices
+    nc1 = grid->grad[2*j];
+    nc2 = grid->grad[2*j+1];
+
+    // check to see which of the neighboring cells is the ghost cell
+    if (nc1 == -1)  // indicating boundary
+      nc = nc2;
+    else
+      nc = nc1;
+
+    // loop over the entire depth
+    for (k=grid->ctop[nc]; k<grid->Nke[nc]; k++){
+      phys->stmp[nc][k]  += -2.0*prop->nu_H*
+        (phys->boundary_w[boundary_index][k] - 0.5*(phys->w[nc][k] + phys->w[nc][k+1]))/(2.0*grid->dg[j])*
+        grid->df[j]/grid->Ac[nc];
+    }
+  }
 
   //Now use the cell-centered advection terms to update the advection at the faces
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
@@ -1874,7 +1888,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     i = grid->cellp[iptr]; 
 
     if(grid->Nk[i]-grid->ctop[i]>1) {
-      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+      for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) { // multiple layers
 	a[k] = 2*(prop->nu+prop->laxWendroff_Vertical*phys->nu_lax[i][k-1]+
 		  phys->nu_tv[i][k-1])/grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1]);
 	b[k] = 2*(prop->nu+prop->laxWendroff_Vertical*phys->nu_lax[i][k]+
@@ -1903,7 +1917,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 
       TriSolve(&(a[grid->ctop[i]]),&(c[grid->ctop[i]]),&(b[grid->ctop[i]]),
 	       &(phys->wtmp[i][grid->ctop[i]]),&(phys->w[i][grid->ctop[i]]),grid->Nk[i]-grid->ctop[i]);
-    } else {
+    } else { // one layer
       for(k=grid->ctop[i];k<grid->Nk[i];k++)
 	phys->w[i][k]=phys->wtmp[i][k];
     }
@@ -2226,20 +2240,7 @@ static void UPredictor(gridT *grid, physT *phys,
 
     // Add the explicit part of the free-surface to create U**.
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      phys->utmp[j][k]-=GRAV*(1-theta)*dt*(phys->h[nc1]-phys->h[nc2])/grid->dg[j];
-  }
-
-  // Update the boundary faces with the linearized free-surface gradient at the boundary
-  // i.e. using the radiative condition, dh/dn = 1/c dh/dt
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr];
-
-    i = grid->grad[2*j];
-    boundary_flag=phys->boundary_flag[jptr-grid->edgedist[2]];
-    for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      phys->utmp[j][k]+=(-2.0*GRAV*(1-boundary_flag)*(1-theta)*dt/grid->dg[j]
-			 +boundary_flag*sqrt(GRAV/(grid->dv[i]+phys->h[i])))*phys->h[i]
-	+2.0*GRAV*(1-boundary_flag)*dt/grid->dg[j]*phys->boundary_h[jptr-grid->edgedist[2]];
+      phys->utmp[j][k]-=prop->grav*(1-theta)*dt*(phys->h[nc1]-phys->h[nc2])/grid->dg[j];
   }
 
   // Drag term must be fully implicit
@@ -2291,34 +2292,73 @@ static void UPredictor(gridT *grid, physT *phys,
 				     grid->dzz[nc1][k+1]+grid->dzz[nc2][k+1]));
       }
 
-      if(grid->Nke[j]-grid->etop[j]>1) {
+      if(grid->Nke[j]-grid->etop[j]>1) { // more than one vertical layer on edge
 
-	// Explicit part of the viscous term
+	// Explicit part of the viscous term over wetted parts of edge
 	for(k=grid->etop[j]+1;k<grid->Nke[j]-1;k++)
 	  phys->utmp[j][k]+=dt*(1-theta)*(a[k]*phys->u[j][k-1]-
 					  (a[k]+b[k])*phys->u[j][k]+
 					  b[k]*phys->u[j][k+1]);
 	
 	// Top cell
+    // account for no slip conditions which are assumed if CdT = -1 
+    if(phys->CdT[j] == -1){ // no slip on top
+  phys->utmp[j][grid->etop[j]]+=dt*(1-theta)*(a[grid->etop[j]]*-phys->u[j][grid->etop[j]]-
+					  (a[grid->etop[j]]+b[grid->etop[j]])*phys->u[j][grid->etop[j]]+
+					  b[grid->etop[j]]*phys->u[j][grid->etop[j]+1]);
+    }
+    else{ // standard drag law code
 	phys->utmp[j][grid->etop[j]]+=dt*(1-theta)*(-(b[grid->etop[j]]+2.0*phys->CdT[j]*
 						      fabs(phys->u[j][grid->etop[j]])/
 						      (grid->dzz[nc1][grid->etop[j]]+
 						       grid->dzz[nc2][grid->etop[j]]))*
 						    phys->u[j][grid->etop[j]]
 						    +b[grid->etop[j]]*phys->u[j][grid->etop[j]+1]);
+    }
 
 	// Bottom cell
-	phys->utmp[j][grid->Nke[j]-1]+=dt*(1-theta)*(a[grid->Nke[j]-1]*phys->u[j][grid->Nke[j]-2]-
-						     (a[grid->Nke[j]-1]+2.0*phys->CdB[j]*
-						      fabs(phys->u[j][grid->Nke[j]-1])/
-						      (grid->dzz[nc1][grid->Nke[j]-1]+
-						       grid->dzz[nc2][grid->Nke[j]-1]))*
-						     phys->u[j][grid->Nke[j]-1]);
-      
-      } else 
-	phys->utmp[j][grid->etop[j]]-=2.0*dt*(1-theta)*(phys->CdB[j]+phys->CdT[j])/
+    // account for no slip conditions which are assumed if CdB = -1
+    if(phys->CdB[j] == -1){ // no slip on bottom
+  phys->utmp[j][grid->etop[j]]-=2.0*dt*(1-theta)*(phys->CdB[j]+phys->CdT[j])/
 	  (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
 	  fabs(phys->u[j][grid->etop[j]])*phys->u[j][grid->etop[j]];
+    }
+    else{ // standard drag law code
+      phys->utmp[j][grid->Nke[j]-1]+=dt*(1-theta)*(
+            a[grid->Nke[j]-1]*phys->u[j][grid->Nke[j]-2] -
+            (a[grid->Nke[j]-1] 
+             + 2.0*phys->CdB[j]*fabs(phys->u[j][grid->Nke[j]-1])/
+                (grid->dzz[nc1][grid->Nke[j]-1]+
+                grid->dzz[nc2][grid->Nke[j]-1]))*
+            phys->u[j][grid->Nke[j]-1]);
+    }
+      } 
+      else{  // one layer for edge
+        // drag on bottom boundary
+        if(phys->CdB[j] == -1){ // no slip on bottom
+          phys->utmp[j][grid->etop[j]]-=2.0*dt*(1-theta)*(
+              2.0*(2.0*(prop->nu + c[k]))*phys->u[j][grid->etop[j]]/
+                  ((grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
+                   (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])));
+        }
+        else{ // standard drag law formation on bottom
+          phys->utmp[j][grid->etop[j]]-=2.0*dt*(1-theta)*(phys->CdB[j])/
+            (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
+            fabs(phys->u[j][grid->etop[j]])*phys->u[j][grid->etop[j]];
+        }
+        // drag on top boundary
+        if(phys->CdT[j] == -1){ // no slip on top
+          phys->utmp[j][grid->etop[j]]-=2.0*dt*(1-theta)*(
+              2.0*(2.0*(prop->nu + c[k]))*phys->u[j][grid->etop[j]]/
+                  ((grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
+                   (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])));
+        }
+        else{ // standard drag law formulation on top
+          phys->utmp[j][grid->etop[j]]-=2.0*dt*(1-theta)*(phys->CdT[j])/
+            (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
+            fabs(phys->u[j][grid->etop[j]])*phys->u[j][grid->etop[j]];
+        }
+      }
 
       // Now set up the coefficients for the tridiagonal inversion for the
       // implicit part.  These are given from the arrays above in the discrete operator
@@ -2330,21 +2370,33 @@ static void UPredictor(gridT *grid, physT *phys,
 	d[k]=phys->utmp[j][k];
       }
       
-      if(grid->Nke[j]-grid->etop[j]>1) {
+      if(grid->Nke[j]-grid->etop[j]>1) { // for more than one vertical layer
 	// Top cells
 	c[grid->etop[j]]=-theta*dt*b[grid->etop[j]];
+  // account for no slip conditions which are assumed if CdT = -1 
+  if(phys->CdT[j] == -1){ // no slip
+	  b[grid->etop[j]]=1.0+theta*dt*(a[grid->etop[j]]+a[grid->etop[j]+1]+b[grid->etop[j]]);
+  }
+  else{ // standard drag law
 	b[grid->etop[j]]=1.0+theta*dt*(b[grid->etop[j]]+
 				       2.0*phys->CdT[j]*fabs(phys->u[j][grid->etop[j]])/
 				       (grid->dzz[nc1][grid->etop[j]]+
 					grid->dzz[nc2][grid->etop[j]]));
+  }
 	a[grid->etop[j]]=0;
 	
 	// Bottom cell
 	c[grid->Nke[j]-1]=0;
+  // account for no slip conditions which are assumed if CdB = -1  
+  if(phys->CdB[j] == -1){ // no slip
+	  b[grid->Nke[j]-1]=1.0+theta*dt*(a[grid->Nke[j]-1]+b[grid->Nke[j]-1]+b[grid->Nke[j]-2]);
+  }
+  else{ // standard drag law
 	b[grid->Nke[j]-1]=1.0+theta*dt*(a[grid->Nke[j]-1]+
 					2.0*phys->CdB[j]*fabs(phys->utmp[j][grid->Nke[j]-1])/
 					(grid->dzz[nc1][grid->Nke[j]-1]+
 					 grid->dzz[nc2][grid->Nke[j]-1]));
+  }
 	a[grid->Nke[j]-1]=-theta*dt*a[grid->Nke[j]-1];
       
 	// Interior cells
@@ -2353,10 +2405,31 @@ static void UPredictor(gridT *grid, physT *phys,
 	  b[k]=1.0+theta*dt*(a[k]+b[k]);
 	  a[k]=-theta*dt*a[k];
 	}
-      } else {
+      } else { // for a single vertical layer
+  b[grid->etop[j]] = 1.0;
+  // account for no slip conditions which are assumed if CdB = -1  
+  if(phys->CdB[j] == -1){ // no slip
+  b[grid->etop[j]]+=4.0*theta*dt*2.0*(prop->nu+c[k])/
+    ((grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
+    (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]]));
+  }
+  else{
 	b[grid->etop[j]]=1.0+2.0*theta*dt*fabs(phys->utmp[j][grid->etop[j]])/
 	  (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
 	  (phys->CdB[j]+phys->CdT[j]);
+  }
+  // account for no slip conditoins which are assumed if CdT = -1 
+  if(phys->CdT[j] == -1){
+  b[grid->etop[j]]+=4.0*theta*dt*2.0*(prop->nu+c[k])/
+    ((grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
+    (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]]));
+  }
+  else{
+    b[grid->etop[j]]+=2.0*theta*dt*fabs(phys->utmp[j][grid->etop[j]])/
+      (grid->dzz[nc1][grid->etop[j]]+grid->dzz[nc2][grid->etop[j]])*
+      phys->CdT[j];
+  }
+
       }	  
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
@@ -2379,12 +2452,12 @@ static void UPredictor(gridT *grid, physT *phys,
 	b0[k]=b[k];
 	c0[k]=c[k];
       }
-      if(grid->Nke[j]-grid->etop[j]>1) {
+      if(grid->Nke[j]-grid->etop[j]>1) { // more than one layer (z level)
 	TriSolve(&(a[grid->etop[j]]),&(b[grid->etop[j]]),&(c[grid->etop[j]]),
 		 &(d[grid->etop[j]]),&(phys->utmp[j][grid->etop[j]]),grid->Nke[j]-grid->etop[j]);
 	TriSolve(&(a0[grid->etop[j]]),&(b0[grid->etop[j]]),&(c0[grid->etop[j]]),
 		 &(e1[grid->etop[j]]),&(E[j][grid->etop[j]]),grid->Nke[j]-grid->etop[j]);	
-      } else {
+      } else {  // one layer (z level)
 	phys->utmp[j][grid->etop[j]]/=b[grid->etop[j]];
 	E[j][grid->etop[j]]=1.0/b[grid->etop[j]];
       }
@@ -2465,23 +2538,12 @@ static void UPredictor(gridT *grid, physT *phys,
     nc2 = grid->grad[2*j+1];
 
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      phys->u[j][k]=phys->utmp[j][k]-GRAV*theta*dt*E[j][k]*
+      phys->u[j][k]=phys->utmp[j][k]-prop->grav*theta*dt*E[j][k]*
 	(phys->h[nc1]-phys->h[nc2])/grid->dg[j];
 
     if(grid->etop[j]==grid->Nke[j]-1 && grid->dzz[nc1][grid->etop[j]]==0 &&
        grid->dzz[nc2][grid->etop[j]]==0) 
       phys->u[j][grid->etop[j]]=0;
-  }
-
-  // Set the flux values at boundary cells if specified (marker=4)
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr];
-
-    i = grid->grad[2*j];
-    boundary_flag = phys->boundary_flag[jptr-grid->edgedist[2]];
-    for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      phys->u[j][k]=phys->utmp[j][k]-(2.0*GRAV*(1-boundary_flag)*theta*dt/grid->dg[j]+
-				      boundary_flag*sqrt(GRAV/(grid->dv[i]+phys->h[i])))*E[j][k]*phys->h[i];
   }
 
   // Now update the vertical grid spacing with the new free surface.
@@ -2504,25 +2566,10 @@ static void UPredictor(gridT *grid, physT *phys,
 	phys->u[j][k]=0;
     else 
       for(k=grid->etop[j];k<grid->etopold[j];k++)
-	phys->u[j][k]=phys->utmp[j][k]-GRAV*theta*dt*
+	phys->u[j][k]=phys->utmp[j][k]-prop->grav*theta*dt*
 	  (phys->h[nc1]-phys->h[nc2])/grid->dg[j];
   }
   */
-
-  // Set the flux values at boundary cells if specified (marker=4)
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr];
-
-    i = grid->grad[2*j];
-    boundary_flag = phys->boundary_flag[jptr-grid->edgedist[2]];
-    if(grid->etop[j]>grid->etopold[j]) 
-      for(k=0;k<grid->etop[j];k++)
-	phys->u[j][k]=0;
-    else 
-      for(k=grid->etop[j];k<grid->etopold[j];k++) 
-	phys->u[j][k]=phys->utmp[j][k]-(2.0*GRAV*(1-boundary_flag)*theta*dt/grid->dg[j]+
-					boundary_flag*sqrt(GRAV/(grid->dv[i]+phys->h[i])))*phys->h[i];
-  }
 
   // Set the flux values at the open boundary (marker=2).  These
   // were set to utmp previously in OpenBoundaryFluxes.
@@ -2716,13 +2763,13 @@ static void HPreconditioner(REAL *x, REAL *y, gridT *grid, physT *phys, propT *p
  * coef(i) = (Ac(i) + sum(m=1:3) tmp*D(ne)*df(ne)/dg(ne))
  * fcoef(ne) = tmp*D(ne)*df(ne)/dg(ne)
  *
- * where tmp = GRAV*(theta*dt)^2
+ * where tmp = prop->grav*(theta*dt)^2
  *
  */
 static void HCoefficients(REAL *coef, REAL *fcoef, gridT *grid, physT *phys, propT *prop) {
   
   int i, j, iptr, jptr, ne, nf;
-  REAL tmp = GRAV*pow(prop->theta*prop->dt,2), h0, boundary_flag;
+  REAL tmp = prop->grav*pow(prop->theta*prop->dt,2), h0, boundary_flag;
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
@@ -2798,13 +2845,13 @@ static REAL InnerProduct3(REAL **x, REAL **y, gridT *grid, int myproc, int numpr
  * coef(i) = (Ac(i) + sum(m=1:3) tmp*D(ne)*df(ne)/dg(ne))
  * fcoef(ne) = tmp*D(ne)*df(ne)/dg(ne)
  *
- * where tmp = GRAV*(theta*dt)^2
+ * where tmp = prop->grav*(theta*dt)^2
  *
  */
 static void OperatorH(REAL *x, REAL *y, REAL *coef, REAL *fcoef, gridT *grid, physT *phys, propT *prop) {
   
   int i, j, iptr, jptr, ne, nf;
-  REAL tmp = GRAV*pow(prop->theta*prop->dt,2), h0, boundary_flag;
+  REAL tmp = prop->grav*pow(prop->theta*prop->dt,2), h0, boundary_flag;
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i = grid->cellp[iptr];
@@ -2815,15 +2862,6 @@ static void OperatorH(REAL *x, REAL *y, REAL *coef, REAL *fcoef, gridT *grid, ph
 	  y[i]-=fcoef[i*NFACES+nf]*x[grid->neigh[i*NFACES+nf]];
   }
 
-  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr];
-
-    i = grid->grad[2*j];
-    boundary_flag = phys->boundary_flag[jptr-grid->edgedist[2]];
-    y[i] += prop->dt*prop->theta*(2.0*GRAV*(1-boundary_flag)*prop->theta*prop->dt/grid->dg[j]
-				  +boundary_flag*sqrt(GRAV/(grid->dv[i]+phys->boundary_h[jptr-grid->edgedist[2]])))*
-      (grid->dv[i]+phys->boundary_h[jptr-grid->edgedist[2]])*grid->df[j]/grid->Ac[i]*x[i];
-  }
 }
 
 /*
@@ -3147,7 +3185,7 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   hsrc = phys->htmp;
   N = grid->normal;
 
-  tmp = GRAV*pow(prop->theta*prop->dt,2);
+  tmp = prop->grav*pow(prop->theta*prop->dt,2);
 
   ISendRecvCellData2D(h,grid,myproc,comm);
 
@@ -3289,7 +3327,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
     i = grid->cellp[iptr];
     height = 0;
     volh+=grid->Ac[i]*(grid->dv[i]+phys->h[i]);
-    Ep+=0.5*GRAV*grid->Ac[i]*(phys->h[i]+grid->dv[i])*(phys->h[i]-grid->dv[i]);
+    Ep+=0.5*prop->grav*grid->Ac[i]*(phys->h[i]+grid->dv[i])*(phys->h[i]-grid->dv[i]);
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       height += grid->dzz[i][k];
       volume+=grid->Ac[i]*grid->dzz[i][k];
@@ -3728,6 +3766,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->CdT = MPI_GetValue(DATAFILE,"CdT","ReadProperties",myproc);
   (*prop)->CdB = MPI_GetValue(DATAFILE,"CdB","ReadProperties",myproc);
   (*prop)->CdW = MPI_GetValue(DATAFILE,"CdW","ReadProperties",myproc);
+  (*prop)->grav= MPI_GetValue(DATAFILE,"grav","ReadProperties",myproc);
   (*prop)->turbmodel = (int)MPI_GetValue(DATAFILE,"turbmodel","ReadProperties",myproc);
   (*prop)->dt = MPI_GetValue(DATAFILE,"dt","ReadProperties",myproc);
   (*prop)->Cmax = MPI_GetValue(DATAFILE,"Cmax","ReadProperties",myproc);
@@ -3926,7 +3965,7 @@ static void SetDensity(gridT *grid, physT *phys, propT *prop) {
     z=phys->h[i];
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       z+=0.5*grid->dzz[i][k];
-      p=RHO0*GRAV*z;
+      p=RHO0*prop->grav*z;
       phys->rho[i][k]=StateEquation(prop,phys->s[i][k],phys->T[i][k],p);
       z+=0.5*grid->dzz[i][k];
     }
@@ -3939,7 +3978,7 @@ static void SetDensity(gridT *grid, physT *phys, propT *prop) {
       z=phys->h[ib];
       for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
 	z+=0.5*grid->dzz[ib][k];
-	p=RHO0*GRAV*z;
+	p=RHO0*prop->grav*z;
 	phys->boundary_rho[jptr-grid->edgedist[2]][k]=
 	  StateEquation(prop,phys->boundary_s[jptr-grid->edgedist[2]][k],
 			phys->boundary_T[jptr-grid->edgedist[2]][k],p);
