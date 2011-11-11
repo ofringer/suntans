@@ -143,8 +143,7 @@ double getfield(FILE *file, char *str)
 
   if(c==EOF) {
     if(VERBOSE > 2)
-      printf("End of file obtained, if  an error follows it is 
-          possible geometry is not consistent.\n");
+      printf("End of file obtained, if  an error follows it is possible geometry is not consistent.\n");
     return;
   }
 
