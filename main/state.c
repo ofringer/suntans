@@ -17,8 +17,8 @@
  * Usage: rho = StateEquation(prop,s,T,p);
  * ---------------------------------------
  * Returns the density as a function of temperature, salinity, and
- * pressure, where pressure is the hydrostatic pressure p=RHO0*GRAV*z,
- * and RHO0 and GRAV are defined in suntans.h.  Note that rho should
+ * pressure, where pressure is the hydrostatic pressure p=RHO0*prop->grav*z,
+ * and RHO0 and prop->grav are defined in suntans.h.  Note that rho should
  * always normalized by RHO0 so that this function returns a dimensionless
  * quantity.
  *
