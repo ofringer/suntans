@@ -11,6 +11,11 @@
  */
 #include "suntans.h"
 
+/* gravity:
+   default value is that of Earth's gravitational constant (SI units)
+*/
+const REAL grav_DEFAULT=9.81;
+
 /* minumum_depth:
     0: Do nothing
     Positive value: Will be the minimum allowable depth.  
