@@ -245,7 +245,7 @@ Bottom roughness used to calculate drag at the bottom boundary layer (in meters)
 
 If the roughness at the lid is zero (i.e. z0T=0) then the drag coefficient at the lid is given by
 this constant, otherwise the drag coefficient is calculated with the rough wall 
-relationship
+relationship.  Use of no-slip boundary conditions for the top cell is specified by setting CdT=-1.
 \[
 C_{dT} = \left[\frac{1}{\kappa}\ln\left(\frac{1}{2}\frac{\Delta z_{top}}{z_{0T}}\right)\right]^{-2}\,.
 \]
@@ -255,7 +255,7 @@ where $\Delta z_{top}$ is the thickness of the top cell (in meters) and $\kappa=
 
 If the roughness at the bottom is zero (i.e. $z_{0B}$=0) then the drag coefficient at the bottom is given by
 this constant, otherwise the drag coefficient is calculated with the rough wall
-relationship
+relationship.  Use of no-slip boundary conditions for the bottom cell is specified by setting CdB=-1. 
 \[
 C_{dB} = \left[\ln\left(\frac{1}{2}\frac{\Delta z_{bot}}{z_{0B}}\right)\right]^{-2}\,,
 \]
