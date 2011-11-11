@@ -66,9 +66,17 @@ can be one of the following:
 \begin{itemize}
 \item \verb+1+ For closed boundaries.
 \item \verb+2+ For open or velocity-specified boundaries.
+\item \verb+3+ For open or stage-specified boundaries.
+\item \verb+4+ For no-slip boundary conditions.
 \end{itemize}
 If the marker is set to \verb+1+, then the velocity is set to \verb+0+ at those edges.  If it is set to \verb+2+,
-then the velocity is specified in the file \verb+boundaries.c+.  This file loops through the edges whose edge
+then the velocity is specified in the file \verb+boundaries.c+.  If it is set to \verb+3+ then stage can be 
+specified for the cell adjacent to this edge.  No-slip boundaries are specified by setting the marker to
+\verb+4+, where the velocity on the edge is specified by updating \verb+phys->boundary_u+ and \verb+phys->boundary_v+. 
+No slip conditions on top and bottom cells are specified by setting \verb+phys->boundary_w+ and specifying \verb+CdB=-1+
+or \verb+CdT=-1+ for bottom and top no-slip boundary conditions, respectively. 
+
+This file loops through the edges whose edge
 markers are \verb+2+.  As an example, consider the flow in a channel that is 1000 m long in which two boundaries
 are specified as inflow and outflow and the other two are specified as solid walls, as shown in Figure 
 \ref{fig:boundaries}.  
@@ -150,7 +158,8 @@ edges.
 
 In addition to setting
 the boundary flux in the OpenBoundaryFluxes function, the user must also set the cartesian components
-of velocity in the BoundaryVelocities function.  These are used to compute the advection of momentum.
+of velocity in the BoundaryVelocities function.  These are used to compute the advection of momentum. 
+They can also be used to specify boundary velocities for no-slip type \verb+4+ boundary conditions.
 At the open outflow boundary, the boundary velocity components are set to the upwind value of the velocity
 component.  For the u-component of velocity, for example, the boundary value is specified
 with
