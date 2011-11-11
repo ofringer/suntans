@@ -34,11 +34,16 @@ test:	data
 data:	$(SUN)
 
 .c.o:	
-	$(LD) -c $(INCLUDES) $(DEFS) $*.c
+	$(LD) $(CFLAGS) -c $(INCLUDES) $(DEFS) $*.c
 
 $(SUN):	initialization.o boundaries.o state.o sources.o
 	cp initialization.o boundaries.o state.o sources.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
+
+plot:
+	cp -r $(SUNTANSHOME)/cmaps .
+	$(SUNTANSHOME)/sunplot -np $(NUMPROCS) --datadir=data
+
 
 clean:
 	rm -f *.o
