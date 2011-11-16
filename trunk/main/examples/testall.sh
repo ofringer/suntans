@@ -1,4 +1,4 @@
-testdirs="boundaries channel cylinder estuary iwaves lockexchange tides tides-restart wetdry windstress"
+testdirs="boundaries cavity channel cylinder estuary iwaves lockexchange tides tides-restart wetdry windstress"
 
 # Need to copy tidal data over to tides*/rundata directory in order to
 # make those examples work without crashing.
