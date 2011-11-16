@@ -70,16 +70,17 @@ can be one of the following:
 \item \verb+4+ For no-slip boundary conditions.
 \end{itemize}
 If the marker is set to \verb+1+, then the velocity is set to \verb+0+ at those edges.  If it is set to \verb+2+,
-then the velocity is specified in the file \verb+boundaries.c+.  If it is set to \verb+3+ then stage can be 
-specified for the cell adjacent to this edge.  No-slip boundaries are specified by setting the marker to
-\verb+4+, where the velocity on the edge is specified by updating \verb+phys->boundary_u+ and \verb+phys->boundary_v+. 
-No slip conditions on top and bottom cells are specified by setting \verb+phys->boundary_w+ and specifying \verb+CdB=-1+
-or \verb+CdT=-1+ for bottom and top no-slip boundary conditions, respectively. 
+then the velocity is specified in the file \verb+boundaries.c+ by iterating over edges with marker=\verb+2+.
+If it is set to \verb+3+ then stage can be specified at the Voronoi cell center for the cell adjacent to this edge. 
+No-slip boundaries are specified by setting the marker to \verb+4+, where the velocity on the edge is specified by 
+updating \verb+phys->boundary_u+, \verb+phys->boundary_v+, and \verb+phys->boundary_w+.  No-slip conditions on top and bottom cells are 
+specified by setting \verb+CdB=-1+ or \verb+CdT=-1+, respectively.  An example covering usage of type \verb+2+ boundary conditions, type 
+\verb+3+ boundary conditions, and type \verb+4+ boundary conditions will be covered in turn.
 
-This file loops through the edges whose edge
-markers are \verb+2+.  As an example, consider the flow in a channel that is 1000 m long in which two boundaries
-are specified as inflow and outflow and the other two are specified as solid walls, as shown in Figure 
-\ref{fig:boundaries}.  
+\subsubsection{Open or velocity-specified boundary conditions}
+This file loops through the edges whose edge markers are \verb+2+.  As an example, consider the flow in a 
+channel that is 1000 m long in which two boundaries are specified as inflow and outflow and the other two 
+are specified as solid walls, as shown in Figure \ref{fig:boundaries}.  
 \insertfig{.5}{figures/boundaries}{Depiction of a channel with an inflow at $x=0$ m and outflow at $x=1000$ m with
 the inflow/outflow boundaries specified with 2 markers and the solid walls with 1 markers.  The indices of
 the cells adjacent to the boundaries are denoted by ib while the boundary faces have indices j.}{fig:boundaries}
@@ -187,6 +188,61 @@ normal vector at the boundary edge, which points into the domain by definition.
 Examples of how to employ velocity boundary conditions are described in Sections \ref{sec:boundary_ex}
 and \ref{sec:internalwaves}.  Section \ref{sec:boundary_ex} also demonstrates 
 how to specify salinity and temperature at the boundaries.
+
+\subsubsection{Open or stage-specified boundary conditions}
+
+A good example of specifying stage boundary conditions (type \verb+3+) is the 
+\verb+suntans/main/examples/+ \verb+estuary+ example,
+where a stage boundary condition is specified at the ocean boundary to the west of the domain.
+A simplified tidal signal is specified via the following code contained within the function 
+BoundaryVelocities() of \verb+suntans/main/examples/estuary/boundaries.c+.
+
+\begin{verbatim}
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    i = grid->cellp[iptr];
+    phys->h[i]=-prop->amp*sin(prop->omega*prop->rtime);
+  }
+\end{verbatim}
+
+In this example, type \verb+2+ boundary conditions result in indicies to computational cells adjacent
+to type \verb+2+ boundary condition being stored in [ \verb+celldist[1]+, \verb+celldist[2]+).  
+Stage information for these cells can then be specified by setting the cell stage via the cell pointer
+\verb+i=grid->cellp[iptr]+.  In this example, \verb+prop->amp+ specifies tidal amplitude $A$, 
+\verb+prop->omega+ specifies the frequency $\omega$, and \verb+prop->rtime+ the simulation time $t$ within
+the prototype function $h = -A\sin\left(\omega t\right)$.
+
+\subsubsection{No-slip boundary conditions}
+
+No-slip boundary conditions in the plane XZ are specified via type \verb+4+ boundary conditions
+in \verb+edges.dat+. Setting \verb+CdT=-1+ and \verb+CdB=-1+ within \verb+suntans.dat+ 
+specifies no-slip boundary conditions for the top and bottom of the domain within the plane XY. 
+As an example, consider the \verb+testXZ+ case in \verb+suntans/main/examples/cavity+.  The parameter file
+\verb+suntans/main/examples/cavity/rundata/suntansXZ.dat+ has 
+\begin{verbatim}
+CdT                -1   # Drag coefficient at surface
+CdB                -1   # Drag coefficient at bottom
+\end{verbatim}
+and the function BoundaryVelocities() in \verb+suntans/main/examples/cavity/boundariesXZ.c+ has
+\begin{verbatim}
+  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+    
+    j = grid->edgep[jptr];
+    ib=grid->grad[2*j];
+    boundary_index = jptr-grid->edgedist[2];
+    
+    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+      if(grid->xe[j]<0.5) 
+        phys->boundary_w[boundary_index][k]= -1.0;
+      else
+        phys->boundary_w[boundary_index][k]=0.0;
+      phys->boundary_v[boundary_index][k] = 0.0;
+      phys->boundary_u[boundary_index][k] = 0;
+    }
+  }
+\end{verbatim}
+where the no-slip boundary condition is applied on the west side of the boundary directed 
+downward via \verb+phys->boundary_w[boundary_index]= -1.0+ for edges with markers \verb+jptr+ in
+[\verb+grid->edgedist[4]+\verb+grid->edgedist[5]+).  
 
 \subsection{Specifying heat flux} \label{sec:heatflux}
 
