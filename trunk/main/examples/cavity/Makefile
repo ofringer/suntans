@@ -25,21 +25,29 @@ OBJS =
 SUN = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
-NUMPROCS =1
+NUMPROCS =8
 
 test:	testXY testXZ
 
 testXY:	
 	make clobber
 	rm -rf dataXY
-	tar zxvf cavityXY.tgz
+	cp boundariesXY.c boundaries.c
+	cp rundata/cellsXY.dat rundata/cells.dat
+	cp rundata/edgesXY.dat rundata/edges.dat
+	cp rundata/pointsXY.dat rundata/points.dat
+	cp rundata/suntansXY.dat rundata/suntans.dat
 	make data
 	sh $(EXEC)XY.sh $(NUMPROCS)
 
 testXZ:	
-	make clobber 
+	make clobber
 	rm -rf dataXZ
-	tar zxvf cavityXZ.tgz
+	cp boundariesXZ.c boundaries.c
+	cp rundata/cellsXZ.dat rundata/cells.dat
+	cp rundata/edgesXZ.dat rundata/edges.dat
+	cp rundata/pointsXZ.dat rundata/points.dat
+	cp rundata/suntansXZ.dat rundata/suntans.dat
 	make data
 	sh $(EXEC)XZ.sh $(NUMPROCS)
 
@@ -64,4 +72,4 @@ clean:
 	rm -f *.o
 
 clobber: clean
-	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/ cmaps initialization.c boundaries.c cavityXY.sh cavityXZ.sh *.eps
+	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data cmaps boundaries.c *.eps rundata/cells.dat rundata/points.dat rundata/edges.dat rundata/suntans.dat
