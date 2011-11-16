@@ -9,6 +9,7 @@ clean:
 clobber:	clean
 	make -C accuracy clobber
 	make -C boundaries clobber
+	make -C cavity clobber
 	make -C channel clobber
 	make -C estuary clobber
 	make -C iwaves clobber
