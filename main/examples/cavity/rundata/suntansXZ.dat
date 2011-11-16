@@ -1,0 +1,104 @@
+########################################################################
+#
+#  Input file for SUNTANS.
+#
+########################################################################
+Nkmax	        		128	  # Number of cells in the vertical
+stairstep		      1	    # 1 if stair-stepping, 0 if partial-stepping
+rstretch		      1.00	# Stretching factor for vertical grid (1<=rstretch<1.1)
+CorrectVoronoi		0	    # Whether or not to correct Voronoi points
+VoronoiRatio		  1	    # Adjust the voronoi points by this amount if 1 then = centroid.
+vertgridcorrect 	0   	# Correct vertical grid if Nkmax is too small
+IntDepth 		      0	    # 1 if interpdepth, 0 otherwise
+dzsmall			      0.1	  # Smallest grid spacing ratio before correction
+scaledepth 		    0 	  # Scale the depth by scalefactor
+scaledepthfactor 	0 	  # Depth scaling factor (to test deep grids with explicit methods)
+thetaramptime	    0  	  # Timescale over which theta is ramped from 1 to theta (fs theta only)
+beta			        0	    # Expansivity of salt
+theta			        0.55	# 0: fully explicit, 1: fully implicit
+thetaS			      0.55	# For scalar advection
+thetaB			      0.55	# For scalar advection
+kappa_s           0     # Vertical mass diffusivity
+kappa_sH          0     # Horizontal mass diffusivity
+gamma 			      1.0 	# Coefficient of expansivity of temperature.
+kappa_T         1e-4    # Vertical thermal diffusivity
+kappa_TH        1e-4    # Horizontal thermal diffusivity
+nu 	0.0003125 		1e-6  # Laminar viscosity of water (m^2 s^-1)
+nu_H 	0.0003125		7.5	  # Horizontal laminar viscosity of water (m^2 s^-1)
+tau_T			          0 	# Wind shear stress
+z0T	                0 	# Top roughness
+z0B	                0  	# Bottom roughness
+CdT	               -1  	# Drag coefficient at surface
+CdB	               -1  	# Drag coefficient at bottom
+CdW		              0	  # Drag coefficient at sidewalls
+grav            9.81e6  # Gravitational constant
+turbmodel	          0		# Turbulence model (0 for none, 1 for MY25)
+dt 	            0.005		# Time step
+Cmax 			        1   	# Maximum permissible Courant number
+nsteps           8000	  # Number of steps
+ntout            8000	  # How often to output data
+ntprog   		        1 	# How often to report progress (in %)
+ntconserve 		      1	  # How often to output conserved data
+nonhydrostatic 	    1	  # 0 = hydrostatic, 1 = nonhydrostatic
+cgsolver		        1	  # 0 = GS, 1 = CG
+maxiters		     1000	  # Maximum number of CG iterations
+qmaxiters		     2000	  # Maximum number of CG iterations for nonhydrostatic pressure
+qprecond          0			# 1 = preconditioned, 0 = not preconditioned
+epsilon			    1e-10 	# Tolerance for CG convergence
+qepsilon		    1e-5	  # Tolerance for CG convergence for nonhydrostatic pressure
+resnorm			      0     # Normalized or non-normalized residual
+relax			        1	    # Relaxation parameter for GS solver.	
+amp 			      0.005 	# amplitude
+omega 			        0 	# frequency
+flux 			          0 	# flux
+timescale		        0 	# timescale for open boundary condition
+volcheck		        1 	# Check for volume conservation
+masscheck		        1 	# Check for mass conservation
+nonlinear 2		      2	  # No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+laxWendroff         0   # Automatically generated entry by GriddingTools::GetSuntansValue
+laxWendroff_Vertical 0  # No Lax Wendroff in vertical
+newcells		        1	  # 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
+wetdry			        0   # 1 if wetting and drying, 0 otherwise
+Coriolis_f          0	  # Coriolis frequency f=2*Omega*sin(phi)
+sponge_distance	    0 	# Decay distance scale for sponge layer
+sponge_decay	      0 	# Decay time scale for sponge layer
+readSalinity		    0	  # Whether or not to read initial salinity profile from file InitSalinityFile
+readTemperature		  0	  # Whether or not to read initial temperature profile from file InitTemperatureFile
+########################################################################
+#
+#  Grid Files
+#
+########################################################################
+#pslg         twod.dat 	# Planar straight line graph (input)
+points       points.dat	# Vertices file (input)
+edges         edges.dat	# Edge file (input)
+cells         cells.dat	# Cell centered file (input)
+depth       depth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
+celldata  celldata.dat	# Cell-centered output (output)
+edgedata  edgedata.dat	# Edge-centered output (output)
+vertspace vertspace.dat # Vertical grid spacing (output)
+topology  topology.dat	# Grid topology data
+########################################################################
+#
+#  Output Data Files
+#
+########################################################################
+FreeSurfaceFile   	    fs.dat
+HorizontalVelocityFile 	u.dat
+VerticalVelocityFile 	  w.dat
+SalinityFile 		        s.dat
+BGSalinityFile 		      s0.dat
+TemperatureFile		      T.dat
+PressureFile		        q.dat
+VerticalGridFile 	      g.dat
+ConserveFile		        e.dat
+ProgressFile	          step.dat
+StoreFile		            store.dat
+StartFile		            start.dat
+EddyViscosityFile	      nut.dat
+ScalarDiffusivityFile	  kappat.dat
+########################################################################
+#
+# Input Data Files
+#
+########################################################################
