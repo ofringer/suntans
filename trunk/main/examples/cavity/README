@@ -1,0 +1,15 @@
+Examples can be run with "make test".
+
+This will run both cases of 
+
++ testXY 
++ testXZ 
+
+These simulate cavity flows in the XY and XZ planes, respectively
+with data in dataXY and dataXZ.  
+CompareResultsXY.m and CompareResultsXZ.m can be used to view data 
+with some results from Zang (1994) data. 
+"make plotXY" and "make plotXZ" can also be used to view the 
+data with sunplot.
+
+PJW, 11/5/2011
