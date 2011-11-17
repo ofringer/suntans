@@ -37,7 +37,7 @@ is also supplied to the \verb+ReturnFreeSurface+ function in case the free surfa
 \item \verb+ReturnSalinity+ and \verb+ReturnTemperature+  These are similar functions in that they return the
 specified scalar field as a function of the x, y, and z coordinates.  Note that if \verb+beta+ is 0 in \verb+suntans.dat+,
 then salinity transport is not computed, likewise if \verb+gamma+ is 0, then temperature transport is not computed.  
-As it is now, the code computes the temperature as a passive scalar while the density anomaly $\rho$ is computed solely as a function of the salinity anomoly $s$, such that
+As it is now, the code computes the temperature as a passive scalar while the density anomaly $\rho$ is computed solely as a function of the salinity anomaly $s$, such that
 \[\frac{\rho}{\rho_0}=\beta s\,.\]  This equation of state is specified in the file \verb+state.c+.
 \item \verb+ReturnHorizontalVelocity+ This returns the horizontal velocity defined at the faces of each cell.  The initial vertical velocity is
 computed by continuity from this initial velocity field.  Since this function returns the velocity normal to a cell face, then
@@ -100,7 +100,7 @@ location of the specified edge.  To do so, you would set up the functions in the
 
     if(grid->xv[ib]>500) {
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-         ub[j][k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
+         ub[j][k] = -phys->h[ib]*sqrt(prop->grav/(grid->dv[ib]));
     } else {
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
          ub[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->n1[j]+
@@ -146,7 +146,7 @@ we know that this boundary exists for boundary edges for $x>500$, we use the if 
 sets the flux at the open boundary over all the vertical levels with
 \begin{verbatim}
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-        ub[j][k] = -phys->h[ib]*sqrt(GRAV/(grid->dv[ib]));
+        ub[j][k] = -phys->h[ib]*sqrt(prop->grav/(grid->dv[ib]));
 \end{verbatim}
 which is identical to 
 \[ u_b = -h_b\sqrt{\frac{g}{d}} \,,\]
@@ -158,7 +158,7 @@ and \verb+etop[j]+, which is the index of the top level at the boundary.  The va
 edges.  
 
 In addition to setting
-the boundary flux in the OpenBoundaryFluxes function, the user must also set the cartesian components
+the boundary flux in the OpenBoundaryFluxes function, the user must also set the Cartesian components
 of velocity in the BoundaryVelocities function.  These are used to compute the advection of momentum. 
 They can also be used to specify boundary velocities for no-slip type \verb+4+ boundary conditions.
 At the open outflow boundary, the boundary velocity components are set to the upwind value of the velocity
@@ -169,7 +169,7 @@ phys->boundary_u[jptr-grid->edgedist[2]][k]=phys->uc[ib][k];
 \end{verbatim}
 Here, \verb+uc+ is the u-component of velocity at the Voronoi point with index \verb+ib+.
 
-At the inlet, only the cartesian velocity components need to be specified.  In this example,
+At the inlet, only the Cartesian velocity components need to be specified.  In this example,
 the u-component of velocity at the inlet is set with the code
 \begin{verbatim}
 phys->boundary_u[jptr-grid->edgedist[2]][k]=
@@ -177,7 +177,7 @@ phys->boundary_u[jptr-grid->edgedist[2]][k]=
 \end{verbatim}
 and the other components are set to 0.  This function uses the variables \verb+amp+ and \verb+omega+
 which are set in \verb+suntans.dat+, and \verb+rtime+ is the physical time in the simulation.
-The cartesian velocities which are specified at the inlet boundary are then used to compute
+The Cartesian velocities which are specified at the inlet boundary are then used to compute
 the flux in the OpenBoundaryFluxes function with
 \begin{verbatim}
 ub[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->n1[j]+
@@ -248,7 +248,7 @@ downward via \verb+phys->boundary_w[boundary_index]= -1.0+ for edges with marker
 
 To specify source terms in the temperature equation, you will need to edit the
 HeatSource() function in suntans/main/sources.c.  The implementation assumes
-adiabatic surface and bottom boundary conditions, and so all heat fluxes are implemnted
+adiabatic surface and bottom boundary conditions, and so all heat fluxes are implemented
 as source terms in the temperature equation of the form
 \begin{eqnarray*}
 \D{T}{t} + \ub\cdot\nabla T &=& \D{}{z}\left[\left(\kappa_T + \kappa_{tv}\right) \D{T}{z}\right] + Q(T)\,,
