@@ -19,20 +19,6 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
   REAL Coriolis_f, ubar, depth_face;
 
   /* No-slip on surface of cylinder */
-  for(jptr=grid->edgedist[1];jptr<grid->edgedist[2];jptr++) {
-    j = grid->edgep[jptr];
-
-    ib=grid->grad[2*j];
-    if(grid->xv[ib]<0.95 && grid->xv[ib]>0.05 &&
-       grid->yv[ib]>0.05 && grid->yv[ib]<0.35) {
-      for(ne=0;ne<NFACES;ne++) {
-	if(grid->neigh[NFACES*ib+ne]!=-1) {
-	  jf=grid->face[ib*NFACES+ne];
-	  usource[jf][0]-=2*prop->dt*prop->nu_H/grid->Ac[ib]*grid->df[jf]/grid->dg[jf]*phys->u[jf][0];
-	}
-      }
-    }
-  }
 }
 
 /*

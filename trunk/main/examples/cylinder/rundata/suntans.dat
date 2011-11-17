@@ -33,6 +33,7 @@ CdB	                0.0	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		0	# Turbulence model (0 for none, 1 for MY25)
 dt 			1e-3	# Time step
+grav			9.81e10 # Rigid lid approximation
 Cmax 			1  	# Maximum permissible Courant number
 nsteps 			4000    # Number of steps
 ntout   		200  	# How often to output data

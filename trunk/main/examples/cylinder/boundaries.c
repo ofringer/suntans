@@ -24,7 +24,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
   REAL *uboundary = phys->a, **u = phys->uc, **v = phys->vc, **uold = phys->uold, **vold = phys->vold;
   REAL z, c0, c1, C0, C1, dt=prop->dt, u0, u0new, uc0, vc0, uc0old, vc0old, ub0;
 
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
     j = grid->edgep[jptr];
 
     ib = grid->grad[2*j];
@@ -73,7 +73,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
  */
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
   int jptr, j, ib, k;
-  REAL z;
+  REAL z, utheta, r, u, v, x0, y0;
 
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
@@ -95,6 +95,25 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
 	phys->boundary_v[jptr-grid->edgedist[2]][k]=0.0;
 	phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
       }
+  }
+
+  // Add circulation with utheta nonzero to simulate cylinder with lift
+  r = 0.1;
+  utheta = 0.0;
+  x0 = 0.3;
+  y0 = 0.15;
+  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+    j = grid->edgep[jptr];
+
+    ib = grid->grad[2*j];
+    u = utheta*(grid->ye[j]-y0)/r;
+    v = -utheta*(grid->xe[j]-x0)/r;
+
+    for(k=grid->etop[j];k<grid->Nke[j];k++) {
+      phys->boundary_u[jptr-grid->edgedist[2]][k]=u;
+      phys->boundary_v[jptr-grid->edgedist[2]][k]=v;
+      phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
+    }
   }
 }
 
