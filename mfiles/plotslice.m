@@ -55,7 +55,7 @@ function [x,z,data] = plotslice(PLOT,datadir,n,proc)
 
   % Empty the cells below the bottom
   D = ones(Nk,1)*dv(is)';
-  z(find(z<-D))=nan;
+%  z(find(z<-D))=nan;
   dv = dv(is);
 
   % Open up file descriptors for binary files
@@ -64,6 +64,8 @@ function [x,z,data] = plotslice(PLOT,datadir,n,proc)
     file = [datadir,'/q.dat.',num2str(proc)];
    case 's'
     file = [datadir,'/s.dat.',num2str(proc)];    
+   case 'T'
+    file = [datadir,'/T.dat.',num2str(proc)];    
    case {'u','w'}
     file = [datadir,'/u.dat.',num2str(proc)];    
    case 's0'
@@ -101,4 +103,6 @@ function [x,z,data] = plotslice(PLOT,datadir,n,proc)
     data = data(is,:)';
     data(find(data==EMPTY))=nan;
   end
-  
+
+  data(z<-D)=nan;  
+  fclose(fid);
