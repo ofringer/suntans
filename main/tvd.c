@@ -72,7 +72,7 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundar
       if(nc1==-1) nc1=nc2;
       if(nc2==-1) {
 	nc2=nc1;
-	if(boundary_scal)
+	if(boundary_scal && grid->mark[ne]>1)
 	  sp=phys->stmp2[nc1];
 	else
 	  sp=phys->stmp[nc1];
@@ -105,7 +105,7 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundar
       if(nc1==-1) nc1=nc2;
       if(nc2==-1) {
 	nc2=nc1;
-	if(boundary_scal)
+	if(boundary_scal && grid->mark[ne]>1)
 	  sp=phys->stmp2[nc1];
 	else
 	  sp=phys->stmp[nc1];
