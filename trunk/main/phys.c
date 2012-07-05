@@ -92,6 +92,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->utmp2 = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->ut = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_U = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Cn_U2 = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables"); //AB3
+
 
   (*phys)->wf = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
 
@@ -105,6 +107,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->utmp2[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->ut[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_U[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->Cn_U2[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");//AB3
     (*phys)->wf[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
   }
   if(flag) {
@@ -127,6 +130,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->wtmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->wtmp2 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_W = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Cn_W2 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables"); //AB3
   (*phys)->q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->qc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->qtmp = (REAL **)SunMalloc(NFACES*Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -163,6 +167,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->wtmp[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->wtmp2[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_W[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->Cn_W2[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables"); //AB3
     (*phys)->q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->qc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     for(nf=0;nf<NFACES;nf++)
@@ -259,6 +264,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     free(phys->utmp2[j]);
     free(phys->ut[j]);
     free(phys->Cn_U[j]);
+    free(phys->Cn_U2[j]); //AB3
     free(phys->wf[j]);
   }
 
@@ -272,6 +278,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     free(phys->wtmp[i]);
     free(phys->wtmp2[i]);
     free(phys->Cn_W[i]);
+    free(phys->Cn_W2[i]); //AB3
     free(phys->q[i]);
     free(phys->qc[i]);
     for(nf=0;nf<NFACES;nf++)
@@ -310,6 +317,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   free(phys->wtmp);
   free(phys->wtmp2);
   free(phys->Cn_W);
+  free(phys->Cn_W2); //AB3
   free(phys->wf);
   free(phys->q);
   free(phys->qtmp);
@@ -340,6 +348,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   free(phys->utmp);
   free(phys->ut);
   free(phys->Cn_U);
+  free(phys->Cn_U2);
 
   free(phys->ap);
   free(phys->am);
@@ -391,8 +400,12 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
   fread(phys->h,sizeof(REAL),grid->Nc,prop->StartFID);
   for(j=0;j<grid->Ne;j++) 
     fread(phys->Cn_U[j],sizeof(REAL),grid->Nke[j],prop->StartFID);
+ for(j=0;j<grid->Ne;j++) 
+   fread(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StartFID); //AB3
   for(i=0;i<grid->Nc;i++) 
     fread(phys->Cn_W[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
+  for(i=0;i<grid->Nc;i++) 
+    fread(phys->Cn_W2[i],sizeof(REAL),grid->Nk[i],prop->StartFID); //AB3
   for(i=0;i<grid->Nc;i++) 
     fread(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
   for(i=0;i<grid->Nc;i++) 
@@ -1033,6 +1046,7 @@ static void StoreVariables(gridT *grid, physT *phys) {
  * 5) Horizontal laminar+turbulent diffusion of horizontal momentum
  *
  * Cn_U contains the Adams-Bashforth terms at time step n-1.
+ * Cn_U2 contains the Adams-Bashforth terms at time step n-2.
  * If wetting and drying is employed, no advection is computed in 
  * the upper cell.
  *
@@ -1041,7 +1055,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 			     int myproc, int numprocs, MPI_Comm comm) {
   int i, ib, iptr, boundary_index, nf, j, jptr, k, nc, nc1, nc2, ne, 
   k0, kmin, kmax;
-  REAL *a, *b, *c, fab, sum, def1, def2, dgf, Cz;
+  REAL *a, *b, *c, fab1, fab2, fab3, sum, def1, def2, dgf, Cz; //AB3
 
   a = phys->a;
   b = phys->b;
@@ -1050,13 +1064,40 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
   // fab is 1 for a forward Euler calculation on the first time step,
   // for which Cn_U is 0.  Otherwise, fab=3/2 and Cn_U contains the
   // Adams-Bashforth terms at time step n-1
-  if(prop->n==1) {
+  /*if(prop->n==1) {
     fab=1;
     for(j=0;j<grid->Ne;j++)
       for(k=0;k<grid->Nke[j];k++)
 	phys->Cn_U[j][k]=0;
   } else
     fab=1.5;
+  */
+
+ // Adams Bashforth coefficients
+  if(prop->n==1) {
+    fab1=1;
+    fab2=fab3=0;
+
+    for(j=0;j<grid->Ne;j++)
+      for(k=0;k<grid->Nke[j];k++)
+	phys->Cn_U[j][k]=phys->Cn_U2[j][k]=0;
+  } else if(prop->n==2) {
+    fab1=3.0/2.0;
+    fab2=-1.0/2.0;
+    fab3=0;
+  } else {
+    if(prop->AB==2) {
+      fab1=3.0/2.0;
+      fab2=-1.0/2.0;
+      fab3=0;
+    } else {
+     // AB3:
+    fab1=23.0/12.0;
+    fab2=-4.0/3.0;
+    fab3=5.0/12.0;
+    }
+  }
+
 
   // Set utmp and ut to zero since utmp will store the source term of the
   // horizontal momentum equation
@@ -1073,12 +1114,20 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
-    
+
+    //AB3
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
+      phys->utmp[j][k]=fab2*phys->Cn_U[j][k]+fab3*phys->Cn_U2[j][k]+phys->u[j][k]
 	-prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
 	
+      phys->Cn_U2[j][k]=phys->Cn_U[j][k];
       phys->Cn_U[j][k]=0;
+
+
+      // for(k=grid->etop[j];k<grid->Nke[j];k++) {
+      //phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k]
+      //-prop->dt/grid->dg[j]*(phys->q[nc1][k]-phys->q[nc2][k]);
+      //phys->Cn_U[j][k]=0;
     }
   }
   // Add on explicit term to boundary edges
@@ -1086,7 +1135,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     j = grid->edgep[jptr]; 
     
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      phys->utmp[j][k]=(1-fab)*phys->Cn_U[j][k]+phys->u[j][k];
+      phys->utmp[j][k]=(1-fab1)*phys->Cn_U[j][k]+phys->u[j][k];
 	
       phys->Cn_U[j][k]=0;
     }
@@ -1565,7 +1614,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     j = grid->edgep[jptr]; 
     
     for(k=grid->etop[j];k<grid->Nke[j];k++)
-      phys->utmp[j][k]+=fab*phys->Cn_U[j][k];
+      phys->utmp[j][k]+=fab1*phys->Cn_U[j][k];
   }
 }
 
@@ -1627,19 +1676,46 @@ static void NewCells(gridT *grid, physT *phys, propT *prop) {
 static void WPredictor(gridT *grid, physT *phys, propT *prop,
 		       int myproc, int numprocs, MPI_Comm comm) {
   int i, ib, iptr, j, jptr, k, ne, nf, nc, nc1, nc2, kmin, boundary_index;
-  REAL fab, sum, *a, *b, *c, Cz;
+  REAL fab1,fab2,fab3, sum, *a, *b, *c, Cz;
 
   a = phys->a;
   b = phys->b;
   c = phys->c;
 
-  if(prop->n==1) {
+  /* if(prop->n==1) {
     fab=1;
     for(i=0;i<grid->Nc;i++)
       for(k=0;k<grid->Nk[i];k++)
 	phys->Cn_W[i][k]=0;
   } else
     fab=1.5;
+  */
+
+ // AB3
+  if(prop->n==1) {
+    fab1=1;
+    fab2=fab3=0;
+
+    for(i=0;i<grid->Nc;i++)
+      for(k=0;k<grid->Nk[i];k++)
+	phys->Cn_W[i][k]=phys->Cn_W2[i][k]=0;
+  } else if(prop->n==2) {
+    fab1=3.0/2.0;
+    fab2=-1.0/2.0;
+    fab3=0;
+  } else {
+            if(prop->AB==2) {
+      fab1=3.0/2.0;
+      fab2=-1.0/2.0;
+      fab3=0;
+      } else {
+      fab1=23.0/12.0;
+      fab2=-4.0/3.0;
+      fab3=5.0/12.0;
+      }
+  }
+  if(prop->n==3)
+    printf("%e %e %e\n",fab1,fab2,fab3);
 
   // Add on the nonhydrostatic pressure gradient from the previous time
   // step to compute the source term for the tridiagonal inversion.
@@ -1647,8 +1723,13 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     i = grid->cellp[iptr]; 
     
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      phys->wtmp[i][k]=phys->w[i][k]+(1-fab)*phys->Cn_W[i][k];
+      // phys->wtmp[i][k]=phys->w[i][k]+(1-fab)*phys->Cn_W[i][k];
+      //AB3
+      phys->wtmp[i][k]=phys->w[i][k] + fab2*phys->Cn_W[i][k] + fab3*phys->Cn_W2[i][k];
+
+      phys->Cn_W2[i][k]=phys->Cn_W[i][k];
       phys->Cn_W[i][k]=0;
+
     }
     
     for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) 
@@ -1878,7 +1959,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     i = grid->cellp[iptr]; 
     
     for(k=grid->ctop[i];k<grid->Nk[i];k++) 
-      phys->wtmp[i][k]+=fab*phys->Cn_W[i][k];
+      phys->wtmp[i][k]+=fab1*phys->Cn_W[i][k];  //AB3
   }
 
   // wtmp now contains the right hand side without the vertical diffusion terms.  Now we
@@ -3691,8 +3772,12 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     fwrite(phys->h,sizeof(REAL),grid->Nc,prop->StoreFID);
     for(j=0;j<grid->Ne;j++) 
       fwrite(phys->Cn_U[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
+    for(j=0;j<grid->Ne;j++) 
+      fwrite(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->Cn_W[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+   for(i=0;i<grid->Nc;i++) 
+     fwrite(phys->Cn_W2[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
     for(i=0;i<grid->Nc;i++) 
@@ -3806,6 +3891,8 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->TVDtemp = MPI_GetValue(DATAFILE,"TVDtemp","ReadProperties",myproc);
   (*prop)->TVDturb = MPI_GetValue(DATAFILE,"TVDturb","ReadProperties",myproc);
   (*prop)->stairstep = MPI_GetValue(DATAFILE,"stairstep","ReadProperties",myproc);
+  (*prop)->AB = MPI_GetValue(DATAFILE,"AB","ReadProperties",myproc); //AB3
+
 
   if((*prop)->nonlinear==2) {
     (*prop)->laxWendroff = MPI_GetValue(DATAFILE,"laxWendroff","ReadProperties",myproc);
