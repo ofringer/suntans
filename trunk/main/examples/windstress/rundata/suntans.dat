@@ -10,7 +10,7 @@ CorrectVoronoi		0	# Whether or not to correct Voronoi points
 VoronoiRatio		1	# Adjust the voronoi points by this amount if 1 then = centroid.
 vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
 IntDepth 		0	# 1 if interpdepth, 0 otherwise
-dzsmall			0.1	# Smallest grid spacing ratio before correction
+dzsmall			0.01	# Smallest grid spacing ratio before correction
 scaledepth 		0 	# Scale the depth by scalefactor
 scaledepthfactor 	0 	# Depth scaling factor (to test deep grids with explicit methods)
 thetaramptime	        0  	# Timescale over which theta is ramped from 1 to theta (fs theta only)
@@ -20,11 +20,11 @@ thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
 kappa_s                 0       # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
-gamma 			2.0e-4 	# Coefficient of expansivity of temperature.
-kappa_T                 1.0e-4  # Vertical thermal diffusivity
+gamma 			0  	# Coefficient of expansivity of temperature.
+kappa_T                 0       # Vertical thermal diffusivity
 kappa_TH                0       # Horizontal thermal diffusivity
 nu 			1e-5 	# Laminar viscosity of water (m^2 s^-1)
-nu_H 			2.0	# Horizontal laminar viscosity of water (m^2 s^-1)
+nu_H 			1e-3	# Horizontal laminar viscosity of water (m^2 s^-1)
 tau_T			1.0e-5 	# Wind shear stress
 z0T	                0.0 	# Top roughness
 z0B	                0.005	# Bottom roughness
