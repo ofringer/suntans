@@ -279,6 +279,10 @@ double GetDefaultValue(char *str, int *status) {
 
     return ntoutStore_DEFAULT;
 
+  } else if(!strcmp(str,"AB")) {
+
+    return AB_DEFAULT;
+
   } else {
     *status=0;
     return 0;
