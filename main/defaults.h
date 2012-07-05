@@ -66,3 +66,8 @@ const int hprecond_DEFAULT = 1;
    How often to save restart data.  If 0 then just save at the last time step.
 */
 const int ntoutStore_DEFAULT = 0;
+
+/* AB:
+   Adam-Bashforth for explicit terms.
+*/
+const int AB_DEFAULT = 3;
