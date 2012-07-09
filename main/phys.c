@@ -1064,14 +1064,6 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
   // fab is 1 for a forward Euler calculation on the first time step,
   // for which Cn_U is 0.  Otherwise, fab=3/2 and Cn_U contains the
   // Adams-Bashforth terms at time step n-1
-  /*if(prop->n==1) {
-    fab=1;
-    for(j=0;j<grid->Ne;j++)
-      for(k=0;k<grid->Nke[j];k++)
-	phys->Cn_U[j][k]=0;
-  } else
-    fab=1.5;
-  */
 
  // Adams Bashforth coefficients
   if(prop->n==1) {
@@ -1097,7 +1089,6 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     fab3=5.0/12.0;
     }
   }
-
 
   // Set utmp and ut to zero since utmp will store the source term of the
   // horizontal momentum equation
@@ -1202,8 +1193,47 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	phys->ut[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->dzf[j][k];
     }
     
-    // Compute the u-component fluxes at the faces
-    if(prop->nonlinear==1)  // Upwind
+   // Compute the u-component fluxes at the faces
+   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+	j = grid->edgep[jptr];
+	
+	nc1 = grid->grad[2*j];
+	nc2 = grid->grad[2*j+1];
+	
+	if(grid->ctop[nc1]>grid->ctop[nc2])
+	  kmin = grid->ctop[nc1];
+	else
+	  kmin = grid->ctop[nc2];
+	
+	for(k=0;k<kmin;k++)
+	  phys->ut[j][k]=0;
+	
+	for(k=kmin;k<grid->Nke[j];k++) {
+	  if(phys->u[j][k]>0)
+	    nc=nc2;
+	  else
+	    nc=nc1;
+	  
+	  switch(prop->nonlinear) {
+	  case 1:
+	    phys->ut[j][k]=phys->uc[nc][k]*grid->dzf[j][k];
+	    break;
+	  case 2:
+	    phys->ut[j][k]=UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
+	    break;
+	  case 4:
+	    phys->ut[j][k]=UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
+	    break;
+	  default:
+	    phys->ut[j][k]=phys->uc[nc][k]*grid->dzf[j][k];
+	    break;
+	  }
+	}
+   }
+
+    /*  
+	if(prop->nonlinear==1)  // Upwind
+     
       for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	j = grid->edgep[jptr];
 	
@@ -1243,8 +1273,10 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	
 	for(k=kmin;k<grid->Nke[j];k++) 
 	  phys->ut[j][k]=UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
-      }
+	  } 
+    */
     // Faces on type 3 cells are always updated with first-order upwind
+
     for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
       i = grid->cellp[iptr];
 
@@ -1274,6 +1306,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       }
     }
 
+
+
     // Now compute the cell-centered source terms and put them into stmp
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i=grid->cellp[iptr];
@@ -1292,6 +1326,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	    (grid->Ac[i]*grid->dzz[i][grid->ctop[i]]);
       }
     }
+
     
     // V-fluxes at boundary cells
     for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
@@ -1315,7 +1350,44 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     }
     
     // Compute the v-component fluxes at the faces
-    if(prop->nonlinear==1)  // Upwind
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+      j = grid->edgep[jptr];
+      
+      nc1 = grid->grad[2*j];
+      nc2 = grid->grad[2*j+1];
+      
+      if(grid->ctop[nc1]>grid->ctop[nc2])
+	kmin = grid->ctop[nc1];
+      else
+	kmin = grid->ctop[nc2];
+      
+      for(k=0;k<kmin;k++)
+	phys->ut[j][k]=0;
+      for(k=kmin;k<grid->Nke[j];k++) {
+	if(phys->u[j][k]>0)
+	  nc=nc2;
+	else
+	  nc=nc1;
+	
+	switch(prop->nonlinear) {
+	case 1:
+	  phys->ut[j][k]=phys->vc[nc][k]*grid->dzf[j][k];
+	  break;
+	case 2:
+	  phys->ut[j][k]=UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
+	  break;
+	case 4:
+	  phys->ut[j][k]=UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
+	  break;
+	default:
+	  phys->ut[j][k]=phys->vc[nc][k]*grid->dzf[j][k];
+	  break;
+	}
+      }
+    }
+
+    /*
+      if(prop->nonlinear==1)  // Upwind
       for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	j = grid->edgep[jptr];
 	
@@ -1355,6 +1427,9 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	for(k=kmin;k<grid->Nke[j];k++) 
 	  phys->ut[j][k]=UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
       }
+
+    */
+
     // Faces on type 3 cells are always updated with first-order upwind
     for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
       i = grid->cellp[iptr];
@@ -1410,7 +1485,45 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     // Now do vertical advection
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i=grid->cellp[iptr];
-      
+      switch(prop->nonlinear) {
+      case 1:
+	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	  a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
+		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
+	  b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
+		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
+	}
+	break;
+      case 2:
+	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
+				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
+	  b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
+				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
+	}
+	break;
+      case 4:
+	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	  Cz = 2.0*phys->w[i][k]*prop->dt/(grid->dzz[i][k]+grid->dzz[i][k-1]);
+	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
+				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1])
+				-0.5*Cz*(phys->uc[i][k-1]-phys->uc[i][k]));
+	  b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
+				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1])
+				-0.5*Cz*(phys->vc[i][k-1]-phys->vc[i][k]));
+	}
+	break;
+      default:
+	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
+	  a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
+		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
+	  b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
+		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
+	}
+	break;
+      }
+
+      /*      
       if(prop->nonlinear==1)  // Upwind
 	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
 	  a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
@@ -1435,6 +1548,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1])
 				-0.5*Cz*(phys->vc[i][k-1]-phys->vc[i][k]));
 	}
+      */
 
       // Always do first-order upwind in bottom cell if partial stepping is on
       if(prop->stairstep==0) {
@@ -1704,18 +1818,17 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     fab2=-1.0/2.0;
     fab3=0;
   } else {
-            if(prop->AB==2) {
+    if(prop->AB==2) {
       fab1=3.0/2.0;
       fab2=-1.0/2.0;
       fab3=0;
-      } else {
+    } 
+    else {
       fab1=23.0/12.0;
       fab2=-4.0/3.0;
       fab3=5.0/12.0;
-      }
+    }
   }
-  if(prop->n==3)
-    printf("%e %e %e\n",fab1,fab2,fab3);
 
   // Add on the nonhydrostatic pressure gradient from the previous time
   // step to compute the source term for the tridiagonal inversion.
