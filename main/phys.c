@@ -1055,7 +1055,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 			     int myproc, int numprocs, MPI_Comm comm) {
   int i, ib, iptr, boundary_index, nf, j, jptr, k, nc, nc1, nc2, ne, 
   k0, kmin, kmax;
-  REAL *a, *b, *c, fab1, fab2, fab3, sum, def1, def2, dgf, Cz; //AB3
+  REAL *a, *b, *c, fab1, fab2, fab3, sum, def1, def2, dgf, Cz, tempu; //AB3
 
   a = phys->a;
   b = phys->b;
@@ -1193,6 +1193,9 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	phys->ut[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->dzf[j][k];
     }
     
+    if(prop->nonlinear==5) //use tvd for advection of momemtum
+       HorizontalFaceU(phys->uc,grid,phys,prop,prop->TVDmomentum,comm,myproc);
+
    // Compute the u-component fluxes at the faces
    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	j = grid->edgep[jptr];
@@ -1224,6 +1227,13 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  case 4:
 	    phys->ut[j][k]=UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
 	    break;
+	  case 5:
+	    if(phys->u[j][k]>0)
+	      tempu=phys->SfHp[j][k];
+	    else
+	      tempu=phys->SfHm[j][k];
+	    phys->ut[j][k]=tempu*grid->dzf[j][k];
+	    break;
 	  default:
 	    phys->ut[j][k]=phys->uc[nc][k]*grid->dzf[j][k];
 	    break;
@@ -1231,50 +1241,6 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	}
    }
 
-    /*  
-	if(prop->nonlinear==1)  // Upwind
-     
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-	j = grid->edgep[jptr];
-	
-	nc1 = grid->grad[2*j];
-	nc2 = grid->grad[2*j+1];
-	
-	if(grid->ctop[nc1]>grid->ctop[nc2])
-	  kmin = grid->ctop[nc1];
-	else
-	  kmin = grid->ctop[nc2];
-	
-	for(k=0;k<kmin;k++)
-	  phys->ut[j][k]=0;
-	
-	for(k=kmin;k<grid->Nke[j];k++) {
-	  if(phys->u[j][k]>0)
-	    nc=nc2;
-	  else
-	    nc=nc1;
-	  phys->ut[j][k]=phys->uc[nc][k]*grid->dzf[j][k];
-	}
-      }
-    else if(prop->nonlinear==2 || prop->nonlinear==4) 
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-	j = grid->edgep[jptr];
-	
-	nc1 = grid->grad[2*j];
-	nc2 = grid->grad[2*j+1];
-	
-	if(grid->ctop[nc1]>grid->ctop[nc2])
-	  kmin = grid->ctop[nc1];
-	else
-	  kmin = grid->ctop[nc2];
-	
-	for(k=0;k<kmin;k++)
-	  phys->ut[j][k]=0;
-	
-	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
-	  } 
-    */
     // Faces on type 3 cells are always updated with first-order upwind
 
     for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
@@ -1348,7 +1314,12 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       for(k=grid->etop[j];k<grid->Nke[j];k++)
 	phys->ut[j][k]=phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->dzf[j][k];
     }
-    
+
+    if(prop->nonlinear==5) //use tvd for advection of momemtum
+      HorizontalFaceU(phys->vc,grid,phys,prop,prop->TVDmomentum,comm,myproc);
+
+
+
     // Compute the v-component fluxes at the faces
     for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
       j = grid->edgep[jptr];
@@ -1379,56 +1350,19 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	case 4:
 	  phys->ut[j][k]=UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
 	  break;
+	case 5:
+	  if(phys->u[j][k]>0)
+	    tempu=phys->SfHp[j][k];
+	  else
+	    tempu=phys->SfHm[j][k];
+	  phys->ut[j][k]=tempu*grid->dzf[j][k];
+	  break;
 	default:
 	  phys->ut[j][k]=phys->vc[nc][k]*grid->dzf[j][k];
 	  break;
 	}
       }
     }
-
-    /*
-      if(prop->nonlinear==1)  // Upwind
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-	j = grid->edgep[jptr];
-	
-	nc1 = grid->grad[2*j];
-	nc2 = grid->grad[2*j+1];
-	
-	if(grid->ctop[nc1]>grid->ctop[nc2])
-	  kmin = grid->ctop[nc1];
-	else
-	  kmin = grid->ctop[nc2];
-	
-	for(k=0;k<kmin;k++)
-	  phys->ut[j][k]=0;
-	for(k=kmin;k<grid->Nke[j];k++) {
-	  if(phys->u[j][k]>0)
-	    nc=nc2;
-	  else
-	    nc=nc1;
-	  phys->ut[j][k]=phys->vc[nc][k]*grid->dzf[j][k];
-	}
-      }
-    else if(prop->nonlinear==2 || prop->nonlinear==4)
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-	j = grid->edgep[jptr];
-	
-	nc1 = grid->grad[2*j];
-	nc2 = grid->grad[2*j+1];
-	
-	if(grid->ctop[nc1]>grid->ctop[nc2])
-	  kmin = grid->ctop[nc1];
-	else
-	  kmin = grid->ctop[nc2];
-	
-	for(k=0;k<kmin;k++)
-	  phys->ut[j][k]=0;
-	
-	for(k=kmin;k<grid->Nke[j];k++) 
-	  phys->ut[j][k]=UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
-      }
-
-    */
 
     // Faces on type 3 cells are always updated with first-order upwind
     for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
@@ -1494,7 +1428,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
 	}
 	break;
-      case 2:
+      case 2: case 5:
 	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
 	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
 				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
@@ -1522,34 +1456,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	}
 	break;
       }
-
-      /*      
-      if(prop->nonlinear==1)  // Upwind
-	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-	  a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
-		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
-	  b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
-		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
-	}
-      else if(prop->nonlinear==2) // Central
-	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
-				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
-	  b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
-				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
-	}
-      else if(prop->nonlinear==4) // Lax-Wendroff
-	for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
-	  Cz = 2.0*phys->w[i][k]*prop->dt/(grid->dzz[i][k]+grid->dzz[i][k-1]);
-	  a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
-				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1])
-				-0.5*Cz*(phys->uc[i][k-1]-phys->uc[i][k]));
-	  b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
-				 grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1])
-				-0.5*Cz*(phys->vc[i][k-1]-phys->vc[i][k]));
-	}
-      */
-
+      
       // Always do first-order upwind in bottom cell if partial stepping is on
       if(prop->stairstep==0) {
 	k = grid->Nk[i]-1;
@@ -1905,7 +1812,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 	  phys->ut[j][k]=0.5*(phys->w[nc][k]+phys->w[nc][k+1])*grid->dzz[nc][k];
 	}
       }
-    else if(prop->nonlinear==2 || prop->nonlinear==4)
+    else if(prop->nonlinear==2 || prop->nonlinear==4 || prop->nonlinear==5)
       for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	j = grid->edgep[jptr];
 	
@@ -1971,7 +1878,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
       }
 
       // Vertical advection; note that in this formulation first-order upwinding is not implemented.
-      if(prop->nonlinear==1 || prop->nonlinear==2) {
+      if(prop->nonlinear==1 || prop->nonlinear==2 ||prop->nonlinear==5) {
 	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
 	  phys->stmp[i][k]+=(pow(phys->w[i][k],2)-pow(phys->w[i][k+1],2))/grid->dzz[i][k];
 	}
@@ -4005,7 +3912,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->TVDturb = MPI_GetValue(DATAFILE,"TVDturb","ReadProperties",myproc);
   (*prop)->stairstep = MPI_GetValue(DATAFILE,"stairstep","ReadProperties",myproc);
   (*prop)->AB = MPI_GetValue(DATAFILE,"AB","ReadProperties",myproc); //AB3
-
+  (*prop)->TVDmomentum = MPI_GetValue(DATAFILE,"TVDmomentum","ReadProperties",myproc); 
 
   if((*prop)->nonlinear==2) {
     (*prop)->laxWendroff = MPI_GetValue(DATAFILE,"laxWendroff","ReadProperties",myproc);
