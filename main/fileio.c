@@ -283,6 +283,10 @@ double GetDefaultValue(char *str, int *status) {
 
     return AB_DEFAULT;
 
+ } else if(!strcmp(str,"TVDmomentum")) {
+
+    return TVDmomentum_DEFAULT;
+
   } else {
     *status=0;
     return 0;

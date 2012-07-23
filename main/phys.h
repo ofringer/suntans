@@ -134,7 +134,7 @@ typedef struct _propT {
     dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, grav, Coriolis_f, CmaxU, CmaxW, laxWendroff_Vertical;
   int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, hprecond, qprecond, volcheck, masscheck,
     nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
-    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB;
+    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
     *SalinityFID, *BGSalinityFID, *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
     *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;

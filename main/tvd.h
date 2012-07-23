@@ -28,7 +28,8 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundar
 			   MPI_Comm comm, int myproc); 
 void GetApAm(REAL *ap, REAL *am, REAL *wp, REAL *wm, REAL *Cp, REAL *Cm, REAL *rp, REAL *rm,
 	     REAL **w, REAL **dzz, REAL **scal, int i, int Nk, int ktop, REAL dt, int TVD);
-
+void HorizontalFaceU(REAL **uc, gridT *grid, physT *phys, propT *prop, int TVDscheme,
+			   MPI_Comm comm, int myproc); 
 #endif
 
 
