@@ -71,3 +71,9 @@ const int ntoutStore_DEFAULT = 0;
    Adam-Bashforth for explicit terms.
 */
 const int AB_DEFAULT = 3;
+
+
+/* TVDmomentum
+   TVD for advection of momentum, default is vanleer
+*/
+const int TVDmomentum_DEFAULT = 3;

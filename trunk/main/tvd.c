@@ -222,3 +222,120 @@ void GetApAm(REAL *ap, REAL *am, REAL *wp, REAL *wm, REAL *Cp, REAL *Cm, REAL *r
              + 0.5*wm[k]*Psi(rm[k-ktop],TVD)*(1+Cm[k]);
   }
 }
+/*
+ * Function: HorizontalFaceU
+ * Usage: HorizontalFaceScalars(uc, grid, phys, boundary_scal);
+ * ---------------------------------------------------------------------------
+ * Calculate the horizontal face values for uc and vc using TVD schemes.  
+ * SfHp[Ne][Nk] & SfHm[Ne][Nk] are used to store the facial values.
+ */
+void HorizontalFaceU(REAL **uc, gridT *grid, physT *phys, propT *prop, int TVD, 
+			   MPI_Comm comm, int myproc) 
+{
+  int i, k, nf, iptr;
+  int normal, nc1, nc2, ne;
+
+  REAL df, dg, *sp, Ac, dt=prop->dt;
+  REAL *Cp, *Cm, *rp, *rm, **gradSx, **gradSy, **stmp;   
+
+  // For check!
+  int iu, ku, nfu, gradflag, faceflag, Cflag, Rflag;
+
+  // Pointer Variables for TVD scheme
+  Cp = phys->Cp;
+  Cm = phys->Cm;
+  rp = phys->rp;
+  rm = phys->rm;
+  gradSx = phys->gradSx;
+  gradSy = phys->gradSy;
+  stmp = uc;
+
+
+  for(i=0; i<grid->Nc; i++) {
+    Ac = grid->Ac[i];
+   
+    // Initialize the gradSx and gradSy
+    for(k=0;k<grid->Nk[i];k++){
+      gradSx[i][k] = 0;
+      gradSy[i][k] = 0;
+    }
+
+    // Loop through all faces of the current cell
+    for(nf=0;nf<NFACES;nf++) {
+      ne = grid->face[i*NFACES+nf];
+      normal = grid->normal[i*NFACES+nf];
+      df = grid->df[ne];
+      nc1 = grid->grad[2*ne];
+      nc2 = grid->grad[2*ne+1];
+      if(nc1==-1) nc1=nc2;
+      if(nc2==-1) {
+	nc2=nc1;
+	//if(grid->mark[ne]>1) //(boundary_scal)
+	//  sp=phys->stmp2[nc1];
+	//else
+	sp=stmp[nc1];
+      }else 
+        sp=stmp[nc2];
+
+
+      for(k=0;k<grid->Nke[ne];k++) {
+	gradSx[i][k]+=1/Ac*0.5*(stmp[nc1][k]+sp[k])*grid->n1[ne]*normal*df; 
+	gradSy[i][k]+=1/Ac*0.5*(stmp[nc1][k]+sp[k])*grid->n2[ne]*normal*df;
+
+      }
+
+      for(k=grid->Nke[ne];k<grid->Nk[i];k++) {
+	gradSx[i][k]+=1/Ac*stmp[i][k]*grid->n1[ne]*normal*df; 
+	gradSy[i][k]+=1/Ac*stmp[i][k]*grid->n2[ne]*normal*df; 	
+      }
+    } 
+  } 
+  ISendRecvCellData3D(gradSx,grid,myproc,comm);  
+  ISendRecvCellData3D(gradSy,grid,myproc,comm);  
+ 
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+
+    for(nf=0;nf<NFACES;nf++) {
+      ne = grid->face[i*NFACES+nf];
+      normal = grid->normal[i*NFACES+nf];
+      df = grid->df[ne];
+      dg = grid->dg[ne];
+      nc1 = grid->grad[2*ne];
+      nc2 = grid->grad[2*ne+1];
+      if(nc1==-1) nc1=nc2;
+      if(nc2==-1) {
+	nc2=nc1;
+	//if(boundary_scal)
+	//  sp=phys->stmp2[nc1];
+	//else
+	  sp=stmp[nc1];
+      } else 
+	sp=stmp[nc2];
+
+
+      for(k=0;k<grid->Nke[ne];k++) {
+	Cp[k]= 0.5*(phys->utmp2[ne][k]+fabs(phys->utmp2[ne][k]))*dt/dg;
+	Cm[k]= 0.5*(phys->utmp2[ne][k]-fabs(phys->utmp2[ne][k]))*dt/dg;
+      }
+
+      for(k=0;k<grid->Nke[ne];k++) {	
+	rp[k]= 2*(gradSx[nc2][k]*grid->n1[ne]*dg + gradSy[nc2][k]*grid->n2[ne]*dg + EPS )/
+	  (stmp[nc1][k]-sp[k]+EPS)-1;
+	rm[k]= 2*(gradSx[nc1][k]*grid->n1[ne]*dg + gradSy[nc1][k]*grid->n2[ne]*dg + EPS )/
+	  (stmp[nc1][k]-sp[k]+EPS)-1;
+      }
+
+      for(k=0;k<grid->Nke[ne];k++) {
+	phys->SfHp[ne][k] = sp[k]+0.5*Psi(rp[k],TVD)*(1-Cp[k])*(stmp[nc1][k]-sp[k]);
+	phys->SfHm[ne][k] = stmp[nc1][k]-0.5*Psi(rm[k],TVD)*(1+Cm[k])*(stmp[nc1][k]-sp[k]);
+      }
+
+      for(k=grid->Nke[ne];k<grid->Nk[nc1];k++) 
+	phys->SfHm[ne][k] = stmp[nc1][k];
+
+      for(k=grid->Nke[ne];k<grid->Nk[nc2];k++) 
+	phys->SfHp[ne][k] = sp[k];
+    } 
+  }
+}
