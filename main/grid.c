@@ -774,8 +774,9 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   mindepth=INFTY;
   IntDepth=(int)MPI_GetValue(DATAFILE,"IntDepth","GetDepth",myproc);
   minimum_depth=(REAL)MPI_GetValue(DATAFILE,"minimum_depth","GetDepth",myproc);
-  fixdzz=(REAL)MPI_GetValue(DATAFILE,"fixdzz","GetDepth",myproc);
-
+  //fixdzz=(REAL)MPI_GetValue(DATAFILE,"fixdzz","GetDepth",myproc);
+  grid->dzsmall = (REAL)MPI_GetValue(DATAFILE,"dzsmall","FixDZZ",myproc);
+  
   if(IntDepth==1) 
     InterpDepth(grid,myproc,numprocs,comm);
   else if(IntDepth==2) 
@@ -793,8 +794,8 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
 
   GetDZ(dz,maxdepth,maxdepth,Nkmax,myproc);  
 
-  if(!stairstep && fixdzz) 
-    FixDZZ(grid,maxdepth,Nkmax,fixdzz,myproc);
+  //if(!stairstep && fixdzz) 
+  //  FixDZZ(grid,maxdepth,Nkmax,fixdzz,myproc);
 
   if(minimum_depth!=0) {
     if(minimum_depth>0) {
@@ -1515,6 +1516,7 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
   maingrid->Nk = (int *)SunMalloc(maingrid->Nc*sizeof(int),"VertGrid");
   (*localgrid)->dztop = (REAL *)SunMalloc((*localgrid)->Nc*sizeof(REAL),"VertGrid");
+  (*localgrid)->dzbot = (REAL *)SunMalloc((*localgrid)->Nc*sizeof(REAL),"VertGrid");
   (*localgrid)->ctop = (int *)SunMalloc((*localgrid)->Nc*sizeof(int),"VertGrid");
   (*localgrid)->ctopold = (int *)SunMalloc((*localgrid)->Nc*sizeof(int),"VertGrid");
   (*localgrid)->etop = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),"VertGrid");
@@ -3068,6 +3070,7 @@ void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc,
  * and if so then increase the depth.
  *
  */
+
 static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int fixdzz, int myproc) {
   int i, k, kount=0, mindepth0;
   REAL z, dzz, dzsmall, *dz = (REAL *)SunMalloc(Nkmax*sizeof(REAL),"FixDZZ");
@@ -3108,6 +3111,8 @@ static void FixDZZ(gridT *grid, REAL maxdepth, int Nkmax, int fixdzz, int myproc
 
   SunFree(dz,Nkmax*sizeof(REAL),"FixDZZ");
 }
+
+
 
 static int GetNk(REAL *dz, REAL localdepth, int Nkmax) {
   int k;

@@ -41,7 +41,7 @@ main(int argc, char *argv[])
 
   if(SOLVE) {
     ReadProperties(&prop,myproc);
-    InitializeVerticalGrid(&grid);
+    InitializeVerticalGrid(&grid,myproc);
     AllocatePhysicalVariables(grid,&phys,prop);
     AllocateTransferArrays(&grid,myproc,numprocs,comm);
     OpenFiles(prop,myproc);

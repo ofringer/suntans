@@ -131,7 +131,7 @@ typedef struct _physT {
 typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
     thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
-    dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, grav, Coriolis_f, CmaxU, CmaxW, laxWendroff_Vertical;
+    beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, grav, Coriolis_f, CmaxU, CmaxW, laxWendroff_Vertical;
   int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, hprecond, qprecond, volcheck, masscheck,
     nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
     TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum;
@@ -149,7 +149,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop);
 void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop);
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
-void InitializeVerticalGrid(gridT **grid);
+void InitializeVerticalGrid(gridT **grid,int myproc);
 void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void OpenFiles(propT *prop, int myproc);
 void ReadProperties(propT **prop, int myproc);

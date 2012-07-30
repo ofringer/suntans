@@ -38,6 +38,8 @@ typedef struct _gridT {
   REAL *dzfB;
   REAL **dzzold;
   REAL *dztop;
+  REAL *dzbot; 
+  REAL dzsmall;
   int *face;
   int *edges;
   int *cells;
@@ -116,7 +118,9 @@ typedef struct _gridT {
   int Ne_comp;
   int Np;
   int Nge;
-
+  int stairstep;
+  int fixdzz;
+  REAL smoothbot;
 } gridT;
 
 /*
