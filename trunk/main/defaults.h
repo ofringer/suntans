@@ -77,3 +77,11 @@ const int AB_DEFAULT = 3;
    TVD for advection of momentum, default is vanleer
 */
 const int TVDmomentum_DEFAULT = 3;
+
+/* smoothbot:
+   Treatment in SetFluxHeight and ComputeVelocityVector for smooth
+   bottom flow when partial stepping is used
+*/
+const REAL smoothbot_DEFAULT = 0.0;
+
+

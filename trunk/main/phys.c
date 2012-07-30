@@ -444,7 +444,7 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
     fread(phys->s0[i],sizeof(REAL),grid->Nk[i],prop->StartFID);
   fclose(prop->StartFID);
 
-  UpdateDZ(grid,phys,0);
+  UpdateDZ(grid,phys,2);
   ComputeVelocityVector(phys->u,phys->uc,phys->vc,grid);
 
   ISendRecvCellData3D(phys->uc,grid,myproc,comm);
@@ -648,14 +648,23 @@ void SetDragCoefficients(gridT *grid, physT *phys, propT *prop) {
  * do not vary in the horizontal.
  *
  */
-void InitializeVerticalGrid(gridT **grid)
+void InitializeVerticalGrid(gridT **grid,int myproc)
 {
   int i, j, k, Nc=(*grid)->Nc, Ne=(*grid)->Ne;
+
+  (*grid)->stairstep = MPI_GetValue(DATAFILE,"stairstep","InitializeVerticalGrid",myproc);
+  (*grid)->fixdzz = MPI_GetValue(DATAFILE,"fixdzz","InitializeVerticalGrid",myproc);
+  (*grid)->dzsmall = (REAL)MPI_GetValue(DATAFILE,"dzsmall","InitializeVerticalGrid",myproc);
+  (*grid)->smoothbot = (REAL)MPI_GetValue(DATAFILE,"smoothbot","InitializeVerticalGrid",myproc);  
+
+ 
 
   (*grid)->dzf = (REAL **)SunMalloc(Ne*sizeof(REAL *),"InitializeVerticalGrid");
   (*grid)->dzfB = (REAL *)SunMalloc(Ne*sizeof(REAL),"InitializeVerticalGrid");
   (*grid)->dzz = (REAL **)SunMalloc(Nc*sizeof(REAL *),"InitializeVerticalGrid");
   (*grid)->dzzold = (REAL **)SunMalloc(Nc*sizeof(REAL *),"InitializeVerticalGrid");
+  (*grid)->dzbot = (REAL *)SunMalloc(Nc*sizeof(REAL),"InitializeVerticalGrid");
+
 
   for(j=0;j<Ne;j++) 
     (*grid)->dzf[j]=(REAL *)SunMalloc(((*grid)->Nke[j])*sizeof(REAL),"InitializeVerticalGrid");
@@ -663,6 +672,7 @@ void InitializeVerticalGrid(gridT **grid)
   for(i=0;i<Nc;i++) {
     (*grid)->dzz[i]=(REAL *)SunMalloc(((*grid)->Nk[i])*sizeof(REAL),"InitializeVerticalGrid");
     (*grid)->dzzold[i]=(REAL *)SunMalloc(((*grid)->Nk[i])*sizeof(REAL),"InitializeVerticalGrid");
+    
     for(k=0;k<(*grid)->Nk[i];k++) {
       (*grid)->dzz[i][k]=(*grid)->dz[k];  
       (*grid)->dzzold[i][k]=(*grid)->dz[k];  
@@ -693,7 +703,7 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
   // If this is not an initial call then set dzzold to store the old value of dzz
   // and also set the etopold and ctopold pointers to store the top indices of
   // the grid.
-  if(!option) {
+  if(!(option==1)) {
     for(j=0;j<Ne;j++)
       grid->etopold[j]=grid->etop[j];
     for(i=0;i<Nc;i++) {
@@ -754,6 +764,9 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
     for(i=0;i<Nc;i++) 
       grid->dzz[i][0]=grid->dv[i]+phys->h[i];
 
+
+
+
   /*
   for(i=0;i<Nc;i++)
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -776,9 +789,27 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
       grid->etop[j]=grid->ctop[ne2];
   }
 
+
+
+
   // If this is an initial call set the old values to the new values and
   // Determine the bottom-most flux-face height in the absence of h
+  // Check the smallest dzz and set to minimum  
   if(option) {
+    for(i=0;i<Nc;i++){
+      k=grid->Nk[i]-1;      
+      grid->dzbot[i]=grid->dzz[i][k];
+      //printf("cell %d dzsmall=%e dzz=%e\n",i,grid->dzsmall*grid->dz[k],grid->dzz[i][k]);
+      if(!grid->stairstep && grid->fixdzz )   
+	if(grid->dzz[i][k]<grid->dz[k]*grid->dzsmall) {
+	  //printf("cell %d dzsmall=%e dzz=%e\n",i,grid->dzsmall*grid->dz[k],grid->dzz[i][k]);
+	  grid->dv[i]+= (grid->dz[k]*grid->dzsmall-grid->dzz[i][k]);	
+	  grid->dzz[i][k]=grid->dz[k]*grid->dzsmall;
+	}
+    }
+  }
+
+  if(option==1) {    
     for(j=0;j<Ne;j++) 
       grid->etopold[j]=grid->etop[j];
     for(i=0;i<Nc;i++) {
@@ -786,7 +817,7 @@ static void UpdateDZ(gridT *grid, physT *phys, int option)
       for(k=0;k<grid->Nk[i];k++)
 	grid->dzzold[i][k]=grid->dzz[i][k];
     }
-
+    
     for(j=0;j<Ne;j++) {
       nc1 = grid->grad[2*j];
       nc2 = grid->grad[2*j+1];
@@ -3489,9 +3520,16 @@ static void ComputeVelocityVector(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
     for(k=grid->ctop[n];k<grid->Nk[n];k++) {
       for(nf=0;nf<NFACES;nf++) {
 	ne = grid->face[n*NFACES+nf];
-	uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
-	vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+	if(!(grid->smoothbot) || k<grid->Nke[ne]){
+	  uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+	  vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+	}
+	else{	
+	  uc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+	  vc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+	}
       }
+
       uc[n][k]/=grid->Ac[n];
       vc[n][k]/=grid->Ac[n];
     }
@@ -4103,8 +4141,17 @@ static void SetDensity(gridT *grid, physT *phys, propT *prop) {
  *
  */
 static void SetFluxHeight(gridT *grid, physT *phys, propT *prop) {
-  int j, k, nc1, nc2;
-  REAL dz_bottom;
+  int i,j, k, nc1, nc2;
+  REAL dzsmall=grid->dzsmall;
+
+  if(grid->smoothbot)
+    for(i=0;i<grid->Nc;i++) {
+      //if(grid->dzz[i][grid->Nk[i]-1]>grid->dzbot[i])
+      //printf("i=%d dzz=%e, dzbot=%e dzsmall=%e\n",i,grid->dzz[i][grid->Nk[i]-1],grid->dzbot[i],dzsmall);
+      grid->dzz[i][grid->Nk[i]-1]=Max(grid->dzbot[i],grid->smoothbot*grid->dz[grid->Nk[i]-1]); 
+      
+    }
+
 
   for(j=0;j<grid->Ne;j++) {
     nc1 = grid->grad[2*j];
@@ -4137,5 +4184,12 @@ static void SetFluxHeight(gridT *grid, physT *phys, propT *prop) {
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       if(grid->dzf[j][k]<=DRYCELLHEIGHT)
 	grid->dzf[j][k]=0;
+  
   }
+
+  //set minimum dzz
+  for(i=0;i<grid->Nc;i++)
+    grid->dzz[i][grid->Nk[i]-1]=Max(grid->dzz[i][grid->Nk[i]-1],dzsmall*grid->dz[grid->Nk[i]-1]);
+
+
 }

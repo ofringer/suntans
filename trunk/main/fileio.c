@@ -287,10 +287,16 @@ double GetDefaultValue(char *str, int *status) {
 
     return TVDmomentum_DEFAULT;
 
+ } else if(!strcmp(str,"smoothbot")) {
+
+    return smoothbot_DEFAULT;
+
   } else {
     *status=0;
     return 0;
   }
+
+
 }
 
 /*
