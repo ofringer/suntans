@@ -24,3 +24,23 @@ extern REAL Timer(void) {
   return (REAL)MPI_Wtime();
 }
 
+/*
+ * Function: Tic
+ * ----------------------------------------
+ * Initializes the timer (tic-toc timer)
+ * 
+ */
+inline void Tic(void) {
+  t_tictoc = (REAL)MPI_Wtime();
+}
+
+/*
+ * Function: Toc
+ * ----------------------------------------
+ * Returns the time span from the Tic()
+ * initialization.
+ * 
+ */
+inline REAL Toc(void) {
+  return ((REAL)MPI_Wtime() - t_tictoc);
+}

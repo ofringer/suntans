@@ -21,6 +21,7 @@
 #include "fileio.h"
 #include <sys/stat.h>
 #include <sys/errno.h>
+#include <unistd.h>
 
 #define AXESSLICETOP 0  // Change this to change the distance from the axes edge to the free-surface (percentage of axes height)
 #define SMALLHEIGHT .001
@@ -92,7 +93,7 @@ typedef enum {
 } plotProcT;
 
 typedef enum {
-  noslice, value, vertp, slice
+  noslice, value, vertp, slice, value_keyboard
 } sliceT;
 
 typedef enum {
@@ -246,6 +247,7 @@ KeySym lookup;
 XWindowAttributes windowAttributes;
 XFontStruct *fontStruct;
 
+int keyboardproc=0, keyboardcell=0;
 int width=WIDTH, height=HEIGHT, newwidth, newheight, 
   Np0, Nc0, Ne0, n=1, k=0, keysym,
   xstart, ystart, xend, yend, lastgridread=0, iskip=1, kskip=1, iskipmax=5;
@@ -292,7 +294,16 @@ int main(int argc, char *argv[]) {
 
   ReadColorMap(CMAPFILE);
 
-  XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask );
+  XSelectInput(dis, win, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask);
+  /* get name for window */
+  char windowtitle[BUFFERLENGTH];
+  char cwd[1024];
+  // get current directory and store name
+  if (getcwd(cwd, sizeof(cwd)) != NULL)
+    sprintf(windowtitle,"SunPlot: %s: %s", cwd,DATADIR);
+  else
+    sprintf(windowtitle,"Sunplot");
+  XStoreName(dis, win, windowtitle);
 
   axisType='i';
   edgelines=false;
@@ -373,7 +384,7 @@ int main(int argc, char *argv[]) {
 		cmapAxesPosition[2]*width,
 		cmapAxesPosition[3]*height,0,0);
       if(zooming){
-        // PJW added code to account for panning behavior
+        //  added code to account for panning behavior
         if(panning){
           DrawArrow(xstart,ystart,(xend-xstart),-(yend-ystart),axeswin,white);
         }
@@ -394,6 +405,14 @@ int main(int argc, char *argv[]) {
       break;
     case ButtonRelease:
       mousebutton = report.xbutton.button;
+      if(mousebutton==middle_button) {
+        // print location of cursor to console
+        printf("Cursor location (%f,%f)\n",
+            dataLimits[0]+(float)report.xbutton.x*(dataLimits[1]-dataLimits[0])
+            /(axesPosition[2]*(float)width),
+            dataLimits[2]+(float)(height*axesPosition[3]-report.xbutton.y)
+            *(dataLimits[3]-dataLimits[2])/(axesPosition[3]*(float)height));
+      }
       if(report.xany.window==controlButtons[prevwin].butwin) {
 	if(mousebutton==left_button) {
 	  if(n>1) { redraw = true; n--; }
@@ -949,6 +968,22 @@ int main(int argc, char *argv[]) {
 	}
 	redraw=true;
 	break;
+      case XK_l:
+  // we want to specify a location
+  sliceType=value_keyboard;
+  printf("Must specify the value via the keyboard\n");
+  GetLoc(data, procnum, numprocs);
+  redraw=true;
+
+  break;
+//      case XK_x:
+//  // print location of cursor to console
+//  printf("Cursor location (%f,%f)\n",
+//      dataLimits[0]+(float)xend*(dataLimits[1]-dataLimits[0])
+//      /(axesPosition[2]*(float)width),
+//      dataLimits[2]+(float)(height*axesPosition[3]-yend)
+//      *(dataLimits[3]-dataLimits[2])/(axesPosition[3]*(float)height));
+//  break;
       case XK_0: case XK_1: case XK_2: case XK_3: case XK_4:
       case XK_5: case XK_6: case XK_7: case XK_8: case XK_9:
 	str[0]=keysym;
@@ -993,8 +1028,15 @@ void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
 
   ReadData(data,n,numprocs);
 
+  if(sliceType==value_keyboard) {
+    // just use the previously selected values from the keyboard
+    iloc = keyboardcell;
+    procloc = keyboardproc;
+  }
+
   if(sliceType==value) 
-    FindNearest(data,xend,yend,&iloc,&procloc,procnum,numprocs);
+      FindNearest(data,xend,yend,&iloc,&procloc,procnum,numprocs);
+  
   if(sliceType==slice)
     GetSlice(data,xstart,ystart,xend,yend,procnum,numprocs,plottype);
 
@@ -1061,7 +1103,7 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
   char tmpstr[BUFFERLENGTH];
   float *scal = GetScalarPointer(data,plottype,k,procnum);
 
-  if(zooming==false && sliceType==value && procnum==procloc)
+  if(zooming==false && (sliceType==value || sliceType==value_keyboard) && procnum==procloc)
     if(plottype==freesurface || 
        plottype==depth || 
        plottype==h_d) {
@@ -2640,7 +2682,6 @@ void Usage(char *str) {
 void FindNearest(dataT *data, int x, int y, int *iloc, int *procloc, int procnum, int numprocs) {
   int proc, i, procstart, procend;
   float mindist, dist, xval, yval;
-
   xval = dataLimits[0]+
     (float)x*(dataLimits[1]-dataLimits[0])/(axesPosition[2]*(float)width);
   yval = dataLimits[2]+
@@ -2922,7 +2963,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	// This line was removed since 1 less int is printed to this file
 	// in grid.c (mnptr is no longer printed).
 	//	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
-	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %f %f %f",
+	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %f %f %f %d %d %d",
 	       &(data->xv[proc][i]),
 	       &(data->yv[proc][i]),
 	       &xind,
@@ -2933,7 +2974,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	       &(data->face[proc][NFACES*i+2]),
 	       // Same for this line
 	       //	       &ind,&ind,&ind,&ind,&ind,&ind,&ind);
-	       &ind,&ind,&ind,&ind,&ind,&ind,&ind,&ind,&ind);
+	       &ind,&ind,&ind,&ind,&ind,&ind,&ind,&ind,&ind,
+         &ind, &ind, &ind);
       }
       fclose(fid);
     }
@@ -3021,25 +3063,27 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	fseek(fid,3*(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
 	for(i=0;i<data->Nkmax;i++) {
 	  
-	  fread(dummy,sizeof(double),data->Nc[proc],fid);     
-	  for(j=0;j<data->Nc[proc];j++) 
-	    data->u[proc][i][j]=dummy[j];
-	  
-	  fread(dummy,sizeof(double),data->Nc[proc],fid);     
-	  for(j=0;j<data->Nc[proc];j++) 
-	    data->v[proc][i][j]=dummy[j];
-	  
-	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
-	  for(j=0;j<data->Nc[proc];j++) 
-	    data->w[proc][i][j]=dummy[j];
-	  
-	  for(j=0;j<data->Nc[proc];j++) 
-	    if(data->s0[proc][i][j]==EMPTY) {
-	      data->u[proc][i][j]=EMPTY;
-	      data->v[proc][i][j]=EMPTY;
-	    }
-	}
-	fclose(fid);
+    //voronoi point u 
+    fread(dummy,sizeof(double),data->Nc[proc],fid);     
+    for(j=0;j<data->Nc[proc];j++) 
+      data->u[proc][i][j]=dummy[j];
+
+    //voronoi point v 
+    fread(dummy,sizeof(double),data->Nc[proc],fid);     
+    for(j=0;j<data->Nc[proc];j++) 
+      data->v[proc][i][j]=dummy[j];
+    //voronoi point w 
+    fread(dummy,sizeof(double),data->Nc[proc],fid);      
+    for(j=0;j<data->Nc[proc];j++) 
+      data->w[proc][i][j]=dummy[j];
+
+    for(j=0;j<data->Nc[proc];j++) 
+      if(data->s0[proc][i][j]==EMPTY) {
+        data->u[proc][i][j]=EMPTY;
+        data->v[proc][i][j]=EMPTY;
+      }
+  }
+  fclose(fid);
       }
 
       //      printf("Computing ubar and vbar at step %d, proc %d\n",nstep,proc);
@@ -3389,6 +3433,27 @@ int LoadCAxis(void) {
 int GetStep(dataT *data) {
   printf("Enter time step to plot: ");
   return GetNumber(1,data->nsteps);
+}
+
+int GetLoc(dataT *data, int procnum, int numprocs) {
+  int procstart, procend; 
+  // get the processor info
+  if(procplottype==allprocs) {
+    procstart=0;
+    procend=numprocs;
+  } else {
+    procstart=procnum;
+    procend=procnum+1;
+  }
+  // get the particular processor from user
+  printf("Get processor number = ");
+  keyboardproc=GetNumber(procstart,procend);
+  // get the particular cell from user
+  printf("Get cell number = ");
+  keyboardcell=GetNumber(0,data->Nc[keyboardproc]);
+
+  printf("Selected value on proc %d and cell %d\n",
+      keyboardproc, keyboardcell);
 }
 
 int GetNumber(int min, int max) {

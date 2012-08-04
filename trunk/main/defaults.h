@@ -10,6 +10,24 @@
  *
  */
 #include "suntans.h"
+#include "phys.h"
+
+
+/* prettyplot:
+ * uses quadratic interpolation for output values if 1, otherwise uses whichever interp method specified
+ * use this by default to get better approximations for values on skewed grids
+*/
+const int prettyplot_DEFAULT=1;
+
+/* linearFS:
+   default value is for a nonlinear free surface, linearFS=0
+*/
+const int linearFS_DEFAULT=0;
+
+/* interp:
+   default value uses classic SUNTANS Perot method (type 0) vs Quadratic (type 1)
+*/
+const int interp_DEFAULT=0;
 
 /* gravity:
    default value is that of Earth's gravitational constant (SI units)
@@ -70,7 +88,7 @@ const int ntoutStore_DEFAULT = 0;
 /* AB:
    Adam-Bashforth for explicit terms.
 */
-const int AB_DEFAULT = 3;
+const int AB_DEFAULT = 2;
 
 
 /* TVDmomentum
