@@ -55,11 +55,13 @@ FILE *getfile(void)
   FILE *ifile;
 
   printf("Please input a file: ");
-  scanf("%s",file);
+  if(scanf("%s",file) == 0)
+    printf("Error reading from file in getfile\n");
   while(!(ifile = fopen(file,"r"))) {
     printf("Error in opening %s.\n", file);
     printf("Please input another file: ");
-    scanf("%s",file);
+    if(scanf("%s",file) == 0)
+      printf("Error reading from another file in getfile\n");
   }
   return ifile;
 }
@@ -239,9 +241,22 @@ double GetValue(char *filename, char *str, int *status)
 double GetDefaultValue(char *str, int *status) {
   *status=1;
 
-  if(!strcmp(str,"grav")){
+  if(!strcmp(str,"prettyplot")) {
+
+    return prettyplot_DEFAULT;
+
+  }
+  else if(!strcmp(str,"linearFS")){
+
+    return linearFS_DEFAULT;
+
+  } else if(!strcmp(str,"grav")){
 
     return grav_DEFAULT;
+
+  } else if(!strcmp(str,"interp")) {
+
+    return interp_DEFAULT;
 
   } else if(!strcmp(str,"minimum_depth")) {
 

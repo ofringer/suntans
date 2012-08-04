@@ -30,21 +30,19 @@ XLIBDIR = /usr/lib64
 
 ifneq ($(TRIANGLEHOME),)
   TRIANGLEINCLUDE = -I$(TRIANGLEHOME)
-  TRIANGLELIB = $(TRIANGLEHOME)/triangle.o
   TRIANGLELIBDIR = -L$(TRIANGLEHOME)
-  TRIANGLELD = 
+  TRIANGLELD = -ltriangle
   TRIANGLESRC = triangulate.c
 else
   TRIANGLEINCLUDE =
   TRIANGLELIB =
   TRIANGLELIBDIR =
-  TRIANGLELD =
+  TRIANGLELD = -ltriangle
   TRIANGLESRC = triangulate-notriangle.c
 endif	
 
 ifneq ($(PARMETISHOME),)
-  PARMETISINCLUDE = -I$(PARMETISHOME)/ParMETISLib
-  PARMETISLIB = $(PARMETISHOME)/libparmetis.a $(PARMETISHOME)/libmetis.a
+  PARMETISINCLUDE = -I$(PARMETISHOME)/include/parmetis/
   PARMETISLIBDIR = -L$(PARMETISHOME)
   PARMETISLD = -lparmetis -lmetis 
   PARMETISSRC = partition.c
@@ -61,34 +59,43 @@ endif
 LD = $(CC)
 LIBS = $(PARMETISLIB) $(TRIANGLELIB)
 LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR)
-LDFLAGS = -lm $(LIBDIR) $(LIBS)
+LDFLAGS = -lm $(LIBDIR) $(LIBS) $(PARMETISLD) $(TRIANGLELD)
 INCLUDES = $(PARMETISINCLUDE) $(TRIANGLEINCLUDE)
 DEFINES = $(MPIDEF)
 CFLAGS = $(OPTFLAGS) $(INCLUDES) $(DEFINES)
 
 EXEC = sun
 PEXEC = sunplot
+TEXEC = suntest
 
 DEPFLAGS = -Y
 
-SRCS = 	mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
+SRCS = 	mympi.c grid.c report.c util.c fileio.c phys.c initialization.c memory.c \
 	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c tides.c \
-	sources.c diffusion.c $(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE)
-OBJS = $(SRCS:.c=.o)
+	sources.c diffusion.c $(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE) 
+
+MSRCS=suntans.c $(SRCS)
+MOBJS = $(MSRCS:.c=.o)
 
 PLOTSRCS = sunplot.c fileio.c
 PLOTOBJS = $(PLOTSRCS:.c=.o)
+
+TESTSRCS = testmodule.c $(SRCS)
+TESTOBJS = $(TESTSRCS:.c=.o)
 
 all:	$(EXEC)
 
 .c.o:	
 	$(CC) $(CFLAGS) -c $*.c
 
-$(EXEC): $(OBJS) 
-	$(LD)  -o $@ $(OBJS) $(LDFLAGS)
+$(EXEC): $(MOBJS) 
+	$(LD)  -o $@ $(MOBJS) $(LDFLAGS)
 
 $(PEXEC): $(PLOTOBJS)
-	$(LD) -o sunplot $(PLOTOBJS) $(XLDFLAGS) -L$(XLIBDIR)
+	$(LD) -o $(PEXEC) $(PLOTOBJS) $(XLDFLAGS) -L$(XLIBDIR)
+
+$(TEXEC): $(TESTOBJS) 
+	$(LD) -o $@ $(TESTOBJS) $(LDFLAGS)
 
 depend: 
 	makedepend $(DEPFLAGS) -- $(SRCS) $(PLOTSRCS) &> /dev/null

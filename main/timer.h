@@ -16,7 +16,7 @@
 
 // Global variables for timing
 REAL t_start, t_source, t_predictor, t_nonhydro, t_turb, t_transport, t_io, t_comm,
-  t_check;
+  t_check, t_tictoc;
 
 /*
  * Function: Timer
@@ -27,5 +27,7 @@ REAL t_start, t_source, t_predictor, t_nonhydro, t_turb, t_transport, t_io, t_co
  *
  */
 extern REAL Timer(void);
+inline void Tic(void);
+inline REAL Toc(void);
 
 #endif

@@ -17,6 +17,18 @@
 #include "fileio.h"
 
 /*
+ * Enumerated type definitions
+ *
+ */
+
+// effectively flags for use in interpolation schemes
+typedef enum _interpolation {
+  nRT1, nRT2,
+  tRT1, tRT2,
+  QUAD, PEROT
+} interpolation;
+
+/*
  * Main physical variable struct.
  *
  */
@@ -24,6 +36,26 @@ typedef struct _physT {
   REAL **u;
   REAL **uc;
   REAL **vc;
+
+  /*  new variables for nodal and tangential velocities */
+  // definitions follow from Wang et al 2011
+  // nRT1[Np][Nk][numpcneighs] so that for each node there is a 
+  // value for each cell neighbor (non-unique to a node) and 
+  // note that the number of cell neighbors varies based on node
+  REAL ***nRT1u;
+  REAL ***nRT1v;
+  // nRT2[Np][Nk] has a unique value for each node since it is 
+  // the area-weigted average of all the nRT1 values 
+  // around the node
+  REAL **nRT2u;
+  REAL **nRT2v;
+  // tRT1[Ne][Nk] is the area-weighted average of the nRT1 values
+  // for the neighboring cells of an edge
+  REAL **tRT1;
+  // tRT2[Ne][Nk] is the area-weighted average of the nRT2 values
+  // for each node at the end of the edge
+  REAL **tRT2;
+
   REAL **uold;
   REAL **vold;
   REAL *D;
@@ -130,16 +162,19 @@ typedef struct _physT {
  */
 typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
-    thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
-    beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, grav, Coriolis_f, CmaxU, CmaxW, laxWendroff_Vertical;
-  int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, qmaxiters, hprecond, qprecond, volcheck, masscheck,
-    nonlinear, newcells, wetdry, sponge_distance, sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
-    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum;
-  FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID,
-    *SalinityFID, *BGSalinityFID, *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,
-    *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;
-
+       thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
+       dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, grav, Coriolis_f, CmaxU, CmaxW, 
+       laxWendroff_Vertical;
+  int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, 
+      qmaxiters, hprecond, qprecond, volcheck, masscheck, nonlinear, linearFS, newcells, wetdry, sponge_distance, 
+      sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
+      TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum;
+  FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID, *SalinityFID, *BGSalinityFID, 
+       *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,    
+       *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;
+  interpolation interp; int prettyplot;
 } propT;
+
 
 /*
  * Public function declarations.
@@ -156,5 +191,6 @@ void ReadProperties(propT **prop, int myproc);
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
 REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind);
 REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);
+inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) ;
 
 #endif

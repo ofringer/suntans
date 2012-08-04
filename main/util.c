@@ -24,18 +24,18 @@ void Sort(int *a, int *v, int N)
   for(i=0;i<N;i++) {
     for(j=i+1;j<N;j++) 
       if(tmp[j]<tmp[i]) {
-	temp = a[j];
-	a[j] = a[i];
-	a[i] = temp;
-	temp = tmp[j];
-	tmp[j] = tmp[i];
-	tmp[i] = temp;
+        temp = a[j];
+        a[j] = a[i];
+        a[i] = temp;
+        temp = tmp[j];
+        tmp[j] = tmp[i];
+        tmp[i] = temp;
       }
   }
 
   free(tmp);
 }
-      
+
 int *ReSize(int *a, int N)
 {
   int i;
@@ -90,10 +90,10 @@ void Interp(REAL *x, REAL *y, REAL *z, int N, REAL *xi, REAL *yi, REAL *zi, int 
       zi[n]=0;
       r=0;
       for(j=0;j<numpoints;j++) {
-	dist = pow(x[points[j]]-xi[n],2.0)+pow(y[points[j]]-yi[n],2.0);
-	r0 = 1.0/dist;
-	zi[n]+=z[points[j]]*r0;
-	r+=r0;
+        dist = pow(x[points[j]]-xi[n],2.0)+pow(y[points[j]]-yi[n],2.0);
+        r0 = 1.0/dist;
+        zi[n]+=z[points[j]]*r0;
+        r+=r0;
       }
       zi[n]/=r;
     } else 
@@ -114,11 +114,11 @@ int FindNearest(int *points, REAL *x, REAL *y, int N, int np, REAL xi, REAL yi)
     for(i=0;i<N;i++) {
       d = (x[i]-xi)*(x[i]-xi)+(y[i]-yi)*(y[i]-yi);
       if(d<dist & IsMember(i,points,np)==-1) {
-	dist=d;
-	points[n]=i;
+        dist=d;
+        points[n]=i;
       } else if(d==0) {
-	points[0]=i;
-	return 0;
+        points[0]=i;
+        return 0;
       }
     }
   }
@@ -128,6 +128,8 @@ int FindNearest(int *points, REAL *x, REAL *y, int N, int np, REAL xi, REAL yi)
 
 void TriSolve(REAL *a, REAL *b, REAL *c, REAL *d, REAL *u, int N)
 {
+  // basically standard tridiagonal solver as at 
+  // http://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm
   int k;
 
   //  printf("In trisolve with N = %d\n",N);
@@ -143,7 +145,7 @@ void TriSolve(REAL *a, REAL *b, REAL *c, REAL *d, REAL *u, int N)
   for(k=N-2;k>=0;k--)
     u[k] = d[k]/b[k]-c[k]*u[k+1]/b[k];
 }
-  
+
 int IsNan(REAL x) 
 {
   if(x!=x)
@@ -169,7 +171,7 @@ REAL UpWind(REAL u, REAL dz1, REAL dz2)
       fluxheight=dz1;
   else
     fluxheight=Max(dz1,dz2);
-  
+
   return fluxheight;
 }
 
@@ -199,26 +201,74 @@ void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction) {
     for(nf=0;nf<NFACES;nf++) {
       if((neigh=grid->neigh[i*NFACES+nf])!=-1) {
 
-	ne=grid->face[i*NFACES+nf];
-	nc1 = grid->grad[2*ne];
-	nc2 = grid->grad[2*ne+1];
+        ne=grid->face[i*NFACES+nf];
+        nc1 = grid->grad[2*ne];
+        nc2 = grid->grad[2*ne+1];
 
-	if(grid->ctop[nc1]>grid->ctop[nc2])
-	  kmin = grid->ctop[nc1];
-	else
-	  kmin = grid->ctop[nc2];
-	
-	if(direction==1)
-	  coordinate=grid->n1[ne];
-	else
-	  coordinate=grid->n2[ne];
+        if(grid->ctop[nc1]>grid->ctop[nc2])
+          kmin = grid->ctop[nc1];
+        else
+          kmin = grid->ctop[nc2];
 
-	for(k=kmin;k<grid->Nke[ne];k++) 
-	  gradient[i][k]+=0.5/grid->Ac[i]*(phi[nc1][k]+phi[nc2][k])*coordinate*grid->normal[i*NFACES+nf]*grid->df[ne];
+        if(direction==1)
+          coordinate=grid->n1[ne];
+        else
+          coordinate=grid->n2[ne];
+
+        for(k=kmin;k<grid->Nke[ne];k++) 
+          gradient[i][k]+=0.5/grid->Ac[i]*(phi[nc1][k]+phi[nc2][k])*coordinate*grid->normal[i*NFACES+nf]*grid->df[ne];
       }
     }
   }
 }
-	  
-      
-      
+
+// function that will bring in two lists and return the first shared value it finds
+inline int SharedListValue(int *list1, int *list2, int listsize) {
+  int i, j, li;
+  // iterate over each element of each list and compare with all the values of the other list
+  for(i=0; i < listsize; i++) {
+    li = list1[i];
+    for(j=0; j < listsize; j++) {
+      // if we have a match return the value
+      if(li == list2[j])
+        return li;
+    }
+  }
+  // no list value found so just return the error message -1
+  return -1;
+}
+
+// Function that will print contents of vector to a new, named file
+void PrintVectorToFile(enum Type etype, void *Vector, int M, char *filename, int myproc) {
+  FILE *fid; int value; 
+
+  // open file
+  fid =  MPI_FOpen(filename, "w+", "PrintVectorToFile", myproc);
+
+  // determine the type of pointer used
+  switch(etype) {
+    case DOUBLE: 
+      //printf("\tPrinting Double\n");
+      // print contents of REAL vector to the file
+      for (value = 0; value < M; value++)
+        fprintf(fid, "%f\n", ((REAL*)Vector)[value]);
+      fclose(fid);
+      break;
+    case INT:
+      //printf("\tPrinting Int\n");
+      // print contents of INT vector to the file
+      for (value = 0; value < M; value++)
+        fprintf(fid, "%d\n", ((int*)Vector)[value]);
+      fclose(fid);
+      break;
+    default:
+      printf("Don't understand type, please use known type to print to file\n");
+      break;
+  }
+}
+
+// inline function definition for max
+inline int max(int a, int b) {
+  return a > b ? a : b;
+}
+

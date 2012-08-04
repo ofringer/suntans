@@ -12,6 +12,11 @@
 #ifndef _grid_h
 #define _grid_h
 
+//Parmetis 2.0
+//#include "parmetis.h"
+//Parmetis 3.1
+#include "parmetislib.h"
+
 #include "suntans.h"
 #include "fileio.h"
 #include "mympi.h"
@@ -49,6 +54,22 @@ typedef struct _gridT {
   int *gradf;
   int *mark;
   int *normal;
+
+  // new deinitions for nodal neighbor data structure
+  int *localtoglobalpoints; //global index from local point index
+  int *numppneighs;   // number of point neighbors to point
+  int **ppneighs;     // index of points neighbors to a point
+  int *numpeneighs;   // number of edge neighbors to point
+  int **peneighs;     // index of edge neighbors to a point
+  int *numpcneighs;   // number of cell neighbors to point
+  int **pcneighs;     // index of cell neighbors to a point
+  REAL **Actotal;     // total area of cell neighbor areas to point
+                      // note that this is over all the cells and 
+                      // the layer too
+// eventually want to get these here and not use global variables
+//  // variables to define how the halo works
+//  boundaryselection g_halolist[2] ={EDGE, NODE}; 
+//  int g_halolistsize = 2;
 
   int *xadj;
   int *adjncy;
@@ -109,6 +130,7 @@ typedef struct _gridT {
   int *ctopold;
   int *etop;
   int *etopold;
+  int *Nkp;
   int *Nke;
   int *Nkc;
   int Nkmax;
@@ -122,6 +144,13 @@ typedef struct _gridT {
   int fixdzz;
   REAL smoothbot;
 } gridT;
+
+// enums used to set type of boundary selection we will use
+typedef enum _boundaryselection{
+  EDGE,
+  NODE
+} boundaryselection;
+
 
 /*
  * Public function declarations.
@@ -153,10 +182,11 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 void CreateCellGraph(gridT *grid);
 void CreateEdgeGraph(gridT *grid);
 void Connectivity(gridT *grid, int myproc);
+inline int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc);
 void ReadFileNames(int myproc);
-int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc);
 void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void AllocateTransferArrays(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void FreeTransferArrays(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
+REAL GetArea(REAL *xt, REAL *yt, int Nf);
 
 #endif
