@@ -3,11 +3,11 @@
 #  Input file for SUNTANS.
 #
 ########################################################################
-Nkmax			10	# Number of cells in the vertical
+Nkmax	 		  10	# Number of cells in the vertical
 stairstep		1	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1	# Stretching factor for vertical grid (1<=rstretch<1.1)
-CorrectVoronoi		0	# Whether or not to correct Voronoi points
-VoronoiRatio		0	# Adjust the voronoi points by this amount if 1 then = centroid.
+CorrectVoronoi		1 0	# Whether or not to correct Voronoi points
+VoronoiRatio	1 	0	# Adjust the voronoi points by this amount if 1 then = centroid.
 vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
 IntDepth 		0	# 1 if interpdepth, 0 otherwise
 dzsmall			0.1	# Smallest grid spacing ratio before correction
@@ -54,6 +54,9 @@ timescale		0	# timescale for open boundary condition
 volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
 nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+interp      1  
+laxWendroff     0   
+laxWendroff_Vertical    0   
 newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              5e-4	# Coriolis frequency f=2*Omega*sin(phi)
@@ -71,6 +74,7 @@ points points.dat	# Vertices file (input)
 edges edges.dat		# Edge file (input)
 cells cells.dat		# Cell centered file (input)
 depth depth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
+nodes nodes.dat   # Node topology information (output)
 celldata celldata.dat	# Cell-centered output (output)
 edgedata edgedata.dat	# Edge-centered output (output)
 vertspace vertspace.dat	# Vertical grid spacing (output)

@@ -55,6 +55,7 @@ timescale		        0 	# timescale for open boundary condition
 volcheck		        1 	# Check for volume conservation
 masscheck		        1 	# Check for mass conservation
 nonlinear 2		      2	  # No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+interp              1   # Interpolation methods: 0 for Perot, 1 for RT0 basis + Quadratic interpolation 
 laxWendroff         0   # Automatically generated entry by GriddingTools::GetSuntansValue
 laxWendroff_Vertical 0  # No Lax Wendroff in vertical
 newcells		        1	  # 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
@@ -73,6 +74,7 @@ readTemperature		  0	  # Whether or not to read initial temperature profile from
 points       points.dat	# Vertices file (input)
 edges         edges.dat	# Edge file (input)
 cells         cells.dat	# Cell centered file (input)
+nodes         nodes.dat	# Cell centered file (input)
 depth       depth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
 celldata  celldata.dat	# Cell-centered output (output)
 edgedata  edgedata.dat	# Edge-centered output (output)

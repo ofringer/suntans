@@ -13,7 +13,7 @@ else
 endif
 
 ifneq ($(PARMETISHOME),)
-  PARMETISINC = -I$(PARMETISHOME)/ParMETISLib
+  PARMETISINC = -I$(PARMETISHOME)/include/parmetis
 endif
 
 LD = $(CC) 
@@ -30,7 +30,7 @@ NUMPROCS =8
 test:	testXY testXZ
 
 testXY:	
-	make clobber
+	make -C ../../ clobber sunplot
 	rm -rf dataXY
 	cp boundariesXY.c boundaries.c
 	cp rundata/cellsXY.dat rundata/cells.dat
@@ -41,7 +41,7 @@ testXY:
 	sh $(EXEC)XY.sh $(NUMPROCS)
 
 testXZ:	
-	make clobber
+	make -C ../../ clobber sunplot
 	rm -rf dataXZ
 	cp boundariesXZ.c boundaries.c
 	cp rundata/cellsXZ.dat rundata/cells.dat
@@ -54,11 +54,11 @@ testXZ:
 data:	$(SUN)
 
 plotXY:
-		cp -r $(SUNTANSHOME)/cmaps .
+		cp -rf $(SUNTANSHOME)/cmaps .
 		$(SUNTANSHOME)/sunplot -np $(NUMPROCS) --datadir=dataXY
 
 plotXZ:
-		cp -r $(SUNTANSHOME)/cmaps .
+		cp -rf $(SUNTANSHOME)/cmaps .
 		$(SUNTANSHOME)/sunplot -np $(NUMPROCS) --datadir=dataXZ
 
 .c.o:	
@@ -72,4 +72,4 @@ clean:
 	rm -f *.o
 
 clobber: clean
-	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data cmaps boundaries.c *.eps rundata/cells.dat rundata/points.dat rundata/edges.dat rundata/suntans.dat
+	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data cmaps boundaries.c rundata/cells.dat rundata/points.dat rundata/edges.dat rundata/suntans.dat

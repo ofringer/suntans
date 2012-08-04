@@ -71,6 +71,7 @@ pslg   twod.dat 	# Planar straight line graph (input)
 points points.dat	# Vertices file (input)
 edges edges.dat		# Edge file (input)
 cells cells.dat		# Cell centered file (input)
+nodes nodes.dat
 depth depth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
 celldata celldata.dat	# Cell-centered output (output)
 edgedata edgedata.dat	# Edge-centered output (output)
