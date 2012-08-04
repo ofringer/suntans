@@ -12,7 +12,7 @@ else
 endif
 
 ifneq ($(PARMETISHOME),)
-  PARMETISINC = -I$(PARMETISHOME)/ParMETISLib
+  PARMETISINC = -I$(PARMETISHOME)/include/parmetis
 endif
 
 LD = $(CC) 
@@ -28,10 +28,14 @@ NUMPROCS = 1
 all:	data
 
 test:	data
-	sh accuracy.sh
+	bash accuracy.sh
 	./$(EXEC)
 
 data:	$(EXEC) $(SUN)
+
+plot:
+	cp -fr $(SUNTANSHOME)/cmaps .
+	$(SUNTANSHOME)/sunplot -np $(NUMPROCS) --datadir=data
 
 .c.o:	
 	$(LD) -c $(INCLUDES) $*.c

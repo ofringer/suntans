@@ -52,6 +52,8 @@ timescale		0	# timescale for open boundary condition
 volcheck		1	# Check for volume conservation
 masscheck		1	# Check for mass conservation
 nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+laxWendroff 0    
+laxWendroff_Vertical 0  
 newcells		1	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0	# Coriolis frequency f=2*Omega*sin(phi)
@@ -69,6 +71,7 @@ points points.dat	# Vertices file (input)
 edges edges.dat		# Edge file (input)
 cells cells.dat		# Cell centered file (input)
 depth depth.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
+nodes nodes.dat   # Node topology information (output)
 celldata celldata.dat	# Cell-centered output (output)
 edgedata edgedata.dat	# Edge-centered output (output)
 vertspace vertspace.dat	# Vertical grid spacing (output)
