@@ -509,9 +509,9 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
   for(j=0;j<grid->Ne;j++) 
     if(fread(phys->Cn_U[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j])
       printf("Error reading phys->Cn_U[j]\n");
- for(j=0;j<grid->Ne;j++) 
-   if(fread(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j]); //AB3
- printf("Error reading phys->Cn_U2[j]\n");
+  for(j=0;j<grid->Ne;j++) 
+    if(fread(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j]) //AB3
+      printf("Error reading phys->Cn_U2[j]\n");
   for(i=0;i<grid->Nc;i++) 
     if(fread(phys->Cn_W[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
       printf("Error reading phys->Cn_W[i]\n");
