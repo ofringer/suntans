@@ -15,7 +15,7 @@
 //Parmetis 2.0
 //#include "parmetis.h"
 //Parmetis 3.1
-#include "parmetislib.h"
+//#include "parmetislib.h"
 
 #include "suntans.h"
 #include "fileio.h"

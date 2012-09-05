@@ -16,8 +16,8 @@
 # Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
 # University. All Rights Reserved.
 #
-MPIHOME=/usr
-PARMETISHOME=/usr
-TRIANGLEHOME=/usr
+MPIHOME=
+PARMETISHOME=
+TRIANGLEHOME=
 
 
