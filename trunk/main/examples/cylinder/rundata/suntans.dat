@@ -33,11 +33,11 @@ CdB	                0.0	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		0	# Turbulence model (0 for none, 1 for MY25)
 AB          3 
-dt 			0.5e-3	# Time step
+dt 			2.5e-3	# Time step
 grav			9.81e10 # Rigid lid approximation
 Cmax 			1 	# Maximum permissible Courant number
-nsteps 			8000    # Number of steps
-ntout   		400  	# How often to output data
+nsteps 			1600    # Number of steps
+ntout   		80  	# How often to output data
 ntprog   		5 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
 nonhydrostatic		0	# 0 = hydrostatic, 1 = nonhydrostatic
@@ -55,6 +55,7 @@ flux 			0	# flux
 timescale		0	# timescale for open boundary condition
 volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
+interp			1	# Quadratic interpolation
 nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
 interp      1 
 laxWendroff		0       # Dont' use Lax Wendroff diffusion coefficients
