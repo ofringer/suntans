@@ -17,7 +17,7 @@
  * uses quadratic interpolation for output values if 1, otherwise uses whichever interp method specified
  * use this by default to get better approximations for values on skewed grids
 */
-const int prettyplot_DEFAULT=1;
+const int prettyplot_DEFAULT=0;
 
 /* linearFS:
    default value is for a nonlinear free surface, linearFS=0
