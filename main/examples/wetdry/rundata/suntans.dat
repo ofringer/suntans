@@ -55,7 +55,6 @@ timescale		0	# timescale for open boundary condition
 volcheck		1	# Check for volume conservation
 masscheck		1	# Check for mass conservation
 nonlinear		0	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
-interp      1	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
 newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			1       # 1 if wetting and drying, 0 otherwise
 TVDsalt			0	# Use first-order upwind for salt
