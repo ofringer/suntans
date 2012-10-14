@@ -94,7 +94,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
 
   // Compute the scalar on the vertical faces (for horiz. advection)
   if(prop->TVD && prop->horiTVD)
-    HorizontalFaceScalars(grid,phys,prop,boundary_scal,prop->TVD,comm,myproc); 
+    HorizontalFaceScalars(grid,phys,prop,scal,boundary_scal,prop->TVD,comm,myproc); 
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];

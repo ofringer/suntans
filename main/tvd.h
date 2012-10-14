@@ -24,7 +24,7 @@
 // This is now defined in defaults.h and can be set in suntans.dat for each of salt, temperature, and turbulence
 //#define TVDMACRO 4
 
-void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **boundary_scal, int TVD,
+void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, REAL **boundary_scal, int TVD,
 			   MPI_Comm comm, int myproc); 
 void GetApAm(REAL *ap, REAL *am, REAL *wp, REAL *wm, REAL *Cp, REAL *Cm, REAL *rp, REAL *rm,
 	     REAL **w, REAL **dzz, REAL **scal, int i, int Nk, int ktop, REAL dt, int TVD);
