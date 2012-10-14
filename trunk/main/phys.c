@@ -1473,7 +1473,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     // Compute the u-component fluxes at the faces
     
     if(prop->nonlinear==5) //use tvd for advection of momemtum
-      HorizontalFaceU(phys->uc,grid,phys,prop,prop->TVDmomentum,comm,myproc);
+      HorizontalFaceScalars(grid,phys,prop,phys->uc,phys->boundary_u,prop->TVDmomentum,comm,myproc);
 
     // over each of the "computational" cells
     // Compute the u-component fluxes at the faces
@@ -1613,9 +1613,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     }
 
     if(prop->nonlinear==5) //use tvd for advection of momemtum
-      HorizontalFaceU(phys->vc,grid,phys,prop,prop->TVDmomentum,comm,myproc);
-
-
+      HorizontalFaceScalars(grid,phys,prop,phys->vc,phys->boundary_v,prop->TVDmomentum,comm,myproc);
 
     // Compute the v-component fluxes at the faces
     for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
