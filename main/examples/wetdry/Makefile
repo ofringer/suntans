@@ -23,6 +23,7 @@ EXEC = wetdry
 OBJS = 
 SUN = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
+DEFS = $(MPIDEF)
 NUMPROCS = 1
 
 all:	data
@@ -46,7 +47,7 @@ test:	data
 data:	$(SUN)
 
 .c.o:	
-	$(LD) -c $(INCLUDES) $*.c
+	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 
 $(SUN):	initialization.o state.o
 	cp initialization.o state.o $(SUNTANSHOME)
