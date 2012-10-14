@@ -30,7 +30,7 @@ NUMPROCS =8
 test:	testXY testXZ
 
 testXY:	
-	make -C ../../ clobber sunplot
+	make -C ../../ clean sunplot
 	rm -rf dataXY
 	cp boundariesXY.c boundaries.c
 	cp rundata/cellsXY.dat rundata/cells.dat
@@ -41,7 +41,7 @@ testXY:
 	sh $(EXEC)XY.sh $(NUMPROCS)
 
 testXZ:	
-	make -C ../../ clobber sunplot
+	make -C ../../ clean sunplot
 	rm -rf dataXZ
 	cp boundariesXZ.c boundaries.c
 	cp rundata/cellsXZ.dat rundata/cells.dat
