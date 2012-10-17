@@ -21,7 +21,7 @@ from maptools import ll2utm
 
 import pdb
 
-def interpWeatherStations(latlon,timestart,timeend,dt,utmzone, showplot=False):
+def interpWeatherStations(latlon,timestart,timeend,dt,utmzone,dbfile, showplot=False):
     """ Temporally interpolate weather station data onto a specified time grid"""
 
     # Create the time variable
@@ -417,22 +417,21 @@ def convertTime(timein):
     return np.array(timeout)
     
     
-######
-# Inputs
-latlon = [-95.60,-94.3,28.8,30]
-#latlon = [-95.0,-94.3,28.8,29.5]
-timestart = datetime(2011,2,1,0,0,0)
-timeend = datetime(2011,3,1,0,0,0)
-dt = 1 # time step in hours
-utmzone = 15
-dbfile = 'C:/Projects/GOMGalveston/DATA/GalvestonObs.db'
-showplot=False
-ncfile='C:\Projects\GOMGalveston\MODELLING\WINDS\Galveston_Winds_Feb2011_UTM.nc'
-######
-
-    
+#######
+## Inputs
+#latlon = [-95.60,-94.3,28.8,30]
+##latlon = [-95.0,-94.3,28.8,29.5]
+#timestart = datetime(2011,2,1,0,0,0)
+#timeend = datetime(2011,3,1,0,0,0)
+#dt = 1 # time step in hours
+#utmzone = 15
+#dbfile = 'C:/Projects/GOMGalveston/DATA/GalvestonObs.db'
+#showplot=False
+#ncfile='C:\Projects\GOMGalveston\MODELLING\WINDS\Galveston_Winds_Feb2011_UTM.nc'
 #
-[coords, output, nctime] = interpWeatherStations(latlon,timestart,timeend,dt,utmzone,showplot=False)
+#    
+##
+#[coords, output, nctime] = interpWeatherStations(latlon,timestart,timeend,dt,utmzone,showplot=False)
+##
 #
-
-write2NC(ncfile,coords,output,nctime)
+#write2NC(ncfile,coords,output,nctime)
