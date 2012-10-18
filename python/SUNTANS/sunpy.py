@@ -327,16 +327,19 @@ class Profile(object):
        
        # Set defaults
        self.indices = np.arange(0,self.Np)
-       self.tstep = 0
+       self.tstep = 0 # -99 all steps, -1 last step
        self.klayer = np.arange(0,self.Nz)
        self.variable = 'u'
        self.xcoord = 'xp'
        self.ycoord = 'z'
        self.clim = None
+       self.clevels = 12 # Number of contour levels
        
        # Update user-defined properties
        self.__dict__.update(kwargs)
         
+       # Update tstep 
+       self.__updateTstep()
 
     
     def __loadMeta(self):
@@ -345,20 +348,42 @@ class Profile(object):
         """
         nc = Dataset(self.ncfile, 'r', format='NETCDF4')        
         
-        # Note that some of these variables will change
-        self.xp = nc.variables['x'][:]
-        self.yp = nc.variables['y'][:]
-        self.dv = nc.variables['h'][:]
-        self.dz = nc.variables['vertspace'][:]
-        self.z = nc.variables['vertdepth'][:]
-        self.Nk = nc.variables['klayers'][:]
+        # Note that some of these variable names may change
+        try:
+            self.xp = nc.variables['x'][:]
+        except:
+            self.xp = nc.variables['xv'][:]
+        try:    
+            self.yp = nc.variables['y'][:]
+        except:
+            self.yp = nc.variables['yv'][:]
+        try:
+            self.dv = nc.variables['h'][:]
+        except:
+            self.dv = nc.variables['dv'][:]
+        try:
+            self.dz = nc.variables['vertspace'][:]
+        except:
+            self.dz = nc.variables['dz'][:]
+        try:
+            self.z = - nc.variables['vertdepth'][:]
+        except:
+            self.z =  - nc.variables['z_r'][:]
+        try:
+            self.Nk = nc.variables['klayers'][:]
+        except:
+            self.Nk = nc.variables['Nk'][:]
+            
         self.Np = len(self.xp)
         self.Nz = len(self.dz)
         
         self.xlims = [self.xp.min(),self.xp.max()]
         self.ylims = [self.yp.min(),self.yp.max()]
         
-        t = nc.variables['suntime']
+        try:
+            t = nc.variables['suntime']
+        except:
+            t = nc.variables['time']
         self.time = num2date(t[:],t.units)
         
         #print nc.variables.keys()
@@ -419,10 +444,38 @@ class Profile(object):
             self.xplot = self.xp[self.indices]
         elif self.xcoord=='yp':
             self.xplot = self.yp[self.indices]
+        elif self.xcoord=='time':
+            self.xplot = self.time[self.tstep]
             
         if self.ycoord=='z':
             self.yplot = self.z[self.klayer]
+    
+    def __updateTstep(self):
+        """
+        Updates the tstep variable: -99 all steps, -1 last step
+        """
+        try:
+            if self.tstep.any()==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep.any()==-1:
+                self.tstep=len(self.time)
+        except:
+            if self.tstep==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep==-1:
+                self.tstep=len(self.time)
+    def __checkDims(self):
+        """
+        Check that the dimensions sizes match for plotting
         
+        If not transpose the data
+        """        
+        rc = np.shape(self.data)
+        nx = len(self.xplot)
+        ny = len(self.yplot)
+        
+        if ny!=rc[0] or nx !=rc[1]:
+            self.data=np.transpose(self.data)
         
     def plotIndices(self):
         """
@@ -440,62 +493,72 @@ class Profile(object):
         
     def pcolor(self,data=None,**kwargs):
         """
-        Pcolor plot of the given variable        
+        Pcolor plot of the given variable (doesn't like time variable)
         """     
-        if not self.__dict__.has_key('data'):
-            self.loadData()
         if not self.__dict__.has_key('xplot'):
             self.__loadXY()
+        if not self.__dict__.has_key('data'):
+            self.loadData()
+            self.__checkDims()  
         if data == None:
             data=self.data
-            
-        plt.ion()
-        fig=plt.gcf()
-        ax =plt.gca()
-        h = plt.pcolor(self.xplot,self.yplot,data,**kwargs)
-        cb = plt.colorbar()
+          
+        #plt.ion()
+        self.fig=plt.gcf()
+        self.ax =plt.gca()
+        self.h = plt.pcolor(self.xplot,self.yplot,data,**kwargs)
+        self.cb = plt.colorbar()
         
-        return fig, ax, h, cb
         
-    def contourf(self,data=None,**kwargs):
+    def contourf(self,data=None,V=None,**kwargs):
         """
         Filled contour plot of the given variable
         """
-        if not self.__dict__.has_key('data'):
-            self.loadData()
         if not self.__dict__.has_key('xplot'):
             self.__loadXY()
+        if not self.__dict__.has_key('data'):
+            self.loadData()
+            self.__checkDims()  
         if data == None:
             data=self.data
-            
-        plt.ion()
-        fig=plt.gcf()
-        ax =plt.gca()
-        h = plt.contourf(self.xplot,self.yplot,data,**kwargs)
-        cb = plt.colorbar()  
+        if V == None:
+            V = np.linspace(self.clim[0],self.clim[1],num=self.clevels)    
+
+        #plt.ion()
+        self.fig=plt.gcf()
+        self.ax =plt.gca()
+        self.h = plt.contourf(self.xplot,self.yplot,data,V,**kwargs)
+        self.cb = plt.colorbar()  
         
-        return fig, ax, h, cb
         
-    def contour(self,data=None,**kwargs):
+    def contour(self,data=None,V=None,**kwargs):
         """
         Contour plot of the given variable
         """
-        if not self.__dict__.has_key('data'):
-            self.loadData()
         if not self.__dict__.has_key('xplot'):
             self.__loadXY()
+        if not self.__dict__.has_key('data'):
+            self.loadData()
+            self.__checkDims()  
         if data == None:
             data=self.data
+        if V == None:
+            V = np.linspace(self.clim[0],self.clim[1],num=self.clevels)
             
             
-        plt.ion()
-        fig=plt.gcf()
-        ax =plt.gca()
-        h = plt.contour(self.xplot,self.yplot,data,**kwargs)
-        cb = plt.colorbar()  
+        #plt.ion()
+        self.fig=plt.gcf()
+        self.ax =plt.gca()
+        self.h = plt.contour(self.xplot,self.yplot,data,V,**kwargs)
+        self.cb = plt.colorbar()  
+
+
+    def savefig(self,outfile,dpi=150):
+        """ Saves a figure to file (matplotlib only)"""
         
-        return fig, ax, h, cb
-     
+        self.fig.savefig(outfile,dpi=dpi)
+                
+        
     def animate(self,fig=None,ax=None,h=None,cb=None,tsteps=None):
         """
         Method to animate the current method for multiple time steps
@@ -761,10 +824,11 @@ def usage():
     print "         -k  N                # vertical layer to plot [default: 0]"
     print "         -t  N                # time step to plot [default: 0]"
     print "         -j  N                # grid cell index to plot (timeseries only) [default: 0]"
-    print "         -c 'N N'             # Color bar limits !! IN QUOTES !! [default: None]"
+    print '         -c "N N"             # Color bar limits !! IN DOUBLE QUOTES !! [default: None]'
     print "         -s figure.png        # Save to a figure"
     print "         --animate            # Animate plot through all time steps"
     print "         --timeseries         # Plot time series of individual point"
+    print "         --profile            # time-depth contour plot at cell: j"
     print "         --vtk                # Use the vtk plotting libraries"
     print "\n Example Usage:"
     print "--------"
@@ -791,6 +855,7 @@ if __name__ == '__main__':
             opts,rest = getopt.getopt(sys.argv[1:],'hf:v:t:k:j:c:s:',
                                       ['animate',
                                        'timeseries',
+                                       'profile',
                                        'vtk'])
     except getopt.GetoptError,e:
         print e
@@ -821,11 +886,14 @@ if __name__ == '__main__':
             plottype = 1
         elif opt == '--timeseries':
             plottype = 2
+        elif opt == '--profile':
+            plottype = 3
         elif opt == '--vtk':
             usevtk = True
             
     # Load the class and plot
-    sun = Spatial(ncfile,klayer=k,tstep=t,variable=varname,clim=clim)
+    if plottype in [0,1,2]:
+        sun = Spatial(ncfile,klayer=k,tstep=t,variable=varname,clim=clim)
     
     if plottype == 0:
         # Spatial Plot
@@ -857,6 +925,18 @@ if __name__ == '__main__':
             sun.savefig(outfile)
         #plt.show()
     
+    elif plottype == 3:
+        sun = Profile(ncfile,indices=j,tstep=-99,xcoord='time',variable=varname,clim=clim)
+
+        plt.figure(figsize=(10,5))
+        sun.contourf()
+        titlestr='%s [%s]'%(sun.long_name,sun.units)
+        plt.title(titlestr)
+        sun.ax.set_xlabel('Time')
+        sun.ax.set_ylabel('z [m]')
+
+        if save:
+            sun.savefig(outfile)
 
 
 ############################
