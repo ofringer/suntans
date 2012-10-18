@@ -50,6 +50,9 @@ class Spatial(object):
         self.clim=None
         
         self.__dict__.update(kwargs)
+        
+        # Update tstep 
+        self.__updateTstep()
      
     def loadData(self):
         """ 
@@ -80,6 +83,21 @@ class Spatial(object):
          t = nc.variables['time']
          self.time = num2date(t[:],t.units)
          nc.close()
+
+    def __updateTstep(self):
+        """
+        Updates the tstep variable: -99 all steps, -1 last step
+        """
+        try:
+            if self.tstep.any()==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep.any()==-1:
+                self.tstep=len(self.time)
+        except:
+            if self.tstep==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep==-1:
+                self.tstep=len(self.time)
     
     def plot(self,**kwargs):
         """
@@ -146,6 +164,8 @@ class Spatial(object):
             self.fig.savefig(outfile,dpi=dpi)
         else:
             self.fig.scene.save(outfile)
+            
+        print 'SUNTANS image saved to file:%s'%outfile
     
     def animateVTK(self):
         """
@@ -557,7 +577,8 @@ class Profile(object):
         """ Saves a figure to file (matplotlib only)"""
         
         self.fig.savefig(outfile,dpi=dpi)
-                
+         
+        print 'SUNTANS image saved to file:%s'%outfile
         
     def animate(self,fig=None,ax=None,h=None,cb=None,tsteps=None):
         """
@@ -822,7 +843,7 @@ def usage():
     print "         -f suntans.nc        # SUNTANS output netcdf file  "
     print "         -v varname           # variable name to plot [default: u]      "
     print "         -k  N                # vertical layer to plot [default: 0]"
-    print "         -t  N                # time step to plot [default: 0]"
+    print "         -t  N                # time step to plot. -99 = last step. [default: 0]"
     print "         -j  N                # grid cell index to plot (timeseries only) [default: 0]"
     print '         -c "N N"             # Color bar limits !! IN DOUBLE QUOTES !! [default: None]'
     print "         -s figure.png        # Save to a figure"
