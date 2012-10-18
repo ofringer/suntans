@@ -92,12 +92,12 @@ class Spatial(object):
             if self.tstep.any()==-99:
                 self.tstep=np.arange(0,len(self.time))
             elif self.tstep.any()==-1:
-                self.tstep=len(self.time)
+                self.tstep=len(self.time)-1
         except:
             if self.tstep==-99:
                 self.tstep=np.arange(0,len(self.time))
             elif self.tstep==-1:
-                self.tstep=len(self.time)
+                self.tstep=len(self.time)-1
     
     def plot(self,**kwargs):
         """
@@ -478,12 +478,12 @@ class Profile(object):
             if self.tstep.any()==-99:
                 self.tstep=np.arange(0,len(self.time))
             elif self.tstep.any()==-1:
-                self.tstep=len(self.time)
+                self.tstep=len(self.time)-1
         except:
             if self.tstep==-99:
                 self.tstep=np.arange(0,len(self.time))
             elif self.tstep==-1:
-                self.tstep=len(self.time)
+                self.tstep=len(self.time)-1
     def __checkDims(self):
         """
         Check that the dimensions sizes match for plotting
@@ -843,7 +843,7 @@ def usage():
     print "         -f suntans.nc        # SUNTANS output netcdf file  "
     print "         -v varname           # variable name to plot [default: u]      "
     print "         -k  N                # vertical layer to plot [default: 0]"
-    print "         -t  N                # time step to plot. -99 = last step. [default: 0]"
+    print "         -t  N                # time step to plot. -1 = last step. [default: 0]"
     print "         -j  N                # grid cell index to plot (timeseries only) [default: 0]"
     print '         -c "N N"             # Color bar limits !! IN DOUBLE QUOTES !! [default: None]'
     print "         -s figure.png        # Save to a figure"
