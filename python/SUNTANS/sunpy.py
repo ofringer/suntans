@@ -8,7 +8,8 @@ Created on Mon Sep 24 16:55:45 2012
 @author: mrayson
 """
 
-from netCDF4 import Dataset, num2date
+from netCDF4 import num2date
+from netCDF4 import MFDataset as Dataset
 import numpy as np
 from datetime import datetime
 import os, time, getopt, sys
@@ -59,7 +60,8 @@ class Spatial(object):
             Load the specified suntans variable data as a vector
             
         """
-        nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
+        nc = Dataset(self.ncfile, 'r')
         
         self.long_name = nc.variables[self.variable].long_name
         self.units= nc.variables[self.variable].units
@@ -79,7 +81,8 @@ class Spatial(object):
          """
             Load the netcdf time as a vector datetime objects
          """
-         nc = Dataset(self.ncfile, 'r', format='NETCDF4')      
+         #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+         nc = Dataset(self.ncfile, 'r')  
          t = nc.variables['time']
          self.time = num2date(t[:],t.units)
          nc.close()
@@ -263,7 +266,8 @@ class Grid(object):
         
         print self.infile
         
-        nc = Dataset(self.infile, 'r', format='NETCDF4')        
+        #nc = Dataset(self.infile, 'r', format='NETCDF4')        
+        nc = Dataset(self.infile, 'r')        
         
         self.xp = nc.variables['xp'][:]
         self.yp = nc.variables['yp'][:]
@@ -366,7 +370,8 @@ class Profile(object):
         """
         Loads the metadata from the profile netcdf file
         """
-        nc = Dataset(self.ncfile, 'r', format='NETCDF4')        
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+        nc = Dataset(self.ncfile, 'r')
         
         # Note that some of these variable names may change
         try:
@@ -423,7 +428,8 @@ class Profile(object):
         
         # Load the data
         
-        nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')        
+        nc = Dataset(self.ncfile, 'r')  
         
         self.long_name = nc.variables[self.variable].long_name
         self.units= nc.variables[self.variable].units
