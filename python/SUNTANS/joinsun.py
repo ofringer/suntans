@@ -8,6 +8,8 @@ Created on Fri Oct 19 14:58:33 2012
 import sunpy
 from netCDF4 import Dataset
 import getopt, sys, time
+import numpy as np
+
 
 def main(suntanspath,basename,numprocs,nstep=-1):
     
@@ -53,103 +55,144 @@ def main(suntanspath,basename,numprocs,nstep=-1):
     else:
         makenewfile=True
     
+    ncin=[]
+    ptr=[]
     for n in range(numprocs):
         ncfile='%s/%s.%d'%(suntanspath,basename,n)
-        print 'Writing data from processor: %d...'%n
-        
-        # Open the input file and get some info
-        ncin = Dataset(ncfile,'r')
-        ncvars=ncin.variables
+        # Open all of the input files and get some info
+        ncin.append(Dataset(ncfile,'r'))
+        ncvars=ncin[n].variables
         nt = len(ncvars['time'][:])
-        ptr = ncvars['mnptr'][:]     
-        
-        
-        for vv in variables:
-            vname = vv['Name']
-            ctr=1
-            if vv['isCell'] and vname not in nowritevars:
-                #print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
-                
-    
-                if nsteps == -1:
-                    # Write all time steps to the file
-                    nc.variables['time'][:]=ncin.variables['time'][:]
-                    if vv['ndims']==1: # Stationary variables
-                        nc.variables[vname][ptr]=ncin.variables[vname][:]
-                    elif vv['ndims']==2:
-                        nc.variables[vname][:,ptr]=ncin.variables[vname][:,:]
-                    elif vv['ndims']==3:
-                        nc.variables[vname][:,:,ptr]=ncin.variables[vname][:,:,:]  
-                        
-                    # Write the buffer to disk
-                    nc.sync()
-                else:
-                    # Write "nsteps" time steps to the file
-                    tf=-1
-                    
-                    outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
-                    nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
+        ptr.append(ncvars['mnptr'][:])
 
-                    if vv['ndims']==1: # Stationary variables
-                        nc.variables[vname][ptr]=ncin.variables[vname][:]
-                   
-                    t1=0
-                    for t in range(nt):
-                        tf+=1
-                        
-                        if tf == nsteps:
-                            tout = range(t1,t)
-                            # Write all of the data
-                            print '     Writing variable: %s, for t = (%d,%d)'%(vv['Name'],t1,t)
-                            nc.variables['time'][:]=ncin.variables['time'][tout]
-                            if vv['ndims']==2:
-                                nc.variables[vname][:,ptr]=ncin.variables[vname][tout,:]
-                            elif vv['ndims']==3:
-                                nc.variables[vname][:,:,ptr]=ncin.variables[vname][tout,:,:]
-                            
-                            t1=t+1
-                            
-                            # Create a new file
-                            tf=0
-                            ctr+=1
-                            if makenewfile:
-                                outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
-                                nc.close()
-                                init_nc(outfile,variables,dims,globalatts)
-                                init_ncvars(ncfile,outfile,variables,grd)
-                                nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
-                                
-                                if vv['ndims']==1: # Stationary variables
-                                    nc.variables[vname][ptr]=ncin.variables[vname][:]
-                            else:
-                                outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
-                                nc.close()
-                                nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
-                                
-                                if vv['ndims']==1: # Stationary variables
-                                    nc.variables[vname][ptr]=ncin.variables[vname][:]
-                                
-                        elif t == nt-1: # Last time step
-                            tout = range(t1,t)
-                            # Just write all of the data
-                            print '     Writing variable: %s, for t = (%d,%d) to file:%s'%\
-                                (vv['Name'],t1,t,outfile)
-                            nc.variables['time'][:]=ncin.variables['time'][tout]
-                            if vv['ndims']==2:
-                                nc.variables[vname][:,ptr]=ncin.variables[vname][tout,:]
-                            elif vv['ndims']==3:
-                                nc.variables[vname][:,:,ptr]=ncin.variables[vname][tout,:,:] 
-                        
-                            
-                    # Flag to stop generating new files after the first variable    
-                    makenewfile=False
-                    nc.close()
-                 
-                
+        
+    for vv in variables:
+        vname = vv['Name']
+        ctr=1
+        if vv['isCell'] and vname not in nowritevars:
+            #print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
             
+
+            if nsteps == -1:
+                # Write all time steps to the file
+                nc.variables['time'][:]=ncin[0].variables['time'][:]
+                if vv['ndims']==1: # Stationary variables
+                    sz = (dims[vv['Dimensions'][0]])
+                    outvar=np.zeros(sz)
+                    for n in range(numprocs):
+                        outvar[ptr[n]]=ncin[n].variables[vname][:]
+                    nc.variables[vname][:]=outvar
+                    
+                elif vv['ndims']==2:
+                    sz = (nt,dims[vv['Dimensions'][1]])
+                    outvar=np.zeros(sz)
+                    for n in range(numprocs):
+                        outvar[:,ptr[n]]=ncin[n].variables[vname][:,:]
+                    nc.variables[vname][:,:]=outvar
+                    
+                elif vv['ndims']==3:
+                    sz = (nt,dims[vv['Dimensions'][1]],dims[vv['Dimensions'][2]])
+                    outvar=np.zeros(sz)
+                    for n in range(numprocs):
+                        outvar[:,:,ptr[n]]=ncin[n].variables[vname][:,:,:]
+                    nc.variables[vname][:,:,:]=outvar  
+                    
+                # Write the buffer to disk
+                nc.sync()
+            else:
+                # Write "nsteps" time steps to the file
+                tf=-1
+                
+                outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
+                nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
+
+                if vv['ndims']==1: # Stationary variables
+                    sz = (dims[vv['Dimensions'][0]])
+                    outvar=np.zeros(sz)
+                    for n in range(numprocs):
+                        outvar[ptr[n]]=ncin[n].variables[vname][:]
+                    nc.variables[vname][:]=outvar
+               
+                t1=0
+                for t in range(nt):
+                    tf+=1
+                    
+                    if tf == nsteps:
+                        tout = range(t1,t)
+                        # Write all of the data
+                        print '     Writing variable: %s, for t = (%d,%d)'%(vv['Name'],t1,t)
+                        nc.variables['time'][:]=ncin[0].variables['time'][tout]
+                        if vv['ndims']==2:
+                            sz = (t-t1,dims[vv['Dimensions'][1]])
+                            outvar=np.zeros(sz)
+                            for n in range(numprocs):
+                                outvar[:,ptr[n]]=ncin[n].variables[vname][tout,:]
+                            nc.variables[vname][:,:]=outvar
+                        elif vv['ndims']==3:
+                            sz = (t-t1,dims[vv['Dimensions'][1]],dims[vv['Dimensions'][2]])
+                            outvar=np.zeros(sz)
+                            for n in range(numprocs):
+                                outvar[:,:,ptr[n]]=ncin[n].variables[vname][tout,:,:]
+                            nc.variables[vname][:,:,:]=outvar
+                            
+                        
+                        t1=t+1
+                        
+                        # Create a new file
+                        tf=0
+                        ctr+=1
+                        if makenewfile:
+                            outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
+                            nc.close()
+                            init_nc(outfile,variables,dims,globalatts)
+                            init_ncvars(ncfile,outfile,variables,grd)
+                            nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
+                            
+                            if vv['ndims']==1: # Stationary variables
+                                sz = (dims[vv['Dimensions'][0]])
+                                outvar=np.zeros(sz)
+                                for n in range(numprocs):
+                                    outvar[ptr[n]]=ncin[n].variables[vname][:]
+                                nc.variables[vname][:]=outvar
+                        else:
+                            outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
+                            nc.close()
+                            nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
+                            
+                            if vv['ndims']==1: # Stationary variables
+                                sz = (dims[vv['Dimensions'][0]])
+                                outvar=np.zeros(sz)
+                                for n in range(numprocs):
+                                    outvar[ptr[n]]=ncin[n].variables[vname][:]
+                                nc.variables[vname][:]=outvar
+                            
+                    elif t == nt-1: # Last time step
+                        tout = range(t1,t)
+                        # Just write all of the data
+                        print '     Writing variable: %s, for t = (%d,%d) '%\
+                            (vv['Name'],t1,t)
+                        nc.variables['time'][:]=ncin[0].variables['time'][tout]
+                        if vv['ndims']==2:
+                            sz = (t-t1,dims[vv['Dimensions'][1]])
+                            outvar=np.zeros(sz)
+                            for n in range(numprocs):
+                                outvar[:,ptr[n]]=ncin[n].variables[vname][tout,:]
+                            nc.variables[vname][:,:]=outvar
+                        elif vv['ndims']==3:
+                            sz = (t-t1,dims[vv['Dimensions'][1]],dims[vv['Dimensions'][2]])
+                            outvar=np.zeros(sz)
+                            for n in range(numprocs):
+                                outvar[:,:,ptr[n]]=ncin[n].variables[vname][tout,:,:]
+                            nc.variables[vname][:,:,:]=outvar
+                    
+                        
+                # Flag to stop generating new files after the first variable    
+                makenewfile=False
+                nc.close()
                                  
-        # Close the file for processor n    
-        ncin.close()
+    # Close the file for processor n 
+    for n in range(numprocs):
+        ncin[n].close()
     
     if nsteps==-1:
         nc.close()
@@ -212,7 +255,7 @@ def init_nc(outfile,variables,dims,globalatts):
     
     # Create the variables
     for vv in variables:
-        tmpvar=nc.createVariable(vv['Name'],vv['dtype'],vv['Dimensions'],zlib=True)
+        tmpvar=nc.createVariable(vv['Name'],vv['dtype'],vv['Dimensions'],zlib=True,complevel=1,fill_value=99999)
     
         # Create the attributes
         for aa in vv['Attributes'].keys():
@@ -286,12 +329,9 @@ if __name__ == '__main__':
         elif opt == '-n':
             numprocs=int(val)
             
-    #
-#    nsteps = 200
+#    nsteps = -1
 #    numprocs = 2
 #    suntanspath='C:/Projects/GOMGalveston/MODELLING/GalvestonSquare/rundata'
-#    basename = 'suntan_output.nc'
-
-    #        
+#    basename = 'suntan_output.nc'      
             
     main(suntanspath,basename,numprocs,nsteps)
