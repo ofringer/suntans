@@ -7,12 +7,14 @@ Created on Fri Oct 19 14:58:33 2012
 
 import sunpy
 from netCDF4 import Dataset
-import getopt, sys
+import getopt, sys, time
 
 def main(suntanspath,basename,numprocs,nstep=-1):
     
+    tic=time.clock()
+    
     print '########################################################'
-    print '     Finished joining netcdf files'
+    print '     Started python suntans joining script...'
     print '########################################################'
     
     # Step 1) Read the main grid
@@ -66,7 +68,7 @@ def main(suntanspath,basename,numprocs,nstep=-1):
             vname = vv['Name']
             ctr=1
             if vv['isCell'] and vname not in nowritevars:
-                print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
+                #print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
                 
     
                 if nsteps == -1:
@@ -90,11 +92,23 @@ def main(suntanspath,basename,numprocs,nstep=-1):
 
                     if vv['ndims']==1: # Stationary variables
                         nc.variables[vname][ptr]=ncin.variables[vname][:]
-                                    
+                   
+                    t1=0
                     for t in range(nt):
                         tf+=1
                         
                         if tf == nsteps:
+                            tout = range(t1,t)
+                            # Write all of the data
+                            print '     Writing variable: %s, for t = (%d,%d)'%(vv['Name'],t1,t)
+                            nc.variables['time'][:]=ncin.variables['time'][tout]
+                            if vv['ndims']==2:
+                                nc.variables[vname][:,ptr]=ncin.variables[vname][tout,:]
+                            elif vv['ndims']==3:
+                                nc.variables[vname][:,:,ptr]=ncin.variables[vname][tout,:,:]
+                            
+                            t1=t+1
+                            
                             # Create a new file
                             tf=0
                             ctr+=1
@@ -115,12 +129,17 @@ def main(suntanspath,basename,numprocs,nstep=-1):
                                 if vv['ndims']==1: # Stationary variables
                                     nc.variables[vname][ptr]=ncin.variables[vname][:]
                                 
-                            
-                        nc.variables['time'][tf]=ncin.variables['time'][t]
-                        if vv['ndims']==2:
-                            nc.variables[vname][tf,ptr]=ncin.variables[vname][t,:]
-                        elif vv['ndims']==3:
-                            nc.variables[vname][tf,:,ptr]=ncin.variables[vname][t,:,:]
+                        elif t == nt-1: # Last time step
+                            tout = range(t1,t)
+                            # Just write all of the data
+                            print '     Writing variable: %s, for t = (%d,%d) to file:%s'%\
+                                (vv['Name'],t1,t,outfile)
+                            nc.variables['time'][:]=ncin.variables['time'][tout]
+                            if vv['ndims']==2:
+                                nc.variables[vname][:,ptr]=ncin.variables[vname][tout,:]
+                            elif vv['ndims']==3:
+                                nc.variables[vname][:,:,ptr]=ncin.variables[vname][tout,:,:] 
+                        
                             
                     # Flag to stop generating new files after the first variable    
                     makenewfile=False
@@ -134,7 +153,9 @@ def main(suntanspath,basename,numprocs,nstep=-1):
     
     if nsteps==-1:
         nc.close()
-        
+     
+    toc=time.clock()
+    print 'Elapsed time %10.3f seconds.'%(toc-tic)
     print '########################################################'
     print '     Finished joining netcdf files'
     print '########################################################'
@@ -238,17 +259,10 @@ def usage():
     
     
 if __name__ == '__main__':
-    
-    
-    ####################
-    # Inputs
-    #suntanspath = 'C:/Projects/GOMGalveston/MODELLING/GalvestonSquare/rundata'
-    #basename = 'suntan_output.nc'
-    #numprocs = 2
-    #nsteps = 200 # Number of time steps to write to each file (-1 write all - default)
-    ####################
-
-    nstep = -1
+    """ 
+        Command line call to join function
+    """
+    nsteps = -1
     numprocs = 2
     
     try:
@@ -271,5 +285,13 @@ if __name__ == '__main__':
             nsteps=int(val)
         elif opt == '-n':
             numprocs=int(val)
+            
+    #
+#    nsteps = 200
+#    numprocs = 2
+#    suntanspath='C:/Projects/GOMGalveston/MODELLING/GalvestonSquare/rundata'
+#    basename = 'suntan_output.nc'
+
+    #        
             
     main(suntanspath,basename,numprocs,nsteps)
