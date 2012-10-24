@@ -278,6 +278,10 @@ class Grid(object):
         self.dz = nc.variables['dz'][:]
         self.Nk = nc.variables['Nk'][:]
         self.Nc = len(self.xv)
+        try:
+            self.Ac = nc.variables['Ac'][:]
+        except:
+            print 'Warning no area variable present...'   
         
         
         
