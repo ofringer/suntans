@@ -1,5 +1,5 @@
-addpath ../../../mfiles
-addpath ../../../mfiles/suntides
+addpath ../../mfiles
+addpath ../../mfiles/suntides
 addpath packages/m_map
 
 % Load the m_map files to convert from x,y to lon,lat using UTM
@@ -19,7 +19,7 @@ tidespath = './tide_data/pac';
 year = 2006;
 
 % Number of processors
-numprocs = 2;
+numprocs = 1;
 
 % Data is in lon/lat (not xy projection)
 % XY = [];
