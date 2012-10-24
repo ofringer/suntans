@@ -5,7 +5,7 @@
 #
 ########################################################################
 
-SUNTANSHOME=../..
+SUNTANSHOME=../../home
 SUN=$SUNTANSHOME/sun
 SUNPLOT=$SUNTANSHOME/sunplot
 
