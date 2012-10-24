@@ -1,4 +1,4 @@
-SUNTANSHOME=../..
+SUNTANSHOME=../../main
 include $(SUNTANSHOME)/Makefile.in
 
 ifneq ($(MPIHOME),)

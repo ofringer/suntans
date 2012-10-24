@@ -1,4 +1,4 @@
-SUNTANSHOME=../..
+SUNTANSHOME=../../main
 include $(SUNTANSHOME)/Makefile.in
 
 ifneq ($(MPIHOME),)
@@ -30,7 +30,7 @@ NUMPROCS =8
 test:	testXY testXZ
 
 testXY:	
-	make -C ../../ clean sunplot
+	make -C ../../main clean sunplot
 	rm -rf dataXY
 	cp boundariesXY.c boundaries.c
 	cp rundata/cellsXY.dat rundata/cells.dat
@@ -41,7 +41,7 @@ testXY:
 	sh $(EXEC)XY.sh $(NUMPROCS)
 
 testXZ:	
-	make -C ../../ clean sunplot
+	make -C ../../main clean sunplot
 	rm -rf dataXZ
 	cp boundariesXZ.c boundaries.c
 	cp rundata/cellsXZ.dat rundata/cells.dat

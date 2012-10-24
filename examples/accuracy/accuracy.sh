@@ -10,7 +10,7 @@ function calc () {
    awk "BEGIN { print $* ; }"
 }
 
-SUNTANSHOME=../..
+SUNTANSHOME=../../main
 SUN=$SUNTANSHOME/sun
 maindatadir=rundata
 datadir=data

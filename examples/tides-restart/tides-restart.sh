@@ -5,7 +5,7 @@
 #
 ########################################################################
 
-SUNTANSHOME=../..
+SUNTANSHOME=../../main
 SUN=./sun
 SUNPLOT=$SUNTANSHOME/sunplot
 TAGNAME=.
