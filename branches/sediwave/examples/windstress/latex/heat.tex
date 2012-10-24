@@ -1,0 +1,182 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsfonts,graphics,amsmath}
+
+\textwidth 6.5in
+\textheight 9.0in
+\topmargin 0.0in
+\oddsidemargin 0.0in
+\evensidemargin 0.0in
+
+\include{newcommands}
+
+% simd
+
+\begin{document}
+
+\title{Nonpenetrative heat flux implementation in SUNTANS}
+
+\author{Oliver Fringer}
+
+\maketitle
+
+We will assume that the nonpenetrative heat fluxes are imposed at the surface
+as flux boundary conditions and not as source terms. As described below,
+this is equivalent to imposing a source term at the top layer and assuming
+adiabatic boundaries.  The implementation 
+is based on the description in Wood et al., 2008, 
+"Modeling hydrodynamics and heat transport in upper Klamath Lake, Oregon, 
+and implications for water quality", USGS Scientific Investigations 
+Report 2008-5076.
+
+\section{General form of the linearized heat flux boundary condition}
+
+Given a nonpenetrative flux $H_{NP}$, the top boundary condition is given by
+\[
+\kappa_T\left.\D{T}{z}\right|_{Top} = -\frac{1}{\rho c_p}H_{NP}\,.
+\]
+We can derive a linearized form for a heat flux that is a nonlinear function
+of the surface water temperature by
+linearizing the heat flux about the temperature at time step $n$, $T^n$
+such that $T_w = T^n + T'$. This gives, to $O((T')^2)$,
+\begin{eqnarray*}
+H_{NP}(T^n  + T') &=& H_{NP}|_{T_w=T^n} + \left.\D{H_{NP}}{T}\right|_{T_w=T^n}T'\,,\\
+                       &=& H_{NP}|_{T_w=T^n} + \left.\D{H_{NP}}{T}\right|_{T=T^n}\left(T_w - T^n\right)\,,\\
+                       &=& H_{NP}|_{T_w=T^n} - \left.\D{H_{NP}}{T}\right|_{T=T^n}T^n
+                                             + \left.\D{H_{NP}}{T}\right|_{T=T^n}T_w\,,\\
+                       &=& H_{NP,0} + \Delta H_{NP,0} T_w\,,
+\end{eqnarray*}
+where 
+\begin{eqnarray*}
+H_{NP,0} &=& H_{NP}|_{T_w=T^n} - \left.\D{H_{NP}}{T}\right|_{T=T^n}T^n\,,\\
+\Delta H_{NP,0} &=& \left.\D{H_{NP}}{T}\right|_{T=T^n}\,.
+\end{eqnarray*}
+The linearized top boundary condition is then given by
+\[
+\kappa_T\left.\D{T}{z}\right|_{top} = -\frac{1}{\rho_0 c_p}H_{NP} = -\frac{1}{\rho_0 c_p}H_{NP,0} - \frac{1}{\rho_0 c_p}\Delta H_{NP,0} T = -a - b T\,,
+\]
+where 
+\begin{eqnarray*}
+a &=& \frac{1}{\rho_0 c_p}H_{NP,0}\,,\\
+b &=& \frac{1}{\rho_0 c_p}\Delta H_{NP,0}\,.
+\end{eqnarray*}
+The heat equation in the absence of advection or source terms is given by
+\[
+\D{T}{t} = \D{}{z}\left(\kappa_T\D{T}{z}\right)\,,
+\]
+which is discretized in time with the theta method
+\[
+\frac{T^{n+1} - T^n}{\Delta t} = \theta\D{}{z}\left(\kappa_T\D{T^{n+1}}{z}\right)
+                              +(1-\theta)\D{}{z}\left(\kappa_T\D{T^{n}}{z}\right)\,.
+\]
+At the top boundary, we have
+\begin{eqnarray*}
+\D{}{z}\left(\kappa_T\D{T}{z}\right)_{top} &=&
+\frac{1}{\Delta z_{top}}\left(\kappa_T\left.\D{T}{z}\right|_{top} 
+- \kappa_T\left.\D{T}{z}\right|_{top+1}\right)\,,\\
+                                     &=&
+-\frac{1}{\rho_0 c_p \Delta z_{top}}H_{NP}
++\D{}{z}\left(\kappa_T\D{T^{n+1}}{z}\right)_{top,adiabatic}\,,
+\end{eqnarray*}
+where the adiabatic subscript implies use of the diffusion operator at the
+top cell with the assumption of an adiabatic top boundary.  This shows
+that application of a flux condition at the top boundary is equivalent to
+assuming an adiabatic top boundary and adding a source term of the form
+\[
+F_S = -\frac{1}{\rho_0 c_p \Delta z_{top}}H_{NP} = -\frac{a}{\Delta z_{top}} - \frac{b}{\Delta z_{top}} T_{top}
+\]
+to the top cell.
+Therefore, the governing equation for temperature at the top cell is given by
+\begin{eqnarray*}
+\D{T_{top}}{t} &=& -\frac{1}{\Delta z_{top}}\left(a + b T_{top}\right)
+               +\D{}{z}\left(\kappa_T\D{T}{z}\right)_{top,adiabatic}\,,\\
+               &=& A + B T_{top}
+               +\D{}{z}\left(\kappa_T\D{T}{z}\right)_{top,adiabatic}\,,
+\end{eqnarray*}
+where
+\begin{eqnarray*}
+A &=& -\frac{1}{\rho_0 c_p \Delta z_{top}}H_{NP,0}\,,\\
+B &=& -\frac{1}{\rho_0 c_p \Delta z_{top}}\Delta H_{NP,0}\,.
+\end{eqnarray*}
+The derivatives with respect to temperature for the individual heat fluxes
+are derived below. 
+
+\section{Longwave emitted radiation}
+
+The longwave emitted radiation is given by
+\[
+H_{LE} = \alpha_{LE}\left(T_w + T_0\right)^4\,,
+\]
+where $\alpha_{LE}=\epsilon_w\sigma$.
+Differentiating with respect to temperature gives
+\begin{eqnarray*}
+\left.\D{H_{LE}}{T}\right|_{T=T_0 + T^n} &=& 4\alpha_{LE}\left(T_0 + T^n\right)^3 \,,\\
+                                         &=& \frac{4H_{LE}}{T_0 + T^n}\,.
+\end{eqnarray*}
+
+\section{Evaporation}
+
+Evaporative heat loss is given by
+\[
+H_E = \alpha_E (e_s - e_a)\,,
+\]
+where $\alpha_E = \rho_0 L_w F$, and where $L_w$ is the latent heat of evaporation, 
+\[
+F = \alpha_{E1} (\alpha_{E2} + \alpha_{E3} U_2)
+\]
+accounts for the effects of the magnitude of the wind, $U_2$, a distance
+of 2~m above the surface, 
+\[
+e_s = \alpha_{E4} \exp\left(\frac{\alpha_{E5} T_w}{T_w + T_{00}}\right)
+\]
+is the saturation vapor pressure at the water surface, and
+\[
+e_a = \alpha_{E4} \exp\left(\frac{\alpha_{E5} T_a}{T_a + T_{00}}\right) rh
+\]
+is the vapor pressure in the air that has relative humidity rh (as a fraction of 1 not \%!),
+and $T_{00}=237.3$~K.
+The constants of proportionality are denoted by $\alpha_{En}$, $n=1,2,\dots,6$.  Differentation with
+respect to $T$ gives
+\begin{eqnarray*}
+\D{H_E}{T} &=& \alpha_E\D{e_s}{T}\,,
+\end{eqnarray*}
+where 
+\begin{eqnarray*}
+\D{e_s}{T} &=& \alpha_{E4}\exp\left(\frac{\alpha_{E5} T_w}{T_w + T_{00}}\right)
+\left[\frac{\alpha_{E5}T_{00}}{\left(T_w + T_{00}\right)^2}\right]\,,\\
+           &=& \alpha_{E5}e_s\frac{T_{00}}{\left(T_w + T_{00}\right)^2}\,.
+\end{eqnarray*}
+This gives
+\[
+\left.\D{H_E}{T}\right|_{T=T_w} = \alpha_E\alpha_{E5}e_s\frac{T_{00}}{\left(T_w + T_{00}\right)^2}\,.
+\]
+
+\section{Sensible heat flux}
+
+The sensible heat flux is given by
+\[
+H_S = H_E C_B \frac{p_a}{p_{sl}}\left(\frac{T_w - T_a}{e_s - e_a}\right)\,,
+\]
+where $C_B$ is an empirical coefficient, $p_a$ is the atmospheric pressure, and
+$p_sl$ is the sea-level pressure. The derivative is given by
+\begin{eqnarray*}
+\D{H_S}{T} &=& \D{H_E}{T} C_B \frac{p_a}{p_{sl}}\left(\frac{T_w - T_a}{e_s - e_a}\right)
++ H_E C_B \frac{p_a}{p_{sl}}
+\frac{e_s - e_a - \alpha_{E5}e_s(T_w-T_a)\frac{T_{00}}{\left(T_w + T_{00}\right)^2}}{(e_s-e_a)^2}\,,\\
+&=& \D{H_E}{T} C_B \frac{p_a}{p_{sl}}\left(\frac{T_w - T_a}{e_s - e_a}\right)
++ H_E C_B \frac{p_a}{p_{sl}}\left(\frac{T_w-T_a}{e_s-e_a}\right)
+\frac{e_s - e_a - \alpha_{E5}e_s(T_w-T_a)\frac{T_{00}}{\left(T_w + T_{00}\right)^2}}{(T_w-T_a)(e_s-e_a)}\,,\\
+&=& \frac{1}{H_E}\D{H_E}{T} H_E C_B \frac{p_a}{p_{sl}}\left(\frac{T_w - T_a}{e_s - e_a}\right)
++ H_E C_B \frac{p_a}{p_{sl}}\left(\frac{T_w-T_a}{e_s-e_a}\right)
+\frac{e_s - e_a - \alpha_{E5}e_s(T_w-T_a)\frac{T_{00}}{\left(T_w + T_{00}\right)^2}}{(T_w-T_a)(e_s-e_a)}\,,\\
+&=& H_S\left[\frac{1}{H_E}\D{H_E}{T}+
+\frac{e_s - e_a - \alpha_{E5}e_s(T_w-T_a)\frac{T_{00}}{\left(T_w + T_{00}\right)^2}}{(T_w-T_a)(e_s-e_a)}\right]\,,\\
+&=& H_S\left[\frac{1}{H_E}\D{H_E}{T}+
+\frac{1}{T_w-T_a} - \alpha_{E5}\frac{e_s}{(e_s-e_a)}\frac{T_{00}}{\left(T_w + T_{00}\right)^2}\right]\,,\\
+\end{eqnarray*}
+
+
+
+
+
+\end{document}
