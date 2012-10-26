@@ -19,11 +19,12 @@ import shapefile
 import netcdfio
 from maptools import ll2utm
 
-import pdb
 
-def interpWeatherStations(latlon,timestart,timeend,dt,utmzone,dbfile, showplot=False):
+def interpWeatherStations(latlon,timestart,timeend,dt,utmzone,dbfile, maxgap=40, showplot=False):
     """ Temporally interpolate weather station data onto a specified time grid"""
-
+    
+    ###
+    
     # Create the time variable
     timeList = []
     tnow=timestart
@@ -63,7 +64,7 @@ def interpWeatherStations(latlon,timestart,timeend,dt,utmzone,dbfile, showplot=F
 
         # Remove points that have large gaps
         ii=0  
-        maxgap=40
+
         for dd in data:
             ind = np.isfinite(dd[vv])
             timenow = convertTime(dd['time'])
