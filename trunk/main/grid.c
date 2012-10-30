@@ -1275,16 +1275,24 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
 
   // these numbers reflect the assumption that a node will never be surrounded by
   // cells with angles less than or equal 30 deg.
-  const int maxnodeneighs = 12; 
+  const int maxnodeneighs = 24; 
   const int maxedgeneighs = 24; //since the edges are intentionally counted twice (once per cell)
   const int maxcellneighs = 12;
   int in, ie, ic, nf, np1, np2, inn, inode;
 
   // assume that at most there will only be a maximum of edge neighbors to a node
-  int tempppneighs[Np][maxnodeneighs]; int tempnumppneighs;
-  int temppeneighs[Np][maxedgeneighs];
-  int temppcneighs[Np][maxcellneighs];
-
+  //  int tempppneighs[Np][maxnodeneighs]; int tempnumppneighs;
+  //  int temppeneighs[Np][maxedgeneighs];
+  //  int temppcneighs[Np][maxcellneighs];
+  int **tempppneighs, tempnumppneighs, **temppeneighs, **temppcneighs;
+  tempppneighs = (int **)malloc(Np*sizeof(int *));
+  temppeneighs = (int **)malloc(Np*sizeof(int *));
+  temppcneighs = (int **)malloc(Np*sizeof(int *));
+  for(in=0;in<Np;in++) {
+    tempppneighs[in] = (int *)malloc(maxnodeneighs*sizeof(int));
+    temppeneighs[in] = (int *)malloc(maxedgeneighs*sizeof(int));
+    temppcneighs[in] = (int *)malloc(maxcellneighs*sizeof(int));
+  }
   // initialize the number of neighbors for each point
   for (in = 0; in < Np; in++) { 
     grid->numppneighs[in] = 0;
@@ -1399,7 +1407,23 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
   }
 
   //  printf("Finished computing nodal array information\n");
+  //printf("Freeing neighs...\n");
+  for(in=0;in<Np;in++) 
+    SunFree(tempppneighs[in],Np*sizeof(int *),"CreateNodeArray");
+  //printf("Freeing edges...\n");
+  for(in=0;in<Np;in++) 
+    SunFree(temppeneighs[in],Np*sizeof(int *),"CreateNodeArray");
+  printf("Freeing cells...\n");
+  for(in=0;in<Np;in++) 
+    SunFree(temppcneighs[in],Np*sizeof(int *),"CreateNodeArray");
 
+  printf("Points\n");
+  SunFree(tempppneighs,maxnodeneighs*sizeof(int),"CreateNodeArray");
+  printf("Edges\n");
+  SunFree(temppeneighs,maxedgeneighs*sizeof(int),"CreateNodeArray");
+  printf("Cells\n");
+  SunFree(temppcneighs,maxcellneighs*sizeof(int),"CreateNodeArray");
+  printf("Done!\n");
 }
 
 /*
