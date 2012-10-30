@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/errno.h>
 #include <unistd.h>
+#include "cmap.h"
 
 #define AXESSLICETOP 0  // Change this to change the distance from the axes edge to the free-surface (percentage of axes height)
 #define SMALLHEIGHT .001
@@ -1717,11 +1718,15 @@ void CAxis(dataT *data, plottypeT plottype, int klevel, int procnum, int numproc
 
 void ReadColorMap(char *str) {
   int i;
-  FILE *ifile = MyFOpen(str,"r","ReadColorMap");
-  float r, g, b;
+  float r, g, b, cmap[64][3];
+
+  LOADCMAPARRAY;
 
   for(i=0;i<NUMCOLORS-2;i++) {
-    fscanf(ifile,"%f %f %f\n",&r, &g, &b);
+    r = cmap[i][0];
+    g = cmap[i][1];
+    b = cmap[i][2];
+
     color.red = r * 0xffff;
     color.green = g * 0xffff;
     color.blue = b * 0xffff;
@@ -1730,7 +1735,6 @@ void ReadColorMap(char *str) {
   }
   colors[NUMCOLORS-2]=white;
   colors[NUMCOLORS-1]=black;
-  fclose(ifile);
 }
 
 void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N) {
