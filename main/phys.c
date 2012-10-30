@@ -1010,7 +1010,8 @@ REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind) {
 //  printf("ctop= %f\n",grid->ctop[i]);
   if(i==-1) {
     printf("!!Error with pointer => h[-1]!!\n");
-    return NAN;
+    //return NAN;  // not consistent with all C compilers
+    return -1;
   }
   else {
     int k;
