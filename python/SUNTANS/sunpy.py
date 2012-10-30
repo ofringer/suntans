@@ -20,11 +20,8 @@ import matplotlib.patches as patches
 from matplotlib.collections import PatchCollection
 #import matplotlib.animation as animation
 
-# Mayavi libraries
-from tvtk.api import tvtk
-from mayavi import mlab
 
-import pdb
+
 
 class Spatial(object):
     
@@ -33,6 +30,9 @@ class Spatial(object):
     def __init__(self,ncfile, **kwargs):
         
         self.ncfile = ncfile
+        
+        # Open the netcdf file
+        self.__openNc()
         
         # Load the grid
         self.grid = Grid(self.ncfile)  
@@ -54,14 +54,15 @@ class Spatial(object):
         
         # Update tstep 
         self.__updateTstep()
+        
+
      
     def loadData(self):
         """ 
             Load the specified suntans variable data as a vector
             
         """
-        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
-        nc = Dataset(self.ncfile, 'r')
+        nc = self.nc
         
         self.long_name = nc.variables[self.variable].long_name
         self.units= nc.variables[self.variable].units
@@ -74,7 +75,7 @@ class Spatial(object):
         else:
             self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
         
-        nc.close()
+        
         
         
     def loadTime(self):
@@ -82,11 +83,17 @@ class Spatial(object):
             Load the netcdf time as a vector datetime objects
          """
          #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
-         nc = Dataset(self.ncfile, 'r')  
+         nc = self.nc
          t = nc.variables['time']
          self.time = num2date(t[:],t.units)
-         nc.close()
 
+    def __openNc(self):
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
+        self.nc = Dataset(self.ncfile, 'r')
+        
+    def __del__(self):
+        self.nc.close()
+        
     def __updateTstep(self):
         """
         Updates the tstep variable: -99 all steps, -1 last step
@@ -124,6 +131,9 @@ class Spatial(object):
         """
           Plot the unstructured grid data using vtk libraries
         """
+        # Mayavi libraries
+
+        
         # Load the data if it's needed
         if not self.__dict__.has_key('data'):
             self.loadData()
@@ -264,7 +274,7 @@ class Grid(object):
         
         """Load the grid variables into the object from a netcdf file"""
         
-        print self.infile
+        #print self.infile
         
         #nc = Dataset(self.infile, 'r', format='NETCDF4')        
         nc = Dataset(self.infile, 'r')        
@@ -711,13 +721,19 @@ def unsurfm(points, cells, z,clim=None,title=None,**kwargs):
     """
     Plot cell-centred data using the mayavi/tvtk libraries
     
-    """
+    """        
     if clim==None:
         clim=[]
         clim.append(np.min(z))
         clim.append(np.max(z))
+    
+    try:    
+        tri_type = tvtk.Triangle().cell_type
+    except:
+        from tvtk.api import tvtk
+        from mayavi import mlab
+        tri_type = tvtk.Triangle().cell_type
         
-    tri_type = tvtk.Triangle().cell_type
     ug = tvtk.UnstructuredGrid(points=points)
     ug.set_cells(tri_type, cells)
     
