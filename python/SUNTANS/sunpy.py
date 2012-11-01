@@ -17,9 +17,10 @@ import os, time, getopt, sys
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 #import matplotlib as mpl
-from matplotlib.collections import PatchCollection
+from matplotlib.collections import PolyCollection
 #import matplotlib.animation as animation
 
+import pdb
 
 
 
@@ -121,11 +122,13 @@ class Spatial(object):
              self.patches.set_array(self.data)
              self.ax.add_collection(self.patches)
         else:
+            #tic = time.clock()
             self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.data,xlim=self.grid.xlims,ylim=self.grid.ylims,\
                 clim=self.clim,**kwargs)
             titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
                 datetime.strftime(self.time[self.tstep],'%d-%b-%Y %H:%M:%S'))
             plt.title(titlestr)
+            #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
     def plotvtk(self,**kwargs):
         """
@@ -180,6 +183,11 @@ class Spatial(object):
             
         print 'SUNTANS image saved to file:%s'%outfile
     
+    def animate(self,**kwargs):
+        
+        unanimate(self.xy,self.data,self.tstep,xlim=self.grid.xlims,ylim=self.grid.ylims,clim=self.clim,**kwargs)
+        
+        
     def animateVTK(self):
         """
         Animate a scene in the vtk window
@@ -730,6 +738,7 @@ def unsurfm(points, cells, z,clim=None,title=None,**kwargs):
     try:    
         tri_type = tvtk.Triangle().cell_type
     except:
+        # Load tvtk libraries here as they slow the script down
         from tvtk.api import tvtk
         from mayavi import mlab
         tri_type = tvtk.Triangle().cell_type
@@ -776,25 +785,16 @@ def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
         clim.append(np.min(z))
         clim.append(np.max(z))
     
-    # Create a list of polygon objects
-    myPatches=[None]*len(z)
-    i=-1
-    for poly in xy:
-        i+=1
-        #print 'Building patch %d...'%i
-        #myPatches.append(patches.Polygon(poly, closed=True,fill=True))
-        myPatches[i]=(patches.Polygon(poly, closed=True,fill=True))
-    
-    collection = PatchCollection(myPatches, **kwargs)
-    #collection.set_edgecolors(None) # Doesn't work???
-    #collection.set_linewidths(0.0) # Looks crap
-    collection.set_clim(vmin=clim[0],vmax=clim[1])
+    collection = PolyCollection(xy)
     collection.set_array(np.array(z))
+    collection.set_array(np.array(z))
+    collection.set_clim(vmin=clim[0],vmax=clim[1])
+    #collection.set_linewidth(0)
     collection.set_edgecolors(collection.to_rgba(np.array(z)))    
+    
     ax.add_collection(collection)
     ax.axis('equal')
     axcb = fig.colorbar(collection)
-    
     
     return fig, ax, collection, axcb
     
@@ -823,16 +823,14 @@ def unanimate(xy,z,tsteps,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
         clim.append(np.min(z))
         clim.append(np.max(z))
     
-    myPatches=[]
-    for poly in xy:
-         myPatches.append(patches.Polygon(poly, closed=True,fill=True))
-    
     def updateScalar(i):
         return np.array(z[i,:])
         
-    collection = PatchCollection(myPatches, **kwargs)
+
+    collection = PolyCollection(xy)
     collection.set_array(updateScalar(0))
-    collection.set_edgecolors(None) # Doesn't work???
+    collection.set_linewidth(0)
+    #collection.set_edgecolors(None) # Doesn't work???
     collection.set_clim(vmin=clim[0],vmax=clim[1])
     ax.add_collection(collection)    
     ax.set_xlim(xlim)
@@ -945,7 +943,7 @@ if __name__ == '__main__':
     if plottype == 0:
         # Spatial Plot
         if usevtk:
-            mlab.figure(size=(640,480))
+            #mlab.figure(size=(640,480))
             sun.plotvtk()
             if save:
                 sun.savefig(outfile)
