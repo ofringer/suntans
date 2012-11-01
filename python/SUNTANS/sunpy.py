@@ -167,7 +167,7 @@ class Spatial(object):
         self.fig = plt.gcf()
         ax = self.fig.gca()
         h = plt.plot(self.time,self.data,'b') 
-        titlestr='%s [%s]\n j: %d, k: %d'%(self.long_name,self.units,self.j,self.klayer)
+        c
         ax.set_title(titlestr)
         
        
@@ -184,10 +184,65 @@ class Spatial(object):
         print 'SUNTANS image saved to file:%s'%outfile
     
     def animate(self,**kwargs):
+        """
+        Animates a spatial plot over all time steps
         
-        unanimate(self.xy,self.data,self.tstep,xlim=self.grid.xlims,ylim=self.grid.ylims,clim=self.clim,**kwargs)
+        Animation object is stored in the 'anim' property
+        """
+        #anim = unanimate(self.xy,self.data,self.tstep,xlim=self.grid.xlims,ylim=self.grid.ylims,clim=self.clim,**kwargs)
+        #return anim
         
+        from matplotlib import animation
+    
+        # Create the figure and axes handles
+        #plt.ion()
+        fig = plt.gcf()
+        ax = fig.gca()
+        #ax.set_animated('True')
         
+        # Find the colorbar limits if unspecified
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(self.data))
+            self.clim.append(np.max(self.data))
+           
+        collection = PolyCollection(self.xy)
+        collection.set_array(np.array(self.data[0,:]))
+        collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
+        ax.add_collection(collection)    
+        ax.set_xlim(self.grid.xlims)
+        ax.set_ylim(self.grid.ylims)
+        ax.axis('equal') 
+        title=ax.set_title("")
+        fig.colorbar(collection)
+        
+        def init():
+            collection.set_array([])
+            title.set_text("")
+            return (collection,title)
+               
+        def updateScalar(i):
+            collection.set_array(np.array(self.data[i,:]))
+            collection.set_edgecolors(collection.to_rgba(np.array((self.data[i,:])))) 
+            titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
+                datetime.strftime(self.time[i],'%d-%b-%Y %H:%M:%S'))
+            title.set_text(titlestr)
+            return (title,collection)
+  
+        self.anim = animation.FuncAnimation(fig, updateScalar, frames=len(self.tstep), interval=50, blit=True)
+
+    def saveanim(self,outfile):
+        """
+        Save the animation object to an mp4 movie
+        """
+        
+        try:
+            print 'Building animation sequence...'
+            self.anim.save(outfile, fps=15)
+            print 'Complete - animation saved to: %s'%outfile
+        except:
+            print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
+            
     def animateVTK(self):
         """
         Animate a scene in the vtk window
@@ -810,12 +865,13 @@ def unanimate(xy,z,tsteps,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
         t - vector of time steps
             
     """     
+    from matplotlib import animation
     
     # Create the figure and axes handles
-    plt.ion()
+    #plt.ion()
     fig = plt.gcf()
     ax = fig.gca()
-    ax.set_animated('True')
+    #ax.set_animated('True')
     
     # Find the colorbar limits if unspecified
     if clim==None:
@@ -823,40 +879,37 @@ def unanimate(xy,z,tsteps,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
         clim.append(np.min(z))
         clim.append(np.max(z))
     
-    def updateScalar(i):
-        return np.array(z[i,:])
-        
 
+        
     collection = PolyCollection(xy)
-    collection.set_array(updateScalar(0))
-    collection.set_linewidth(0)
-    #collection.set_edgecolors(None) # Doesn't work???
+    collection.set_array(np.array(z[0,:]))
     collection.set_clim(vmin=clim[0],vmax=clim[1])
     ax.add_collection(collection)    
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     ax.axis('equal') 
-    ax.set_title('%d'%0)
+    title=ax.set_title("")
     fig.colorbar(collection)
-    fig.canvas.draw()
     
-    ctr=1
-    while ctr:
-        ctr+=1
-        for t in tsteps:
-            #print 'Updating frame %d...'%t   
-            collection.set_array(updateScalar(t)) 
-            #ax.add_collection(collection) 
-            ax.set_title('%d'%t)
-            fig.canvas.draw()
-            #pdb.set_trace()
-            #ax.collections.pop(0) # !!! This is important - it deletes the collection from memory
-            
-        if ctr==2:
-            break
-   
+    def init():
+        collection.set_array([])
+        title.set_text("")
+        return (collection,title)
+
+        
+    def updateScalar(i):
+        ts = i
+        collection.set_array(np.array(z[i,:]))
+        collection.set_edgecolors(collection.to_rgba(np.array((z[i,:]))))    
+        title.set_text('%d'%ts)
+        return (title,collection)
+
     
-    plt.show()
+    anim = animation.FuncAnimation(fig, updateScalar, frames=200, interval=50, blit=True)
+    return anim
+#    print 'Building animation sequence...'
+#    anim.save('C:/Projects/GOMGalveston/CODE/PYTHON/SUNTANS/test_animation.mp4', fps=15)
+
 
 def usage():
     """
@@ -960,7 +1013,10 @@ if __name__ == '__main__':
         # Animation
         sun.tstep=np.arange(0,len(sun.time))
         sun.loadData()
-        ani=unanimate(sun.xy,sun.data,sun.tstep,xlim=sun.grid.xlims,ylim=sun.grid.ylims)
+        plt.figure(figsize=(10,7))
+        sun.animate()
+        if save:
+            sun.saveanim(outfile)
     
     elif plottype == 2:
         # Time series plot
