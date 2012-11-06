@@ -73,11 +73,17 @@ class Spatial(object):
         else:
             if self.klayer==-1: # grab the seabed values
                 klayer = np.arange(0,self.grid.Nkmax)
-                data=nc.variables[self.variable][self.tstep,klayer,self.j]
+
                 if type(self.tstep)==int:
+                    data=nc.variables[self.variable][self.tstep,klayer,self.j]
                     self.data = data[self.grid.Nk[self.j],self.j]
-                else:
-                    self.data = data[self.tstep,self.grid.Nk[self.j],self.j]
+                else: # need to extract timestep by timestep for animations to save memory
+                    self.data=np.zeros((len(self.tstep),len(self.j)))
+                    i=-1
+                    for t in self.tstep:
+                        i+=1
+                        data=nc.variables[self.variable][t,klayer,self.j]
+                        self.data[i,:] = data[self.grid.Nk[self.j],self.j]
             else:
                 self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
         
