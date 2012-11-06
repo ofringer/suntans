@@ -15,14 +15,11 @@ from datetime import datetime
 import os, time, getopt, sys
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-#import matplotlib as mpl
 from matplotlib.collections import PolyCollection
-#import matplotlib.animation as animation
+import matplotlib.animation as animation
+
 
 import pdb
-
-
 
 class Spatial(object):
     
@@ -44,7 +41,7 @@ class Spatial(object):
         
         # Set some default parameters
         self.tstep=0
-        self.klayer=0
+        self.klayer=0 # -1 get seabed
         self.j=np.arange(0,self.grid.Nc) # Grid cell number for time series
         self.variable='eta'
         
@@ -74,7 +71,12 @@ class Spatial(object):
         elif ndim==2:
             self.data=nc.variables[self.variable][self.tstep,self.j]
         else:
-            self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
+            if self.klayer==-1: # grab the seabed values
+                klayer = np.arange(0,self.grid.Nkmax)
+                data=nc.variables[self.variable][self.tstep,klayer,self.j]
+                self.data = data[self.grid.Nk[self.j],self.j]
+            else:
+                self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
         
         
         
@@ -88,27 +90,7 @@ class Spatial(object):
          t = nc.variables['time']
          self.time = num2date(t[:],t.units)
 
-    def __openNc(self):
-        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
-        self.nc = Dataset(self.ncfile, 'r')
-        
-    def __del__(self):
-        self.nc.close()
-        
-    def __updateTstep(self):
-        """
-        Updates the tstep variable: -99 all steps, -1 last step
-        """
-        try:
-            if self.tstep.any()==-99:
-                self.tstep=np.arange(0,len(self.time))
-            elif self.tstep.any()==-1:
-                self.tstep=len(self.time)-1
-        except:
-            if self.tstep==-99:
-                self.tstep=np.arange(0,len(self.time))
-            elif self.tstep==-1:
-                self.tstep=len(self.time)-1
+
     
     def plot(self,**kwargs):
         """
@@ -125,9 +107,7 @@ class Spatial(object):
             #tic = time.clock()
             self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.data,xlim=self.grid.xlims,ylim=self.grid.ylims,\
                 clim=self.clim,**kwargs)
-            titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
-                datetime.strftime(self.time[self.tstep],'%d-%b-%Y %H:%M:%S'))
-            plt.title(titlestr)
+            plt.title(self.__genTitle())
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
     def plotvtk(self,**kwargs):
@@ -142,15 +122,9 @@ class Spatial(object):
             self.loadData()
         
         points = np.column_stack((self.grid.xp,self.grid.yp,0.0*self.grid.xp))
-        
-        titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
-                datetime.strftime(self.time[self.tstep],'%d-%b-%Y %H:%M:%S'))
                 
-        self.fig,h,ug,title = unsurfm(points,self.grid.cells,self.data,clim=self.clim,title=titlestr)
+        self.fig,h,ug,title = unsurfm(points,self.grid.cells,self.data,clim=self.clim,title=self.__genTitle())
         
-#        titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
-#            datetime.strftime(self.time[self.tstep],'%d-%b-%Y %H:%M:%S'))
-#        plt.title(titlestr)
             
     def plotTS(self,j=0,**kwargs):
         """
@@ -192,7 +166,7 @@ class Spatial(object):
         #anim = unanimate(self.xy,self.data,self.tstep,xlim=self.grid.xlims,ylim=self.grid.ylims,clim=self.clim,**kwargs)
         #return anim
         
-        from matplotlib import animation
+        
     
         # Create the figure and axes handles
         #plt.ion()
@@ -224,9 +198,7 @@ class Spatial(object):
         def updateScalar(i):
             collection.set_array(np.array(self.data[i,:]))
             collection.set_edgecolors(collection.to_rgba(np.array((self.data[i,:])))) 
-            titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
-                datetime.strftime(self.time[i],'%d-%b-%Y %H:%M:%S'))
-            title.set_text(titlestr)
+            title.set_text(self.__genTitle(i))
             return (title,collection)
   
         self.anim = animation.FuncAnimation(fig, updateScalar, frames=len(self.tstep), interval=50, blit=True)
@@ -236,12 +208,14 @@ class Spatial(object):
         Save the animation object to an mp4 movie
         """
         
-        try:
-            print 'Building animation sequence...'
-            self.anim.save(outfile, fps=15)
-            print 'Complete - animation saved to: %s'%outfile
-        except:
-            print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
+#        try:
+
+        print 'Building animation sequence...'
+        #self.anim.save(outfile, fps=15,bitrate=1800,extra_args=['-vcodec', 'libx264']) # plays in a web browser
+        self.anim.save(outfile, fps=15,bitrate=1800)
+        print 'Complete - animation saved to: %s'%outfile
+#        except:
+#            print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
             
     def animateVTK(self):
         """
@@ -280,7 +254,39 @@ class Spatial(object):
                 yield
         
         a = anim() # Starts the animation.
-    
+
+    def __del__(self):
+        self.nc.close()
+        
+    def __openNc(self):
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
+        self.nc = Dataset(self.ncfile, 'r')
+        
+    def __genTitle(self,tt=0):
+        
+        if self.klayer>=0:
+            zlayer = '%3.1f [m]'%self.grid.z_r[self.klayer]
+        elif self.klayer==-1:
+            zlayer = 'seabed'
+        titlestr='%s [%s]\n z: %s, Time: %s'%(self.long_name,self.units,zlayer,\
+                datetime.strftime(self.time[tt],'%d-%b-%Y %H:%M:%S'))
+                
+        return titlestr
+        
+    def __updateTstep(self):
+        """
+        Updates the tstep variable: -99 all steps, -1 last step
+        """
+        try:
+            if self.tstep.any()==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep.any()==-1:
+                self.tstep=len(self.time)-1
+        except:
+            if self.tstep==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep==-1:
+                self.tstep=len(self.time)-1
 
             
 ###############################################################        
@@ -348,13 +354,20 @@ class Grid(object):
         self.yv = nc.variables['yv'][:]
         self.dv = nc.variables['dv'][:]
         self.cells = nc.variables['cells'][:]
+        self.Nc = len(self.xv)
         self.dz = nc.variables['dz'][:]
         self.Nk = nc.variables['Nk'][:]
-        self.Nc = len(self.xv)
+        self.Nkmax = self.Nk.max()
+        self.Nk -= 1 # needs to be zero based
         try:
             self.Ac = nc.variables['Ac'][:]
         except:
-            print 'Warning no area variable present...'   
+            print 'Warning no area variable, Ac, present...' 
+        
+        try:
+            self.z_r = nc.variables['z_r'][:]
+        except:
+            print 'Warning no depth variable, z_r, present...' 
         
         
         
