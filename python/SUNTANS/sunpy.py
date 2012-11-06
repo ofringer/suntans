@@ -74,7 +74,10 @@ class Spatial(object):
             if self.klayer==-1: # grab the seabed values
                 klayer = np.arange(0,self.grid.Nkmax)
                 data=nc.variables[self.variable][self.tstep,klayer,self.j]
-                self.data = data[self.grid.Nk[self.j],self.j]
+                if type(self.tstep)==int:
+                    self.data = data[self.grid.Nk[self.j],self.j]
+                else:
+                    self.data = data[self.tstep,self.grid.Nk[self.j],self.j]
             else:
                 self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
         
