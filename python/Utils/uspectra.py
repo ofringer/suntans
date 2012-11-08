@@ -34,7 +34,7 @@ class uspectra(object):
     verbose = False
     
     # Units for plotting only
-    tunits = 's'
+    tunits = 'rad s'
     yunits = 'm s$^{-1}$'
     
 
@@ -66,7 +66,7 @@ class uspectra(object):
         self.N = len(self.t)    
         self.getWindow()
         
-        self.C = lstsqfftseq(self.t0,self.y.copy()*self.w_n,self.frq)
+        self.C = lstsqfftseq(self.t0,self.y.copy()*self.w_n,self.frq,self.verbose)
         
             
     def getTs(self):
@@ -110,7 +110,7 @@ class uspectra(object):
         """ Plots the spectrum"""
         plt.loglog(self.frq,abs(self.C))
         plt.xlabel('Freq. [%s$^{-1}$]'%self.tunits)
-        plt.ylabel('Amp [%s %s$^{-1}$]'%(self.yunits,self.tunits))
+        plt.ylabel('Amp [%s]'%(self.yunits))
         plt.grid(b=True)
      
     def plotinterp(self,N=10,**kwargs):
@@ -121,7 +121,7 @@ class uspectra(object):
         yint = self.interp(tint)
         plt.plot(tint, yint)
         plt.xlabel('Freq. [%s$^{-1}$]'%self.tunits)
-        plt.ylabel('Amp [%s %s$^{-1}$]'%(self.yunits,self.tunits))
+        plt.ylabel('Amp [%s]'%(self.yunits))
         plt.grid(b=True)
 
     def invfft(self):
@@ -201,6 +201,14 @@ class uspectra(object):
                 y+=np.real(C[ii])*np.cos(f*t) + np.imag(C[ii])*np.sin(f*t)
         
         return y
+    
+    def mse(self):
+        """
+        Compute the mean square error of the spectral time series
+        """
+ 
+        return 1/float(self.N) * np.sum( np.power(self.y - self.interp(self.t0),2.0) )
+
         
     def rankBands(self,N):
         """ 
@@ -215,7 +223,7 @@ class uspectra(object):
         return amp[-N:], frq[-N:]
         
         
-def lstsqfftseq(t,y,frq):
+def lstsqfftseq(t,y,frq,verbose=False):
     """
         Performs a sequential least-squares fft
         Slower but more memory efficient than doing it for all frequencies
@@ -229,13 +237,15 @@ def lstsqfftseq(t,y,frq):
     ii=-1
     printstep = 5 
     printstep0 = 0
-    print 'Computing uneven spectra for %d bands...' % nf
+    if verbose:
+        print 'Computing uneven spectra for %d bands...' % nf
     for ff in range(0,nf):
         ii+=1
         perccomplete = float(ii)/float(nf)*100.0
         if perccomplete > printstep0:
-            print '%d %% complete...'%(int(perccomplete))
-            printstep0+=printstep
+            if verbose:
+                print '%d %% complete...'%(int(perccomplete))
+                printstep0+=printstep
         
         # Construct the harmonic signal
         A[:,0]=np.cos(frq[ff]*t)
@@ -274,7 +284,7 @@ def lstsqfft(t,y,frq):
 
 
 def getT0time(t):
-    print 'Convert the time to seconds since the start...'
+    #print 'Convert the time to seconds since the start...'
     tsec = np.zeros((len(t)))
     ii=-1
     for tt in t:
@@ -284,7 +294,7 @@ def getT0time(t):
     return tsec
 
 def getT0(t):
-    print 'Convert the t to "units" since the start...'
+    #print 'Convert the t to "units" since the start...'
     tsec = np.zeros((len(t)))
     ii=-1
     for tt in t:

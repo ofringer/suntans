@@ -53,7 +53,7 @@ class kriging(object):
         print '%d interpolation points.'%self.Nc
         # Now loop through and get the weights for each point
         self.W = np.zeros((self.NNear,self.Nc))
-        
+
         # Print percentages
         p0=0
         pstep=5

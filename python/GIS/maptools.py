@@ -17,6 +17,7 @@ from gdalconst import *
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 import pdb
 
 def ll2utm(LL,zone,CS='WGS84',north=True):
@@ -49,6 +50,37 @@ def ll2utm(LL,zone,CS='WGS84',north=True):
         XY[0,1]=Y
     
     return XY
+    
+def utm2ll(XY,zone,CS='WGS84',north=True):
+    """ Convert from utm coordinates to lat/long"""
+    
+    srs = osr.SpatialReference()
+    if north:
+        proj = "UTM %d (%s) in northern hemisphere."%(zone,CS)
+    else:
+        proj = "UTM %d (%s) in southern hemisphere."%(zone,CS)
+        
+    srs.SetProjCS( proj );
+    srs.SetWellKnownGeogCS( CS );
+    srs.SetUTM( zone, True );
+    
+    srsLatLong = srs.CloneGeogCS()
+    ct = osr.CoordinateTransformation(srs,srsLatLong )
+    
+    npt=np.size(XY,0)
+    if npt > 2:
+        LL=np.zeros((npt,2))
+        for ii in range(0,npt):
+            X,Y,z =  ct.TransformPoint(XY[ii,0],XY[ii,1])
+            LL[ii,0]=X
+            LL[ii,1]=Y
+    else:
+        LL=np.zeros((1,2))
+        X,Y,z = ct.TransformPoint(XY[0],XY[1])
+        LL[0,0]=X
+        LL[0,1]=Y
+    
+    return LL
     
 def readDEM(bathyfile,returnvec=False):
     """ Loads the data from a DEM file"""
@@ -174,7 +206,17 @@ def readShpPoly(shpfile,FIELDNAME = 'marker'):
                         xyall=geom2.GetPoints()
                         
                         XY.append(np.asarray(xyall))
-                        field.append(ztmp)                
+                        field.append(ztmp)
+                        
+                if geom.GetGeometryType() == ogr.wkbMultiPolygon:  # Multi Polygon
+                    for ii in range(0,geom.GetGeometryCount()):
+                        geom2 = geom.GetGeometryRef(ii)
+                        for jj in range(0,geom2.GetGeometryCount()):
+                            geom3 = geom2.GetGeometryRef(jj)
+                            xyall=geom3.GetPoints()
+                            
+                            XY.append(np.asarray(xyall))
+                            field.append(ztmp)  
         
     shp=None
     return XY,field
@@ -208,6 +250,44 @@ def readraster(infile):
     # Remove missing points
     data[data==-32767]=np.nan
 
+def plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15):
+    """
+    Plots a map layer from a polygon or multipolygon shapefile
+    
+    Usage:
+        plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15)
+        
+        convert = 'll2utm' or 'utm2ll'
+        zone = utm zone number
+    """
+    
+    from matplotlib.collections import PolyCollection
+    
+    # Read the shapefile
+    xy,marker = readShpPoly(shpfile,FIELDNAME=fieldname)
+    
+    if convert=='utm2ll':
+        ll=[]
+        for xytmp in xy:
+            ll.append(utm2ll(xytmp,zone,CS='WGS84',north=True))
+        xy=ll
+    elif convert=='ll2utm':
+        ll=[]
+        for xytmp in xy:
+            ll.append(ll2utm(xttmp,zone,CS='WGS84',north=True))
+        xy=ll
+        
+    # Add the polygons to the current axis as a series of patches
+    fig = plt.gcf()
+    ax = fig.gca()
+    
+    collection = PolyCollection(xy)
+    collection.set_facecolor(color)
+    ax.add_collection(collection)
+    ax.axis('equal')
+    
+    return ax, collection
+    
 ###Testing###
 #LL=[-94.2,27.0]
 #zone=15
@@ -220,4 +300,10 @@ def readraster(infile):
 ##h.imshow(np.flipud(self.Z),extent=[bbox[0],bbox[1],bbox[3],bbox[2]])
 #plt.plot(XY[:,0],XY[:,1],'.')
 #plt.axis('equal')
+#plt.show()
+
+#shpfile= 'C:\Projects\GOMGalveston\DATA\Shoreline/GalvestonBasemap.shp'
+#
+#plt.figure()
+#xy = plotmap(shpfile,convert='utm2ll')
 #plt.show()

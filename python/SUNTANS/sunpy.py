@@ -9,7 +9,7 @@ Created on Mon Sep 24 16:55:45 2012
 """
 
 from netCDF4 import num2date
-from netCDF4 import MFDataset as Dataset
+from netCDF4 import MFDataset, Dataset
 import numpy as np
 from datetime import datetime
 import os, time, getopt, sys
@@ -268,8 +268,11 @@ class Spatial(object):
         self.nc.close()
         
     def __openNc(self):
-        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
-        self.nc = Dataset(self.ncfile, 'r')
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+        try: 
+            self.nc = MFDataset(self.ncfile, 'r')
+        except:
+            self.nc = Dataset(self.ncfile, 'r')
         
     def __genTitle(self,tt=0):
         
@@ -470,7 +473,10 @@ class Profile(object):
         Loads the metadata from the profile netcdf file
         """
         #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
-        nc = Dataset(self.ncfile, 'r')
+        try: 
+            nc = MFDataset(self.ncfile, 'r')
+        except:
+            nc = Dataset(self.ncfile, 'r')
         
         # Note that some of these variable names may change
         try:
@@ -528,7 +534,10 @@ class Profile(object):
         # Load the data
         
         #nc = Dataset(self.ncfile, 'r', format='NETCDF4')        
-        nc = Dataset(self.ncfile, 'r')  
+        try: 
+            nc = MFDataset(self.ncfile, 'r')
+        except:
+            nc = Dataset(self.ncfile, 'r')
         
         self.long_name = nc.variables[self.variable].long_name
         self.units= nc.variables[self.variable].units
@@ -607,7 +616,6 @@ class Profile(object):
         Plots the locations of the points with the index numbers overlaid
         """
         offset=20
-        plt.ion()
         plt.figure()
         plt.plot(self.xp,self.yp,'b.')
         plt.plot(self.xp[self.indices],self.yp[self.indices],'o',markeredgecolor='r',markerfacecolor=None)
@@ -615,6 +623,7 @@ class Profile(object):
             plt.text(self.xp[s]+offset,self.yp[s]+offset,'%d'%s)
             
         plt.axis('equal')
+        plt.show()
         
     def pcolor(self,data=None,**kwargs):
         """
@@ -629,7 +638,7 @@ class Profile(object):
             data=self.data
           
         #plt.ion()
-        self.fig=plt.gcf()
+        self.fig=plt.gcf().s
         self.ax =plt.gca()
         self.h = plt.pcolor(self.xplot,self.yplot,data,**kwargs)
         self.cb = plt.colorbar()
