@@ -2,6 +2,36 @@
 """
 Create a SUNTANS meteorological input netcdf file
 
+
+Example 1) Create a metfile using NWS weather station data:
+---------
+ (see getNOAAWeatherStation.py for creating the database file)
+ 
+    >>latlon = [-95.60,-94.3,28.8,30]
+    >>tstart = '20100101'
+    >>tend = '20100201'  
+    >>dt = 1 # time step in hours
+    >>utmzone = 15
+    >>dbfile = 'C:/Projects/GOMGalveston/DATA/GalvestonObs.db'
+    >>ncfile='C:\Projects\GOMGalveston\MODELLING\WINDS\Galveston_Winds_Feb2011_UTM.nc'
+    
+    # Interpolate the data onto a constant time grid
+    >>[coords, output, nctime] = interpWeatherStations(latlon,timestart,timeend,dt,utmzone,showplot=False)
+    # Write to the suntans meteorological netcdf format
+    >>write2NC(ncfile,coords,output,nctime)
+
+    
+Example 2) Create a metfile using the NARR model data:
+--------- 
+   
+    >>tstart = '20110201'
+    >>tend = '20110202'
+    >>bbox = [-95.40,-94.49,28.8,29.9]
+    >>utmzone = 15
+    >>ncfile = 'C:/Projects/GOMGalveston/MODELLING/WINDS/Galveston_NARR_Feb2011.nc'
+    
+    >>narr2suntans(ncfile,tstart,tend,bbox,utmzone)
+
 TODO:
 -----
  Use the spectral interpolation class for filling in gaps
@@ -18,12 +48,16 @@ from netCDF4 import Dataset
 import shapefile
 import netcdfio
 from maptools import ll2utm
+from getNARR import getNARR
 
 
-def interpWeatherStations(latlon,timestart,timeend,dt,utmzone,dbfile, maxgap=40, showplot=False):
+def interpWeatherStations(latlon,tstart,tend,dt,utmzone,dbfile, maxgap=40, showplot=False):
     """ Temporally interpolate weather station data onto a specified time grid"""
     
     ###
+    # Convert to datetime format
+    timestart = datetime.strptime(tstart,'%Y%m%d')
+    timeend = datetime.strptime(tend,'%Y%m%d')
     
     # Create the time variable
     timeList = []
@@ -140,7 +174,7 @@ def interpWeatherStations(latlon,timestart,timeend,dt,utmzone,dbfile, maxgap=40,
             ctr+=1
             
             # Add the other info
-            #output[vv].update({'long_name':dd[vv]['Longname'],'units':dd[vv]['Units']})
+            output[vv].update({'long_name':dd[vv]['Longname'],'units':dd[vv]['Units']})
         
             if showplot:
                 plt.figure()
@@ -153,69 +187,6 @@ def interpWeatherStations(latlon,timestart,timeend,dt,utmzone,dbfile, maxgap=40,
     # Return the data
     return coords, output, nctime
         
-def interpWeatherStationsOld(latlon,timestart,timeend,dt,localdir,showplot=False):
-    """ Temporally interpolate weather station data onto a specified time grid"""
-    
-    varnames = ['Tair','Pair','Uwind','Vwind','RH','rain','cloud']
-    
-    # Read in the semi-processed data
-    data = readNOAAISH.readall(latlon,[timestart.year,timeend.year],localdir) 
-    
-    nctime,ntime = returnTime(timestart,timeend,dt)
-        
-    data = dataQC(data,nctime,varnames)
-   
-                                    
-    # Work out the number of spatial points of each variable based on quality control
-    coords={}
-    for vv in varnames:
-        coords['lon_'+vv] = []
-        coords['lat_'+vv] = []              
-    
-    
-    for dd in data:
-        for vv in dd.keys():
-            if vv in varnames:
-                coords['lon_'+vv].append(dd['Longitude'])
-                coords['lat_'+vv].append(dd['Latitude'])
-    
-    varlength={}
-    ctr={}                    
-    for vv in varnames:
-        varlength[vv]=np.size(coords['lon_'+vv])
-        ctr[vv]=0
-        
-    # Initialize the output arrays
-    output = {}
-    for vv in varnames:
-        output[vv] = {'Data':np.zeros([ntime,varlength[vv]])}
-    
-    # Loop trough and interpolate each variables onto the time array
-    for dd in data:
-        # Interpolate the data 
-        for vv in dd.keys():
-            if vv in varnames:
-                tmp = np.array(dd[vv]['Data'])
-                timenow = np.double(dd[vv]['Time'])
-                ind = np.isfinite(tmp)
-                F = interpolate.interp1d(timenow[ind],tmp[ind],kind='linear')
-                varinterp = F(nctime)
-                output[vv]['Data'][:,ctr[vv]]=varinterp
-                ctr[vv]+=1
-                
-                # Add the other info
-                output[vv].update({'long_name':dd[vv]['Longname'],'units':dd[vv]['Units']})
-    
-                if showplot:
-                    plt.figure()
-                    plt.hold('on')
-                    plt.plot(timenow,tmp)
-                    plt.plot(nctime,varinterp,'r')
-                    plt.title(dd['StationName']+' - '+vv)
-                    plt.show()
-        
-    # Return the data
-    return coords, output, nctime
     
 def dataQC(data,nctime,varnames):
     """ Perform basic quality control on the raw data pass
@@ -406,10 +377,11 @@ def write2SHP(latlon,timestart,timeend,dt,localdir,shpfile):
     w.save(shpfile)
     return
    
-def convertTime(timein):
-    """Converts a list of time object into an array of seconds since 1990-01-01"""
-    basetime = datetime(1990,1,1)
-    
+def convertTime(timein,basetime = datetime(1990,1,1)):
+    """
+    Converts a list of time object into an array of seconds since "basetime"
+    """
+
     timeout=[]
     for t in timein:
         dt = t - basetime
@@ -417,22 +389,68 @@ def convertTime(timein):
         
     return np.array(timeout)
     
+def narr2suntans(outfile,tstart,tend,bbox,utmzone):
+    """
+    Extraxts NARR model data and converts to a netcdf file format recognised by SUNTANS
+    """
+
+    # Initialise the NARR object (for all variables)
+    narr=getNARR(tstart,tend,bbox)
     
-#######
-## Inputs
-#latlon = [-95.60,-94.3,28.8,30]
-##latlon = [-95.0,-94.3,28.8,29.5]
-#timestart = datetime(2011,2,1,0,0,0)
-#timeend = datetime(2011,3,1,0,0,0)
-#dt = 1 # time step in hours
+    #Lookup table that matches variables to name in NARR file
+    varlookup={'Uwind':'u_wind_height_above_ground', 'Vwind':'v_wind_height_above_ground',\
+    'Tair':'Temperature_height_above_ground','Pair':'Pressure_reduced_to_MSL',\
+    'RH':'Relative_humidity','cloud':'Total_cloud_cover','rain':'Precipitation_rate'}
+    
+    # Set some meta variables
+    Nc = narr.nx*narr.ny
+    
+    nctime = convertTime(narr.time)
+    
+    meta={}
+    meta.update({'Uwind':{'long_name':'Eastward wind velocity component','units':'m s-1','scalefactor':1.0,'addoffset':0.0}})
+    meta.update({'Vwind':{'long_name':'Northward wind velocity component','units':'m s-1','scalefactor':1.0,'addoffset':0.0}})
+    meta.update({'Tair':{'long_name':'Air Temperature','units':'Celsius','scalefactor':1.0,'addoffset':273.15}})
+    meta.update({'Pair':{'long_name':'Air Pressure','units':'hPa','scalefactor':0.01,'addoffset':0.0}})
+    meta.update({'RH':{'long_name':'Relative Humidity','units':'percent','scalefactor':1.0,'addoffset':0.0}})
+    meta.update({'cloud':{'long_name':'Cloud cover fraction','units':'dimensionless','scalefactor':0.01,'addoffset':0.0}})
+    meta.update({'rain':{'long_name':'rain fall rate','units':'kg m2 s-1','scalefactor':1.0,'addoffset':0.0}})
+    
+    # Convert the coordinates to UTM
+    ll = np.hstack((np.reshape(narr.lon,(Nc,1)), np.reshape(narr.lat,(Nc,1))))
+    xy = ll2utm(ll,utmzone)
+    
+    # Loop through each variable and store in a dictionary
+    output = {}
+    coords={}
+    for vv in varlookup.keys():
+        
+        data = narr(varlookup[vv])
+        
+        # Convert the units
+        data = data*meta[vv]['scalefactor']+meta[vv]['addoffset']    
+        
+        output[vv] = {'Data':np.reshape(data,(narr.nt,Nc))}
+        
+        output[vv].update({'long_name':meta[vv]['long_name'],'units':meta[vv]['units']})
+        
+        # Update the coordinates dictionary
+        coords['x_'+vv]=xy[:,0]
+        coords['y_'+vv]=xy[:,1]
+        coords['z_'+vv]=narr.z * np.ones((Nc,))
+
+    # Write to NetCDF 
+    write2NC(outfile,coords,output,nctime)
+
+    
+############
+# Testing stuff
+
+#tstart = '20110201'
+#tend = '20110202'
+#bbox = [-95.40,-94.49,28.8,29.9]
 #utmzone = 15
-#dbfile = 'C:/Projects/GOMGalveston/DATA/GalvestonObs.db'
-#showplot=False
-#ncfile='C:\Projects\GOMGalveston\MODELLING\WINDS\Galveston_Winds_Feb2011_UTM.nc'
-#
-#    
-##
-#[coords, output, nctime] = interpWeatherStations(latlon,timestart,timeend,dt,utmzone,showplot=False)
+#ncfile = 'C:/Projects/GOMGalveston/MODELLING/WINDS/Galveston_NARR_Feb2011.nc'
 ##
 #
-#write2NC(ncfile,coords,output,nctime)
+#narr2suntans(ncfile,tstart,tend,bbox,utmzone)
