@@ -12,6 +12,7 @@
 #
 ########################################################################
 Nkmax			100	# Number of cells in the vertical
+maxFaces                3       # Max number of edges for cells
 stairstep		1	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1.025	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
