@@ -12,6 +12,11 @@
 #include "suntans.h"
 #include "phys.h"
 
+/*maxFaces:
+   max number of edges for cells
+*/
+const int maxFaces_DEFAULT=3;
+
 
 /* prettyplot:
  * uses quadratic interpolation for output values if 1, otherwise uses whichever interp method specified
