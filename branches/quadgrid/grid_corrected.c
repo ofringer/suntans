@@ -790,7 +790,10 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces
   // Number of points defining the vertices of the polygons
   //(*grid)->Np = getsize(POINTSFILE);
   (*grid)->Np = Np;
-
+ 
+  // Max number of edges of cells
+  (*grid)->maxfaces=maxFaces;
+ 
   // (x,y) coordinates of vertices
   (*grid)->xp = (REAL *)SunMalloc((*grid)->Np*sizeof(REAL),"InitMainGrid");
   (*grid)->yp = (REAL *)SunMalloc((*grid)->Np*sizeof(REAL),"InitMainGrid");
@@ -870,14 +873,13 @@ void ReadNfaces(gridT *grid, int myproc, int maxFaces)
 
   for(n=0;n<grid->Nc;n++){
     grid->nfaces[n]=(int)getfield(ifile,str);
-    if(max<grid->nfaces[n]) max=grid->nfaces[n];
-    for(i=0;i<(2*grid->nfaces[n]+2);i++)
-      getfield(ifile,str);
-  }
-  if(max>maxFaces){
-    printf("Max number of edges is %d in Cell.dat is more than maxFaces %d in suntans.dat!",max,maxFaces);
+    if(grid->nfaces[n]>maxFaces){
+    printf("Max number of edges is %d of No. %d in Cell.dat is more than maxFaces %d in suntans.dat!",grid->nfaces[n],n,maxFaces);
     MPI_Finalize();
     exit(EXIT_FAILURE);
+    }   
+    for(i=0;i<(2*grid->nfaces[n]+2);i++)
+      getfield(ifile,str);
   }    
 }
 
@@ -2155,7 +2157,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   for(n=0;n<(*grid)->Nc;n++) {
     (*grid)->nfaces[n]=(int)getfield(ifile,str);
     if((*grid)->nfaces[n]>(*grid)->maxfaces){
-    printf("Max number of edges is %d in Cell.dat is more than maxFaces %d in suntans.dat!",(*grid)->nfaces[n],(*grid)->maxfaces);
+    printf("Max number of edges is %d of No. %d in Cell.dat is more than maxFaces %d in suntans.dat!",(*grid)->nfaces[n],n,(*grid)->maxfaces);
     MPI_Finalize();
     exit(EXIT_FAILURE);
     }
@@ -4680,34 +4682,44 @@ static int CorrectVoronoi(gridT *grid, int myproc)
 
 static int CorrectAngles(gridT *grid, int myproc) ///questions
 {
-  int n, nf, nc1, nc2, numcorr;
-  REAL xc, yc, xv1, xv2, yv1, yv2, xc1, xc2, xc3, yc1, yc2, yc3, dg, dg0, ang1, ang2,
+  int n, nf, nc1, nc2, numcorr, i,k;
+  REAL xc, yc, xv1, xv2, yv1, yv2, xc1, xc2, xc3, yc1, yc2, yc3, xv_sum, yv_sum, dg, dg0, ang1, ang2,
     dot1, dot2, dot3, mag1, mag2, mag3, cosVoronoiRatio;
   REAL VoronoiRatio=MPI_GetValue(DATAFILE,"VoronoiRatio","CorrectVoronoi",0);
   cosVoronoiRatio = cos(VoronoiRatio*PI/180.0);
 
   numcorr=0;
   for(n=0;n<grid->Nc;n++) {
-    xc1 = grid->xp[grid->cells[n*NFACES]];
-    xc2 = grid->xp[grid->cells[n*NFACES+1]];
-    xc3 = grid->xp[grid->cells[n*NFACES+2]];
-    yc1 = grid->yp[grid->cells[n*NFACES]];
-    yc2 = grid->yp[grid->cells[n*NFACES+1]];
-    yc3 = grid->yp[grid->cells[n*NFACES+2]];
-    mag1 = sqrt(pow(xc2-xc1,2)+pow(yc2-yc1,2));
-    mag2 = sqrt(pow(xc3-xc1,2)+pow(yc3-yc1,2));
-    mag3 = sqrt(pow(xc3-xc2,2)+pow(yc3-yc2,2));
-    dot1 = (mag1*mag1+mag2*mag2-mag3*mag3)/(2*mag1*mag2);
-    dot2 = (mag2*mag2+mag3*mag3-mag1*mag1)/(2*mag2*mag3);
-    dot3 = (mag3*mag3+mag1*mag1-mag2*mag2)/(2*mag3*mag1);
+    xv_sum=0;
+    yv_sum=0;
+    k=0;
+    for(i=0;i<grid->nfaces[n]-2;i++){
+      xc1 = grid->xp[grid->cells[n*grid->maxfaces+i]];
+      xc2 = grid->xp[grid->cells[n*grid->maxfaces+i+1]];
+      xc3 = grid->xp[grid->cells[n*grid->maxfaces+i+2]];
+      yc1 = grid->yp[grid->cells[n*grid->maxfaces]];
+      yc2 = grid->yp[grid->cells[n*grid->maxfaces+i+1]];
+      yc3 = grid->yp[grid->cells[n*grid->maxfaces+i+2]];
+      mag1 = sqrt(pow(xc2-xc1,2)+pow(yc2-yc1,2));
+      mag2 = sqrt(pow(xc3-xc1,2)+pow(yc3-yc1,2));
+      mag3 = sqrt(pow(xc3-xc2,2)+pow(yc3-yc2,2));
+      dot1 = (mag1*mag1+mag2*mag2-mag3*mag3)/(2*mag1*mag2);
+      dot2 = (mag2*mag2+mag3*mag3-mag1*mag1)/(2*mag2*mag3);
+      dot3 = (mag3*mag3+mag1*mag1-mag2*mag2)/(2*mag3*mag1);
 
-    if(dot1<=cosVoronoiRatio ||
-       dot2<=cosVoronoiRatio ||
-       dot3<=cosVoronoiRatio) {
-      numcorr++;
-      grid->xv[n] = (xc1+xc2+xc3)/NFACES;
-      grid->yv[n] = (yc1+yc2+yc3)/NFACES;
+      if(dot1<=cosVoronoiRatio ||
+	 dot2<=cosVoronoiRatio ||
+	 dot3<=cosVoronoiRatio) {
+	k++;
+        xv_sum=xv_sum+(xc1+xc2+xc3)/3;
+	yv_sum=yv_sum+(yc1+yc2+yc3)/3;
+      }
     }
+    if(k>0){
+      grid->xv[n]=xv_sum/(grid->nfaces[n]-2);
+      grid->yv[n]=yv_sum/(grid->nfaces[n]-2);
+      numcorr++;
+	}
   }
   if(numcorr>0 && VERBOSE>1 && myproc==0)
     printf("Corrected %d of %d cells with angles > %.1f degrees (%.2f%%).\n",
