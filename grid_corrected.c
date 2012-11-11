@@ -188,6 +188,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   if(myproc==0 && VERBOSE>0) printf("Computing Connectivity...\n");
   Tic();
   Connectivity(maingrid,myproc);
+
   if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
 
   if(myproc==0 && VERBOSE>0) printf("Partitioning...\n");
@@ -195,13 +196,14 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   // most important and complicated function to ensure parallelism for grid
   // takes the main grid and redistributes to local grids on each processor
   Partition(maingrid,localgrid,comm);
+  
   if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
-
+  
   // functions to check to make sure all the communications are set up properly
   //  CheckCommunicateCells(maingrid,*localgrid,myproc,comm);
   //  CheckCommunicateEdges(maingrid,*localgrid,myproc,comm);
   //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm);
-
+ 
   if(myproc==0 && VERBOSE>0) printf("Outputing Data...\n");
   Tic();
   OutputData(maingrid,*localgrid,myproc,numprocs);
@@ -292,7 +294,6 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   Tic();
   Topology(&maingrid,localgrid,myproc,numprocs);
   if(myproc==0 && VERBOSE>0) printf("\t... time used is %f\n", Toc());
-  
 
   if(myproc==0 && VERBOSE>2) printf("\tTransferring data...\n");
   // function to move data between main and local grid where boundary points were
@@ -300,6 +301,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   // described in Topology
   Tic(); 
   TransferData(maingrid,localgrid,myproc);
+
   if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
   if(myproc==0 && VERBOSE>2) printf("\tCreating edge markers...\n");
@@ -340,6 +342,8 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
   if(VERBOSE>3) ReportConnectivity(*localgrid,maingrid,myproc);
   if(VERBOSE>2) ReportPartition(maingrid,*localgrid,myproc,comm);
+ 
+
 }
 
 /*
@@ -1203,12 +1207,14 @@ static inline void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face,
       for(nf=0;nf<nfaces[nc1];nf++) {
         // get a face for neighboring cell adjacent to edge for first cell touching edge
         nb = neigh[nc1*maxfaces+nf];
+	//printf("nb is %d \n", nb);
         if(nb==nc2) {
           // if the neighbor and the adjacent cell are the same then we 
           // can store the actual face number and also the pointer to the face normal to 
           // the edge
           face[nc1*maxfaces+nf]=n;
           gradf[2*n] = nf;
+          //printf("face = %d",face[nc1*maxfaces+nf]);
         }
         // get a face for neighboring cell adjacent to edge for second cell touching edge
         nb = neigh[nc2*maxfaces+nf];
@@ -1233,6 +1239,7 @@ static inline void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face,
             if(face[nc*maxfaces+nf] == -1) {
               // assign actual value for the faces
               face[nc*maxfaces+nf]=n;
+	      //printf("face = %d",face[nc*maxfaces+nf]);
               gradf[2*n+j]=nf;
               break;
             }
@@ -1510,8 +1517,7 @@ static inline void CreateNormalArray(int *grad, int *face, int *normal, int *nfa
  */
 void Connectivity(gridT *grid, int myproc)
 {
-  //create facearray and eneigh, help finish all the connection information for cell and edges
-  int n, nf, ng, ne, enei, grad1, grad2, gradc; //add enei grad1 grad2 as in CreateEdgeGraph function //add gradc to simply last part
+  int n, nf, ng, ne;
 
   /* Create the face array, which contains indexes to the edges of
      each cell */
@@ -1520,6 +1526,7 @@ void Connectivity(gridT *grid, int myproc)
   // pointers to the face number of given cell corresponding to given edge 
   // (grid->gradf[2*Ne])
   CreateFaceArray(grid->grad,grid->gradf,grid->neigh,grid->face,grid->nfaces,grid->maxfaces,grid->Nc,grid->Ne);
+  // printf("faces is %d", grid->face[99]);
   // reorder the cell points so that they have structure for use in interpolation
   ReorderCellPoints(grid->face, grid->edges, grid->cells, grid->nfaces, grid->maxfaces, grid->Nc);
   // create dot product of unique normal with outward normal
@@ -1551,15 +1558,11 @@ void Connectivity(gridT *grid, int myproc)
  */
 static inline void CreateMomentumCV(gridT *grid)
 {
-  int n, ne, ng, nf, grad1, grad2, enei;
-
+  int n, ne, ng, nf;
   // loop over all the edges
   for(n=0; n < grid->Ne; n++) {
-    grad1=grid->grad[2*n];
-    grad2=grid->grad[2*n+1];
-    enei=grad1+grad2-2;
     // for each edge of the momentum control volume
-    for(ne = 0; ne < enei; ne++) {
+    for(ne = 0; ne < 2*(grid->maxfaces-1); ne++) {
       // initialize the edge to be ghost for the CV
       grid->eneigh[2*(grid->maxfaces-1)*n+ne] = -1;
     }
@@ -1567,20 +1570,19 @@ static inline void CreateMomentumCV(gridT *grid)
     // for each neighbor
     for(ng=0; ng < 2; ng++) {
       // if the neighbor is not a ghost
-      if(grid->grad[2*n+ng] != -1) {
+      if(grid->grad[2*n+ng]!=-1) {
         // for each face
         for(nf=0; nf < grid->nfaces[grid->grad[2*n+ng]]; nf++) {
           // determine if the face for each neighbor 
           // isn't the current edge
-          if(grid->face[grid->maxfaces*grid->grad[2*n+ng]+nf] != n) {
+          if(grid->face[grid->maxfaces*grid->grad[2*n+ng]+nf]!=n) {
             // if it isn't, set the momentum control volume
-            grid->eneigh[2*(grid->maxfaces-1)*n+ne++]=
-              grid->face[grid->maxfaces*grid->grad[2*n+ng]+nf];
+            grid->eneigh[2*(grid->maxfaces-1)*n+ne++]=grid->face[grid->maxfaces*grid->grad[2*n+ng]+nf];
           }
         }
       }
     }
-  }
+  }  
 }
 
 /*
@@ -1883,6 +1885,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     fprintf(ofile,"%d %e %e %e %e %d ",grid->nfaces[n],grid->xv[n],grid->yv[n],
 	    grid->Ac[n],grid->dv[n],grid->Nk[n]);
     for(nf=0;nf<grid->nfaces[n];nf++)
+     //printf("grid->face is %d\n",grid->face[grid->maxfaces*n+nf]);
       fprintf(ofile,"%d ",grid->face[grid->maxfaces*n+nf]);
     for(nf=0;nf<grid->nfaces[n];nf++)
       fprintf(ofile,"%d ",grid->neigh[grid->maxfaces*n+nf]);
@@ -2057,7 +2060,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->Ne = MPI_GetSize(str,"ReadGrid",myproc);
   sprintf(str,"%s.%d",NODEFILE,myproc);
   (*grid)->Np = MPI_GetSize(str,"ReadGrid",myproc);
-
+ 
   /*
    * First read in the topology file
    *
@@ -2130,7 +2133,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
     (*grid)->cellp[n]=(int)getfield(ifile,str);
   for(n=0;n<(*grid)->Ne;n++) 
     (*grid)->edgep[n]=(int)getfield(ifile,str);
-
+  
   /*
    * Now read in cell-centered data.dat
    *
@@ -2178,7 +2181,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
       (*grid)->cells[(*grid)->maxfaces*n+nf]=(int)getfield(ifile,str);
   }
   fclose(ifile);
-
+  
   /*
    * Now read in edge-centered data.dat
    *
@@ -3804,8 +3807,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
       "TransferData");
   (*localgrid)->gradf = (int *)SunMalloc(2*(*localgrid)->Ne*sizeof(int),
       "TransferData");
-
-  
+ 
   // populate maingrid->leptr, localgrid->eptr, localgrid->edges 
   // initialize all edge flags to 0
   for(j=0;j<maingrid->Ne;j++) 
@@ -3817,7 +3819,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
     // on each face on this cell
     for(nf=0;nf<(*localgrid)->nfaces[i];nf++) {
       // get the global face value (global pointer to edge)
-      iface = maingrid->face[(*localgrid)->mnptr[i]*(*localgrid)->maxfaces+nf];
+      iface = maingrid->face[(*localgrid)->mnptr[i]*maingrid->maxfaces+nf];
       // if we already haven't considered this face
       if(!flagged[iface]) {
         // mark face as considered
@@ -3854,14 +3856,18 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
           (*localgrid)->grad[2*n+j]=lcptr[nc];
       }
     }
-  }
+  }  
 
   // create face and normal arrays now for the local grid 
   // (previously called for global grid)
+  // check whether variables are right
+
   CreateFaceArray((*localgrid)->grad,(*localgrid)->gradf,(*localgrid)->neigh,
       (*localgrid)->face,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc,(*localgrid)->Ne);
   ReorderCellPoints((*localgrid)->face,(*localgrid)->edges,(*localgrid)->cells,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc);
+
   CreateNormalArray((*localgrid)->grad,(*localgrid)->face,(*localgrid)->normal,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc);
+
   // create node array which will keep track of all nodal neighboors
   // first, get number of total points
   // second, get a list of the points on each processor, this stores the 
@@ -3898,6 +3904,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
   free(flagged);
   free(lcptr);
   free(leptr);
+
 }
 
 /*
