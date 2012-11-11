@@ -1288,7 +1288,7 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
       sharednode = SharedListValue(n1, n2, 2);
       // check for match
       if(sharednode != -1) 
-        cells[NUMEDGECOLUMNS*nc + (nf+1)]  = sharednode;
+        cells[maxfaces*nc + (nf+1)]  = sharednode;
       else
       printf("Error as sharednode in %s not found\n", "ReorderCellPoints");
 
@@ -1306,7 +1306,7 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
     sharednode = SharedListValue(n1, n2, 2);
     // check for match
     if(sharednode != -1)
-      cells[NUMEDGECOLUMNS*nc  ]  = sharednode;
+      cells[maxfaces*nc  ]  = sharednode;
     else
       printf("Error as sharednode in %s not found\n", "ReorderCellPoints");
   }
@@ -2151,7 +2151,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->face = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->normal = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->def = (REAL *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(REAL),"ReadGrid");
-  (*grid)->cells = (int *)SunMalloc(NUMEDGECOLUMNS*(*grid)->Nc*sizeof(REAL),"ReadGrid");
+  (*grid)->cells = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(REAL),"ReadGrid");
 
   sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
   if(VERBOSE>2) printf("Reading %s...\n",str);
