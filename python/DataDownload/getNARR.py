@@ -15,6 +15,7 @@ from netCDF4 import Dataset
 from osgeo import osr
 from datetime import datetime, timedelta
 
+from pydap.client import open_url
 
 class getNARR(object):
     """
@@ -57,11 +58,15 @@ class getNARR(object):
         
         self.getDimInfo(varname)
         
-        return self.getData(varname)
+        return self.getDataPyDap(varname)
     
     def getData(self,vv):
         """
-        Downloads the variable data
+        Downloads the variable data using the NetCDF4 module
+        
+        This module has memory leaks if not compiled with the correct netcdf/hdf/curl libraries
+        
+        Safer to use pydap.
         """
         
         if self.verbose:
@@ -85,6 +90,34 @@ class getNARR(object):
                 data[tt,:,:] = nc.variables[vv][:,self.y1:self.y2,self.x1:self.x2]
                 
             nc.close()    
+        
+        return data
+        
+    def getDataPyDap(self,vv):
+        """
+        Downloads the variable data using the pydap library
+        """
+        
+        if self.verbose:
+            print 'Retrieving variable: %s...'%vv
+        
+        data = np.zeros((self.nt,self.ny,self.nx))
+        
+        tt=-1
+        for ff in self.grbfiles:
+            tt+=1
+            if self.verbose:
+                print '     File: %s...'%ff
+                
+            nc = open_url(ff)
+            
+            # get the height coordinate for 4D arrays
+            if self.ndim == 4:
+                 # dimension order [time, z, y, x]
+                data[tt,:,:] = nc[vv][:,0,self.y1:self.y2,self.x1:self.x2]
+            elif self.ndim == 3:
+                data[tt,:,:] = nc[vv][:,self.y1:self.y2,self.x1:self.x2]
+                   
         
         return data
         

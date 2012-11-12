@@ -410,7 +410,7 @@ def narr2suntans(outfile,tstart,tend,bbox,utmzone):
     meta={}
     meta.update({'Uwind':{'long_name':'Eastward wind velocity component','units':'m s-1','scalefactor':1.0,'addoffset':0.0}})
     meta.update({'Vwind':{'long_name':'Northward wind velocity component','units':'m s-1','scalefactor':1.0,'addoffset':0.0}})
-    meta.update({'Tair':{'long_name':'Air Temperature','units':'Celsius','scalefactor':1.0,'addoffset':273.15}})
+    meta.update({'Tair':{'long_name':'Air Temperature','units':'Celsius','scalefactor':1.0,'addoffset':-273.15}})
     meta.update({'Pair':{'long_name':'Air Pressure','units':'hPa','scalefactor':0.01,'addoffset':0.0}})
     meta.update({'RH':{'long_name':'Relative Humidity','units':'percent','scalefactor':1.0,'addoffset':0.0}})
     meta.update({'cloud':{'long_name':'Cloud cover fraction','units':'dimensionless','scalefactor':0.01,'addoffset':0.0}})
