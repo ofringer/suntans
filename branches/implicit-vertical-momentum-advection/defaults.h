@@ -96,6 +96,11 @@ const int AB_DEFAULT = 2;
 */
 const int TVDmomentum_DEFAULT = 3;
 
+/* conserveMomentum
+   Use conservative momentum advection scheme by default.
+*/
+const int conserveMomentum_DEFAULT = 1;
+
 /* smoothbot:
    Treatment in SetFluxHeight and ComputeVelocityVector for smooth
    bottom flow when partial stepping is used

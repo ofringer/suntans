@@ -36,6 +36,7 @@ typedef struct _physT {
   REAL **u;
   REAL **uc;
   REAL **vc;
+  REAL **wc, **wf;
 
   /*  new variables for nodal and tangential velocities */
   // definitions follow from Wang et al 2011
@@ -60,7 +61,6 @@ typedef struct _physT {
   REAL **vold;
   REAL *D;
   REAL **w;
-  REAL **wf;
   REAL **q;
   REAL **qc;
   REAL **s;
@@ -168,7 +168,7 @@ typedef struct _propT {
   int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, 
       qmaxiters, hprecond, qprecond, volcheck, masscheck, nonlinear, linearFS, newcells, wetdry, sponge_distance, 
       sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
-      TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum;
+    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum, conserveMomentum;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID, *SalinityFID, *BGSalinityFID, 
        *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,    
        *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;
