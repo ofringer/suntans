@@ -357,8 +357,10 @@ class Grid(object):
         
         #print self.infile
         
-        #nc = Dataset(self.infile, 'r', format='NETCDF4')        
-        nc = Dataset(self.infile, 'r')        
+        try: 
+            nc = MFDataset(self.ncfile, 'r')
+        except:
+            nc = Dataset(self.ncfile, 'r')     
         
         self.xp = nc.variables['xp'][:]
         self.yp = nc.variables['yp'][:]
