@@ -99,7 +99,32 @@ class Spatial(object):
          t = nc.variables['time']
          self.time = num2date(t[:],t.units)
 
-
+    def __openNc(self):
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
+	print "Loading data file: %s..."%self.ncfile
+	try:
+	    self.nc = Dataset(self.ncfile, 'r')
+	except:
+	    self.ncfile+='*'
+	    self.nc = Dataset(self.ncfile, 'r')
+        
+    def __del__(self):
+        self.nc.close()
+        
+    def __updateTstep(self):
+        """
+        Updates the tstep variable: -99 all steps, -1 last step
+        """
+        try:
+            if self.tstep.any()==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep.any()==-1:
+                self.tstep=len(self.time)-1
+        except:
+            if self.tstep==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep==-1:
+                self.tstep=len(self.time)-1
     
     def plot(self,**kwargs):
         """
@@ -150,8 +175,7 @@ class Spatial(object):
         self.fig = plt.gcf()
         ax = self.fig.gca()
         h = plt.plot(self.time,self.data,'b') 
-        c
-        ax.set_title(titlestr)
+        ax.set_title(self.__genTitle())
         
        
         
@@ -217,14 +241,12 @@ class Spatial(object):
         Save the animation object to an mp4 movie
         """
         
-#        try:
-
-        print 'Building animation sequence...'
-        #self.anim.save(outfile, fps=15,bitrate=1800,extra_args=['-vcodec', 'libx264']) # plays in a web browser
-        self.anim.save(outfile, fps=15,bitrate=1800)
-        print 'Complete - animation saved to: %s'%outfile
-#        except:
-#            print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
+        #try:
+	print 'Building animation sequence...'
+	self.anim.save(outfile, fps=15,bitrate=3600)
+	print 'Complete - animation saved to: %s'%outfile
+        #except:
+        #    print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
             
     def animateVTK(self):
         """
@@ -358,9 +380,9 @@ class Grid(object):
         #print self.infile
         
         try: 
-            nc = MFDataset(self.ncfile, 'r')
+            nc = MFDataset(self.infile, 'r')
         except:
-            nc = Dataset(self.ncfile, 'r')     
+            nc = Dataset(self.infile, 'r')     
         
         self.xp = nc.variables['xp'][:]
         self.yp = nc.variables['yp'][:]
@@ -999,7 +1021,8 @@ if __name__ == '__main__':
             usage()
             exit(1)
         elif opt == '-f':
-            ncfile = val
+            ncfile = str(val)
+	    print ncfile
         elif opt == '-v':
             varname = val
         elif opt == '-t':
