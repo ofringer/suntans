@@ -126,20 +126,25 @@ class Spatial(object):
             elif self.tstep==-1:
                 self.tstep=len(self.time)-1
     
-    def plot(self,**kwargs):
+    def plot(self,xlims=None,ylims=None,**kwargs):
         """
           Plot the unstructured grid data
         """
         # Load the data if it's needed
         if not self.__dict__.has_key('data'):
             self.loadData()
-            
+
+	# Set the xy limits
+	if xlims==None or ylimsi==None:
+	   xlims=self.grid.xlims 
+           ylims=self.grid.ylims
+
         if self.__dict__.has_key('patches'):
              self.patches.set_array(self.data)
              self.ax.add_collection(self.patches)
         else:
             #tic = time.clock()
-            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.data,xlim=self.grid.xlims,ylim=self.grid.ylims,\
+            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.data,xlim=xlims,ylim=ylims,\
                 clim=self.clim,**kwargs)
             plt.title(self.__genTitle())
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
@@ -190,7 +195,7 @@ class Spatial(object):
             
         print 'SUNTANS image saved to file:%s'%outfile
     
-    def animate(self,**kwargs):
+    def animate(self,xlims=None,ylims=None,**kwargs):
         """
         Animates a spatial plot over all time steps
         
@@ -213,12 +218,17 @@ class Spatial(object):
             self.clim.append(np.min(self.data))
             self.clim.append(np.max(self.data))
            
+	# Set the xy limits
+	if xlims==None or ylims==None:
+	   xlims=self.grid.xlims 
+           ylims=self.grid.ylims
+
         collection = PolyCollection(self.xy)
         collection.set_array(np.array(self.data[0,:]))
         collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
         ax.add_collection(collection)    
-        ax.set_xlim(self.grid.xlims)
-        ax.set_ylim(self.grid.ylims)
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
         ax.axis('equal') 
         title=ax.set_title("")
         fig.colorbar(collection)
