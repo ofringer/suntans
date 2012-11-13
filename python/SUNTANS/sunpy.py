@@ -8,11 +8,11 @@ Created on Mon Sep 24 16:55:45 2012
 @author: mrayson
 """
 
-from netCDF4 import num2date
-from netCDF4 import MFDataset, Dataset
+from netCDF4 import MFDataset, Dataset, num2date
 import numpy as np
 from datetime import datetime
 import os, time, getopt, sys
+from scipy import spatial
 
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
@@ -42,6 +42,7 @@ class Spatial(object):
         # Set some default parameters
         self.tstep=0
         self.klayer=0 # -1 get seabed
+        # Note that if j is an Nx2 array of floats the nearest cell will be found 
         self.j=np.arange(0,self.grid.Nc) # Grid cell number for time series
         self.variable='eta'
         
@@ -52,6 +53,9 @@ class Spatial(object):
         
         # Update tstep 
         self.__updateTstep()
+        
+        # Check the j index
+        self.__checkIndex()
         
 
      
@@ -99,32 +103,7 @@ class Spatial(object):
          t = nc.variables['time']
          self.time = num2date(t[:],t.units)
 
-    def __openNc(self):
-        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')  
-	print "Loading data file: %s..."%self.ncfile
-	try:
-	    self.nc = Dataset(self.ncfile, 'r')
-	except:
-	    self.ncfile+='*'
-	    self.nc = Dataset(self.ncfile, 'r')
-        
-    def __del__(self):
-        self.nc.close()
-        
-    def __updateTstep(self):
-        """
-        Updates the tstep variable: -99 all steps, -1 last step
-        """
-        try:
-            if self.tstep.any()==-99:
-                self.tstep=np.arange(0,len(self.time))
-            elif self.tstep.any()==-1:
-                self.tstep=len(self.time)-1
-        except:
-            if self.tstep==-99:
-                self.tstep=np.arange(0,len(self.time))
-            elif self.tstep==-1:
-                self.tstep=len(self.time)-1
+
     
     def plot(self,xlims=None,ylims=None,**kwargs):
         """
@@ -134,10 +113,10 @@ class Spatial(object):
         if not self.__dict__.has_key('data'):
             self.loadData()
 
-	# Set the xy limits
-	if xlims==None or ylimsi==None:
-	   xlims=self.grid.xlims 
-           ylims=self.grid.ylims
+        # Set the xy limits
+        if xlims==None or ylims==None:
+            xlims=self.grid.xlims 
+            ylims=self.grid.ylims
 
         if self.__dict__.has_key('patches'):
              self.patches.set_array(self.data)
@@ -179,8 +158,10 @@ class Spatial(object):
         plt.ioff()
         self.fig = plt.gcf()
         ax = self.fig.gca()
-        h = plt.plot(self.time,self.data,'b') 
+        h = plt.plot(self.time,self.data,**kwargs) 
         ax.set_title(self.__genTitle())
+        
+        return h
         
        
         
@@ -218,10 +199,10 @@ class Spatial(object):
             self.clim.append(np.min(self.data))
             self.clim.append(np.max(self.data))
            
-	# Set the xy limits
-	if xlims==None or ylims==None:
-	   xlims=self.grid.xlims 
-           ylims=self.grid.ylims
+        # Set the xy limits
+        if xlims==None or ylims==None:
+            xlims=self.grid.xlims 
+            ylims=self.grid.ylims
 
         collection = PolyCollection(self.xy)
         collection.set_array(np.array(self.data[0,:]))
@@ -331,6 +312,21 @@ class Spatial(object):
                 self.tstep=np.arange(0,len(self.time))
             elif self.tstep==-1:
                 self.tstep=len(self.time)-1
+                
+    def __checkIndex(self):
+        """
+        Ensure that the j property is a single or an array of integers
+        """
+        
+        shp = np.shape(self.j)
+        
+        if len(shp)==1:
+            return
+        elif len(shp)==2:
+            print 'x/y coordinates input instead of cell index. Finding nearest neighbours.'
+            dd, j = self.grid.findNearest(self.j)
+            print 'Nearest cell: %d, xv[%d]: %6.10f, yv[%d]: %6.10f'%(j,j,self.grid.xv[j],j,self.grid.yv[j])
+            self.j = j
 
             
 ###############################################################        
@@ -472,6 +468,21 @@ class Grid(object):
             f.write('%10.6f %10.6f %10.6f\n'%(x,y,z))
             
         f.close()
+        
+    def findNearest(self,xy,NNear=1):
+        """
+        Returns the grid indices of the closest points to the nx2 array xy
+        
+        Uses the scipy KDTree routine
+        """
+        
+        if not self.__dict__.has_key('kd'):
+            self.kd = spatial.cKDTree(np.vstack((self.xv,self.yv)).T)
+    
+        # Perform query on all of the points in the grid
+        dist,ind=self.kd.query(xy,k=NNear)
+        
+        return dist, ind
       
 class Profile(object):
     """
@@ -905,7 +916,7 @@ def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
         clim.append(np.min(z))
         clim.append(np.max(z))
     
-    collection = PolyCollection(xy)
+    collection = PolyCollection(xy,**kwargs)
     collection.set_array(np.array(z))
     collection.set_array(np.array(z))
     collection.set_clim(vmin=clim[0],vmax=clim[1])
