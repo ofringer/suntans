@@ -161,7 +161,7 @@ typedef struct _physT {
  *
  */
 typedef struct _propT {
-  REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, 
+  REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, thetaM, 
        thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
        dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, grav, Coriolis_f, CmaxU, CmaxW, 
        laxWendroff_Vertical;

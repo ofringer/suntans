@@ -306,6 +306,14 @@ double GetDefaultValue(char *str, int *status) {
 
     return conserveMomentum_DEFAULT;
 
+ } else if(!strcmp(str,"wetdry")) {
+
+    return wetdry_DEFAULT;
+
+ } else if(!strcmp(str,"thetaM")) {
+
+    return thetaM_DEFAULT;
+
  } else if(!strcmp(str,"smoothbot")) {
 
     return smoothbot_DEFAULT;

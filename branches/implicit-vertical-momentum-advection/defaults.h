@@ -101,6 +101,17 @@ const int TVDmomentum_DEFAULT = 3;
 */
 const int conserveMomentum_DEFAULT = 1;
 
+/* thetaM
+   Implicit vertical advection of horizontal momentum when thetaM>0.5.
+   A value of -1 implies that the original conservative scheme is used in UPredictor().
+*/
+const REAL thetaM_DEFAULT = -1;
+
+/* wetdry
+   Don't do wetting and drying by default
+*/
+const int wetdry_DEFAULT = 0;
+
 /* smoothbot:
    Treatment in SetFluxHeight and ComputeVelocityVector for smooth
    bottom flow when partial stepping is used
