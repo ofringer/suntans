@@ -1636,10 +1636,10 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     // on type 4 boundary condition
     for (k=grid->ctop[nc]; k<grid->Nk[nc]; k++){
       phys->stmp[nc][k]  += -2.0*prop->nu_H*(
-          phys->boundary_u[boundary_index][k] - phys->uc[nc][k])/(2.0*grid->dg[j])*
+          phys->boundary_u[boundary_index][k] - phys->uc[nc][k])/grid->dg[j]*
         grid->df[j]/grid->Ac[nc];
       phys->stmp2[nc][k] += -2.0*prop->nu_H*(
-          phys->boundary_v[boundary_index][k] - phys->vc[nc][k])/(2.0*grid->dg[j])*
+          phys->boundary_v[boundary_index][k] - phys->vc[nc][k])/grid->dg[j]*
         grid->df[j]/grid->Ac[nc];
     }
   }
@@ -2042,7 +2042,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     // loop over the entire depth
     for (k=grid->ctop[nc]; k<grid->Nke[nc]; k++){
       phys->stmp[nc][k]  += -2.0*prop->nu_H*
-        (phys->boundary_w[boundary_index][k] - 0.5*(phys->w[nc][k] + phys->w[nc][k+1]))/(2.0*grid->dg[j])*
+        (phys->boundary_w[boundary_index][k] - 0.5*(phys->w[nc][k] + phys->w[nc][k+1]))/grid->dg[j]*
         grid->df[j]/grid->Ac[nc];
     }
   }
