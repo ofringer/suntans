@@ -16,10 +16,7 @@
 # Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
 # University. All Rights Reserved.
 #
-MPIHOME=/home/fringer/mpich2-install
-#MPIHOME=/home/fringer/software/mpich-1.2.7p1
-PARMETISHOME=/home/fringer/software/ParMetis-3.1.1
-#PARMETISHOME=/home/fringer/software/ParMetis-2.0
-TRIANGLEHOME=/home/fringer/software/triangle
-#TRIANGLEHOME=
+MPIHOME=
+PARMETISHOME=
+TRIANGLEHOME=
 
