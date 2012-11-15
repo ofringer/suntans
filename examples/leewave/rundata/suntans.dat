@@ -57,7 +57,7 @@ nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differen
 interp      1     
 laxWendroff_Vertical    0       # No Lax Wendroff in vertical
 newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
-wetdry			1       # 1 if wetting and drying, 0 otherwise
+wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0       # Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        0 	# Decay distance scale for sponge layer
 sponge_decay	        0	# Decay time scale for sponge layer
