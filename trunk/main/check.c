@@ -89,17 +89,15 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
     }
 
   CmaxW=0;
-  if(prop->nonlinear!=0) {
-    for(i=0;i<Nc;i++) 
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-        C = 0.5*fabs(phys->w[i][k]+phys->w[i][k+1])*prop->dt/grid->dzz[i][k];
-        if(C>CmaxW) {
-          icw = i;
-          kcw = k;
-          CmaxW = C;
-        }
+  for(i=0;i<Nc;i++) 
+    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      C = 0.5*fabs(phys->w[i][k]+phys->w[i][k+1])*prop->dt/grid->dzz[i][k];
+      if(C>CmaxW) {
+	icw = i;
+	kcw = k;
+	CmaxW = C;
       }
-  }
+    }
 
   progout = (int)(prop->nsteps*(double)prop->ntprog/100);
   if(progout>0 && !(prop->n%progout)) {
@@ -113,7 +111,7 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
   }
 
   myalldone=0;
-  if(!uflag || !wflag || !sflag || !hflag || CmaxU>prop->Cmax || CmaxW>prop->Cmax) {
+  if(!uflag || !wflag || !sflag || !hflag || CmaxU>prop->Cmax || (prop->thetaM<0.5 && CmaxW>prop->Cmax)) {
     printf(DASHES);
     printf("Time step %d: Processor %d, Run is blowing up!\n",prop->n,myproc);
 
@@ -149,7 +147,7 @@ int Check(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_C
             DepthFromDZ(grid,phys,grid->grad[2*iu+1],ku)));	
     }
 
-    if(CmaxW>prop->Cmax) {
+    if(CmaxW>prop->Cmax && prop->thetaM<0.5) {
       dtsuggestW = CMAXSUGGEST*grid->dzz[icw][kcw]/fabs(0.5*(phys->w[icw][kcw]+phys->w[icw][kcw]));
 
       printf("Vertical Courant number problems:\n");
