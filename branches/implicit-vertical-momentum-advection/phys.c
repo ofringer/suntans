@@ -2415,7 +2415,7 @@ static void EddyViscosity(gridT *grid, physT *phys, propT *prop, REAL **wnew, MP
 static void UPredictor(gridT *grid, physT *phys, 
     propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, iptr, j, jptr, ne, nf, nf1, normal, nc1, nc2, k;
+  int i, iptr, j, jptr, ne, nf, nf1, normal, nc1, nc2, k, n0, n1;
   REAL sum, dt=prop->dt, theta=prop->theta, h0, boundary_flag;
   REAL *a, *b, *c, *d, *e1, **E, *a0, *b0, *c0, *d0, theta0, alpha;
 
@@ -2530,9 +2530,21 @@ static void UPredictor(gridT *grid, physT *phys,
       // Coefficients for vertical momentum advection terms
       // d[] stores vertical velocity interpolated to faces vertically half-way between U locations
       // So d[k] contains w defined at the vertical w-location of cell k
-      if(prop->nonlinear && prop->thetaM>=0) {
-	for(k=grid->etop[j];k<grid->Nke[j]+1;k++) 
-	  d[k] = 0.5*(phys->w[nc1][k]+phys->w[nc2][k]);
+      if(prop->nonlinear && prop->thetaM>=0 && grid->Nke[j]-grid->etop[j]>1) {
+	if(grid->ctop[nc1]>grid->ctop[nc2]) {
+	  n0=nc2;
+	  n1=nc1;
+	} else {
+	  n0=nc1;
+	  n1=nc2;
+	}
+	// Don't do advection on vertical faces without water on both sides.
+	for(k=0;k<grid->ctop[n1];k++)
+	  d[k]=0;
+	for(k=grid->ctop[n1];k<grid->Nke[j];k++)
+	  d[k] = 0.5*(phys->w[n0][k]+phys->w[n1][k]);
+	d[grid->Nke[j]]=0; // Assume w=0 at a corners (even if w is nonzero on one side of the face)
+
 	for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	  a0[k] = (alpha*0.5*(d[k]-fabs(d[k])) + 0.5*(1-alpha)*d[k])/(0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]));
 	  b0[k] = (alpha*0.5*(d[k]+fabs(d[k])-d[k+1]+fabs(d[k+1]))+0.5*(1-alpha)*(d[k]-d[k+1]))/(0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]));
@@ -2617,20 +2629,17 @@ static void UPredictor(gridT *grid, physT *phys,
       }
 
       // add on explicit vertical momentum advection only if there is more than one vertical layer edge.
-      if(prop->nonlinear && prop->thetaM>=0) {
-	if(grid->Nke[j]-grid->etop[j]>1 && prop->nonlinear) {
-	  for(k=grid->etop[j]+1;k<grid->Nke[j]-1;k++)
-	    phys->utmp[j][k]-=prop->dt*(1-prop->thetaM)*(a0[k]*phys->u[j][k-1]+b0[k]*phys->u[j][k]+c0[k]*phys->u[j][k+1]);
-	  
-	  // Top boundary
-	  phys->utmp[j][grid->etop[j]]-=prop->dt*(1-prop->thetaM)*((2*a0[grid->etop[j]]+b0[grid->etop[j]])*phys->u[j][grid->etop[j]]
-								    +(c0[grid->etop[j]]-a0[grid->etop[j]])*phys->u[j][grid->etop[j]+1]);
-	  
-	  // Bottom boundary
-	  k=grid->Nke[j]-1;
-	  phys->utmp[j][k]-=prop->dt*(1-prop->thetaM)*(a0[grid->Nke[j]-1]*phys->u[j][grid->Nke[j]-2]
-						       +(b0[grid->Nke[j]-1]+c0[grid->Nke[j]-1])*phys->u[j][grid->Nke[j]-1]);
-	}
+      if(prop->nonlinear && prop->thetaM>=0 && grid->Nke[j]-grid->etop[j]>1) {
+	for(k=grid->etop[j]+1;k<grid->Nke[j]-1;k++)
+	  phys->utmp[j][k]-=prop->dt*(1-prop->thetaM)*(a0[k]*phys->u[j][k-1]+b0[k]*phys->u[j][k]+c0[k]*phys->u[j][k+1]);
+	
+	// Top boundary
+	phys->utmp[j][grid->etop[j]]-=prop->dt*(1-prop->thetaM)*((a0[grid->etop[j]]+b0[grid->etop[j]])*phys->u[j][grid->etop[j]]
+								 +c0[grid->etop[j]]*phys->u[j][grid->etop[j]+1]);
+	
+	// Bottom boundary
+	phys->utmp[j][grid->Nke[j]-1]-=prop->dt*(1-prop->thetaM)*(a0[grid->Nke[j]-1]*phys->u[j][grid->Nke[j]-2]
+								  +(b0[grid->Nke[j]-1]+c0[grid->Nke[j]-1])*phys->u[j][grid->Nke[j]-1]);
       }
 
       // Now set up the coefficients for the tridiagonal inversion for the
@@ -2707,23 +2716,20 @@ static void UPredictor(gridT *grid, physT *phys,
       }	  
 
       // Now add on implicit terms for vertical momentum advection, only if there is more than one layer
-      if(prop->nonlinear && prop->thetaM>=0) {
-	if(grid->Nke[j]-grid->etop[j]>1 && prop->nonlinear) { 
-	  for(k=grid->etop[j]+1;k<grid->Nke[j]-1;k++) {
-	    a[k]+=prop->dt*prop->thetaM*a0[k];
-	    b[k]+=prop->dt*prop->thetaM*b0[k];
-	    c[k]+=prop->dt*prop->thetaM*c0[k];
-	  }
+      if(prop->nonlinear && prop->thetaM>=0 && grid->Nke[j]-grid->etop[j]>1) {
+	for(k=grid->etop[j]+1;k<grid->Nke[j]-1;k++) {
+	  a[k]+=prop->dt*prop->thetaM*a0[k];
+	  b[k]+=prop->dt*prop->thetaM*b0[k];
+	  c[k]+=prop->dt*prop->thetaM*c0[k];
+	}
 
-	  // Top boundary
-	  b[grid->etop[j]]+=prop->dt*prop->thetaM*(2*a0[grid->etop[j]]+b0[grid->etop[j]]);
-	  c[grid->etop[j]]+=prop->dt*prop->thetaM*(c0[grid->etop[j]]-a0[grid->etop[j]]);
-	  
-	  
-	  // Bottom boundary 
-	  a[grid->Nke[j]-1]+=prop->dt*prop->thetaM*a0[grid->Nke[j]-1];
-	  b[grid->Nke[j]-1]+=prop->dt*prop->thetaM*(b0[grid->Nke[j]-1]+c0[grid->Nke[j]-1]);
-	}	
+	// Top boundary
+	b[grid->etop[j]]+=prop->dt*prop->thetaM*(a0[grid->etop[j]]+b0[grid->etop[j]]);
+	c[grid->etop[j]]+=prop->dt*prop->thetaM*c0[grid->etop[j]];
+	
+	// Bottom boundary 
+	a[grid->Nke[j]-1]+=prop->dt*prop->thetaM*a0[grid->Nke[j]-1];
+	b[grid->Nke[j]-1]+=prop->dt*prop->thetaM*(b0[grid->Nke[j]-1]+c0[grid->Nke[j]-1]);
       }
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
