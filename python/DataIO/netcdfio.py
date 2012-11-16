@@ -273,8 +273,8 @@ def returnGroup(ncfile,grpid):
             dates = num2date(times[:],units=times.units)
             output.update({vv:dates})
         else:
-            output.update({vv: np.ravel(nc.groups[grpid].variables[vv][:])})
-            #soutput.update({vv:nc.groups[grpid].variables[vv][:]})
+            #output.update({vv: np.ravel(nc.groups[grpid].variables[vv][:])})
+            output.update({vv:nc.groups[grpid].variables[vv][:]})
     
     nc.close()
     return output

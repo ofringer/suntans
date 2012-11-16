@@ -48,7 +48,7 @@ def main(suntanspath,basename,numprocs,nstep=-1):
     init_ncvars(ncfile,outfile,variables,grd)
     
     # Step 6) Write out the cell based variables based on their rank
-    nowritevars = ['xv','yv','cells']
+    nowritevars = ['xv','yv','cells','dzz']
     
     if nsteps==-1:
         nc = Dataset(outfile,'a',format='NETCDF4')

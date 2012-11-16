@@ -441,6 +441,60 @@ def narr2suntans(outfile,tstart,tend,bbox,utmzone):
 
     # Write to NetCDF 
     write2NC(outfile,coords,output,nctime)
+    
+    
+def narr2suntansrad(outfile,tstart,tend,bbox,utmzone):
+    """
+    Extraxts NARR model data and converts to a netcdf file format recognised by SUNTANS
+    
+    This function is for extracting shortwave and longwave radiation
+    """
+
+    # Initialise the NARR object (for all variables)
+    basefile = 'narr-b_221_' # These variables are stored in the NARR-B files
+    narr=getNARR(tstart,tend,bbox,basefile=basefile)
+    
+    #Lookup table that matches variables to name in NARR file
+    varlookup={'Hsw_up':'Upward_short_wave_radiation_flux', 'Hsw_down':'Downward_shortwave_radiation_flux',\
+    'Hlw_up':'Upward_long_wave_radiation_flux','Hlw_down':'Downward_longwave_radiation_flux'}
+    
+    # Set some meta variables
+    Nc = narr.nx*narr.ny
+    
+    nctime = convertTime(narr.time)
+    
+    meta={}
+    meta.update({'Hsw_up':{'long_name':'Upward shortwave radiation','units':'W m-2','scalefactor':1.0,'addoffset':0.0}})
+    meta.update({'Hsw_down':{'long_name':'Downward shortwave radiation','units':'W m-2','scalefactor':1.0,'addoffset':0.0}})
+    meta.update({'Hlw_up':{'long_name':'Upward longwave radiation','units':'W m-2','scalefactor':1.0,'addoffset':0.0}})
+    meta.update({'Hlw_down':{'long_name':'Downward longwave radiation','units':'W m-2','scalefactor':1.0,'addoffset':0.0}})
+   
+    # Convert the coordinates to UTM
+    ll = np.hstack((np.reshape(narr.lon,(Nc,1)), np.reshape(narr.lat,(Nc,1))))
+    xy = ll2utm(ll,utmzone)
+    
+    # Loop through each variable and store in a dictionary
+    output = {}
+    coords={}
+    for vv in varlookup.keys():
+        
+        data = narr(varlookup[vv])
+        
+        # Convert the units
+        data = data*meta[vv]['scalefactor']+meta[vv]['addoffset']    
+        
+        output[vv] = {'Data':np.reshape(data,(narr.nt,Nc))}
+        
+        output[vv].update({'long_name':meta[vv]['long_name'],'units':meta[vv]['units']})
+        
+        # Update the coordinates dictionary
+        coords['x_'+vv]=xy[:,0]
+        coords['y_'+vv]=xy[:,1]
+        coords['z_'+vv]=narr.z * np.ones((Nc,))
+
+    # Write to NetCDF 
+    write2NC(outfile,coords,output,nctime)    
+
 
     
 ############
