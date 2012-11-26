@@ -361,6 +361,30 @@ def queryNC(dbfile,outvar,tablename,condition,fastmode=False):
         nc.close()
     return data, query
 
+def createObsDict(varname,longname,units,data,time,latitude,longitude,height,stationid,stationname,ncdict=[] ):
+    """
+    Create the list of dictionaries expected by writePointData2Netcdf
+    
+    All inputs are lists of arrays except: varname, longname, units should be strings
+    
+    Can append to a previously created dictionary by setting ncdict
+    """
+    
+    # Initialise the output dictionary
+    for ID,nn,lat,lon,hh,tt,dd in zip(stationid,stationname,latitude,longitude,height,time,data):
+        for vv,ll,uu in zip(varname,longname,units):
+            coords=[{'Name':'longitude','Value':lon,'units':'degrees East'},\
+                {'Name':'latitude','Value':lat,'units':'degrees North'},\
+                {'Name':'elevation','Value':hh,'units':'metres','positive':'up'},\
+                {'Name':'time','Value':tt,'units':'minutes since 1970-01-01 00:00:00'}]
+            # Can't put elevation in the "coordinates" list as it expands the array
+            attribs = {'StationID':ID,'StationName':nn,'Data':dd,\
+                'coordinates':'time, latitude, longitude','long_name':ll,\
+                'units':uu,'coords':coords} 
+            ncdict.append({vv:attribs})
+            
+    return ncdict
+
 # Examples
 
 ####

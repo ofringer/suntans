@@ -411,8 +411,6 @@ class Grid(object):
         except:
             print 'Warning no depth variable, z_r, present...' 
         
-        
-        
         #print nc.variables.keys()
         nc.close()
      
@@ -501,10 +499,19 @@ class Profile(object):
        self.tstep = 0 # -99 all steps, -1 last step
        self.klayer = np.arange(0,self.Nz)
        self.variable = 'u'
-       self.xcoord = 'xp'
+       self.xcoord = 'xp' # 'yp', 'time' or 'dist'
        self.ycoord = 'z'
        self.clim = None
        self.clevels = 12 # Number of contour levels
+       
+       # Linear EOS for files with no rho
+       self.beta=1.0
+       self.S0 = -1.0271
+       
+       # Distance calculation stuff
+       self.smoothdist=True # "smooth" the transect by taking out jagged bits
+       self.nsmooth = 10
+
        
        # Update user-defined properties
        self.__dict__.update(kwargs)
@@ -513,6 +520,16 @@ class Profile(object):
        self.__updateTstep()
 
     
+#    def __setattr__(self, name, value):
+#        """
+#        Call on other methods when certain attributes are set
+#        """
+#
+#        self.__dict__[name] = value
+#        
+#        if name in ['xplot','yplot']:
+#            self.__loadXY()
+            
     def __loadMeta(self):
         """
         Loads the metadata from the profile netcdf file
@@ -541,9 +558,9 @@ class Profile(object):
         except:
             self.dz = nc.variables['dz'][:]
         try:
-            self.z = - nc.variables['vertdepth'][:]
+            self.z =  nc.variables['vertdepth'][:]
         except:
-            self.z =  - nc.variables['z_r'][:]
+            self.z =  nc.variables['z_r'][:]
         try:
             self.Nk = nc.variables['klayers'][:]
         except:
@@ -569,21 +586,26 @@ class Profile(object):
         Loads the actual data for the given variable, indices, tsteps and zlayers
         """ 
         
+        # Open the dataset    
+        try: 
+            nc = MFDataset(self.ncfile, 'r')
+        except:
+            nc = Dataset(self.ncfile, 'r')
+                  
         # "Higher order" variable stuff
         tmpvar = self.variable
         if tmpvar == 'ubar':
             self.variable = 'u'
         if tmpvar == 'vbar':
             self.variable = 'v'
+        if tmpvar in  ['rho','bvf2']:
+            if not nc.variables.has_key('rho'):
+                self.variable='S'
+            else:
+                self.variable='rho'
+            
         
         # Load the data
-        
-        #nc = Dataset(self.ncfile, 'r', format='NETCDF4')        
-        try: 
-            nc = MFDataset(self.ncfile, 'r')
-        except:
-            nc = Dataset(self.ncfile, 'r')
-        
         self.long_name = nc.variables[self.variable].long_name
         self.units= nc.variables[self.variable].units
         #        ndims = len(nc.variables[self.variable].dimensions)
@@ -600,12 +622,17 @@ class Profile(object):
         
         # Calculate the higher order variables from the raw data
         # To Add:
-        #   uprime, vprime
+        #   uprime, vprime (baroclinic velocity)
         #   time mean variables
         #   seabed values of variables
         #   hydrostatic pressure perturbation?
+        #   buoyancy frequency        
         if tmpvar in ['ubar','vbar']:
             self.data=depthave(self.data,self.dz,np.abs(self.dv[self.indices]))
+        if tmpvar in ['rho','bvf2'] and not nc.variables.has_key('rho'):
+            self.data = linearEOS(self.data,S0=self.S0,beta=self.beta)
+        if tmpvar == 'bvf2':
+            self.data = calcN2(self.data,self.dz)
             
         self.variable = tmpvar
         
@@ -623,11 +650,19 @@ class Profile(object):
             self.xplot = self.xp[self.indices]
         elif self.xcoord=='yp':
             self.xplot = self.yp[self.indices]
+        elif self.xcoord=='dist':
+            # Calculate the distance along the transect
+            self.xplot=self.calcDistAxis()            
         elif self.xcoord=='time':
             self.xplot = self.time[self.tstep]
             
         if self.ycoord=='z':
             self.yplot = self.z[self.klayer]
+        elif self.ycoord=='time':
+            self.yplot = self.time[self.tstep]
+        elif self.ycoord=='dist':
+            # Calculate the distance along the transect
+            self.yplot=self.calcDistAxis()     
     
     def __updateTstep(self):
         """
@@ -655,7 +690,9 @@ class Profile(object):
         
         if ny!=rc[0] or nx !=rc[1]:
             self.data=np.transpose(self.data)
-        
+    
+    
+            
     def plotIndices(self):
         """
         Plots the locations of the points with the index numbers overlaid
@@ -669,6 +706,44 @@ class Profile(object):
             
         plt.axis('equal')
         plt.show()
+    
+    def closetTime(self,t):
+        """
+        Find the index of the closest time to the datetime object "t"
+        """
+        dtall = []
+        for tt in self.time:
+            dt = tt - t
+            dtall.append(np.abs(dt.total_seconds()))
+            
+        dtall = np.asarray(dtall)
+
+        return np.argwhere(dtall == dtall.min())
+    
+    def calcDistAxis(self):
+        """
+        Calculates distance along the transect
+        """
+        
+        print 'Setting x-axis to distance...'
+        
+        x = self.xp[self.indices]
+        y = self.yp[self.indices]
+        nx = len(x)
+        
+        if self.smoothdist:
+            from scipy import interpolate
+            F = interpolate.UnivariateSpline(x[1:-1:self.nsmooth],y[1:-1:self.nsmooth])
+            xnew = np.linspace(x[0],x[-1],nx)
+            ynew = F(xnew)
+            x=xnew
+            y=ynew
+            
+        dxdy = np.sqrt( (x[1:]-x[0:-1])**2 + (y[1:]-y[0:-1])**2 )
+        dxdy = np.concatenate(([0.0],dxdy))
+        return np.cumsum(dxdy)
+        
+        
         
     def pcolor(self,data=None,**kwargs):
         """
@@ -707,7 +782,7 @@ class Profile(object):
         self.fig=plt.gcf()
         self.ax =plt.gca()
         self.h = plt.contourf(self.xplot,self.yplot,data,V,**kwargs)
-        self.cb = plt.colorbar()  
+        #self.cb = plt.colorbar()  
         
         
     def contour(self,data=None,V=None,**kwargs):
@@ -729,7 +804,7 @@ class Profile(object):
         self.fig=plt.gcf()
         self.ax =plt.gca()
         self.h = plt.contour(self.xplot,self.yplot,data,V,**kwargs)
-        self.cb = plt.colorbar()  
+        #self.cb = plt.colorbar()  
 
 
     def savefig(self,outfile,dpi=150):
@@ -843,8 +918,58 @@ def depthint(data,dz):
         nx = np.size(data,2)
         dz3=np.reshape(dz,(1,nz,1))
         dz3 = np.tile(dz3,(nt,1,nx))
-        return np.sum(data*dz3,axis=0)
+        return np.sum(data*dz3,axis=1)
+
+def gradZ(data,dz):
+    """
+    Vertical gradient calculation on an unevenly spaced grid
+    
+    Variable data should have shape: [nz], [nz*nx] or [nt*nz*nx]
+    """
+            
+    ndim = np.ndim(data)
+    nz = np.size(dz)
+    
+    if ndim == 1:
+        phi = np.hstack((data[0],data,data[-1])) # nz+2
+        phi_npm = (phi[1:]+phi[0:-1])*0.5 # nz+1
+        return (phi_npm[0:-1] - phi_npm[1:])/dz
         
+    elif ndim == 2:
+        nx = np.size(data,1)
+        dz2=np.reshape(dz,(nz,1))
+        dz2 = np.tile(dz2,(1,nx))
+        phi = np.concatenate((data[[0],:],data,data[[-1],:]),axis=0) # nz+2
+        phi_npm = (phi[1:,:]+phi[0:-1,:])*0.5 # nz+1
+        return (phi_npm[0:-1,:] - phi_npm[1:,:])/dz2
+    
+    elif ndim == 3:
+        nt = np.size(data,0)
+        nx = np.size(data,2)
+        dz3=np.reshape(dz,(1,nz,1))
+        dz3 = np.tile(dz3,(nt,1,nx)) 
+        phi = np.concatenate((data[:,[0],:],data[:,:,:],data[:,[-1],:]),axis=1) # nz+2
+        phi_npm = (phi[:,1:,:]+phi[:,0:-1,:])*0.5 # nz+1
+        
+        return (phi_npm[:,0:-1,:] - phi_npm[:,1:,:])/dz3
+
+def linearEOS(S,S0=1.0271,beta=1.0,RHO0=1000.0):
+    """
+    Linear equation of state
+    
+    Returns density from salinity and/or temperature
+    """    
+
+    return RHO0 * ( beta * (S-S0) )
+        
+def calcN2(rho,dz):
+    """
+    Calculate the buoyancy frequency squared
+    """
+    g=9.81
+    rho0=1024
+    return   - g/rho0 * gradZ(rho,dz) 
+    
 def readTXT(fname,sep=None):
     """
     Reads a txt file into an array of floats

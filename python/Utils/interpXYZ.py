@@ -55,19 +55,19 @@ class interpXYZ(object):
         self.XYout = XYout
         
         if self.method=='nn':
-            print 'Building DEM with Nearest Neighbour interpolation...'
+            #print 'Building DEM with Nearest Neighbour interpolation...'
             self._nearestNeighbour()
         
         elif self.method=='idw':
-            print 'Building DEM with Inverse Distance Weighted Interpolation...'
+            #print 'Building DEM with Inverse Distance Weighted Interpolation...'
             self._invdistweight()
             
         elif self.method=='kriging':
-            print 'Building DEM with Kriging Interpolation...'
+            #print 'Building DEM with Kriging Interpolation...'
             self._krig()
             
         elif self.method=='griddata':
-            print 'Building DEM using griddata...'
+            #print 'Building DEM using griddata...'
             self._griddata()
             
         else:
