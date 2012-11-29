@@ -143,7 +143,7 @@ const REAL sill_DEFAULT = 0.9;
 const REAL range_DEFAULT = 1e5;
 
 //Output data to netcdf format (0 - binary, 1 - netcdf)
-const int outputNetcdf_DEFAULT = 1;
+const int outputNetcdf_DEFAULT = 0;
 
 //Light extinction depth [m]
 const REAL Lsw_DEFAULT = 2.0;
