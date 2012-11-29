@@ -105,7 +105,7 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
  * Set the wind stress.
  *
  */
-void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
+void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
   int j, jptr;
   REAL tau, T_day = 5000;
 

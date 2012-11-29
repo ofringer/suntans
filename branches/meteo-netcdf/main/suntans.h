@@ -13,6 +13,7 @@
 #define _suntans_h
 
 #include "math.h"
+#include "time.h"
 
 // number of faces (for triangle)
 #define NFACES 3

@@ -15,6 +15,7 @@
 #include "suntans.h"
 #include "phys.h"
 #include "grid.h"
+#include "met.h"
 
 // Enumerated type for open/specified bc specification
 enum {
@@ -24,7 +25,7 @@ enum {
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop);
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc);
 void BoundaryScalars(gridT *grid, physT *phys, propT *prop);
-void WindStress(gridT *grid, physT *phys, propT *prop, int myproc);
+void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc);
 
 FILE *windFID;
 

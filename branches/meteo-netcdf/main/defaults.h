@@ -118,4 +118,41 @@ const int wetdry_DEFAULT = 0;
 */
 const REAL smoothbot_DEFAULT = 0.0;
 
+/* 
+ *  Heat flux model and meteorological IO netcdf Parameters
+ */
+// Latitude - required by solar radiation function
+const int latitude_DEFAULT = 29.0;
 
+// 0 - no meteorological input; 1 - COARE3.0, short and longwave radiation calculated
+const int metmodel_DEFAULT = 0; 
+
+// Time offset parameter in days
+const REAL toffSet_DEFAULT = 0.0;
+
+// Interpolation model. 0 - inverse distance weighting; 1 - kriging with spherical variogram
+const int varmodel_DEFAULT = 1;
+
+// variogram nugget parameter. Covariance = 1 - nugget @ distance = 0
+const REAL nugget_DEFAULT = 0.1;
+
+// variogram sill parameter. Covariance = 1 - sill @ distance = range
+const REAL sill_DEFAULT = 0.9;
+
+// variogram range parameter. Decorrelation length scale.
+const REAL range_DEFAULT = 1e5;
+
+//Output data to netcdf format (0 - binary, 1 - netcdf)
+const int outputNetcdf_DEFAULT = 1;
+
+//Light extinction depth [m]
+const REAL Lsw_DEFAULT = 2.0;
+
+//Drag and heat flux coefficients
+const REAL Cda_DEFAULT = 1.1e3;
+const REAL Ch_DEFAULT = 1.4e3;
+const REAL Ce_DEFAULT = 1.4e3;
+
+//Start and base time string
+const char *starttime_DEFAULT = "19900101.000000";
+const char *basetime_DEFAULT =  "19900101.000000";

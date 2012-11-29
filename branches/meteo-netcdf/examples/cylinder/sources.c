@@ -37,13 +37,23 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
  * be assigned elsewhere.
  *
  */
-void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop) {
+void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met) {
   int i, k;
   for(i=0;i<grid->Nc;i++)
     for(k=0;k<grid->Nk[i];k++)
       A[i][k]=B[i][k]=0;
 }
 
+/*
+* Funtion: SaltSoutce
+*/
+
+void SaltSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met) {
+  int i, k;
+  for(i=0;i<grid->Nc;i++)
+    for(k=0;k<grid->Nk[i];k++)
+      A[i][k]=B[i][k]=0;
+}
 /*
  * Function: InitSponge
  * Usage: InitSponge(grid,myproc);
