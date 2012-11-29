@@ -141,8 +141,8 @@ class Spatial(object):
         
         points = np.column_stack((self.grid.xp,self.grid.yp,0.0*self.grid.xp))
                 
-        self.fig,h,ug,title = unsurfm(points,self.grid.cells,self.data,clim=self.clim,title=self.__genTitle())
-        
+        self.fig,h,ug,title = unsurfm(points,self.grid.cells,self.data,clim=self.clim,title=self.__genTitle(),**kwargs)
+
             
     def plotTS(self,j=0,**kwargs):
         """
@@ -379,6 +379,24 @@ class Grid(object):
         self.mark = np.asarray(edgedata[:,2],int)
         self.grad = np.asarray(edgedata[:,3:5],int)
         
+        # Load the vertical grid info from vertspace.dat if it exists
+        try:
+            vertspace=readTXT(self.infile+'/vertspace.dat')
+        except:
+            print 'Warning could not find vertspace.dat in folder, setting Nkmax=1'
+            vertspace=0.0
+            
+        self.dz=vertspace
+        self.Nkmax=np.size(self.dz)
+        
+        # Calculate the mid-point depth
+        if not self.Nkmax == 1:
+            z_bot = np.cumsum(self.dz)
+            z_top = np.vstack((0.0,z_bot[:-1]))
+            self.z_r = 0.5*(z_bot+z_top)
+        else:
+            self.z_r=0.0
+        
     def __loadnc(self):
         
         """Load the grid variables into the object from a netcdf file"""
@@ -398,8 +416,8 @@ class Grid(object):
         self.cells = nc.variables['cells'][:]
         self.Nc = len(self.xv)
         self.dz = nc.variables['dz'][:]
+        self.Nkmax = len(self.dz)
         self.Nk = nc.variables['Nk'][:]
-        self.Nkmax = self.Nk.max()
         self.Nk -= 1 # needs to be zero based
         try:
             self.Ac = nc.variables['Ac'][:]
@@ -428,7 +446,7 @@ class Grid(object):
         
         plt.title('SUNTANS Grid Bathymetry [m]')
         
-    def plotvtk(self,**kwargs):
+    def plotvtk(self):
         """
           Plot the unstructured grid data using vtk libraries
         """
@@ -437,11 +455,26 @@ class Grid(object):
         else:
             clim = [self.dv.min(), self.dv.max()]
         points = np.column_stack((self.xp,self.yp,0.0*self.xp))
-        f,h = unsurfm(points,self.cells,self.dv,clim=clim,title='SUNTANS Grid Bathymetry [m]',\
+        self.fig, h, ug,title=unsurfm(points,self.cells,self.dv,clim=clim,title='SUNTANS Grid Bathymetry [m]',\
             colormap='gist_earth')
-        return f,h
         
-            
+    
+    def plotBC(self):
+        """
+        Plot the boundary markers and the grid nodes
+        """
+        # Find the edge points
+        xe = np.mean(self.xp[self.edges],axis=1)
+        ye = np.mean(self.yp[self.edges],axis=1)
+        plt.plot(self.xp,self.yp,'.')
+        plt.plot(xe,ye,'k+')
+        plt.plot(xe[self.mark==1],ye[self.mark==1],'ro')
+        plt.plot(xe[self.mark==2],ye[self.mark==2],'yo')
+        plt.plot(xe[self.mark==3],ye[self.mark==3],'go')
+        plt.plot(xe[self.mark==4],ye[self.mark==4],'co')
+        plt.legend(('Node','Edge','Marker=1','Marker=2','Marker=3','Marker=4'))
+        plt.axis('equal')
+                    
     def cellxy(self):
         """ 
         Returns a list of Nx2 vectors containing the grid cell node coordinates
@@ -464,6 +497,20 @@ class Grid(object):
         
         for x,y,z in zip(self.xv,self.yv,self.dv):
             f.write('%10.6f %10.6f %10.6f\n'%(x,y,z))
+            
+        f.close()
+    
+    def saveEdges(self,filename):
+        """
+        Saves the edges.dat data to a text file
+        
+        Used e.g. when the boundary markers have been updated
+        """
+
+        f = open(filename,'w')
+        
+        for e1,e2,m,g1,g2 in zip(self.edges[:,0],self.edges[:,1],self.mark,self.grad[:,0],self.grad[:,1]):
+            f.write('%d %d  %d  %d  %d\n'%(e1,e2,m,g1,g2))
             
         f.close()
         
