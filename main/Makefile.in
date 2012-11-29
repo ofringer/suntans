@@ -19,6 +19,6 @@
 MPIHOME=/opt/intel/openmpi
 PARMETISHOME=/home/mrayson/Downloads/ParMetis-3.1
 TRIANGLEHOME=/opt/intel/triangles
-NETCDF4HOME=/opt/intel/netcdf4-parallel
+NETCDF4HOME=
 
 
