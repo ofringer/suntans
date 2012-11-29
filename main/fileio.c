@@ -317,8 +317,52 @@ double GetDefaultValue(char *str, int *status) {
  } else if(!strcmp(str,"smoothbot")) {
 
     return smoothbot_DEFAULT;
+  
+ } else if(!strcmp(str,"latitude")) {
+    
+   return latitude_DEFAULT;
+   
+ } else if(!strcmp(str,"metmodel")) {
+    
+   return metmodel_DEFAULT;
+ 
+ } else if(!strcmp(str,"varmodel")) {
+    
+   return varmodel_DEFAULT;
+   
+ } else if(!strcmp(str,"nugget")) {
+    
+   return nugget_DEFAULT;
+ 
+ } else if(!strcmp(str,"sill")) {
+    
+   return sill_DEFAULT;
+ 
+ } else if(!strcmp(str,"range")) {
+    
+   return range_DEFAULT;
+   
+} else if(!strcmp(str,"outputNetcdf")) {
+    
+   return outputNetcdf_DEFAULT;
 
-  } else {
+} else if(!strcmp(str,"Lsw")) {
+    
+   return Lsw_DEFAULT;
+ 
+} else if(!strcmp(str,"Cda")) {
+    
+   return Cda_DEFAULT;    
+ 
+} else if(!strcmp(str,"Ce")) {
+    
+   return Ce_DEFAULT; 
+  
+} else if(!strcmp(str,"Ch")) {
+    
+   return Ch_DEFAULT;   
+
+}else {
     *status=0;
     return 0;
   }

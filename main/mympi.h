@@ -28,5 +28,6 @@ void MPI_GetString(char *string, char *file, char *str, char *call, int myproc);
 void MPI_GetFile(char *string, char *file, char *str, char *call, int myproc);
 FILE *MPI_FOpen(char *file, char *perms, char *caller, int myproc);
 int MPI_GetSize(char *file, char *caller, int myproc);
+int MPI_NCOpen(char *file, int perms, char *caller, int myproc);
 
 #endif

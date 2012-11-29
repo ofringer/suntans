@@ -56,14 +56,26 @@ else
   PARMETISSRC = partition-noparmetis.c
 endif
 
+ifneq ($(NETCDF4HOME),)
+  NETCDFLIBDIR=-L$(NETCDF4HOME)/lib
+  NETCDFINCLUDE=-I$(NETCDF4HOME)/include
+  NETCDFLD=-lnetcdf
+  NETCDFDEF = -DUSENETCDF
+else
+  NETCDFLIBDIR = 
+  NETCDFINCLUDE = 
+  NETCDFLD = 
+  NETCDFSRC=
+endif
+
 # For the Altix
 #LD = $(CC) -lmpi
 LD = $(CC)
-LIBS = $(PARMETISLIB) $(TRIANGLELIB)
-LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR)
+LIBS = $(PARMETISLIB) $(TRIANGLELIB) $(NETCDFLD)
+LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR) $(NETCDFLIBDIR)
 LDFLAGS = -lm $(LIBDIR) $(LIBS)
-INCLUDES = $(PARMETISINCLUDE) $(TRIANGLEINCLUDE)
-DEFINES = $(MPIDEF)
+INCLUDES = $(PARMETISINCLUDE) $(TRIANGLEINCLUDE) $(NETCDFINCLUDE) 
+DEFINES = $(MPIDEF) $(NETCDFDEF)
 CFLAGS = $(OPTFLAGS) $(INCLUDES) $(DEFINES)
 
 EXEC = sun
@@ -73,7 +85,7 @@ DEPFLAGS = -Y
 
 SRCS = 	mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
 	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c tides.c \
-	sources.c diffusion.c $(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE)
+	sources.c diffusion.c met.c $(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE)
 OBJS = $(SRCS:.c=.o)
 
 PLOTSRCS = sunplot.c fileio.c
@@ -109,7 +121,7 @@ util.o: grid.h suntans.h fileio.h mympi.h util.h
 fileio.o: fileio.h defaults.h suntans.h
 phys.o: suntans.h phys.h grid.h fileio.h mympi.h util.h initialization.h
 phys.o: memory.h turbulence.h boundaries.h check.h scalars.h timer.h
-phys.o: profiles.h state.h diffusion.h sources.h
+phys.o: profiles.h state.h diffusion.h sources.h met.h
 suntans.o: suntans.h mympi.h fileio.h grid.h phys.h report.h
 initialization.o: fileio.h suntans.h initialization.h
 memory.o: memory.h
@@ -125,10 +137,11 @@ profiles.o: util.h grid.h suntans.h fileio.h mympi.h memory.h phys.h
 profiles.o: profiles.h
 state.o: state.h grid.h suntans.h fileio.h mympi.h phys.h
 tides.o: suntans.h mympi.h fileio.h grid.h tides.h memory.h
-sources.o: phys.h suntans.h grid.h fileio.h mympi.h sources.h memory.h
+sources.o: phys.h suntans.h grid.h fileio.h mympi.h sources.h memory.h met.h
 diffusion.o: diffusion.h grid.h suntans.h fileio.h mympi.h phys.h util.h
 triangulate-notriangle.o: suntans.h mympi.h fileio.h grid.h
 partition-noparmetis.o: suntans.h partition.h grid.h fileio.h mympi.h
 no-mpi.o: suntans.h no-mpi.h
 sunplot.o: suntans.h fileio.h
 fileio.o: fileio.h defaults.h suntans.h
+met.o: met.h suntans.h fileio.h memory.h grid.h phys.h util.h 

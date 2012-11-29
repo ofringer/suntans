@@ -153,6 +153,11 @@ typedef struct _physT {
   REAL *wm;
   REAL **gradSx;
   REAL **gradSy; 
+  
+  //Variables for heat flux model
+  REAL *Tsurf;
+  REAL *dT;
+  REAL **Ttmp;
 
 } physT;
 
@@ -164,15 +169,20 @@ typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, thetaM, 
        thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
        dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, grav, Coriolis_f, CmaxU, CmaxW, 
-       laxWendroff_Vertical;
+       laxWendroff_Vertical, latitude;
   int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, 
       qmaxiters, hprecond, qprecond, volcheck, masscheck, nonlinear, linearFS, newcells, wetdry, sponge_distance, 
       sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
     TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum, conserveMomentum;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID, *SalinityFID, *BGSalinityFID, 
        *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,    
-       *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;
+       *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID; 
   interpolation interp; int prettyplot;
+  int metmodel,  varmodel, outputNetcdf, outputNetcdfFileID, metncid;
+  REAL nctime, toffSet;
+  int nctimectr;
+  REAL nugget, sill, range, Lsw, Cda, Ce, Ch;
+  char  starttime[15], basetime[15]; 
 } propT;
 
 

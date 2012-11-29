@@ -168,13 +168,39 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
  * tau_B is not currently in use (4/1/05).
  *
  */
-void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
+void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
   int j, jptr;
+  int Nc=grid->Nc; 
+  int i, nf, ne, nc1, nc2, neigh;
+  REAL def1, def2;
 
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
-    j = grid->edgep[jptr];
-    
-    phys->tau_T[j]=grid->n2[j]*prop->tau_T;
-    phys->tau_B[j]=0;
-  }
+   if(prop->metmodel>=2){// Interpoalte the spatially variable wind stress onto the edges
+       for(i=0;i<Nc;i++){
+	  for(nf=0;nf<NFACES;nf++){ 
+            if((neigh=grid->neigh[i*NFACES+nf])!=-1) {
+	     ne = grid->face[i*NFACES+nf];
+	     nc1 = grid->grad[2*ne];
+	     nc2 = grid->grad[2*ne+1];
+	     
+	     def1 = grid->def[nc1*NFACES+grid->gradf[2*ne]];
+	     def2 = grid->def[nc2*NFACES+grid->gradf[2*ne+1]];
+
+	     phys->tau_T[ne] = (met->tau_x[nc1]*def1/grid->dg[ne] + met->tau_x[nc2]*def2/grid->dg[ne])*grid->n1[ne] + 
+		(met->tau_y[nc1]*def1/grid->dg[ne] + met->tau_y[nc2]*def2/grid->dg[ne])*grid->n2[ne];  
+	     phys->tau_T[ne] /= RHO0; 
+//	     printf("%3.6e, %3.6e, %3.6e, %3.6f, %3.6f, %3.6f,%3.6f\n",
+//	       phys->tau_T[ne], met->tau_x[nc1],met->tau_x[nc2],grid->dg[ne],def1,def2,grid->n1[ne]);
+	     //printf("%3.6e, %3.6e, %3.6e\n",met->tau_y[nc1],met->tau_y[nc2],phys->tau_T[ne]);
+            }
+	  }
+       }
+   }else{// Set stress to constant
+
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
+	j = grid->edgep[jptr];
+
+	phys->tau_T[j]=grid->n2[j]*prop->tau_T;
+	phys->tau_B[j]=0;
+      }
+    }
 }

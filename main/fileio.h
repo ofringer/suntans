@@ -16,6 +16,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef USENETCDF 
+  #include <netcdf.h>
+  /* Netcdf error */
+  #define ERRCODE 2
+  #define ERR(e) {printf("Error: %s\n", nc_strerror(e)); exit(ERRCODE);}
+  
+#endif
+
 /*
  * Function: MyFOpen
  * Usage: fid = MyFOpen(string,"r","GetValue");

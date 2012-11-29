@@ -9,18 +9,6 @@
 static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp,
 				propT *prop, physT *phys, REAL n1, REAL n2, REAL boundary_u, REAL boundary_v);
 
-/* Function: GetBoundaryVelocity
- * Usage: GetBoundaryVelocity(&ub0,&forced,grid->xv[ib],grid->yv[ib],
- *                            prop->rtime,phys->h[ib],grid->dv[ib],prop->omega,prop->amp);
- * ---------------------------------------------------------------------------------------
- * Set the boundary velocity based on the location.  If this is a partially-clamped-free bc, then
- * set forced to 1, otherwise, if this is a free open bc, then set forced to 0.
- *
- */
-static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp,
-				propT *prop, physT *phys, REAL n1, REAL n2, REAL boundary_u, REAL boundary_v) {
-  // Note used.
-}
 
 /*
  * Function: OpenBoundaryFluxes
