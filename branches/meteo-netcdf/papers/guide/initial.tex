@@ -1,0 +1,290 @@
+\section{Specifying initial and boundary conditions} 
+
+Initial and boundary conditions are specified by editing the files \verb+initialization.c+ and \verb+boundaries.c+.  When you
+edit either one of these files, you must recompile the SUNTANS executable in order for it to reflect changes made
+to the initial or boundary conditions.
+
+\subsection{Initial conditions}
+
+Initial conditions are set by altering the functions in the file \verb+initialization.c+ so that they return the
+desired initial distributions.  There are five functions that specify the initial depth, free-surface,
+salinity, temperature, and velocity fields.  Each function takes as its argument the x,y,z coordinates of
+the desired initial condition.  You need to edit the function to return the desired initial value based on the
+given x,y,z coordinates.  The five functions are
+\begin{itemize}
+\item \verb+ReturnDepth+ This returns the depth as a function of the given x,y coordinate. 
+As an example, to set a linear slope that rises from 10 m depth to 1 m depth in 1000 m, the
+function would look like
+\begin{verbatim}
+REAL ReturnDepth(REAL x, REAL y) {
+  return 10 - 9*x/1000;
+}
+\end{verbatim}
+Note that the depth is specified as a positive quantity.  This function is only used when the \verb+IntDepth+ variable is
+set to \verb+0+ in \verb+suntans.dat+.  Otherwise, when \verb+IntDepth+ is set to 1, 
+the depth is interpolated from the file specified by the \verb+depth+
+file in \verb+suntans.dat+.  This file must contain the depth data in three columns given by x, y, depth, where depth
+is specified as a negative quantity and elevation is positive.
+\item \verb+ReturnFreeSurface+ This returns the initial free surface distribution as a function of the x,y coordinate.
+As an example, to initialize the free surface with a 1 m cosine seiche in a 1000 m domain, the function would look like
+\begin{verbatim}
+REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
+  return cos(PI*x/1000);
+}
+\end{verbatim}
+Note that \verb+PI+ is a global variable defined in the file \verb+suntans.h+ as \verb+3.141592654+.  The depth
+is also supplied to the \verb+ReturnFreeSurface+ function in case the free surface is a function of the depth.
+\item \verb+ReturnSalinity+ and \verb+ReturnTemperature+  These are similar functions in that they return the
+specified scalar field as a function of the x, y, and z coordinates.  Note that if \verb+beta+ is 0 in \verb+suntans.dat+,
+then salinity transport is not computed, likewise if \verb+gamma+ is 0, then temperature transport is not computed.  
+As it is now, the code computes the temperature as a passive scalar while the density anomaly $\rho$ is computed solely as a function of the salinity anomaly $s$, such that
+\[\frac{\rho}{\rho_0}=\beta s\,.\]  This equation of state is specified in the file \verb+state.c+.
+\item \verb+ReturnHorizontalVelocity+ This returns the horizontal velocity defined at the faces of each cell.  The initial vertical velocity is
+computed by continuity from this initial velocity field.  Since this function returns the velocity normal to a cell face, then
+you must specify both velocity components \verb+u+ and \verb+v+ and then return the component normal to the face, which is
+defined by the vector with components \verb+n1+ and \verb+n2+.  As an example, to return an irrotational vortex with
+maximum velocity of 1, centered
+about (x,y)=(5,5), the function would appear as
+\begin{verbatim}
+REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
+  REAL u, v, umag=1;
+
+  u = -umag*(y-5)/5;
+  v = umag*(x-5)/5;
+
+  return u*n1+v*n2;
+}
+\end{verbatim}
+\end{itemize}
+
+\subsection{Specifying boundary conditions} \label{sec:boundary}
+
+SUNTANS allows the specification of the velocity at the open boundaries in the file
+\verb+boundaries.c+.  Boundary condition types on the velocity field can be specified in the \verb+pslg+ file
+which sets the marker as described in Sections \ref{sec:tri} and \ref{sec:readgrid}.  The marker type
+can be one of the following:
+\begin{itemize}
+\item \verb+1+ For closed boundaries.
+\item \verb+2+ For open or velocity-specified boundaries.
+\item \verb+3+ For open or stage-specified boundaries.
+\item \verb+4+ For no-slip boundary conditions.
+\end{itemize}
+If the marker is set to \verb+1+, then the velocity is set to \verb+0+ at those edges.  If it is set to \verb+2+,
+then the velocity is specified in the file \verb+boundaries.c+ by iterating over edges with marker=\verb+2+.
+If it is set to \verb+3+ then stage can be specified at the Voronoi cell center for the cell adjacent to this edge. 
+No-slip boundaries are specified by setting the marker to \verb+4+, where the velocity on the edge is specified by 
+updating \verb+phys->boundary_u+, \verb+phys->boundary_v+, and \verb+phys->boundary_w+.  No-slip conditions on top and bottom cells are 
+specified by setting \verb+CdB=-1+ or \verb+CdT=-1+, respectively.  An example covering usage of type \verb+2+ boundary conditions, type 
+\verb+3+ boundary conditions, and type \verb+4+ boundary conditions will be covered in turn.
+
+\subsubsection{Open or velocity-specified boundary conditions}
+This file loops through the edges whose edge markers are \verb+2+.  As an example, consider the flow in a 
+channel that is 1000 m long in which two boundaries are specified as inflow and outflow and the other two 
+are specified as solid walls, as shown in Figure \ref{fig:boundaries}.  
+\insertfig{.5}{figures/boundaries}{Depiction of a channel with an inflow at $x=0$ m and outflow at $x=1000$ m with
+the inflow/outflow boundaries specified with 2 markers and the solid walls with 1 markers.  The indices of
+the cells adjacent to the boundaries are denoted by ib while the boundary faces have indices j.}{fig:boundaries}
+Suppose you would like to
+specify an incoming velocity that oscillates at a frequency $\omega$ due to an incoming wave at $x=0$ m and that
+you would like to use the linearized open boundary condition to specify the outflow at $x=1000$ m.  Since the
+edge markers at the inflow and outflow are the same, you need to set the boundary condition based on the x,y
+location of the specified edge.  To do so, you would set up the functions in the \verb+boundaries.c+ file as follows
+\begin{itemize}
+\item Function OpenBoundaryFluxes:
+\begin{verbatim}
+
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j = grid->edgep[jptr];
+
+    ib = grid->grad[2*j];
+
+    if(grid->xv[ib]>500) {
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+         ub[j][k] = -phys->h[ib]*sqrt(prop->grav/(grid->dv[ib]));
+    } else {
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+         ub[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->n1[j]+
+                  phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->n2[j];
+    }
+ }
+
+\end{verbatim}
+\item BoundaryVelocities Function:
+\begin{verbatim}
+
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) 
+    j = grid->edgep[jptr];
+
+    ib = grid->grad[2*j];
+
+    if(grid->xv[ib]>500) {
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+        phys->boundary_u[jptr-grid->edgedist[2]][k]=phys->uc[ib][k];
+        phys->boundary_v[jptr-grid->edgedist[2]][k]=phys->vc[ib][k];
+        phys->boundary_w[jptr-grid->edgedist[2]][k]=
+            0.5*(phys->w[ib][k]+phys->w[ib][k+1]);
+      } 
+    } else {
+      for(k=grid->etop[j];k<grid->Nke[j];k++) {
+        phys->boundary_u[jptr-grid->edgedist[2]][k]=
+            prop->amp*cos(prop->omega*prop->rtime);
+        phys->boundary_v[jptr-grid->edgedist[2]][k]=0;
+        phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
+        } 
+    }
+ }
+
+\end{verbatim}
+\end{itemize}
+The outermost \verb+jptr+ loop loops over the edges which have boundary markers specified as \verb+2+.
+The \verb+j+ index is an index to an edge along the open boundary, and 
+the \verb+ib+ index is an index to the cell adjacent to that boundary edge.  Since the Voronoi points
+are specified at the \verb+ib+ indices, then we need to specify the boundary condition based on
+the location of the Voronoi points of the adjacent cell.  In this case the open boundary exists at x=1000, but since
+we know that this boundary exists for boundary edges for $x>500$, we use the if statement
+\verb+if(grid->xv[ib]>500)+ to specify these boundary edges.  The first part of the if statement
+sets the flux at the open boundary over all the vertical levels with
+\begin{verbatim}
+      for(k=grid->etop[j];k<grid->Nke[j];k++) 
+        ub[j][k] = -phys->h[ib]*sqrt(prop->grav/(grid->dv[ib]));
+\end{verbatim}
+which is identical to 
+\[ u_b = -h_b\sqrt{\frac{g}{d}} \,,\]
+and this is the linearized shallow-water free-surface boundary condition (Note that the upwind depth
+and free-surface height are being used to approximate the values at the open boundary).  This loop uses
+the \verb+Nke[j]+ variable, which is the number of vertical levels at face \verb+j+,
+and \verb+etop[j]+, which is the index of the top level at the boundary.  The variable
+\verb+etop[j]+ is usually \verb+0+ unless filling and emptying occur at the boundary
+edges.  
+
+In addition to setting
+the boundary flux in the OpenBoundaryFluxes function, the user must also set the Cartesian components
+of velocity in the BoundaryVelocities function.  These are used to compute the advection of momentum. 
+They can also be used to specify boundary velocities for no-slip type \verb+4+ boundary conditions.
+At the open outflow boundary, the boundary velocity components are set to the upwind value of the velocity
+component.  For the u-component of velocity, for example, the boundary value is specified
+with
+\begin{verbatim}
+phys->boundary_u[jptr-grid->edgedist[2]][k]=phys->uc[ib][k];
+\end{verbatim}
+Here, \verb+uc+ is the u-component of velocity at the Voronoi point with index \verb+ib+.
+
+At the inlet, only the Cartesian velocity components need to be specified.  In this example,
+the u-component of velocity at the inlet is set with the code
+\begin{verbatim}
+phys->boundary_u[jptr-grid->edgedist[2]][k]=
+               prop->amp*cos(prop->omega*prop->rtime);
+\end{verbatim}
+and the other components are set to 0.  This function uses the variables \verb+amp+ and \verb+omega+
+which are set in \verb+suntans.dat+, and \verb+rtime+ is the physical time in the simulation.
+The Cartesian velocities which are specified at the inlet boundary are then used to compute
+the flux in the OpenBoundaryFluxes function with
+\begin{verbatim}
+ub[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->n1[j]+
+         phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->n2[j];
+\end{verbatim}
+This is just the dot product of the velocity field specified at the boundary with the
+normal vector at the boundary edge, which points into the domain by definition.
+Examples of how to employ velocity boundary conditions are described in Sections \ref{sec:boundary_ex}
+and \ref{sec:internalwaves}.  Section \ref{sec:boundary_ex} also demonstrates 
+how to specify salinity and temperature at the boundaries.
+
+\subsubsection{Open or stage-specified boundary conditions}
+
+A good example of specifying stage boundary conditions (type \verb+3+) is the 
+\verb+suntans/main/examples/+ \verb+estuary+ example,
+where a stage boundary condition is specified at the ocean boundary to the west of the domain.
+A simplified tidal signal is specified via the following code contained within the function 
+BoundaryVelocities() of \verb+suntans/main/examples/estuary/boundaries.c+.
+
+\begin{verbatim}
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    i = grid->cellp[iptr];
+    phys->h[i]=-prop->amp*sin(prop->omega*prop->rtime);
+  }
+\end{verbatim}
+
+In this example, type \verb+2+ boundary conditions result in indicies to computational cells adjacent
+to type \verb+2+ boundary condition being stored in [ \verb+celldist[1]+, \verb+celldist[2]+).  
+Stage information for these cells can then be specified by setting the cell stage via the cell pointer
+\verb+i=grid->cellp[iptr]+.  In this example, \verb+prop->amp+ specifies tidal amplitude $A$, 
+\verb+prop->omega+ specifies the frequency $\omega$, and \verb+prop->rtime+ the simulation time $t$ within
+the prototype function $h = -A\sin\left(\omega t\right)$.
+
+\subsubsection{No-slip boundary conditions}
+
+No-slip boundary conditions in the plane XZ are specified via type \verb+4+ boundary conditions
+in \verb+edges.dat+. Setting \verb+CdT=-1+ and \verb+CdB=-1+ within \verb+suntans.dat+ 
+specifies no-slip boundary conditions for the top and bottom of the domain within the plane XY. 
+As an example, consider the \verb+testXZ+ case in \verb+suntans/main/examples/cavity+.  The parameter file
+\verb+suntans/main/examples/cavity/rundata/suntansXZ.dat+ has 
+\begin{verbatim}
+CdT                -1   # Drag coefficient at surface
+CdB                -1   # Drag coefficient at bottom
+\end{verbatim}
+and the function BoundaryVelocities() in \verb+suntans/main/examples/cavity/boundariesXZ.c+ has
+\begin{verbatim}
+  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+    
+    j = grid->edgep[jptr];
+    ib=grid->grad[2*j];
+    boundary_index = jptr-grid->edgedist[2];
+    
+    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+      if(grid->xe[j]<0.5) 
+        phys->boundary_w[boundary_index][k]= -1.0;
+      else
+        phys->boundary_w[boundary_index][k]=0.0;
+      phys->boundary_v[boundary_index][k] = 0.0;
+      phys->boundary_u[boundary_index][k] = 0;
+    }
+  }
+\end{verbatim}
+where the no-slip boundary condition is applied on the west side of the boundary directed 
+downward via \verb+phys->boundary_w[boundary_index]= -1.0+ for edges with markers \verb+jptr+ in
+[\verb+grid->edgedist[4]+\verb+grid->edgedist[5]+).  
+
+\subsection{Specifying heat flux} \label{sec:heatflux}
+
+To specify source terms in the temperature equation, you will need to edit the
+HeatSource() function in suntans/main/sources.c.  The implementation assumes
+adiabatic surface and bottom boundary conditions, and so all heat fluxes are implemented
+as source terms in the temperature equation of the form
+\begin{eqnarray*}
+\D{T}{t} + \ub\cdot\nabla T &=& \D{}{z}\left[\left(\kappa_T + \kappa_{tv}\right) \D{T}{z}\right] + Q(T)\,,
+\end{eqnarray*}
+where $\kappa_T$ is the molecular diffusivity (defined in suntans.dat) and $\kappa_{tv}$ is the
+vertical turbulent eddy-diffusivity, computed in turbulence.c.  
+terms to simplify the discussion, the temperature equation is given by
+\begin{equation}\label{eq:T}
+\D{T}{t}  = Q(T)\,.
+\end{equation}
+The source term can be linearized about some temperature $T_0$ so that, defining $T=T_0 + \Delta T$,
+we have
+\begin{eqnarray*}
+Q(T) &=& Q(T_0 + \Delta T)\,,\\
+     &=& Q(T_0) + \left(\D{Q}{T}\right)_{T_0}\Delta T  + O(\Delta T^2)\,,\\
+     &=& Q(T_0) + \left(\D{Q}{T}\right)_{T_0}\left(T - T_0\right)  + O(\Delta T^2)\,,\\
+     &=& Q(T_0) - \left(\D{Q}{T}\right)_{T_0}T_0 + \left(\D{Q}{T}\right)_{T_0} T + O(\Delta T^2)\,,\\
+     &=& A(T_0) + B(T_0) T + O(\Delta T^2)\,,
+\end{eqnarray*}
+where
+\begin{eqnarray*}
+A(T_0) = Q(T_0) - \left(\D{Q}{T}\right)_{T_0}T_0\,,\\
+B(T_0) = \left(\D{Q}{T}\right)_{T_0}\,.
+\end{eqnarray*}
+The heat equation is discretized with the theta method so that equation~(\ref{eq:T}) becomes
+\begin{eqnarray*}
+\frac{T^{n+1} - T^n}{\Delta t} &=& A(T_0) + B(T_0)\left[\theta T^{n+1}+(1-\theta)T^n\right]\,,
+\end{eqnarray*}
+where $\theta$ is specified by the value of \verb+theta+ in suntans.dat.
+After rearranging, the temperature at the new time step is obtained with
+\begin{eqnarray*}
+T^{n+1} = \left[1 - \theta \Delta t B(T_0)\right]^{-1}\left[T^n + \Delta t A(T_0) 
+                  + (1-\theta) \Delta t B(T_0)T^n\right]\,.
+\end{eqnarray*}
+Typically the best linearization is to linearize about the temperature at time step $n$ so
+that $T_0=T^n$. A simple implementation of heat flux is provided in the windstress example
+in \verb+suntans/main/examples/windstress+ and the code is in the HeatSource() function in
+\verb+suntans/main/examples/windstress/sources.c+.
+
