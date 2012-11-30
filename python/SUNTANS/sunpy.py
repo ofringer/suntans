@@ -105,7 +105,7 @@ class Spatial(object):
 
 
     
-    def plot(self,xlims=None,ylims=None,**kwargs):
+    def plot(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
         """
           Plot the unstructured grid data
         """
@@ -117,7 +117,7 @@ class Spatial(object):
         if xlims==None or ylims==None:
             xlims=self.grid.xlims 
             ylims=self.grid.ylims
-
+        
         if self.__dict__.has_key('patches'):
              self.patches.set_array(self.data)
              self.ax.add_collection(self.patches)
@@ -126,6 +126,11 @@ class Spatial(object):
             self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.data,xlim=xlims,ylim=ylims,\
                 clim=self.clim,**kwargs)
             plt.title(self.__genTitle())
+            
+        if vector_overlay:
+             u,v = self.getVector()
+             plt.quiver(self.grid.xv[1::subsample],self.grid.yv[1::subsample],u[1::subsample],v[1::subsample]\
+             ,scale=scale,scale_units='xy')
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
     def plotvtk(self,**kwargs):
@@ -176,7 +181,7 @@ class Spatial(object):
             
         print 'SUNTANS image saved to file:%s'%outfile
     
-    def animate(self,xlims=None,ylims=None,**kwargs):
+    def animate(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
         """
         Animates a spatial plot over all time steps
         
@@ -185,7 +190,12 @@ class Spatial(object):
         #anim = unanimate(self.xy,self.data,self.tstep,xlim=self.grid.xlims,ylim=self.grid.ylims,clim=self.clim,**kwargs)
         #return anim
         
-        
+        # Load the vector data
+        if vector_overlay:
+            U,V = self.getVector()
+            
+        # Need to reload the data
+        self.loadData()
     
         # Create the figure and axes handles
         #plt.ion()
@@ -203,27 +213,39 @@ class Spatial(object):
         if xlims==None or ylims==None:
             xlims=self.grid.xlims 
             ylims=self.grid.ylims
-
+        
+            
         collection = PolyCollection(self.xy)
         collection.set_array(np.array(self.data[0,:]))
         collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
         ax.add_collection(collection)    
+        ax.set_aspect('equal')
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
-        ax.axis('equal') 
         title=ax.set_title("")
         fig.colorbar(collection)
         
+        qh=plt.quiver([],[],[],[])
+        if vector_overlay:
+            u=U[0,:]
+            v=V[0,:]
+            qh=plt.quiver(self.grid.xv[1::subsample],self.grid.yv[1::subsample],u[1::subsample],v[1::subsample]\
+             ,scale=scale,scale_units='xy')
+  
         def init():
             collection.set_array([])
             title.set_text("")
+            qh.set_UVC([],[])
             return (collection,title)
                
         def updateScalar(i):
             collection.set_array(np.array(self.data[i,:]))
             collection.set_edgecolors(collection.to_rgba(np.array((self.data[i,:])))) 
             title.set_text(self.__genTitle(i))
-            return (title,collection)
+            if vector_overlay:
+                qh.set_UVC(U[i,1::subsample],V[i,1::subsample])
+
+            return (title,collection,qh)
   
         self.anim = animation.FuncAnimation(fig, updateScalar, frames=len(self.tstep), interval=50, blit=True)
 
@@ -239,37 +261,64 @@ class Spatial(object):
         #except:
         #    print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
             
-    def animateVTK(self):
+    def animateVTK(self,figsize=(640,480)):
         """
         Animate a scene in the vtk window
         
-        ## Not Working ##
         """
+        from tvtk.api import tvtk
+        from mayavi import mlab
         
         # Load all the time steps into memory
         self.tstep=np.arange(0,len(self.time))
         nt = len(self.tstep)
         self.loadData()
         
+        # Find the colorbar limits if unspecified
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(self.data))
+            self.clim.append(np.max(self.data))
+            
         # Generate the initial plot
         points = np.column_stack((self.grid.xp,self.grid.yp,0.0*self.grid.xp))
         
         titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
                 datetime.strftime(self.time[self.tstep[0]],'%d-%b-%Y %H:%M:%S'))
-                
-        self.fig,self.h,ug,title = unsurfm(points,self.grid.cells,np.array(self.data[0,:]),clim=self.clim,title=titlestr)        
-        # Animate the plot by updating the scalar data in the unstructured grid object
+        
+        mlab.figure(size=figsize)        
+        self.fig,self.h,ug,d,title = unsurfm(points,self.grid.cells,np.array(self.data[0,:]),clim=self.clim,title=titlestr)        
+       
+       # Animate the plot by updating the scalar data in the unstructured grid object      
+#        for ii in range(nt):
+#            print ii
+#            # Refresh the unstructured grid object
+#            ug.cell_data.scalars = self.data[ii,:]
+#            ug.cell_data.scalars.name = 'suntans_scalar'
+#
+#            # Update the title
+#            titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
+#            datetime.strftime(self.time[self.tstep[ii]],'%d-%b-%Y %H:%M:%S'))
+#            title.text=titlestr
+#
+#            self.fig.scene.render()
+#            self.savefig('tmp_vtk_%00d.png'%ii)
+#
+#        mlab.show()
+
+
         @mlab.animate
         def anim():
             ii=-1
             while 1:
-                if ii<nt:
+                if ii<nt-1:
                     ii+=1
                 else:
                     ii=0
                 ug.cell_data.scalars = self.data[ii,:]
+                ug.cell_data.scalars.name = 'suntans_scalar'
                 titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
-                datetime.strftime(self.time[self.tstep[0]],'%d-%b-%Y %H:%M:%S'))
+                datetime.strftime(self.time[self.tstep[ii]],'%d-%b-%Y %H:%M:%S'))
                 title.text=titlestr
                 
                 self.fig.scene.render()
@@ -277,6 +326,25 @@ class Spatial(object):
         
         a = anim() # Starts the animation.
 
+    def getVector(self):
+        """
+        Retrieve U and V vector components
+        """
+        tmpvar = self.variable
+        
+        self.variable='u'
+        self.loadData()
+        u=self.data.copy()
+        
+        self.variable='v'
+        self.loadData()
+        v=self.data.copy()
+        
+        self.variable=tmpvar
+        
+        return u,v
+        
+        
     def __del__(self):
         self.nc.close()
         
@@ -1060,7 +1128,7 @@ def unsurfm(points, cells, z,clim=None,title=None,**kwargs):
     mlab.view(0,0)
     title=mlab.title(title,height=0.95,size=0.15)
     
-    return f, h, ug,title
+    return f, h, ug, d, title
     
 def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
     """
@@ -1079,8 +1147,6 @@ def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
     fig = plt.gcf()
     ax = fig.gca()
     
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
 
     # Find the colorbar limits if unspecified
     if clim==None:
@@ -1096,7 +1162,11 @@ def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
     collection.set_edgecolors(collection.to_rgba(np.array(z)))    
     
     ax.add_collection(collection)
-    ax.axis('equal')
+
+    ax.set_aspect('equal')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
     axcb = fig.colorbar(collection)
     
     return fig, ax, collection, axcb
@@ -1133,9 +1203,15 @@ def unanimate(xy,z,tsteps,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
     collection.set_array(np.array(z[0,:]))
     collection.set_clim(vmin=clim[0],vmax=clim[1])
     ax.add_collection(collection)    
+
+    
+    ax.axis('equal')
+    ax.set_aspect('equal',fixLimits=True)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-    ax.axis('equal') 
+    #ax.axis([xlim[0],xlim[1],ylim[0],ylim[1]])
+    
+    #plt.axes().set_aspect('equal')
     title=ax.set_title("")
     fig.colorbar(collection)
     
