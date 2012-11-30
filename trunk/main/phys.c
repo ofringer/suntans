@@ -1827,20 +1827,26 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
  *
  */
 static void NewCells(gridT *grid, physT *phys, propT *prop) {
+  int j, jptr, k;
 
-  int j, jptr, k, nc1, nc2;
-  REAL dz;
-
-  // Correct the velocity resulting from changes in volume
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
-    nc1 = grid->grad[2*j];
-    nc2 = grid->grad[2*j+1];
+    if(grid->etop[j]<grid->Nke[j]-1) {    // Only update new cells if there is more than one layer
 
-    if(grid->etop[j]<grid->Nke[j]-1 && grid->etop[j]<=grid->etopold[j]) 
-      for(k=grid->etop[j];k<=grid->etopold[j];k++)
-	phys->u[j][k]=phys->u[j][grid->etopold[j]+1];
+      // If a new cell is created above the old cell then set the velocity in the new cell equal to that in
+      // the old one.
+      //
+      // Otherwise if the free surface jumps up more than one cell then set the velocity equal to the cell beneath
+      // the old one.
+
+      if(grid->etop[j]==grid->etopold[j]-1) {
+	phys->u[j][grid->etop[j]]=phys->u[j][grid->etopold[j]];
+      } else { 
+	for(k=grid->etop[j];k<=grid->etopold[j];k++)
+	  phys->u[j][k]=phys->u[j][grid->etopold[j]+1];
+      }
+    }
   }
 }
 
