@@ -65,7 +65,6 @@ class Spatial(object):
             
         """
         nc = self.nc
-        
         self.long_name = nc.variables[self.variable].long_name
         self.units= nc.variables[self.variable].units
         #        ndims = len(nc.variables[self.variable].dimensions)
@@ -91,7 +90,14 @@ class Spatial(object):
             else:
                 self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
         
+        # Mask the data
+#        try:
+#            fillval = nc.variables[self.variable]._FillValue
+#        except:
+        fillval = 999999.0
         
+        self.mask = self.data==fillval
+        self.data[self.mask]=0.
         
         
     def loadTime(self):
@@ -128,17 +134,17 @@ class Spatial(object):
             plt.title(self.__genTitle())
             
         if vector_overlay:
-             u,v = self.getVector()
+             u,v,w = self.getVector()
              plt.quiver(self.grid.xv[1::subsample],self.grid.yv[1::subsample],u[1::subsample],v[1::subsample]\
              ,scale=scale,scale_units='xy')
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
-    def plotvtk(self,**kwargs):
+    def plotvtk(self,vector_overlay=False,scale=1e-3,subsample=10,**kwargs):
         """
           Plot the unstructured grid data using vtk libraries
         """
         # Mayavi libraries
-
+        from mayavi import mlab
         
         # Load the data if it's needed
         if not self.__dict__.has_key('data'):
@@ -146,7 +152,15 @@ class Spatial(object):
         
         points = np.column_stack((self.grid.xp,self.grid.yp,0.0*self.grid.xp))
                 
-        self.fig,h,ug,title = unsurfm(points,self.grid.cells,self.data,clim=self.clim,title=self.__genTitle(),**kwargs)
+        self.fig,h,ug,d,title = unsurfm(points,self.grid.cells,self.data,clim=self.clim,title=self.__genTitle(),**kwargs)
+        
+        if vector_overlay:
+             u,v,w = self.getVector()
+             # Add vectorss to the unctructured grid object
+             ug.cell_data.vectors=np.asarray((u,v,w)).T
+             ug.cell_data.vectors.name='vectors'
+             d.update()
+             h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=subsample,scale_factor=1./scale)
 
             
     def plotTS(self,j=0,**kwargs):
@@ -192,7 +206,7 @@ class Spatial(object):
         
         # Load the vector data
         if vector_overlay:
-            U,V = self.getVector()
+            U,V,W = self.getVector()
             
         # Need to reload the data
         self.loadData()
@@ -261,18 +275,21 @@ class Spatial(object):
         #except:
         #    print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
             
-    def animateVTK(self,figsize=(640,480)):
+    def animateVTK(self,figsize=(640,480),vector_overlay=False,scale=1e-3,subsample=10):
         """
         Animate a scene in the vtk window
         
         """
-        from tvtk.api import tvtk
         from mayavi import mlab
         
         # Load all the time steps into memory
         self.tstep=np.arange(0,len(self.time))
         nt = len(self.tstep)
+        if vector_overlay:
+             u,v,w = self.getVector()        
+        
         self.loadData()
+        
         
         # Find the colorbar limits if unspecified
         if self.clim==None:
@@ -288,7 +305,13 @@ class Spatial(object):
         
         mlab.figure(size=figsize)        
         self.fig,self.h,ug,d,title = unsurfm(points,self.grid.cells,np.array(self.data[0,:]),clim=self.clim,title=titlestr)        
-       
+        
+        if vector_overlay:
+             # Add vectorss to the unctructured grid object
+             ug.cell_data.vectors=np.asarray((u[0,:],v[0,:],w[0,:])).T
+             ug.cell_data.vectors.name='vectors'
+             d.update()
+             h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=1,scale_factor=1./scale)
        # Animate the plot by updating the scalar data in the unstructured grid object      
 #        for ii in range(nt):
 #            print ii
@@ -306,7 +329,6 @@ class Spatial(object):
 #
 #        mlab.show()
 
-
         @mlab.animate
         def anim():
             ii=-1
@@ -317,6 +339,13 @@ class Spatial(object):
                     ii=0
                 ug.cell_data.scalars = self.data[ii,:]
                 ug.cell_data.scalars.name = 'suntans_scalar'
+                if vector_overlay:
+                    ug.cell_data.vectors=np.asarray((u[ii,:],v[ii,:],w[ii,:])).T
+                    ug.cell_data.vectors.name='vectors'
+                    d.update()
+                    h2.update_data()
+                    h2.update_pipeline()
+                    
                 titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
                 datetime.strftime(self.time[self.tstep[ii]],'%d-%b-%Y %H:%M:%S'))
                 title.text=titlestr
@@ -340,9 +369,13 @@ class Spatial(object):
         self.loadData()
         v=self.data.copy()
         
+        self.variable='w'
+        self.loadData()
+        w=self.data.copy()
+        
         self.variable=tmpvar
         
-        return u,v
+        return u,v,w
         
         
     def __del__(self):
