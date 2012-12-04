@@ -86,9 +86,9 @@ int GetTriangulation(gridT **grid, int myproc) {
   for(n=0;n<(*grid)->Nc;n++) {
     (*grid)->xv[n] = vorout.pointlist[2*n];
     (*grid)->yv[n] = vorout.pointlist[2*n+1];
-    for(nf=0;nf<NFACES;nf++) {
-      (*grid)->cells[n*NFACES+nf]=out.trianglelist[n*NFACES+nf];
-      (*grid)->neigh[n*NFACES+nf]=out.neighborlist[n*NFACES+nf];
+    for(nf=0;nf<(*grid)->nfaces[n];nf++) {
+      (*grid)->cells[n*(*grid)->maxfaces+nf]=out.trianglelist[n*(*grid)->maxfaces+nf];
+      (*grid)->neigh[n*(*grid)->maxfaces+nf]=out.neighborlist[n*(*grid)->maxfaces+nf];
     }
   }
 
