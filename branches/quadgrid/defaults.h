@@ -7,8 +7,11 @@
  *
  * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
  * University. All Rights Reserved.
- *
+ * 
  */
+
+//added maxFaces_default=3
+
 #include "suntans.h"
 #include "phys.h"
 

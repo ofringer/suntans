@@ -45,14 +45,14 @@ main(int argc, char *argv[])
     AllocatePhysicalVariables(grid,&phys,prop);
     AllocateTransferArrays(&grid,myproc,numprocs,comm);
     OpenFiles(prop,myproc);
+    
     if(RESTART)
       ReadPhysicalVariables(grid,phys,prop,myproc,comm);
     else
       InitializePhysicalVariables(grid,phys,prop,myproc,comm);
-
-    Solve(grid,phys,prop,myproc,numprocs,comm);
-    //    FreePhysicalVariables(grid,phys,prop);
-    //    FreeTransferArrays(grid,myproc,numprocs,comm);
+      Solve(grid,phys,prop,myproc,numprocs,comm);
+      FreePhysicalVariables(grid,phys,prop);
+      FreeTransferArrays(grid,myproc,numprocs,comm);
   }
 
   EndMpi(&comm);
