@@ -372,16 +372,16 @@ def createObsDict(varname,longname,units,data,time,latitude,longitude,height,sta
     
     # Initialise the output dictionary
     for ID,nn,lat,lon,hh,tt,dd in zip(stationid,stationname,latitude,longitude,height,time,data):
-        for vv,ll,uu in zip(varname,longname,units):
-            coords=[{'Name':'longitude','Value':lon,'units':'degrees East'},\
-                {'Name':'latitude','Value':lat,'units':'degrees North'},\
-                {'Name':'elevation','Value':hh,'units':'metres','positive':'up'},\
-                {'Name':'time','Value':tt,'units':'minutes since 1970-01-01 00:00:00'}]
-            # Can't put elevation in the "coordinates" list as it expands the array
-            attribs = {'StationID':ID,'StationName':nn,'Data':dd,\
-                'coordinates':'time, latitude, longitude','long_name':ll,\
-                'units':uu,'coords':coords} 
-            ncdict.append({vv:attribs})
+
+        coords=[{'Name':'longitude','Value':lon,'units':'degrees East'},\
+            {'Name':'latitude','Value':lat,'units':'degrees North'},\
+            {'Name':'elevation','Value':hh,'units':'metres','positive':'up'},\
+            {'Name':'time','Value':tt,'units':'minutes since 1970-01-01 00:00:00'}]
+        # Can't put elevation in the "coordinates" list as it expands the array
+        attribs = {'StationID':ID,'StationName':nn,'Data':dd,\
+            'coordinates':'time, elevation, latitude, longitude','long_name':longname,\
+            'units':units,'coords':coords} 
+        ncdict.append({varname:attribs})
             
     return ncdict
 
