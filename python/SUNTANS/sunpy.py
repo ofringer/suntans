@@ -139,7 +139,7 @@ class Spatial(object):
              ,scale=scale,scale_units='xy')
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
-    def plotvtk(self,vector_overlay=False,scale=1e-3,subsample=10,**kwargs):
+    def plotvtk(self,vector_overlay=False,scale=1e-3,subsample=1,**kwargs):
         """
           Plot the unstructured grid data using vtk libraries
         """
@@ -157,11 +157,22 @@ class Spatial(object):
         if vector_overlay:
              u,v,w = self.getVector()
              # Add vectorss to the unctructured grid object
-             ug.cell_data.vectors=np.asarray((u,v,w)).T
-             ug.cell_data.vectors.name='vectors'
-             d.update()
-             h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=subsample,scale_factor=1./scale)
-
+             # This doesn't work ???       
+             #vector = np.asarray((u,v,w)).T
+             #ug.cell_data.vectors=vector
+             #ug.cell_data.vectors.name='vectors'
+             #ug.modified()
+             #d.update()
+             #d = mlab.pipeline.add_dataset(ug)
+             #h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
+             # This works             
+             vec=mlab.pipeline.vector_scatter(self.grid.xv, self.grid.yv, self.grid.yv*0, u, v, w)
+             h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
+             
+             # try out the streamline example
+#             magnitude = mlab.pipeline.extract_vector_norm(vec)
+#             pdb.set_trace()
+#             h2 = mlab.pipeline.streamline(magnitude)
             
     def plotTS(self,j=0,**kwargs):
         """
@@ -275,7 +286,7 @@ class Spatial(object):
         #except:
         #    print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
             
-    def animateVTK(self,figsize=(640,480),vector_overlay=False,scale=1e-3,subsample=10):
+    def animateVTK(self,figsize=(640,480),vector_overlay=False,scale=1e-3,subsample=1):
         """
         Animate a scene in the vtk window
         
@@ -308,10 +319,14 @@ class Spatial(object):
         
         if vector_overlay:
              # Add vectorss to the unctructured grid object
-             ug.cell_data.vectors=np.asarray((u[0,:],v[0,:],w[0,:])).T
-             ug.cell_data.vectors.name='vectors'
-             d.update()
-             h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=1,scale_factor=1./scale)
+             #ug.cell_data.vectors=np.asarray((u[0,:],v[0,:],w[0,:])).T
+             #ug.cell_data.vectors.name='vectors'
+             #d.update()
+             #h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=1,scale_factor=1./scale)
+             vec=mlab.pipeline.vector_scatter(self.grid.xv, self.grid.yv, self.grid.yv*0, u[0,:], v[0,:], w[0,:])
+             h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
+
+             
        # Animate the plot by updating the scalar data in the unstructured grid object      
 #        for ii in range(nt):
 #            print ii
@@ -328,7 +343,7 @@ class Spatial(object):
 #            self.savefig('tmp_vtk_%00d.png'%ii)
 #
 #        mlab.show()
-
+        
         @mlab.animate
         def anim():
             ii=-1
@@ -340,11 +355,15 @@ class Spatial(object):
                 ug.cell_data.scalars = self.data[ii,:]
                 ug.cell_data.scalars.name = 'suntans_scalar'
                 if vector_overlay:
-                    ug.cell_data.vectors=np.asarray((u[ii,:],v[ii,:],w[ii,:])).T
-                    ug.cell_data.vectors.name='vectors'
-                    d.update()
-                    h2.update_data()
+                    #ug.cell_data.vectors=np.asarray((u[ii,:],v[ii,:],w[ii,:])).T
+                    #ug.cell_data.vectors.name='vectors'
+                    #d.update()
+                    #vec=mlab.pipeline.vector_scatter(self.grid.xv, self.grid.yv, self.grid.yv*0, u[ii,:], v[ii,:], w[ii,:])
+                    #h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
+                    #h2.update_data()
                     h2.update_pipeline()
+                    vectors=np.asarray((u[ii,:],v[ii,:],w[ii,:])).T
+                    h2.mlab_source.set(vectors=vectors)
                     
                 titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
                 datetime.strftime(self.time[self.tstep[ii]],'%d-%b-%Y %H:%M:%S'))
@@ -493,7 +512,7 @@ class Grid(object):
         # Calculate the mid-point depth
         if not self.Nkmax == 1:
             z_bot = np.cumsum(self.dz)
-            z_top = np.vstack((0.0,z_bot[:-1]))
+            z_top = np.hstack((0.0,z_bot[:-1]))
             self.z_r = 0.5*(z_bot+z_top)
         else:
             self.z_r=0.0
