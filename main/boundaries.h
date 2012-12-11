@@ -22,11 +22,96 @@ enum {
   specified, open
 };
 
+// Structure array to store netcdf boundary condition data
+typedef struct _boundT{
+  
+  // Dimension sizes
+  size_t Ntype2;
+  size_t Ntype3;
+  size_t Nt;
+  size_t Nk;
+  
+  // boolean operators
+  int hasType2;
+  int hasType3;
+
+  // Grid cell indices
+  int *edgep;
+  int *cellp;
+
+  // Indices that point the grid to the cell in the file
+  int *ind2;
+  int *ind3;
+
+  // Boundary coordinates
+  REAL *xe;
+  REAL *ye;
+  REAL *xv;
+  REAL *yv;
+  REAL *z;
+  REAL *time;	
+
+  // Time record locators
+  int t0;
+  int t1;
+
+  // Data arrays at forward (_f) and backward (_b) timestep
+  // Type-2 (edge centred) boundaries
+  REAL **boundary_u_f;
+  REAL **boundary_v_f;
+  REAL **boundary_w_f;
+  REAL **boundary_T_f;
+  REAL **boundary_S_f;
+
+  REAL **boundary_u_b;
+  REAL **boundary_v_b;
+  REAL **boundary_w_b;
+  REAL **boundary_T_b;
+  REAL **boundary_S_b;
+
+  REAL **boundary_u;
+  REAL **boundary_v;
+  REAL **boundary_w;
+  REAL **boundary_T;
+  REAL **boundary_S;
+
+  // Type-3 (cell centred) boundaries
+  REAL **uc_f;
+  REAL **vc_f;
+  REAL **wc_f;
+  REAL **T_f;
+  REAL **S_f;
+  REAL * h_f;
+
+  REAL **uc_b;
+  REAL **vc_b;
+  REAL **wc_b;
+  REAL **T_b;
+  REAL **S_b;
+  REAL *h_b;
+
+  REAL **uc;
+  REAL **vc;
+  REAL **wc;
+  REAL **T;
+  REAL **S;
+  REAL *h;
+} boundT;
+
+// Declare the boundary structure global
+boundT *bound;
+
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop);
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc);
 void BoundaryScalars(gridT *grid, physT *phys, propT *prop);
 void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc);
 
 FILE *windFID;
+
+#ifdef USENETCDF
+    void InitBoundaryData(propT *prop, gridT *grid, int myproc);
+    void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc);
+    void UpdateBdyNC(propT *prop, gridT *grid, int myproc);
+#endif
 
 #endif

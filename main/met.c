@@ -10,10 +10,10 @@
 #ifdef USENETCDF
 void ReadMetNCcoord(propT *prop, gridT *grid, metinT *metin,int myproc);
 void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc);
-static size_t returndimlen(int ncid, char *dimname);
 int getTimeRec(REAL nctime, REAL *time, int nt);
 const void* FillValue(int empty);
 void ravel(REAL **tmparray, REAL *tmpvec, gridT *grid);
+static size_t returndimlen(int ncid, char *dimname);
 #endif
 void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda,int myproc);
 static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL D);

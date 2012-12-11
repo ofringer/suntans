@@ -156,3 +156,6 @@ const REAL Ce_DEFAULT = 1.4e3;
 //Start and base time string
 const char *starttime_DEFAULT = "19900101.000000";
 const char *basetime_DEFAULT =  "19900101.000000";
+
+// NetCDF boundary conidtion default
+const int netcdfBdy_DEFAULT = 0;

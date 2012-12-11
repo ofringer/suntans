@@ -362,6 +362,10 @@ double GetDefaultValue(char *str, int *status) {
     
    return Ch_DEFAULT;   
 
+} else if(!strcmp(str,"netcdfBdy")) {
+    
+   return netcdfBdy_DEFAULT;   
+
 }else {
     *status=0;
     return 0;
