@@ -1057,6 +1057,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   REAL t0;
   metinT *metin;
   metT *met;
+  
 
   // Compute the initial quantities for comparison to determine conservative properties
   prop->n=0;
@@ -1077,6 +1078,24 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   prop->n=prop->nstart;
   // initialize the time (often used for boundary/initial conditions)
   prop->rtime=prop->nstart*prop->dt;
+ 
+  // Initialise the netcdf time
+#ifdef USENETCDF 
+ // Get the toffSet property
+ prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+ if (myproc==0) printf("toffSet = %f (%s, %s).\n",prop->toffSet,prop->basetime,prop->starttime);
+ prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
+#endif
+
+  // Initialise the boundary data from a netcdf file
+  if(prop->netcdfBdy==1){
+#ifdef USENETCDF
+    AllocateBoundaryData(prop, grid, &bound, myproc);
+    InitBoundaryData(prop, grid, myproc);
+  //#else
+  // Raise an error
+#endif
+  }
 
   // get the boundary velocities (boundaries.c)
   BoundaryVelocities(grid,phys,prop,myproc); 
@@ -1097,9 +1116,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
   
 #ifdef USENETCDF
-    // Get the toffSet property
-    prop->toffSet = getToffSet(prop->basetime,prop->starttime);
-    if (myproc==0) printf("toffSet = %f (%s, %s).\n",prop->toffSet,prop->basetime,prop->starttime);
 
   // Initialise the meteorological forcing input fields
     if(prop->metmodel>0){
@@ -1113,7 +1129,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       InitialiseMetFields(prop, grid, metin, met,myproc);
       
       // Initialise the heat flux variables
-      prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
       updateMetData(prop, grid, metin, met, myproc); 
      if(prop->metmodel>=2)       
       updateAirSeaFluxes(prop, grid, phys, met, phys->T);
@@ -1162,7 +1177,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // laxWendroff central differencing
       if(prop->laxWendroff && prop->nonlinear==2) 
         LaxWendroff(grid,phys,prop,myproc,comm);
-       
     
       // compute the horizontal source terms (like 
       /* 
@@ -4341,6 +4355,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->sill = MPI_GetValue(DATAFILE,"sill","ReadProperties",myproc);
   (*prop)->range = MPI_GetValue(DATAFILE,"range","ReadProperties",myproc);
   (*prop)->outputNetcdf = (int)MPI_GetValue(DATAFILE,"outputNetcdf","ReadProperties",myproc);
+  (*prop)->netcdfBdy = (int)MPI_GetValue(DATAFILE,"netcdfBdy","ReadProperties",myproc);
   (*prop)->Lsw = MPI_GetValue(DATAFILE,"Lsw","ReadProperties",myproc);
   (*prop)->Cda = MPI_GetValue(DATAFILE,"Cda","ReadProperties",myproc);
   (*prop)->Ce = MPI_GetValue(DATAFILE,"Ce","ReadProperties",myproc);
@@ -4412,6 +4427,18 @@ void OpenFiles(propT *prop, int myproc)
 #else
    // Attempting to use heat flux model without netcdf libraries
       printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+#endif
+  }
+  if(prop->netcdfBdy>0){
+    MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
+#ifdef USENETCDF
+    prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+	if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
+#else
+   // Attempting to use netcdf boundaries without netcdf libraries
+      printf("Error: NetCDF Libraries required for prop->netcdfBdy > 0\n");
       MPI_Finalize();
       exit(EXIT_FAILURE);
 #endif
