@@ -286,7 +286,7 @@ void InitialiseOutputNC(propT *prop, gridT *grid, physT *phys, metT *met, int my
    static char w_units[]="metre second-1";
    static char nu_v_long_name[]="Vertical eddy viscosity";
    static char nu_v_units[]="metre2 second-1";
-   static char salt_long_name[]="Water salinity";
+   static char salt_long_name[]="Salinity";
    static char salt_units[]="ppt";
    static char temp_long_name[]="Water temperature";
    static char temp_units[]="degrees C";
