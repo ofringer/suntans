@@ -64,12 +64,13 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
  * 
  */
 void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
-  int jptr, j, ib, k;
+  int jptr, j, ib, k, jind;
   int iptr, i, ii;
   int nf,ne,neigh;
   REAL z;
   
   //Type-2 zero gradient (Neumann) boundary condition
+  /* 
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
       j=grid->edgep[jptr];
       ib=grid->grad[2*j];
@@ -79,9 +80,24 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
 	phys->boundary_s[jptr-grid->edgedist[2]][k]=phys->s[ib][k];
       }
   }
+  */
+
+  // Type-2
+  ii=-1;
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    jind = jptr-grid->edgedist[2];
+    j = grid->edgep[jptr];
+    ib=grid->grad[2*j];
+    ii+=1;
+
+    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+      phys->boundary_T[jind][k]=bound->boundary_T[bound->ind2[ii]][k];
+      phys->boundary_s[jind][k]=bound->boundary_S[bound->ind2[ii]][k];
+    }
+  }
 
   //Type-3 with Dirichlet tracer boundary (set edge value to cell value in boundary structure)
-  /* ????
+  /* ???? (NEEDS TESTING)
   ii=-1;
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
@@ -118,26 +134,21 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
 #endif
 
   // Type-2
+  ii=-1;
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     jind = jptr-grid->edgedist[2];
     j = grid->edgep[jptr];
+    ii+=1;
 
-    u=v=h=0;
-   /* for(n=0;n<numtides;n++) {
-      h = h + h_amp[jind][n]*cos(omegas[n]*(toffSet+prop->rtime) + h_phase[jind][n]);
-      u = u + u_amp[jind][n]*cos(omegas[n]*(toffSet+prop->rtime) + u_phase[jind][n]);
-      v = v + v_amp[jind][n]*cos(omegas[n]*(toffSet+prop->rtime) + v_phase[jind][n]);
-    }
-    */
-
-    // Velocities from tides.c are in cm/s and h is in cm!
-    phys->boundary_h[jind]=h*(1-exp(-prop->rtime/prop->thetaramptime))/100.0;
+    phys->boundary_h[jind]=0.0; // Not used??
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
-      phys->boundary_u[jind][k]=u*(1-exp(-prop->rtime/prop->thetaramptime))/100.0;
-      phys->boundary_v[jind][k]=v*(1-exp(-prop->rtime/prop->thetaramptime))/100.0;
-      phys->boundary_w[jind][k]=0;
+     //printf("ii=%d, bound->ind2[ii]=%d\n",ii,bound->ind2[ii]);
+     phys->boundary_u[jind][k]=bound->boundary_u[bound->ind2[ii]][k]*rampfac;
+     phys->boundary_v[jind][k]=bound->boundary_v[bound->ind2[ii]][k]*rampfac;
+     phys->boundary_w[jind][k]=bound->boundary_w[bound->ind2[ii]][k]*rampfac;
     }
   }
+ 
   // Type-3
   ii=-1;
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
@@ -205,7 +216,7 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 }
 
 /****************************************************************
- * Beginning of the boundary netCDF-IO function
+ * Beginning of the boundary netCDF-IO functions
  ****************************************************************/
 #ifdef USENETCDF
  /*
@@ -266,6 +277,18 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
     r2 = (1.0 - cos(PI*mu))/2.0;
     r1 = 1.0-r2;
 
+    if(bound->hasType2>0){
+	for (j=0;j<bound->Ntype2;j++){
+	  for (k=0;k<bound->Nk;k++){
+	    bound->boundary_u[j][k] = bound->boundary_u_b[j][k]*r1 + bound->boundary_u_f[j][k]*r2;
+	    bound->boundary_v[j][k] = bound->boundary_v_b[j][k]*r1 + bound->boundary_v_f[j][k]*r2;
+	    bound->boundary_w[j][k] = bound->boundary_w_b[j][k]*r1 + bound->boundary_w_f[j][k]*r2;
+	    bound->boundary_T[j][k] = bound->boundary_T_b[j][k]*r1 + bound->boundary_T_f[j][k]*r2;
+	    bound->boundary_S[j][k] = bound->boundary_S_b[j][k]*r1 + bound->boundary_S_f[j][k]*r2;
+	  }
+	}
+    }
+
     if(bound->hasType3>0){
 	for (j=0;j<bound->Ntype3;j++){
 	  for (k=0;k<bound->Nk;k++){
@@ -304,6 +327,94 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
     t0 = getTimeRec(prop->nctime,bound->time,(int)bound->Nt); //this is in met.c
     bound->t0=t0;
     //if(myproc==0) printf("t0 = %d [Nt = %d]\n",t0,bound->Nt);    
+    if(bound->hasType2){
+
+	vname = "boundary_u";
+	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	    ERR(retval);
+	for (j=0;j<Ntype2;j++){
+	  for (k=0;k<Nk;k++){
+	    //if(myproc==0) printf("t0[%d],k[%d] of %d,j[%d]\n",t0,k,bound->Nk,j);
+	    start[0]=t0;
+	    start[1]=k;
+	    start[2]=j;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_u_b[j][k]))) 
+		ERR(retval); 
+	    start[0]=t0+1;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_u_f[j][k]))) 
+		ERR(retval); 
+	  }
+	}
+
+	vname = "boundary_v";
+	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	    ERR(retval);
+	for (j=0;j<Ntype2;j++){
+	  for (k=0;k<Nk;k++){
+	    start[0]=t0;
+	    start[1]=k;
+	    start[2]=j;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_v_b[j][k]))) 
+		ERR(retval); 
+	    start[0]=t0+1;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_v_f[j][k]))) 
+		ERR(retval); 
+	  }
+	}
+	
+	vname = "boundary_w";
+	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	    ERR(retval);
+	for (j=0;j<Ntype2;j++){
+	  for (k=0;k<Nk;k++){
+	    start[0]=t0;
+	    start[1]=k;
+	    start[2]=j;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_w_b[j][k]))) 
+		ERR(retval); 
+	    start[0]=t0+1;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_w_f[j][k]))) 
+		ERR(retval); 
+	  }
+	}
+
+	vname = "boundary_T";
+	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	    ERR(retval);
+	for (j=0;j<Ntype2;j++){
+	  for (k=0;k<Nk;k++){
+	    start[0]=t0;
+	    start[1]=k;
+	    start[2]=j;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_T_b[j][k]))) 
+		ERR(retval); 
+	    start[0]=t0+1;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_T_f[j][k]))) 
+		ERR(retval); 
+	  }
+	}
+
+	vname = "boundary_S";
+	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	    ERR(retval);
+	for (j=0;j<Ntype2;j++){
+	  for (k=0;k<Nk;k++){
+	    start[0]=t0;
+	    start[1]=k;
+	    start[2]=j;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_S_b[j][k]))) 
+		ERR(retval); 
+	    start[0]=t0+1;
+	    if ((retval = nc_get_vara_double(ncid, varid, start, count, &bound->boundary_S_f[j][k]))) 
+		ERR(retval); 
+	  }
+	}
+    }
 
     if(bound->hasType3){
 	vname = "uc";
@@ -414,7 +525,7 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
  * Checks that the boundary arrays match the grid sizes
  */
  static void MatchBndPoints(propT *prop, gridT *grid, int myproc){
- int jptr, jj, ii;
+ int iptr, jptr, jj, ii, ne, nc1, nc2, nc;
 
     if(myproc==0) printf("SUNTANS grid # type 2 points = %d\n",grid->edgedist[3] - grid->edgedist[2]);
     if(myproc==0) printf("SUNTANS grid # type 3 points = %d\n",grid->celldist[2] - grid->celldist[1]);
@@ -422,20 +533,40 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
     if(myproc==0) printf("Boundary NetCDF file grid # type 3 points = %d\n",(int)bound->Ntype3);
 
      //Type-2
+     ii=-1;
      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-	 printf("Type 2 : Processor = %d, jptr = %d, edgep[jptr]\n",myproc,jptr,grid->edgep[jptr]);
-	 //TBC...
-     }
+	 //printf("Type 2 : Processor = %d, jptr = %d, edgep[jptr]\n",myproc,jptr,grid->edgep[jptr]);
+	 // Need to find the edge index from the unpartitioned grid
+	 /*ne = grid->edgep[jpr]; // Edge index for partitioned grid
+	 nc1 = grid->grad[2*ne];
+         nc2 = grid->grad[2*ne+1];
+	 if(nc1==-1) nc1=nc2; // nc1 is the cell index for the partitioned grid
+	 
+	 nc = grid->mnptr[nc1]; // Cell index for the unpartitioned grid
+        // Find the edge index of the boundary cell
+	for(nf=0;nf<NFACES;nf++){ 
+	    if(neigh=grid->neigh[i*NFACES+nf]==-1) {
+		 ne = grid->edgep[grid->face[i*NFACES+nf]];
+	}
+	*/
+	 ii+=1;
+	 // Match suntans edge cell with the type-2 boundary file point
+	 for(jj=0;jj<bound->Ntype2;jj++){
+	     if(grid->eptr[grid->edgep[jptr]]==bound->edgep[jj])
+		bound->ind2[ii]=jj;
+	 }
+	 printf("Type 2 : Processor = %d, jptr = %d, edgep[jptr]=%d, bound->ind2[ii]=%d\n",myproc,jptr,grid->edgep[jptr],bound->ind2[ii]);
+     }	 
      // Type-3
      ii=-1;
-     for(jptr=grid->celldist[1];jptr<grid->celldist[2];jptr++) {
+     for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
          ii+=1;
-	 // Match a suntans grid cell with the type-3 boundary file point
+	 // Match suntans grid cell with the type-3 boundary file point
 	 for(jj=0;jj<bound->Ntype3;jj++){
-	     if(grid->mnptr[grid->cellp[jptr]]==bound->cellp[jj])
+	     if(grid->mnptr[grid->cellp[iptr]]==bound->cellp[jj])
 		bound->ind3[ii]=jj;
 	 }
-	printf("Type 3 : Processor = %d, jptr = %d, cellp[jptr]=%d, bound->ind3[ii]=%d\n",myproc,jptr,grid->cellp[jptr],bound->ind3[ii]);
+	 //printf("Type 3 : Processor = %d, jptr = %d, cellp[jptr]=%d, bound->ind3[ii]=%d\n",myproc,jptr,grid->cellp[jptr],bound->ind3[ii]);
      }
      // Check that ind2 and ind3 do not contain any -1 (non-matching points)
 
