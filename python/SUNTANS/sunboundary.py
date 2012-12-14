@@ -29,6 +29,7 @@ from maptools import readShpPoly
 import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
 from datetime import datetime, timedelta
 
+import pdb
 
 class Boundary(object):
     """
@@ -89,6 +90,20 @@ class Boundary(object):
         self.xe = xe[self.edgep]
         self.ye = ye[self.edgep]
         
+        # Determine the unique flux segments (these are a subset of Type-2 boundaries)
+        indseg = np.argwhere(self.grd.edgeflag>0)
+        segID = self.grd.edgeflag[indseg]
+        self.segp = np.unique(segID)
+        self.Nseg = np.size(self.segp)
+
+        # This is the pointer for the edge to the segment
+        self.segedgep=self.edgep*0
+        n=-1            
+        for ii in self.edgep:
+            n+=1
+            if self.grd.edgeflag[ii]>0:
+                self.segedgep[n]=self.grd.edgeflag[ii]
+                     
         # Get the depth info
         self.Nk = self.grd.Nkmax
         self.z = self.grd.z_r
@@ -154,6 +169,10 @@ class Boundary(object):
         self.T = np.zeros((self.Nt,self.Nk,self.N3))
         self.S = np.zeros((self.Nt,self.Nk,self.N3))
         self.h = np.zeros((self.Nt,self.N3))
+        
+        # Type 2 flux array
+        self.boundary_Q = np.zeros((self.Nt,self.Nseg))
+        
     
     def write2NC(self,ncfile):
         """
@@ -171,8 +190,9 @@ class Boundary(object):
             nc.createDimension('Ntype2',self.N2)
         if self.N3>0:    
             nc.createDimension('Ntype3',self.N3)
-        
-        
+        if self.Nseg>0:
+            nc.createDimension('Nseg',self.Nseg)
+            
         ###
         # Define the coordinate variables and their attributes
         
@@ -214,6 +234,17 @@ class Boundary(object):
             tmpvar.setncattr('long_name','Index of suntans grid edge corresponding to type-2 boundary')
             tmpvar.setncattr('units','')
         
+        if self.Nseg>0:
+            # Type 2 indices
+            tmpvar=nc.createVariable('segedgep','i4',('Ntype2',))
+            tmpvar[:] = self.segedgep
+            tmpvar.setncattr('long_name','Pointer to boundary segment flag for each type-2 edge')
+            tmpvar.setncattr('units','')     
+            
+            tmpvar=nc.createVariable('segp','i4',('Nseg',))
+            tmpvar[:] = self.segp
+            tmpvar.setncattr('long_name','Boundary segment flag')
+            tmpvar.setncattr('units','')  
         # z
         tmpvar=nc.createVariable('z','f8',('Nk',))
         tmpvar[:] = self.z
@@ -224,7 +255,7 @@ class Boundary(object):
         tmpvar=nc.createVariable('time','f8',('Nt',))
         tmpvar[:] = self.ncTime()
         tmpvar.setncattr('long_name','Boundary time')
-        tmpvar.setncattr('units','')
+        tmpvar.setncattr('units','seconds since 1990-01-01 00:00:00')
         
         ###
         # Define the boundary data variables and their attributes
@@ -257,6 +288,13 @@ class Boundary(object):
             tmpvar.setncattr('long_name','Salinity at type-2 boundary point')
             tmpvar.setncattr('units','psu')
         
+        # Type-2 flux boundaries
+        if self.Nseg>0:
+            tmpvar=nc.createVariable('boundary_Q','f8',('Nt','Nseg'))
+            tmpvar[:] = self.boundary_Q
+            tmpvar.setncattr('long_name','Volume flux  at boundary segment')
+            tmpvar.setncattr('units','metre^3 second-1')
+            
         ###
         # Type-3 boundaries
         if self.N3>0:
@@ -281,7 +319,7 @@ class Boundary(object):
             tmpvar.setncattr('units','degrees C')
     
             tmpvar=nc.createVariable('S','f8',('Nt','Nk','Ntype3'))
-            tmpvar[:] = self.T
+            tmpvar[:] = self.S
             tmpvar.setncattr('long_name','Salinity at type-3 boundary point')
             tmpvar.setncattr('units','psu')
             
@@ -325,12 +363,25 @@ def modifyBCmarker(suntanspath,bcfile):
     #plt.plot(XY[0][:,0],XY[0][:,1],'m',linewidth=2)
     #plt.show()
     
+    # Reset all markers to one (closed)
+    ind0 = grd.mark>0
+    grd.mark[ind0]=1
+        
     # Find the points inside each of the polygon and assign new bc
+    grd.edgeflag = grd.mark*0 # Flag to identify linked edges/segments (marker=4 only)
+    segmentID=0
     for xpoly, bctype in zip(XY,newmarker):
+        segmentID += 1
         ind0 = grd.mark>0
         edges = np.asarray([xe[ind0],ye[ind0]])
         mark = grd.mark[ind0]
+        
         ind1 = nxutils.points_inside_poly(edges.T,xpoly)
+        if bctype==4:
+            eflag = grd.edgeflag[ind0]
+            eflag[ind1]=segmentID
+            grd.edgeflag[ind0]=eflag
+            bctype=2
         mark[ind1]=bctype
         grd.mark[ind0]=mark
     

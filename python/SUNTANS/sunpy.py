@@ -498,6 +498,8 @@ class Grid(object):
         self.edges = np.asarray(edgedata[:,0:2],int)
         self.mark = np.asarray(edgedata[:,2],int)
         self.grad = np.asarray(edgedata[:,3:5],int)
+        if np.size(edgedata,1)==6:
+            self.edgeflag = np.asarray(edgedata[:,5],int)
         
         # Load the vertical grid info from vertspace.dat if it exists
         try:
@@ -628,9 +630,17 @@ class Grid(object):
         """
 
         f = open(filename,'w')
-        
-        for e1,e2,m,g1,g2 in zip(self.edges[:,0],self.edges[:,1],self.mark,self.grad[:,0],self.grad[:,1]):
-            f.write('%d %d  %d  %d  %d\n'%(e1,e2,m,g1,g2))
+#        
+#        for e1,e2,m,g1,g2 in zip(self.edges[:,0],self.edges[:,1],self.mark,self.grad[:,0],self.grad[:,1]):
+#            f.write('%d %d  %d  %d  %d\n'%(e1,e2,m,g1,g2))
+
+        # Write an extra column that has the boundary edge segment flag    
+        if self.__dict__.has_key('edgeflag'):
+            for e1,e2,m,g1,g2,ef1 in zip(self.edges[:,0],self.edges[:,1],self.mark,self.grad[:,0],self.grad[:,1],self.edgeflag):
+                f.write('%d %d  %d  %d  %d  %d\n'%(e1,e2,m,g1,g2,ef1))
+        else:
+            for e1,e2,m,g1,g2 in zip(self.edges[:,0],self.edges[:,1],self.mark,self.grad[:,0],self.grad[:,1]):
+                f.write('%d %d  %d  %d  %d\n'%(e1,e2,m,g1,g2))
             
         f.close()
         
