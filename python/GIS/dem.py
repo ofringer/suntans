@@ -11,7 +11,7 @@ import numpy as np
 from netCDF4 import Dataset
 from scipy import spatial
 import matplotlib.pyplot as plt
-from interp_xyz import tile_vector
+from interpXYZ import tile_vector
 import time
 import shutil
 import gdal
@@ -24,11 +24,11 @@ class DEM(object):
         General DEM class
     """    
     
-    infile = None
     W = 1.0 # Weight
     maxdist = 250.0
     
-    def __init__(self,**kwargs):
+    def __init__(self,infile,**kwargs):
+        self.infile=infile
         self.__dict__.update(kwargs)
         if self.infile[-3:]=='.nc':
             xgrd,ygrd,self.Z = self.loadnc()
@@ -53,14 +53,21 @@ class DEM(object):
     def loadnc(self):
         """ Load the DEM data from a netcdf file"""        
         nc = Dataset(self.infile, 'r')
+        #print nc.variables.keys()
         try:
             X = nc.variables['X'][:]
             Y = nc.variables['Y'][:]
             Z = nc.variables['topo'][:]
         except:
-            X = nc.variables['x'][:]
-            Y = nc.variables['x'][:]
-            Z = nc.variables['z'][:]
+            try:
+                X = nc.variables['x'][:]
+                Y = nc.variables['x'][:]
+                Z = nc.variables['z'][:]
+            except:
+                X = nc.variables['lon'][:]
+                Y = nc.variables['lat'][:]
+                Z = nc.variables['topo'][:]
+                
                 
         nc.close()
         return X,Y,Z
@@ -231,6 +238,12 @@ class DEM(object):
         plt.axis('equal')
         return fig
         
+    def contour(self,Z,vv=range(-10,0),**kwargs):
+        fig= plt.figure(figsize=(9,8))
+        C = plt.contour(self.X,self.Y,Z,vv,colors='k',linestyles='-')
+        plt.axis('equal')
+        return fig,C
+        
     def plot(self,Z,**kwargs):
         h= plt.figure(figsize=(9,8))
         #h.imshow(np.flipud(self.Z),extent=[bbox[0],bbox[1],bbox[3],bbox[2]])
@@ -393,10 +406,10 @@ def blendDEMs(ncfile,outfile,W,maxdist):
 #f.savefig(infile[:-3]+'png',dpi=1200)
 #d.savenc(outfile='C:/Projects/GOMGalveston/DATA/Bathymetry/DEMs/NOAA_10m_DEM.nc')
 
-infile='C:/Projects/GOMGalveston/DATA/Bathymetry/DEMs/NOAA_10m_DEM.nc'
-print 'Loading %s...'%infile
-d = DEM(infile=infile)
-
-print 'Saving to an image...'
-f=d.contourf(d.Z+0.14,vv=range(-20,3),vmin=-20,vmax=4,cmap=plt.cm.gist_earth)
-f.savefig(infile[:-3]+'_MSL.'+'pdf')
+#infile='C:/Projects/GOMGalveston/DATA/Bathymetry/DEMs/NOAA_10m_DEM.nc'
+#print 'Loading %s...'%infile
+#d = DEM(infile=infile)
+#
+#print 'Saving to an image...'
+#f=d.contourf(d.Z+0.14,vv=range(-20,3),vmin=-20,vmax=4,cmap=plt.cm.gist_earth)
+#f.savefig(infile[:-3]+'_MSL.'+'pdf')

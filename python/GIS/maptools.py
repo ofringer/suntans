@@ -8,6 +8,7 @@
 		Coordinate conversion
 		Reading various raster formats
 		Reading shapefiles
+          Writing contours to a shapefile
 		...
 """
 from osgeo import osr
@@ -287,6 +288,64 @@ def plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15):
     ax.axis('equal')
     
     return ax, collection
+
+def Contour2Shp(C,outfile):
+    """
+    Converts a matplotlib contour object to a shapefile
+    
+    The shapefile has the filed Contour corresponding to the contour levels set
+    in matplotlib.pyplot.contour
+    
+    **The projection is hardwired to WGS84 for now. This needs updating.
+    """
+    # Convert the contour values to a shapefile
+    # see this example:
+    #    http://invisibleroads.com/tutorials/gdal-shapefile-points-save.html
+    
+    import osgeo.ogr, osgeo.osr
+    
+    # Create the projection
+    spatialReference = osgeo.osr.SpatialReference()
+    spatialReference.ImportFromProj4('+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+    
+    # Create the shape file
+    driver = osgeo.ogr.GetDriverByName('ESRI Shapefile')
+    shapeData = driver.CreateDataSource(outfile)
+    
+    # Create the layer
+    layer = shapeData.CreateLayer('Contour', spatialReference, osgeo.ogr.wkbLineString)
+    
+    # Create a field containing the contour level
+    field_def = osgeo.ogr.FieldDefn('Contour', osgeo.ogr.OFTReal)
+    layer.CreateField(field_def)
+    layerDefinition = layer.GetLayerDefn()
+    
+    
+    # Loop through the contour object to get the coordinates of each layer
+    ctr=0
+    for coll,lev in zip(C.collections,C.levels):
+        coords = coll.get_paths()
+        for xyObj in coords:
+            ctr+=1
+            line = osgeo.ogr.Geometry(osgeo.ogr.wkbLineString)
+            # Add points individually to the line
+            for xy in xyObj.vertices:
+                line.AddPoint_2D(xy[0],xy[1])
+            
+            # Update the feature with the line data
+            featureIndex = ctr
+            feature = osgeo.ogr.Feature(layerDefinition)
+            feature.SetGeometry(line)
+            feature.SetFID(featureIndex)
+            feature.SetGeometryDirectly(line)
+            # Set the contour level
+            feature.SetField('Contour',lev)
+            
+            layer.CreateFeature(feature)
+    
+    # Close the shape file
+    shapeData.Destroy()
+    print 'Complete - shapefile written to:\n      %s'%outfile
     
 ###Testing###
 #LL=[-94.2,27.0]
