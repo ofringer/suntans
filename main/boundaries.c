@@ -20,9 +20,11 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
 static void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc);
 static void MatchBndPoints(propT *prop, gridT *grid, int myproc);
 void ReadBdyNC(propT *prop, gridT *grid, int myproc);
-void UpdateBdyNC(propT *prop, gridT *grid, int myproc);
+void UpdateBdyNC(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
+static void FluxtoUV(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
+static void SegmentArea(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 static size_t returndimlenBC(int ncid, char *dimname);
-
+int isGhostEdge(int j, gridT *grid, int myproc);
 #endif 
 
 /*
@@ -96,21 +98,32 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
     }
   }
 
-  //Type-3 with Dirichlet tracer boundary (set edge value to cell value in boundary structure)
-  /* ???? (NEEDS TESTING)
+  //Type-3 
+  // ???? (NEEDS TESTING)
   ii=-1;
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
     ii+=1;
+    //for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+    for(k=0;k<grid->Nk[i];k++){//Go from the very top
+	 phys->T[i][k] = bound->T[bound->ind3[ii]][k];
+	 phys->s[i][k] = bound->S[bound->ind3[ii]][k];
+    }
     // Find the edge index of the boundary cell
+    /*
     for(nf=0;nf<NFACES;nf++){ 
 	if(neigh=grid->neigh[i*NFACES+nf]==-1) {
 	     ne = grid->edgep[grid->face[i*NFACES+nf]];
-	     phys->boundary_T[ne] = bound->T[bound->ind3[ii]][k];
+	     printf("ne: %d, grid->edgedist[3]: %d\n",ne,grid->edgedist[3]);
+	     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+		 phys->boundary_T[grid->edgedist[3]-ne][k] = bound->T[bound->ind3[ii]][k];
+		 phys->boundary_s[grid->edgedist[3]-ne][k] = bound->S[bound->ind3[ii]][k];
+	     }
 	}
     }
+    */
   } 
-  */
+  
 
 } // End funciton
 
@@ -121,7 +134,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
  * This will set the values of u,v,w, and h at the boundaries.
  * 
  */
-void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
+void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm) {
   int i, ii, j, jj, jind, iptr, jptr, n, k;
   REAL u,v,w,h;
 
@@ -130,7 +143,7 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
    // Update the netcdf boundary data
 #ifdef USENETCDF
    if(prop->netcdfBdy==1) 
-       UpdateBdyNC(prop,grid,myproc);
+       UpdateBdyNC(prop,grid,myproc,comm);
 #endif
 
   // Type-2
@@ -157,11 +170,7 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
     ii+=1;
 
     phys->h[i]=bound->h[bound->ind3[ii]]*rampfac;
-    //printf("phys->h[%d] = %f (%f)\n",i,h,phys->h[i]);
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      //phys->uc[i][k]=u*(1-exp(-prop->rtime/prop->thetaramptime));
-      //phys->vc[i][k]=v*(1-exp(-prop->rtime/prop->thetaramptime));
-      //phys->w[i][k]=0;
       phys->uc[i][k]=bound->uc[bound->ind3[ii]][k]*rampfac;
       phys->vc[i][k]=bound->vc[bound->ind3[ii]][k]*rampfac;
       phys->vc[i][k]=bound->wc[bound->ind3[ii]][k]*rampfac;
@@ -198,9 +207,6 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 	     phys->tau_T[ne] = (met->tau_x[nc1]*def1/grid->dg[ne] + met->tau_x[nc2]*def2/grid->dg[ne])*grid->n1[ne] + 
 		(met->tau_y[nc1]*def1/grid->dg[ne] + met->tau_y[nc2]*def2/grid->dg[ne])*grid->n2[ne];  
 	     phys->tau_T[ne] /= RHO0; 
-//	     printf("%3.6e, %3.6e, %3.6e, %3.6f, %3.6f, %3.6f,%3.6f\n",
-//	       phys->tau_T[ne], met->tau_x[nc1],met->tau_x[nc2],grid->dg[ne],def1,def2,grid->n1[ne]);
-	     //printf("%3.6e, %3.6e, %3.6e\n",met->tau_y[nc1],met->tau_y[nc2],phys->tau_T[ne]);
             }
 	  }
        }
@@ -251,7 +257,7 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
   * Update the boundary netcdf data and temporally interpolate onto the model time step
   *
   */     
- void UpdateBdyNC(propT *prop, gridT *grid, int myproc){
+ void UpdateBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
      int j, k, t0; 
      REAL dt, r1, r2, mu;
    
@@ -301,7 +307,127 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 	  bound->h[j] = bound->h_b[j]*r1 + bound->h_f[j]*r2;
 	}
     }
+    // Interpolate Q and find the velocities based on the (dynamic) segment area
+    if(bound->hasSeg>0){
+	for (j=0;j<bound->Nseg;j++){
+	  bound->boundary_Q[j] = bound->boundary_Q_b[j]*r1 + bound->boundary_Q_f[j]*r2;
+	}
+	// This function does the actual conversion
+	FluxtoUV(prop,grid,myproc,comm);
+    }
+
  }//End function
+
+ /*
+  * Function: FluxtoUV()
+  * -----------------------------
+  * Converts boundary flux information into u and v information 
+  *
+  */     
+static void FluxtoUV(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
+    int ii, j, k, jptr, jind;
+    int ss,n;
+    REAL dz;
+
+    // Step 1) Find the total area of each segment
+    SegmentArea(prop,grid,myproc,comm);
+   //for (n=0;n<bound->Nseg;n++){
+   //	 printf("Processor: %d,  segment #: %d, segment ID: %d, segment area: %10.6f [m2]\n",myproc,n,bound->segp[n],bound->segarea[n]); 
+   // }
+    //Step 2) Loop through again and calculate the velocity for each type-2 cell 
+    for(j=0;j<bound->Ntype2;j++){
+    	jind = bound->localedgep[j];
+
+	//Only calculate if the segment flag >0 
+	if(bound->segedgep[j]>0 && jind!=-1 && !isGhostEdge(jind,grid,myproc) ){
+	    //Find the segment index
+	    ss = -1;
+	    for (n=0;n<bound->Nseg;n++){
+		if( bound->segp[n] == bound->segedgep[j]) 
+		    ss=n;
+	    }
+
+	    //printf("Processor: %d, j: %d, jind: %d, mark: %d, segment #: %d, segment ID: %d, segment area: %10.6f [m2]\n",myproc,j,jind,grid->mark[jind],ss,bound->segp[ss],bound->segarea[ss]); 
+	    //isGhostEdge(jind,grid,myproc);
+
+	    for(k=grid->etop[jind];k<grid->Nke[jind];k++) {
+		bound->boundary_u[j][k] = grid->n1[jind] * bound->boundary_Q[ss] / bound->segarea[ss]; 
+		bound->boundary_v[j][k] = grid->n2[jind] * bound->boundary_Q[ss] / bound->segarea[ss]; 
+	    }
+	}//End if
+    }
+}//End function FluxtoUV
+
+/*
+ * Function: SegmentArea()
+ * ----------------------------
+ * Calculates the area of each boundary segment
+ * Note that this needs to be done across processors...
+ */
+static void SegmentArea(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
+    int ii, j, k, jptr, jind;
+    int ss,n;
+    REAL dz;
+    
+    //Zero the area first
+    for (n=0;n<bound->Nseg;n++){
+	bound->localsegarea[n]=0.0;
+	//bound->segarea[n]=0.0;
+    }
+    for(j=0;j<bound->Ntype2;j++){
+        jind = bound->localedgep[j]; // the local edge pointer will = -1 if the boundary cell is not on the processor's grid
+	//Only calculate if the segment flag >0 
+	if(bound->segedgep[j]>0 && jind != -1 && !isGhostEdge(jind,grid,myproc) ){
+	    //Find the segment index
+	    ss = -1;
+	    for (n=0;n<bound->Nseg;n++){
+		if(bound->segp[n] ==bound->segedgep[j]) 
+		    ss=n;
+	    }
+
+	    //Loop through all vertical cells and sum the area
+	    for(k=grid->etop[jind];k<grid->Nke[jind];k++) {
+	    	//dz = grid->dzf[jind][k];
+		dz = grid->dzz[grid->grad[2*jind]][k];//Updwind cell height
+		bound->localsegarea[ss]+= grid->df[jind] * dz ;
+	//	 printf("Processor: %d, k: %d, j: %d,  segment #: %d, segment ID: %d, df = %f, dzf = %f, segment area: %10.6f [m2]\n",myproc,k, j, ss,bound->segp[ss],grid->df[j],dz,bound->segarea[ss]); 
+	    }
+	}//end if
+    }
+
+    //Sum the area across processors
+    MPI_Reduce(bound->localsegarea, bound->segarea,(int)bound->Nseg, MPI_DOUBLE, MPI_SUM, 0,comm);
+    MPI_Bcast(bound->segarea,(int)bound->Nseg, MPI_DOUBLE,0,comm);
+
+}//End function SegmentArea()
+
+/*
+ * Function: isGhostEdge()
+ * ----------------------------
+ * Find whether or not an edge is part of a ghost cell on a particular processor
+ * I think the quickest test is to find whether one of the other edges has mark==6.
+ */
+
+int isGhostEdge(int j, gridT *grid, int myproc){
+    int ib, isGhost, nf, ne;
+    
+    isGhost=0;
+    // Cell index
+    ib = grid->grad[2*j];
+    // Loop through the cell edges
+    //printf("Processor: %d, j: %d, ",myproc,j);
+    for(nf=0;nf<NFACES;nf++){ 
+	// Edge index
+	ne = grid->face[ib*NFACES+nf];
+	//printf("ne: %d, mark: %d, ",ne,grid->mark[ne]);
+	if (grid->mark[ne]==6)
+	    isGhost=1;
+    }
+    //printf("\n");
+
+    return isGhost;
+
+}//End function isGhostEdge
 
   /*
   * Function: ReadBdyNC()
@@ -322,6 +448,7 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
     int Nk = bound->Nk;
     int Ntype3 = bound->Ntype3;
     int Ntype2 = bound->Ntype2;
+    int Nseg = bound->Nseg;
 
     // Read the first and second time steps
     t0 = getTimeRec(prop->nctime,bound->time,(int)bound->Nt); //this is in met.c
@@ -517,6 +644,24 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 		ERR(retval); 
 	}
      }// End read type-3
+
+     //Flux boundary data
+     if(bound->hasSeg){
+	vname="boundary_Q";
+	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	    ERR(retval);
+	for (j=0;j<Nseg;j++){
+	    start2[0]=t0;
+	    start2[1]=j;
+	    if ((retval = nc_get_vara_double(ncid, varid, start2, count2, &bound->boundary_Q_b[j]))) 
+		ERR(retval); 
+	    start[0]=t0+1;
+	    if ((retval = nc_get_vara_double(ncid, varid, start2, count2, &bound->boundary_Q_f[j]))) 
+		ERR(retval); 
+	}
+     }//End flux read
+
  }//End function
 
 /*
@@ -527,51 +672,42 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
  static void MatchBndPoints(propT *prop, gridT *grid, int myproc){
  int iptr, jptr, jj, ii, ne, nc1, nc2, nc;
 
-    if(myproc==0) printf("SUNTANS grid # type 2 points = %d\n",grid->edgedist[3] - grid->edgedist[2]);
-    if(myproc==0) printf("SUNTANS grid # type 3 points = %d\n",grid->celldist[2] - grid->celldist[1]);
     if(myproc==0) printf("Boundary NetCDF file grid # type 2 points = %d\n",(int)bound->Ntype2);
     if(myproc==0) printf("Boundary NetCDF file grid # type 3 points = %d\n",(int)bound->Ntype3);
 
      //Type-2
      ii=-1;
      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-	 //printf("Type 2 : Processor = %d, jptr = %d, edgep[jptr]\n",myproc,jptr,grid->edgep[jptr]);
-	 // Need to find the edge index from the unpartitioned grid
-	 /*ne = grid->edgep[jpr]; // Edge index for partitioned grid
-	 nc1 = grid->grad[2*ne];
-         nc2 = grid->grad[2*ne+1];
-	 if(nc1==-1) nc1=nc2; // nc1 is the cell index for the partitioned grid
-	 
-	 nc = grid->mnptr[nc1]; // Cell index for the unpartitioned grid
-        // Find the edge index of the boundary cell
-	for(nf=0;nf<NFACES;nf++){ 
-	    if(neigh=grid->neigh[i*NFACES+nf]==-1) {
-		 ne = grid->edgep[grid->face[i*NFACES+nf]];
-	}
-	*/
 	 ii+=1;
 	 // Match suntans edge cell with the type-2 boundary file point
 	 for(jj=0;jj<bound->Ntype2;jj++){
-	     if(grid->eptr[grid->edgep[jptr]]==bound->edgep[jj])
+	     if(grid->eptr[grid->edgep[jptr]]==bound->edgep[jj]){
 		bound->ind2[ii]=jj;
-	 }
-	 printf("Type 2 : Processor = %d, jptr = %d, edgep[jptr]=%d, bound->ind2[ii]=%d\n",myproc,jptr,grid->edgep[jptr],bound->ind2[ii]);
-     }	 
+		bound->localedgep[jj]=grid->edgep[jptr]; 
+	        //printf("grid->eptr:%d, bound->edgep[jj]: %d, jj: %d, jptr: %d, grid->edgep[jptr]: %d, localedgep[jj]: %d\n",grid->eptr[grid->edgep[jptr]],bound->edgep[jj],jj,jptr,grid->edgep[jptr],bound->localedgep[jj]); 
+	     }
+	 }	 
+     }
      // Type-3
      ii=-1;
      for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
          ii+=1;
 	 // Match suntans grid cell with the type-3 boundary file point
 	 for(jj=0;jj<bound->Ntype3;jj++){
-	     if(grid->mnptr[grid->cellp[iptr]]==bound->cellp[jj])
+	     if(grid->mnptr[grid->cellp[iptr]]==bound->cellp[jj]){
 		bound->ind3[ii]=jj;
+	     }
 	 }
 	 //printf("Type 3 : Processor = %d, jptr = %d, cellp[jptr]=%d, bound->ind3[ii]=%d\n",myproc,jptr,grid->cellp[jptr],bound->ind3[ii]);
      }
      // Check that ind2 and ind3 do not contain any -1 (non-matching points)
 
      // Check that the number of vertical grid points match
-
+    if(bound->Nk != grid->Nkmax){
+	printf("Error! Number of layers in open boundary file (%d) not equal to Nkmax (%d).\n",bound->Nk,grid->Nkmax); 
+	MPI_Finalize();
+        exit(EXIT_FAILURE);
+    }
  } // End function
 
 /*
@@ -653,6 +789,23 @@ static void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc){
 	if ((retval = nc_get_var_int(ncid, varid,bound->edgep))) 
 	  ERR(retval); 
     }//end if
+
+    if(bound->hasSeg>0){
+	vname = "segedgep";
+	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...\n",vname);
+	if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	    ERR(retval);
+	if ((retval = nc_get_var_int(ncid, varid,bound->segedgep))) 
+	  ERR(retval); 
+
+	vname = "segp";
+	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...\n",vname);
+	if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	    ERR(retval);
+	if ((retval = nc_get_var_int(ncid, varid,bound->segp))) 
+	  ERR(retval); 
+    }
+
  }//End function
 
 /*
@@ -662,7 +815,7 @@ static void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc){
  */
 void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
 
-     int Ntype2, Ntype3, Nt, Nk;
+     int Ntype2, Ntype3, Nseg, Nt, Nk;
      int j, k, i;
      int n3, n2; // Number of type 2 and 3 on a processor's grid
 
@@ -674,13 +827,16 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
     if(myproc==0) printf("Reading boundary netcdf dimensions...\n");
     if(myproc==0) printf("Reading dimension: Ntype3...\n");
     (*bound)->Ntype3 = returndimlenBC(prop->netcdfBdyFileID,"Ntype3");
-        if(myproc==0) printf("Reading dimension: Ntype2...\n");
+    if(myproc==0) printf("Reading dimension: Ntype2...\n");
     (*bound)->Ntype2 = returndimlenBC(prop->netcdfBdyFileID,"Ntype2");
-        if(myproc==0) printf("Reading dimension: Nt...\n");
+    if(myproc==0) printf("Reading dimension: Nseg...\n");
+    (*bound)->Nseg = returndimlenBC(prop->netcdfBdyFileID,"Nseg");
+    if(myproc==0) printf("Reading dimension: Nt...\n");
     (*bound)->Nt = returndimlenBC(prop->netcdfBdyFileID,"Nt");
     if(myproc==0) printf("Reading dimension: Nk...\n");
     (*bound)->Nk = returndimlenBC(prop->netcdfBdyFileID,"Nk");
     Ntype3 = (*bound)->Ntype3;
+    Nseg = (*bound)->Nseg;
     Ntype2 = (*bound)->Ntype2;
     Nt = (*bound)->Nt;
     Nk = (*bound)->Nk;
@@ -698,18 +854,26 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
     	(*bound)->hasType2=1;
     }
     
+    if ((*bound)->Nseg==0){
+    	(*bound)->hasSeg=0;
+    }else{
+    	(*bound)->hasSeg=1;
+    }
     // Print the array sizes
     if(VERBOSE>1 && myproc==0){
 	printf("Ntype 3 = %d\n",Ntype3);
 	printf("Ntype 2 = %d\n",Ntype2);
+	printf("Nseg= %d\n",Nseg);
 	printf("Nt = %d\n",Nt);
 	printf("Nk = %d\n",Nk);
 	printf("hasType2 = %d\n",(*bound)->hasType2);
 	printf("hasType3 = %d\n",(*bound)->hasType3);
+	printf("hasSeg = %d\n",(*bound)->hasSeg);
     }
     // Allocate the type2 arrays
     if((*bound)->hasType2==1){
 	(*bound)->edgep = (int *)SunMalloc(Ntype2*sizeof(int),"AllocateBoundaryData");
+	(*bound)->localedgep = (int *)SunMalloc(Ntype2*sizeof(int),"AllocateBoundaryData");
 	(*bound)->xe = (REAL *)SunMalloc(Ntype2*sizeof(REAL),"AllocateBoundaryData");
 	(*bound)->ye = (REAL *)SunMalloc(Ntype2*sizeof(REAL),"AllocateBoundaryData");
 
@@ -751,6 +915,17 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
 	(*bound)->ind2 = (int *)SunMalloc(n2*sizeof(REAL),"AllocateBoundaryData");
     }//endif
 
+    // Allocate the segment arrays (subset of type2)
+    if ((*bound)->hasSeg==1){
+	(*bound)->segp = (int *)SunMalloc(Nseg*sizeof(int),"AllocateBoundaryData");
+	(*bound)->segedgep = (int *)SunMalloc(Ntype2*sizeof(int),"AllocateBoundaryData");
+
+	(*bound)->segarea = (REAL *)SunMalloc(Nseg*sizeof(REAL),"AllocateBoundaryData");
+	(*bound)->localsegarea = (REAL *)SunMalloc(Nseg*sizeof(REAL),"AllocateBoundaryData");
+	(*bound)->boundary_Q_b = (REAL *)SunMalloc(Nseg*sizeof(REAL),"AllocateBoundaryData");
+	(*bound)->boundary_Q_f = (REAL *)SunMalloc(Nseg*sizeof(REAL),"AllocateBoundaryData");
+	(*bound)->boundary_Q  = (REAL *)SunMalloc(Nseg*sizeof(REAL),"AllocateBoundaryData");
+    }
     // Allocate the type3 arrays   
     if((*bound)->hasType3==1){
 	(*bound)->cellp = (int *)SunMalloc(Ntype3*sizeof(int),"AllocateBoundaryData");
@@ -815,6 +990,7 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
     if((*bound)->hasType2==1){
 	for(j=0;j<Ntype2;j++){
 	    (*bound)->edgep[j]=0;
+	    (*bound)->localedgep[j]=-1;
 	    (*bound)->xe[j]=0.0;
 	    (*bound)->ye[j]=0.0;
 	    for(k=0;k<Nk;k++){
@@ -837,6 +1013,20 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
 	}
 	for(i=0;i<n2;i++){
 	    (*bound)->ind2[i]=-1;
+	}
+    }
+
+    if((*bound)->hasSeg==1){
+	for(j=0;j<Ntype2;j++){
+	    (*bound)->segedgep[j]=0;
+	}
+	for(j=0;j<Nseg;j++){
+	    (*bound)->segp[j]=0;
+	    (*bound)->segarea[j]=0.0;
+	    (*bound)->localsegarea[j]=0.0;
+	    (*bound)->boundary_Q_b[j]=0.0;
+	    (*bound)->boundary_Q_b[j]=0.0;
+	    (*bound)->boundary_Q[j]=0.0;
 	}
     }
 

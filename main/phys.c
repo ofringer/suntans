@@ -1098,7 +1098,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   }
 
   // get the boundary velocities (boundaries.c)
-  BoundaryVelocities(grid,phys,prop,myproc); 
+  BoundaryVelocities(grid,phys,prop,myproc, comm); 
   // get the openboundary flux (boundaries.c)
   OpenBoundaryFluxes(NULL,phys->u,NULL,grid,phys,prop);
   // get the boundary scalars (boundaries.c)
@@ -2901,7 +2901,7 @@ static void UPredictor(gridT *grid, physT *phys,
   // will comprise the source term for the free-surface solver.  Before we
   // do this we need to set the new velocity at the open boundary faces and
   // place them into utmp.  
-  BoundaryVelocities(grid,phys,prop,myproc);
+  BoundaryVelocities(grid,phys,prop,myproc,comm);
   OpenBoundaryFluxes(NULL,phys->utmp,NULL,grid,phys,prop);
 
   // for computational cells

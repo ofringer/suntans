@@ -28,16 +28,21 @@ typedef struct _boundT{
   // Dimension sizes
   size_t Ntype2;
   size_t Ntype3;
+  size_t Nseg;
   size_t Nt;
   size_t Nk;
   
   // boolean operators
   int hasType2;
   int hasType3;
+  int hasSeg;
 
   // Grid cell indices
   int *edgep;
+  int *localedgep;
   int *cellp;
+  int *segedgep;
+  int *segp;
 
   // Indices that point the grid to the cell in the file
   int *ind2;
@@ -50,6 +55,8 @@ typedef struct _boundT{
   REAL *yv;
   REAL *z;
   REAL *time;	
+  REAL *segarea;
+  REAL *localsegarea;
 
   // Time record locators
   int t0;
@@ -62,18 +69,21 @@ typedef struct _boundT{
   REAL **boundary_w_f;
   REAL **boundary_T_f;
   REAL **boundary_S_f;
+  REAL *boundary_Q_f;
 
   REAL **boundary_u_b;
   REAL **boundary_v_b;
   REAL **boundary_w_b;
   REAL **boundary_T_b;
   REAL **boundary_S_b;
+  REAL *boundary_Q_b;
 
   REAL **boundary_u;
   REAL **boundary_v;
   REAL **boundary_w;
   REAL **boundary_T;
   REAL **boundary_S;
+  REAL *boundary_Q;
 
   // Type-3 (cell centred) boundaries
   REAL **uc_f;
@@ -102,7 +112,7 @@ typedef struct _boundT{
 boundT *bound;
 
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop);
-void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc);
+void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void BoundaryScalars(gridT *grid, physT *phys, propT *prop);
 void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc);
 
@@ -111,7 +121,7 @@ FILE *windFID;
 #ifdef USENETCDF
     void InitBoundaryData(propT *prop, gridT *grid, int myproc);
     void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc);
-    void UpdateBdyNC(propT *prop, gridT *grid, int myproc);
+    void UpdateBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 #endif
 
 #endif
