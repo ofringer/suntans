@@ -840,6 +840,8 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc)
   (*grid)->order = (int *)SunMalloc((*grid)->Ne*sizeof(int),"InitMainGrid");
   // Edge markers
   (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"InitMainGrid");
+  // Boundary segment ID
+  (*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"InitMainGrid");
   // Stores the indices to the start and end points of the adjncy array
   (*grid)->xadj = (int *)SunMalloc(((*grid)->Nc+1)*sizeof(int),"InitMainGrid");
   (*grid)->vtxdist = (int *)SunMalloc(VTXDISTMAX*sizeof(int),"InitMainGrid");
@@ -859,6 +861,7 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc)
  * CELLSFILE voronoi_x voronoi_y cell_pt1 cell_pt2 cell_pt3 neigh_pt1 neigh_pt2 neigh_pt3
  * EDGEFILE list of indices to points in POINTSFILE (always 2 columns + edge marker + 2 pointers to
  * neighboring cells (grad) = 5 columns)
+ * **MR** EDGEFILE now has 6 columns. Last column contains the edge_id for boundary segments. **MR**
  *
  */
 void ReadMainGrid(gridT *grid, int myproc)
@@ -882,6 +885,7 @@ void ReadMainGrid(gridT *grid, int myproc)
     grid->mark[n]=(int)getfield(ifile,str);
     for(j=0;j<2;j++) 
       grid->grad[2*n+j]=(int)getfield(ifile,str);
+    grid->edge_id[n]=(int)getfield(ifile,str);
   }
   fclose(ifile);
 
@@ -1813,6 +1817,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     fprintf(ofile,"%d ",grid->mark[j]);
     for(nf=0;nf<2;nf++)
       fprintf(ofile,"%d ",grid->grad[2*j+nf]);
+    fprintf(ofile,"%d ",grid->edge_id[j]);
     fprintf(ofile,"\n");
   }
   fclose(ofile);
@@ -2128,6 +2133,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->grad = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->gradf = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
+  (*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->edges = (int *)SunMalloc((*grid)->Ne*NUMEDGECOLUMNS*sizeof(int),"ReadGrid");
 
   sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
@@ -2303,6 +2309,7 @@ static void FreeGrid(gridT *grid, int numprocs)
   SunFree(grid->face,NFACES*grid->Nc*sizeof(int),"FreeGrid");
   SunFree(grid->grad,2*grid->Ne*sizeof(int),"FreeGrid");
   SunFree(grid->mark,grid->Ne*sizeof(int),"FreeGrid");
+  SunFree(grid->edge_id,grid->Ne*sizeof(int),"FreeGrid");
 
   SunFree(grid->normal,NFACES*grid->Nc*sizeof(int),"FreeGrid");
   SunFree(grid->xadj,(grid->Nc+1)*sizeof(int),"FreeGrid");
@@ -2932,6 +2939,7 @@ static void ReOrder(gridT *grid)
   ReOrderIntArray(grid->eneigh,eorder,(int *)tmp,grid->Ne,2*(NFACES-1));
   ReOrderIntArray(grid->edges,eorder,(int *)tmp,grid->Ne,NUMEDGECOLUMNS);
   ReOrderIntArray(grid->mark,eorder,(int *)tmp,grid->Ne,1);
+  ReOrderIntArray(grid->edge_id,eorder,(int *)tmp,grid->Ne,1);
   ReOrderIntArray(grid->eptr,eorder,(int *)tmp,grid->Ne,1);
   ReOrderIntArray(grid->Nke,eorder,(int *)tmp,grid->Ne,1);
   ReOrderIntArray(grid->Nkc,eorder,(int *)tmp,grid->Ne,1);
@@ -3716,6 +3724,8 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
       "TransferData");
   (*localgrid)->mark = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),
       "TransferData");
+  (*localgrid)->edge_id = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),
+      "TransferData");
   (*localgrid)->eptr = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),
       "TransferData");
   (*localgrid)->eneigh = (int *)SunMalloc(2*(NFACES-1)*(*localgrid)->Ne*sizeof(int),
@@ -3755,6 +3765,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
         leptr[iface]=k;
         //point from local edge index to global one
         (*localgrid)->eptr[k++]=iface;
+        //(*localgrid)->edge_id[k]=maingrid->edge_id[iface];
       }
     }
   }
