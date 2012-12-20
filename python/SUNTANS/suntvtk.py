@@ -259,7 +259,10 @@ sunvtk = SunTvtk(ncfile,variable='salt',tstep=4,is3D=True)
 
 sunvtk.loadData()
 
-#sunvtk.isosurface(vv=[4.0,12.0,20.0,28.0],transparent=True,opacity=0.5)
-sunvtk.plot(representation='wireframe')
+sunvtk.isosurface(vv=[4.0,12.0,20.0,28.0],transparent=False,opacity=0.5)
+
+#sunvtk.plot(representation='wireframe')
+
 #sunvtk.contour(vv=40)
+
 #sunvtk.contour(vv=map(None,np.linspace(-0.3 ,0.3,50)))

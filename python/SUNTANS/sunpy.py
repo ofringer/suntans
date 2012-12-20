@@ -273,7 +273,7 @@ class Spatial(Grid):
         
         self.j=np.arange(0,self.Nc) # Grid cell number for time series
         
-        self.xy = self.cellxy()
+        #self.xy = self.cellxy()
         
         # Load the time variable
         self.loadTime()
@@ -346,7 +346,12 @@ class Spatial(Grid):
         # Load the data if it's needed
         if not self.__dict__.has_key('data'):
             self.loadData()
-
+            
+        # Find the colorbar limits if unspecified
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(self.data))
+            self.clim.append(np.max(self.data))
         # Set the xy limits
         if xlims==None or ylims==None:
             xlims=self.xlims 
@@ -363,8 +368,7 @@ class Spatial(Grid):
             
         if vector_overlay:
              u,v,w = self.getVector()
-             plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[1::subsample],v[1::subsample]\
-             ,scale=scale,scale_units='xy')
+             plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[0,1::subsample],v[0,1::subsample],scale=scale,scale_units='xy')
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
     def plotvtk(self,vector_overlay=False,scale=1e-3,subsample=1,**kwargs):
@@ -482,7 +486,7 @@ class Spatial(Grid):
         if vector_overlay:
             u=U[0,:]
             v=V[0,:]
-            qh=plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[1::subsample],v[1::subsample]\
+            qh=plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[0,1::subsample],v[0,1::subsample]\
              ,scale=scale,scale_units='xy')
   
         def init():
@@ -496,7 +500,7 @@ class Spatial(Grid):
             collection.set_edgecolors(collection.to_rgba(np.array((self.data[i,:])))) 
             title.set_text(self.__genTitle(i))
             if vector_overlay:
-                qh.set_UVC(U[i,1::subsample],V[i,1::subsample])
+                qh.set_UVC(U[i,0,1::subsample],V[i,0,1::subsample])
 
             return (title,collection,qh)
   
