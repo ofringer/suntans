@@ -21,434 +21,6 @@ import matplotlib.animation as animation
 
 import pdb
 
-class Spatial(object):
-    
-    """ Class for reading SUNTANS spatial netcdf output files """
-    
-    def __init__(self,ncfile, **kwargs):
-        
-        self.ncfile = ncfile
-        
-        # Open the netcdf file
-        self.__openNc()
-        
-        # Load the grid
-        self.grid = Grid(self.ncfile)  
-        self.xy = self.grid.cellxy()
-        
-        # Load the time variable
-        self.loadTime()
-        
-        # Set some default parameters
-        self.tstep=0
-        self.klayer=0 # -1 get seabed
-        # Note that if j is an Nx2 array of floats the nearest cell will be found 
-        self.j=np.arange(0,self.grid.Nc) # Grid cell number for time series
-        self.variable='eta'
-        
-        # Plotting parmaters
-        self.clim=None
-        
-        self.__dict__.update(kwargs)
-        
-        # Update tstep 
-        self.__updateTstep()
-        
-        # Check the j index
-        self.__checkIndex()
-        
-
-     
-    def loadData(self):
-        """ 
-            Load the specified suntans variable data as a vector
-            
-        """
-        nc = self.nc
-        self.long_name = nc.variables[self.variable].long_name
-        self.units= nc.variables[self.variable].units
-        #        ndims = len(nc.variables[self.variable].dimensions)
-        ndim = nc.variables[self.variable].ndim
-        if ndim==1:
-            self.data=nc.variables[self.variable][self.j]
-        elif ndim==2:
-            self.data=nc.variables[self.variable][self.tstep,self.j]
-        else:
-            if self.klayer==-1: # grab the seabed values
-                klayer = np.arange(0,self.grid.Nkmax)
-
-                if type(self.tstep)==int:
-                    data=nc.variables[self.variable][self.tstep,klayer,self.j]
-                    self.data = data[self.grid.Nk[self.j],self.j]
-                else: # need to extract timestep by timestep for animations to save memory
-                    self.data=np.zeros((len(self.tstep),len(self.j)))
-                    i=-1
-                    for t in self.tstep:
-                        i+=1
-                        data=nc.variables[self.variable][t,klayer,self.j]
-                        self.data[i,:] = data[self.grid.Nk[self.j],self.j]
-            else:
-                self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
-        
-        # Mask the data
-#        try:
-#            fillval = nc.variables[self.variable]._FillValue
-#        except:
-        fillval = 999999.0
-        
-        self.mask = self.data==fillval
-        self.data[self.mask]=0.
-        
-        
-    def loadTime(self):
-         """
-            Load the netcdf time as a vector datetime objects
-         """
-         #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
-         nc = self.nc
-         t = nc.variables['time']
-         self.time = num2date(t[:],t.units)
-
-
-    
-    def plot(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
-        """
-          Plot the unstructured grid data
-        """
-        # Load the data if it's needed
-        if not self.__dict__.has_key('data'):
-            self.loadData()
-
-        # Set the xy limits
-        if xlims==None or ylims==None:
-            xlims=self.grid.xlims 
-            ylims=self.grid.ylims
-        
-        if self.__dict__.has_key('patches'):
-             self.patches.set_array(self.data)
-             self.ax.add_collection(self.patches)
-        else:
-            #tic = time.clock()
-            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.data,xlim=xlims,ylim=ylims,\
-                clim=self.clim,**kwargs)
-            plt.title(self.__genTitle())
-            
-        if vector_overlay:
-             u,v,w = self.getVector()
-             plt.quiver(self.grid.xv[1::subsample],self.grid.yv[1::subsample],u[1::subsample],v[1::subsample]\
-             ,scale=scale,scale_units='xy')
-            #print 'Elapsed time: %f seconds'%(time.clock()-tic)
-            
-    def plotvtk(self,vector_overlay=False,scale=1e-3,subsample=1,**kwargs):
-        """
-          Plot the unstructured grid data using vtk libraries
-        """
-        # Mayavi libraries
-        from mayavi import mlab
-        
-        # Load the data if it's needed
-        if not self.__dict__.has_key('data'):
-            self.loadData()
-        
-        points = np.column_stack((self.grid.xp,self.grid.yp,0.0*self.grid.xp))
-                
-        self.fig,h,ug,d,title = unsurfm(points,self.grid.cells,self.data,clim=self.clim,title=self.__genTitle(),**kwargs)
-        
-        if vector_overlay:
-             u,v,w = self.getVector()
-             # Add vectorss to the unctructured grid object
-             # This doesn't work ???       
-             #vector = np.asarray((u,v,w)).T
-             #ug.cell_data.vectors=vector
-             #ug.cell_data.vectors.name='vectors'
-             #ug.modified()
-             #d.update()
-             #d = mlab.pipeline.add_dataset(ug)
-             #h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
-             # This works             
-             vec=mlab.pipeline.vector_scatter(self.grid.xv, self.grid.yv, self.grid.yv*0, u, v, w)
-             h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
-             
-             # try out the streamline example
-#             magnitude = mlab.pipeline.extract_vector_norm(vec)
-#             pdb.set_trace()
-#             h2 = mlab.pipeline.streamline(magnitude)
-            
-    def plotTS(self,j=0,**kwargs):
-        """
-         Plots a time series of the data at a given grid cell given by:
-             self.j, self.klayer
-        """
-
-        # Load the time-series
-        self.tstep = np.arange(0,len(self.time))
-        self.j=j
-        self.loadData()
-        
-        plt.ioff()
-        self.fig = plt.gcf()
-        ax = self.fig.gca()
-        h = plt.plot(self.time,self.data,**kwargs) 
-        ax.set_title(self.__genTitle())
-        
-        return h
-        
-       
-        
-    def savefig(self,outfile,dpi=150):
-        mod=self.fig.__class__.__module__
-        name=self.fig.__class__.__name__
-        
-        if mod+'.'+name == 'matplotlib.figure.Figure':
-            self.fig.savefig(outfile,dpi=dpi)
-        else:
-            self.fig.scene.save(outfile)
-            
-        print 'SUNTANS image saved to file:%s'%outfile
-    
-    def animate(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
-        """
-        Animates a spatial plot over all time steps
-        
-        Animation object is stored in the 'anim' property
-        """
-        #anim = unanimate(self.xy,self.data,self.tstep,xlim=self.grid.xlims,ylim=self.grid.ylims,clim=self.clim,**kwargs)
-        #return anim
-        
-        # Load the vector data
-        if vector_overlay:
-            U,V,W = self.getVector()
-            
-        # Need to reload the data
-        self.loadData()
-    
-        # Create the figure and axes handles
-        #plt.ion()
-        fig = plt.gcf()
-        ax = fig.gca()
-        #ax.set_animated('True')
-        
-        # Find the colorbar limits if unspecified
-        if self.clim==None:
-            self.clim=[]
-            self.clim.append(np.min(self.data))
-            self.clim.append(np.max(self.data))
-           
-        # Set the xy limits
-        if xlims==None or ylims==None:
-            xlims=self.grid.xlims 
-            ylims=self.grid.ylims
-        
-            
-        collection = PolyCollection(self.xy)
-        collection.set_array(np.array(self.data[0,:]))
-        collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
-        ax.add_collection(collection)    
-        ax.set_aspect('equal')
-        ax.set_xlim(xlims)
-        ax.set_ylim(ylims)
-        title=ax.set_title("")
-        fig.colorbar(collection)
-        
-        qh=plt.quiver([],[],[],[])
-        if vector_overlay:
-            u=U[0,:]
-            v=V[0,:]
-            qh=plt.quiver(self.grid.xv[1::subsample],self.grid.yv[1::subsample],u[1::subsample],v[1::subsample]\
-             ,scale=scale,scale_units='xy')
-  
-        def init():
-            collection.set_array([])
-            title.set_text("")
-            qh.set_UVC([],[])
-            return (collection,title)
-               
-        def updateScalar(i):
-            collection.set_array(np.array(self.data[i,:]))
-            collection.set_edgecolors(collection.to_rgba(np.array((self.data[i,:])))) 
-            title.set_text(self.__genTitle(i))
-            if vector_overlay:
-                qh.set_UVC(U[i,1::subsample],V[i,1::subsample])
-
-            return (title,collection,qh)
-  
-        self.anim = animation.FuncAnimation(fig, updateScalar, frames=len(self.tstep), interval=50, blit=True)
-
-    def saveanim(self,outfile):
-        """
-        Save the animation object to an mp4 movie
-        """
-        
-        #try:
-	print 'Building animation sequence...'
-	self.anim.save(outfile, fps=15,bitrate=3600)
-	print 'Complete - animation saved to: %s'%outfile
-        #except:
-        #    print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
-            
-    def animateVTK(self,figsize=(640,480),vector_overlay=False,scale=1e-3,subsample=1):
-        """
-        Animate a scene in the vtk window
-        
-        """
-        from mayavi import mlab
-        
-        # Load all the time steps into memory
-        self.tstep=np.arange(0,len(self.time))
-        nt = len(self.tstep)
-        if vector_overlay:
-             u,v,w = self.getVector()        
-        
-        self.loadData()
-        
-        
-        # Find the colorbar limits if unspecified
-        if self.clim==None:
-            self.clim=[]
-            self.clim.append(np.min(self.data))
-            self.clim.append(np.max(self.data))
-            
-        # Generate the initial plot
-        points = np.column_stack((self.grid.xp,self.grid.yp,0.0*self.grid.xp))
-        
-        titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
-                datetime.strftime(self.time[self.tstep[0]],'%d-%b-%Y %H:%M:%S'))
-        
-        mlab.figure(size=figsize)        
-        self.fig,self.h,ug,d,title = unsurfm(points,self.grid.cells,np.array(self.data[0,:]),clim=self.clim,title=titlestr)        
-        
-        if vector_overlay:
-             # Add vectorss to the unctructured grid object
-             #ug.cell_data.vectors=np.asarray((u[0,:],v[0,:],w[0,:])).T
-             #ug.cell_data.vectors.name='vectors'
-             #d.update()
-             #h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=1,scale_factor=1./scale)
-             vec=mlab.pipeline.vector_scatter(self.grid.xv, self.grid.yv, self.grid.yv*0, u[0,:], v[0,:], w[0,:])
-             h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
-
-             
-       # Animate the plot by updating the scalar data in the unstructured grid object      
-#        for ii in range(nt):
-#            print ii
-#            # Refresh the unstructured grid object
-#            ug.cell_data.scalars = self.data[ii,:]
-#            ug.cell_data.scalars.name = 'suntans_scalar'
-#
-#            # Update the title
-#            titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
-#            datetime.strftime(self.time[self.tstep[ii]],'%d-%b-%Y %H:%M:%S'))
-#            title.text=titlestr
-#
-#            self.fig.scene.render()
-#            self.savefig('tmp_vtk_%00d.png'%ii)
-#
-#        mlab.show()
-        
-        @mlab.animate
-        def anim():
-            ii=-1
-            while 1:
-                if ii<nt-1:
-                    ii+=1
-                else:
-                    ii=0
-                ug.cell_data.scalars = self.data[ii,:]
-                ug.cell_data.scalars.name = 'suntans_scalar'
-                if vector_overlay:
-                    #ug.cell_data.vectors=np.asarray((u[ii,:],v[ii,:],w[ii,:])).T
-                    #ug.cell_data.vectors.name='vectors'
-                    #d.update()
-                    #vec=mlab.pipeline.vector_scatter(self.grid.xv, self.grid.yv, self.grid.yv*0, u[ii,:], v[ii,:], w[ii,:])
-                    #h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
-                    #h2.update_data()
-                    h2.update_pipeline()
-                    vectors=np.asarray((u[ii,:],v[ii,:],w[ii,:])).T
-                    h2.mlab_source.set(vectors=vectors)
-                    
-                titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
-                datetime.strftime(self.time[self.tstep[ii]],'%d-%b-%Y %H:%M:%S'))
-                title.text=titlestr
-                
-                self.fig.scene.render()
-                yield
-        
-        a = anim() # Starts the animation.
-
-    def getVector(self):
-        """
-        Retrieve U and V vector components
-        """
-        tmpvar = self.variable
-        
-        self.variable='u'
-        self.loadData()
-        u=self.data.copy()
-        
-        self.variable='v'
-        self.loadData()
-        v=self.data.copy()
-        
-        self.variable='w'
-        self.loadData()
-        w=self.data.copy()
-        
-        self.variable=tmpvar
-        
-        return u,v,w
-        
-        
-    def __del__(self):
-        self.nc.close()
-        
-    def __openNc(self):
-        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
-        try: 
-            self.nc = MFDataset(self.ncfile, 'r')
-        except:
-            self.nc = Dataset(self.ncfile, 'r')
-        
-    def __genTitle(self,tt=0):
-        
-        if self.klayer>=0:
-            zlayer = '%3.1f [m]'%self.grid.z_r[self.klayer]
-        elif self.klayer==-1:
-            zlayer = 'seabed'
-        titlestr='%s [%s]\n z: %s, Time: %s'%(self.long_name,self.units,zlayer,\
-                datetime.strftime(self.time[tt],'%d-%b-%Y %H:%M:%S'))
-                
-        return titlestr
-        
-    def __updateTstep(self):
-        """
-        Updates the tstep variable: -99 all steps, -1 last step
-        """
-        try:
-            if self.tstep.any()==-99:
-                self.tstep=np.arange(0,len(self.time))
-            elif self.tstep.any()==-1:
-                self.tstep=len(self.time)-1
-        except:
-            if self.tstep==-99:
-                self.tstep=np.arange(0,len(self.time))
-            elif self.tstep==-1:
-                self.tstep=len(self.time)-1
-                
-    def __checkIndex(self):
-        """
-        Ensure that the j property is a single or an array of integers
-        """
-        
-        shp = np.shape(self.j)
-        
-        if len(shp)==1:
-            return
-        elif len(shp)==2:
-            print 'x/y coordinates input instead of cell index. Finding nearest neighbours.'
-            dd, j = self.grid.findNearest(self.j)
-            print 'Nearest cell: %d, xv[%d]: %6.10f, yv[%d]: %6.10f'%(j,j,self.grid.xv[j],j,self.grid.yv[j])
-            self.j = j
-
-            
 ###############################################################        
 class Grid(object):
     
@@ -550,6 +122,10 @@ class Grid(object):
             self.z_r = nc.variables['z_r'][:]
         except:
             print 'Warning no depth variable, z_r, present...' 
+        try:
+            self.z_w = nc.variables['z_w'][:]
+        except:
+            print 'Warning no depth variable, z_r, present...' 
         
         #print nc.variables.keys()
         nc.close()
@@ -622,6 +198,17 @@ class Grid(object):
             
         f.close()
     
+    def loadBathy(self,filename):
+        """
+        Loads depths from a text file into the attribute 'dv'
+        """
+        depths = readTXT(filename)
+        if len(depths) != self.Nc:
+            print 'Error - number of points in depth file (%d) does not match Nc (%d)'%(len(depths),self.Nc)
+        else:
+            self.dv=depths[:,2]
+            
+        
     def saveEdges(self,filename):
         """
         Saves the edges.dat data to a text file
@@ -658,7 +245,444 @@ class Grid(object):
         dist,ind=self.kd.query(xy,k=NNear)
         
         return dist, ind
-      
+#################################################
+
+class Spatial(Grid):
+    
+    """ Class for reading SUNTANS spatial netcdf output files """
+    
+    # Set some default parameters
+    tstep=0
+    klayer=0 # -1 get seabed
+    # Note that if j is an Nx2 array of floats the nearest cell will be found 
+    
+    variable='eta'
+    
+    # Plotting parmaters
+    clim=None
+        
+    def __init__(self,ncfile, **kwargs):
+        
+        self.ncfile = ncfile
+        
+        # Open the netcdf file
+        self.__openNc()
+        
+        # Load the grid (superclass)
+        Grid.__init__(self, ncfile)  
+        
+        self.j=np.arange(0,self.Nc) # Grid cell number for time series
+        
+        self.xy = self.cellxy()
+        
+        # Load the time variable
+        self.loadTime()
+        
+        # Update tstep 
+        self.__updateTstep()
+        
+        # Check the j index
+        self.__checkIndex()
+        
+        self.__dict__.update(kwargs)
+
+     
+    def loadData(self):
+        """ 
+            Load the specified suntans variable data as a vector
+            
+        """
+        nc = self.nc
+        self.long_name = nc.variables[self.variable].long_name
+        self.units= nc.variables[self.variable].units
+        #        ndims = len(nc.variables[self.variable].dimensions)
+        ndim = nc.variables[self.variable].ndim
+        if ndim==1:
+            self.data=nc.variables[self.variable][self.j]
+        elif ndim==2:
+            self.data=nc.variables[self.variable][self.tstep,self.j]
+        else:
+            if self.klayer[0]==-1: # grab the seabed values
+                klayer = np.arange(0,self.Nkmax)
+
+                if type(self.tstep)==int:
+                    data=nc.variables[self.variable][self.tstep,klayer,self.j]
+                    self.data = data[self.Nk[self.j],self.j]
+                else: # need to extract timestep by timestep for animations to save memory
+                    self.data=np.zeros((len(self.tstep),len(self.j)))
+                    i=-1
+                    for t in self.tstep:
+                        i+=1
+                        data=nc.variables[self.variable][t,klayer,self.j]
+                        self.data[i,:] = data[self.Nk[self.j],self.j]
+            else:
+                self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
+        
+        # Mask the data
+#        try:
+#            fillval = nc.variables[self.variable]._FillValue
+#        except:
+        fillval = 999999.0
+        
+        self.mask = self.data==fillval
+        self.data[self.mask]=0.
+        
+        
+    def loadTime(self):
+         """
+            Load the netcdf time as a vector datetime objects
+         """
+         #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+         nc = self.nc
+         t = nc.variables['time']
+         self.time = num2date(t[:],t.units)
+
+
+    
+    def plot(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
+        """
+          Plot the unstructured grid data
+        """
+        # Load the data if it's needed
+        if not self.__dict__.has_key('data'):
+            self.loadData()
+
+        # Set the xy limits
+        if xlims==None or ylims==None:
+            xlims=self.xlims 
+            ylims=self.ylims
+        
+        if self.__dict__.has_key('patches'):
+             self.patches.set_array(self.data)
+             self.ax.add_collection(self.patches)
+        else:
+            #tic = time.clock()
+            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.data,xlim=xlims,ylim=ylims,\
+                clim=self.clim,**kwargs)
+            plt.title(self.__genTitle())
+            
+        if vector_overlay:
+             u,v,w = self.getVector()
+             plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[1::subsample],v[1::subsample]\
+             ,scale=scale,scale_units='xy')
+            #print 'Elapsed time: %f seconds'%(time.clock()-tic)
+            
+    def plotvtk(self,vector_overlay=False,scale=1e-3,subsample=1,**kwargs):
+        """
+          Plot the unstructured grid data using vtk libraries
+        """
+        # Mayavi libraries
+        from mayavi import mlab
+        
+        # Load the data if it's needed
+        if not self.__dict__.has_key('data'):
+            self.loadData()
+        
+        points = np.column_stack((self.xp,self.yp,0.0*self.xp))
+                
+        self.fig,h,ug,d,title = unsurfm(points,self.cells,self.data,clim=self.clim,title=self.__genTitle(),**kwargs)
+        
+        if vector_overlay:
+             u,v,w = self.getVector()
+             # Add vectorss to the unctructured grid object
+             # This doesn't work ???       
+             #vector = np.asarray((u,v,w)).T
+             #ug.cell_data.vectors=vector
+             #ug.cell_data.vectors.name='vectors'
+             #ug.modified()
+             #d.update()
+             #d = mlab.pipeline.add_dataset(ug)
+             #h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
+             # This works             
+             vec=mlab.pipeline.vector_scatter(self.xv, self.yv, self.yv*0, u, v, w)
+             h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
+             
+             # try out the streamline example
+#             magnitude = mlab.pipeline.extract_vector_norm(vec)
+#             pdb.set_trace()
+#             h2 = mlab.pipeline.streamline(magnitude)
+            
+    def plotTS(self,j=0,**kwargs):
+        """
+         Plots a time series of the data at a given grid cell given by:
+             self.j, self.klayer
+        """
+
+        # Load the time-series
+        self.tstep = np.arange(0,len(self.time))
+        self.j=j
+        self.loadData()
+        
+        plt.ioff()
+        self.fig = plt.gcf()
+        ax = self.fig.gca()
+        h = plt.plot(self.time,self.data,**kwargs) 
+        ax.set_title(self.__genTitle())
+        
+        return h
+        
+       
+        
+    def savefig(self,outfile,dpi=150):
+        mod=self.fig.__class__.__module__
+        name=self.fig.__class__.__name__
+        
+        if mod+'.'+name == 'matplotlib.figure.Figure':
+            self.fig.savefig(outfile,dpi=dpi)
+        else:
+            self.fig.scene.save(outfile)
+            
+        print 'SUNTANS image saved to file:%s'%outfile
+    
+    def animate(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
+        """
+        Animates a spatial plot over all time steps
+        
+        Animation object is stored in the 'anim' property
+        """
+        #anim = unanimate(self.xy,self.data,self.tstep,xlim=self.xlims,ylim=self.ylims,clim=self.clim,**kwargs)
+        #return anim
+        
+        # Load the vector data
+        if vector_overlay:
+            U,V,W = self.getVector()
+            
+        # Need to reload the data
+        self.loadData()
+    
+        # Create the figure and axes handles
+        #plt.ion()
+        fig = plt.gcf()
+        ax = fig.gca()
+        #ax.set_animated('True')
+        
+        # Find the colorbar limits if unspecified
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(self.data))
+            self.clim.append(np.max(self.data))
+           
+        # Set the xy limits
+        if xlims==None or ylims==None:
+            xlims=self.xlims 
+            ylims=self.ylims
+        
+            
+        collection = PolyCollection(self.xy)
+        collection.set_array(np.array(self.data[0,:]))
+        collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
+        ax.add_collection(collection)    
+        ax.set_aspect('equal')
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
+        title=ax.set_title("")
+        fig.colorbar(collection)
+        
+        qh=plt.quiver([],[],[],[])
+        if vector_overlay:
+            u=U[0,:]
+            v=V[0,:]
+            qh=plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[1::subsample],v[1::subsample]\
+             ,scale=scale,scale_units='xy')
+  
+        def init():
+            collection.set_array([])
+            title.set_text("")
+            qh.set_UVC([],[])
+            return (collection,title)
+               
+        def updateScalar(i):
+            collection.set_array(np.array(self.data[i,:]))
+            collection.set_edgecolors(collection.to_rgba(np.array((self.data[i,:])))) 
+            title.set_text(self.__genTitle(i))
+            if vector_overlay:
+                qh.set_UVC(U[i,1::subsample],V[i,1::subsample])
+
+            return (title,collection,qh)
+  
+        self.anim = animation.FuncAnimation(fig, updateScalar, frames=len(self.tstep), interval=50, blit=True)
+
+    def saveanim(self,outfile):
+        """
+        Save the animation object to an mp4 movie
+        """
+        
+        #try:
+	print 'Building animation sequence...'
+	self.anim.save(outfile, fps=15,bitrate=3600)
+	print 'Complete - animation saved to: %s'%outfile
+        #except:
+        #    print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
+            
+    def animateVTK(self,figsize=(640,480),vector_overlay=False,scale=1e-3,subsample=1):
+        """
+        Animate a scene in the vtk window
+        
+        """
+        from mayavi import mlab
+        
+        # Load all the time steps into memory
+        self.tstep=np.arange(0,len(self.time))
+        nt = len(self.tstep)
+        if vector_overlay:
+             u,v,w = self.getVector()        
+        
+        self.loadData()
+        
+        
+        # Find the colorbar limits if unspecified
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(self.data))
+            self.clim.append(np.max(self.data))
+            
+        # Generate the initial plot
+        points = np.column_stack((self.xp,self.yp,0.0*self.xp))
+        
+        titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
+                datetime.strftime(self.time[self.tstep[0]],'%d-%b-%Y %H:%M:%S'))
+        
+        mlab.figure(size=figsize)        
+        self.fig,self.h,ug,d,title = unsurfm(points,self.cells,np.array(self.data[0,:]),clim=self.clim,title=titlestr)        
+        
+        if vector_overlay:
+             # Add vectorss to the unctructured grid object
+             #ug.cell_data.vectors=np.asarray((u[0,:],v[0,:],w[0,:])).T
+             #ug.cell_data.vectors.name='vectors'
+             #d.update()
+             #h2=mlab.pipeline.vectors(d,color=(0,0,0),mask_points=1,scale_factor=1./scale)
+             vec=mlab.pipeline.vector_scatter(self.xv, self.yv, self.yv*0, u[0,:], v[0,:], w[0,:])
+             h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
+
+             
+       # Animate the plot by updating the scalar data in the unstructured grid object      
+#        for ii in range(nt):
+#            print ii
+#            # Refresh the unstructured grid object
+#            ug.cell_data.scalars = self.data[ii,:]
+#            ug.cell_data.scalars.name = 'suntans_scalar'
+#
+#            # Update the title
+#            titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
+#            datetime.strftime(self.time[self.tstep[ii]],'%d-%b-%Y %H:%M:%S'))
+#            title.text=titlestr
+#
+#            self.fig.scene.render()
+#            self.savefig('tmp_vtk_%00d.png'%ii)
+#
+#        mlab.show()
+        
+        @mlab.animate
+        def anim():
+            ii=-1
+            while 1:
+                if ii<nt-1:
+                    ii+=1
+                else:
+                    ii=0
+                ug.cell_data.scalars = self.data[ii,:]
+                ug.cell_data.scalars.name = 'suntans_scalar'
+                if vector_overlay:
+                    #ug.cell_data.vectors=np.asarray((u[ii,:],v[ii,:],w[ii,:])).T
+                    #ug.cell_data.vectors.name='vectors'
+                    #d.update()
+                    #vec=mlab.pipeline.vector_scatter(self.xv, self.yv, self.yv*0, u[ii,:], v[ii,:], w[ii,:])
+                    #h2=mlab.pipeline.vectors(vec,color=(0,0,0),mask_points=subsample,scale_factor=1./scale,scale_mode='vector')
+                    #h2.update_data()
+                    h2.update_pipeline()
+                    vectors=np.asarray((u[ii,:],v[ii,:],w[ii,:])).T
+                    h2.mlab_source.set(vectors=vectors)
+                    
+                titlestr='%s [%s]\n Time: %s'%(self.long_name,self.units,\
+                datetime.strftime(self.time[self.tstep[ii]],'%d-%b-%Y %H:%M:%S'))
+                title.text=titlestr
+                
+                self.fig.scene.render()
+                yield
+        
+        a = anim() # Starts the animation.
+
+    def getVector(self):
+        """
+        Retrieve U and V vector components
+        """
+        tmpvar = self.variable
+        
+        self.variable='u'
+        self.loadData()
+        u=self.data.copy()
+        
+        self.variable='v'
+        self.loadData()
+        v=self.data.copy()
+        
+        self.variable='w'
+        self.loadData()
+        w=self.data.copy()
+        
+        self.variable=tmpvar
+        
+        return u,v,w
+        
+        
+    def __del__(self):
+        self.nc.close()
+        
+    def __openNc(self):
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+        try: 
+            self.nc = MFDataset(self.ncfile, 'r')
+        except:
+            self.nc = Dataset(self.ncfile, 'r')
+        
+    def __genTitle(self,tt=None):
+        
+        if tt ==None:
+            if type(self.tstep)==int:
+                tt = self.tstep
+            else:
+                tt = self.tstep[0]
+            
+        if self.klayer[0]>=0:
+            zlayer = '%3.1f [m]'%self.z_r[self.klayer[0]]
+        elif self.klayer[0]==-1:
+            zlayer = 'seabed'
+        titlestr='%s [%s]\n z: %s, Time: %s'%(self.long_name,self.units,zlayer,\
+                datetime.strftime(self.time[tt],'%d-%b-%Y %H:%M:%S'))
+                
+        return titlestr
+        
+    def __updateTstep(self):
+        """
+        Updates the tstep variable: -99 all steps, -1 last step
+        """
+        try:
+            if self.tstep.any()==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep.any()==-1:
+                self.tstep=len(self.time)-1
+        except:
+            if self.tstep==-99:
+                self.tstep=np.arange(0,len(self.time))
+            elif self.tstep==-1:
+                self.tstep=len(self.time)-1
+                
+    def __checkIndex(self):
+        """
+        Ensure that the j property is a single or an array of integers
+        """
+        
+        shp = np.shape(self.j)
+        
+        if len(shp)==1:
+            return
+        elif len(shp)==2:
+            print 'x/y coordinates input instead of cell index. Finding nearest neighbours.'
+            dd, j = self.findNearest(self.j)
+            print 'Nearest cell: %d, xv[%d]: %6.10f, yv[%d]: %6.10f'%(j,j,self.xv[j],j,self.yv[j])
+            self.j = j
+
+                  
 class Profile(object):
     """
         Class for handling SUNTANS profile netcdf files
@@ -1449,7 +1473,7 @@ if __name__ == '__main__':
 #    # Animation
 ##    sun.tstep=np.arange(0,len(sun.time))
 ##    sun.loadData()
-##    ani=unanimate(sun.xy,sun.data,sun.tstep,xlim=sun.grid.xlims,ylim=sun.grid.ylims)
+##    ani=unanimate(sun.xy,sun.data,sun.tstep,xlim=sun.xlims,ylim=sun.ylims)
 #    sun.animateVTK()
 #
 #elif plottype == 2:
