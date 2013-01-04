@@ -30,7 +30,6 @@
  * Private Function declarations.
  *
  */
-static void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option);
 static void UPredictor(gridT *grid, physT *phys, 
     propT *prop, int myproc, int numprocs, MPI_Comm comm);
 static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int myproc, 
@@ -861,7 +860,7 @@ void InitializeVerticalGrid(gridT **grid,int myproc)
  *   thereafter.
  *
  */
-static void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option)
+void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option)
 {
   int i, j, k, ne1, ne2, Nc=grid->Nc, Ne=grid->Ne, flag, nc1, nc2;
   REAL z, dzz1, dzz2;
@@ -1102,7 +1101,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   // get the openboundary flux (boundaries.c)
   OpenBoundaryFluxes(NULL,phys->u,NULL,grid,phys,prop);
   // get the boundary scalars (boundaries.c)
-  BoundaryScalars(grid,phys,prop);
+  BoundaryScalars(grid,phys,prop,myproc,comm);
   // set the height of the face bewteen cells to compute the flux
   SetFluxHeight(grid,phys,prop);
   // set the drag coefficients for bottom friction
@@ -1315,7 +1314,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // BoundaryVelocities and OpenBoundaryFluxes were called in UPredictor to set the
       // boundary velocities to the new time step values for use in the 
       // free surface calculation.
-      BoundaryScalars(grid,phys,prop);
+      BoundaryScalars(grid,phys,prop,myproc,comm);
       WindStress(grid,phys,prop,met,myproc);
       SetDragCoefficients(grid,phys,prop);
 

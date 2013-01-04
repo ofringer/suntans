@@ -47,6 +47,7 @@ typedef struct _boundT{
   // Indices that point the grid to the cell in the file
   int *ind2;
   int *ind3;
+  int *ind3edge;
 
   // Boundary coordinates
   REAL *xe;
@@ -113,7 +114,7 @@ boundT *bound;
 
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop);
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
-void BoundaryScalars(gridT *grid, physT *phys, propT *prop);
+void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc);
 
 FILE *windFID;

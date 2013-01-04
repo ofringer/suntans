@@ -202,5 +202,5 @@ void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
 REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind);
 REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);
 inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) ;
-
+void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option);
 #endif
