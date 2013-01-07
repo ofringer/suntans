@@ -17,6 +17,8 @@
 #include "grid.h"
 #include "met.h"
 
+#define NT 3
+
 // Enumerated type for open/specified bc specification
 enum {
   specified, open
@@ -62,9 +64,18 @@ typedef struct _boundT{
   // Time record locators
   int t0;
   int t1;
+  int t2; 
 
   // Data arrays at forward (_f) and backward (_b) timestep
   // Type-2 (edge centred) boundaries
+
+  REAL ***boundary_u_t;
+  REAL ***boundary_v_t;
+  REAL ***boundary_w_t;
+  REAL ***boundary_T_t;
+  REAL ***boundary_S_t;
+  REAL **boundary_Q_t;
+
   REAL **boundary_u_f;
   REAL **boundary_v_f;
   REAL **boundary_w_f;
@@ -87,6 +98,13 @@ typedef struct _boundT{
   REAL *boundary_Q;
 
   // Type-3 (cell centred) boundaries
+  REAL ***uc_t;
+  REAL ***vc_t;
+  REAL ***wc_t;
+  REAL ***T_t;
+  REAL ***S_t;
+  REAL ** h_t;
+
   REAL **uc_f;
   REAL **vc_f;
   REAL **wc_f;
