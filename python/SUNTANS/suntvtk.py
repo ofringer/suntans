@@ -25,6 +25,7 @@ class SunTvtk(Spatial):
     
     is3D = False
     zscale = 500.0
+    clim = None
     
     def __init__(self,infile,**kwargs):
         
@@ -165,67 +166,229 @@ class SunTvtk(Spatial):
                 Nk = self.Nk[i]+1
             self.mask3D[Nk:self.Nkmax,i]=False
             
-    def plot(self,clim=None,**kwargs):
+    def newscene(self,size=(800,700)):
         """
-        Plots the scalar in the 'data' attribute with mayavi
+        Creates a new scene
+        """
+        
+        self.fig=mlab.figure(bgcolor=(0.,0.,0.),size=size)
+        self.fig.scene.z_plus_view()
+        #mlab.view(0,0)
+        #self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+        
+    def colorbar(self):
+        """
+        Adds a colorbar for the object in 'h'
+        """
+        self.cb = mlab.colorbar(object=self.h,orientation='vertical')
+    
+    def surface(self,**kwargs):
+        """
+        Surface plot of the scalar in the 'data' attribute with mayavi
+        
+        Works on the 2D and 3D data
         """
 
-        if clim==None:
-            clim = [self.data.min(), self.data.max()]
-            
-        self.fig=mlab.gcf()
-        self.fig.scene.background = (0.,0.,0.)
+        if self.clim==None:
+            self.clim = [self.data.min(), self.data.max()]
+        
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
         
         src = mlab.pipeline.add_dataset(self.ug)
-        h=mlab.pipeline.surface(src,vmin=clim[0],vmax=clim[1],**kwargs)
-        mlab.colorbar(object=h,orientation='vertical')
-        mlab.view(0,0)
-        self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
-    
+        self.h=mlab.pipeline.surface(src,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
+        
+        # Add a colorbar if the isn't one
+        if not self.__dict__.has_key('cb'):
+            self.colorbar() 
+            
+        # Add a title if there isn't one
+        if not self.__dict__.has_key('title'):
+            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+        
     def contour(self,vv=[20],clim=None,**kwargs):
         """
         Filled contour plot of scalar data
         """
-            
-        if clim==None:
-            clim = [self.data.min(), self.data.max()]
-            
-        self.fig=mlab.gcf()
-        self.fig.scene.background = (0.,0.,0.)
         
-        # Convert the cell centred data into a scene source
+        if self.clim==None:
+            self.clim = [self.data.min(), self.data.max()]
+        
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
+        
         # Need to set use point (vertex) data
         src = mlab.pipeline.cell_to_point_data(self.ug)
         
         # Add the contour_surface module to the scene
-        h=mlab.pipeline.contour_surface(src,contours=vv,line_width=1.0)
-        h.contour.filled_contours=True # This is the trick to fill the contours
+        self.h=mlab.pipeline.contour_surface(src,contours=vv,line_width=1.0,**kwargs)
+        self.h.contour.filled_contours=True # This is the trick to fill the contours
         
-        mlab.colorbar(object=h,orientation='vertical')
-        mlab.view(0,0)
-        self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+        # Add a colorbar if the isn't one
+        if not self.__dict__.has_key('cb'):
+            self.colorbar() 
+            
+        # Add a title if there isn't one
+        if not self.__dict__.has_key('title'):
+            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
     
     def isosurface(self,vv=[4.0],clim=None,**kwargs):
+        """
+        3D isosurfaces of scalar data
+        """
+        if self.clim==None:
+            self.clim = [self.data.min(), self.data.max()]
         
-        if not self.is3D:
-            raise RuntimeError('isosurface can only be used when is3D=True')
-        
-        if clim==None:
-            clim = [self.data.min(), self.data.max()]
-            
-        self.fig=mlab.gcf()
-        self.fig.scene.background = (0.,0.,0.)
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
         
         # Convert the cell centred data into a scene source
         # Need to set use point (vertex) data
         src = mlab.pipeline.cell_to_point_data(self.ug)
         
         # Add the iso_surface module to the scene
-        h=mlab.pipeline.iso_surface(src,contours=vv,line_width=1.0,**kwargs)
+        self.h=mlab.pipeline.iso_surface(src,contours=vv,line_width=1.0,**kwargs)
         
-        mlab.colorbar(object=h,orientation='vertical')
-        mlab.view(0,0)
-        self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+        # Add a colorbar if the isn't one
+        if not self.__dict__.has_key('cb'):
+            self.colorbar() 
+            
+        # Add a title if there isn't one
+        if not self.__dict__.has_key('title'):
+            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+    
+    def volume(self,clim=None,**kwargs):
+        """
+        3D volumetric plot of scalar data
+        """
+        if self.clim==None:
+            self.clim = [self.data.min(), self.data.max()]
+        
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
+        
+        # Convert the cell centred data into a scene source
+        # Need to set use point (vertex) data
+        src = mlab.pipeline.cell_to_point_data(self.ug)
+        
+        # Add the volume module to the scene
+        self.h=mlab.pipeline.volume(src,**kwargs)
+        
+        # Add a colorbar if the isn't one
+        if not self.__dict__.has_key('cb'):
+            self.colorbar() 
+            
+        # Add a title if there isn't one
+        if not self.__dict__.has_key('title'):
+            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+            
+    def sliceplane(self,plane_orientation='y_axes',**kwargs):
+        """
+        Applies the image plane widget to the dataset
+        """        
+            
+        if self.clim==None:
+            self.clim = [self.data.min(), self.data.max()]
+        
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
+
+        src = mlab.pipeline.cell_to_point_data(self.ug)
+        
+        self.h=mlab.pipeline.scalar_cut_plane(src,plane_orientation=plane_orientation,view_controls=True,line_width=0.5)
+        
+       # Add a colorbar if the isn't one
+        if not self.__dict__.has_key('cb'):
+            self.colorbar() 
+            
+        # Add a title if there isn't one
+        if not self.__dict__.has_key('title'):
+            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15) 
+    
+    def animate(self):
+        """
+        Animates the current scene through all time steps (Interactive)
+        """
+        # Load all the time steps into memory (this can get large)
+        #self.tstep=np.arange(0,len(self.time))
+        #nt = len(self.tstep)
+        #Spatial.loadData(self)
+        
+        # Load one time step at a time into memory (slower run time)
+        tstep=np.arange(0,len(self.time))
+        nt = len(tstep)
+        
+        @mlab.animate
+        def anim():
+            ii=-1
+            while 1:
+                if ii<nt-1:
+                    ii+=1
+                else:
+                    ii=0
+                
+                # Load all time steps
+                #data=self.data[ii,:,:]
+                #data=np.ravel(data[self.mask3D])
+                #self.ug.cell_data.scalars = data
+                #self.ug.cell_data.scalars.name = 'suntans_scalar'
+                  
+                # Loading one time step at a time
+                self.tstep = tstep[ii]
+                self.loadData()
+                self.ug.cell_data.scalars = self.data
+                self.ug.cell_data.scalars.name = 'suntans_scalar'
+                    
+                titlestr=self._Spatial__genTitle(tt=ii)
+                self.title.text=titlestr
+                
+                self.fig.scene.render()
+                yield
+        
+        anim() # Starts the animation.
+    
+    def plotbathy3d(self,clims=None,**kwargs):
+        """
+        Adds 3D plot of the bathymetry to the current scene
+        """
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
+            
+        depth = -self.dv
+        if self.clim==None:
+            clim = [depth.min(), depth.max()]
+            
+        #  Create an unstructured grid object to interpolate cells onto points
+        points = np.column_stack((self.xp,self.yp,0.0*self.xp))
+        tri_type = tvtk.Triangle().cell_type
+        
+        ug = tvtk.UnstructuredGrid(points=points)
+        ug.set_cells(tri_type, self.cells)
+    
+        ug.cell_data.scalars = depth
+        ug.cell_data.scalars.name = 'suntans_depth'
+        
+        # Interpolate the cell data onto the points
+        F = mlab.pipeline.cell_to_point_data(ug)
+        dp = mlab.pipeline.probe_data(F,self.xp,self.yp,0.0*self.xp)
+        
+        # Now set up a new object with the 3D points
+        points = np.column_stack((self.xp,self.yp,dp*self.zscale))
+        ug = tvtk.UnstructuredGrid(points=points)
+        ug.set_cells(tri_type, self.cells)
+        ug.cell_data.scalars = depth
+        ug.cell_data.scalars.name = 'suntans_depth'
+        
+        # Plot as a 3D surface
+        src = mlab.pipeline.add_dataset(ug)
+        h=mlab.pipeline.surface(src,vmin=clim[0],vmax=clim[1],**kwargs)
+        return h
         
     def loadData(self):
         """
@@ -250,19 +413,23 @@ class SunTvtk(Spatial):
             self.is3D=value
             if self.is3D==True:
                 self.klayer=np.arange(0,self.Nkmax)
-                       
+                
+########                      
 # Testing stuff here
 
-ncfile = 'C:/Projects/GOMGalveston/MODELLING/GalvestonCoarse/rundata/GalvCoarse_TidesRivers3D*nc'
+#ncfile = 'C:/Projects/GOMGalveston/MODELLING/GalvestonCoarse/rundata/GalvCoarse_TidesRivers3D*nc'
+#ncfile = 'E:/Projects/GOMGalveston/MODELLING/SCENARIOS/CoarseHarmonicTideRivers/GalvCoarse_TidesRivers3D*nc'
 
-sunvtk = SunTvtk(ncfile,variable='salt',tstep=4,is3D=True)
+#sunvtk = SunTvtk(ncfile,variable='salt',tstep=4,is3D=True)
+#sunvtk.loadData()
 
-sunvtk.loadData()
+#sunvtk.plotbathy3d(colormap='bone')
+#sunvtk.isosurface(vv=[4.0,12.0,20.0,28.0],transparent=False,opacity=0.5)
+#sunvtk.surface(representation='wireframe',opacity=0.3)
+#sunvtk.contour(vv=40,opacity=0.6)
+#sunvtk.sliceplane()
+#sunvtk.volume()
 
-sunvtk.isosurface(vv=[4.0,12.0,20.0,28.0],transparent=False,opacity=0.5)
+#sunvtk.animate()
+#
 
-#sunvtk.plot(representation='wireframe')
-
-#sunvtk.contour(vv=40)
-
-#sunvtk.contour(vv=map(None,np.linspace(-0.3 ,0.3,50)))
