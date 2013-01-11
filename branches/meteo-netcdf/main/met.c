@@ -1551,27 +1551,6 @@ int getTimeRec(REAL nctime, REAL *time, int nt){
    return nt;
 }
 
-REAL getToffSet(char *basetime, char *starttime){
-    /* Returns the time offset in days between two time strings - starttime and basetime
-     * 
-     * The time string format is: yyyymmdd.HHMMSS (15 characters)
-     * Uses the time.h libraries
-     */
-	
-    //char *strptime(const char *buf, const char *format, struct tm *tm) 
-    //time_t mktime ( struct tm * timeptr ); 
-    struct tm tm0; 
-    struct tm tm1;
-    time_t t0, t1;
-
-    strptime(basetime,"%Y%m%d.%H%M%S",&tm0);
-    strptime(starttime,"%Y%m%d.%H%M%S",&tm1);
-    
-    t0 = mktime(&tm0);
-    t1 = mktime(&tm1);
-    return difftime(t1,t0)/86400.0;
-
-}
 /* These functions can be moved to util.c later*/
 void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda, int myproc){
     /* Calculates the interpolation weights for all grid points based on "Ns" interpolants

@@ -129,5 +129,4 @@ typedef struct _metT {
 #endif
 void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **T);
 REAL shortwave(REAL time, REAL lat,REAL C_cloud);
-REAL getToffSet(char *starttime, char *basetime);
 #endif

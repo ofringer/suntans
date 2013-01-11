@@ -25,10 +25,11 @@ static void FluxtoUV(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
 static void SegmentArea(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 static size_t returndimlenBC(int ncid, char *dimname);
 int isGhostEdge(int j, gridT *grid, int myproc);
-void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray);
-void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray);
+static void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray);
+static void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc);
 #endif 
 REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2);
+static int getTimeRecBnd(REAL nctime, REAL *time, int nt);
 
 /*
  * Function: OpenBoundaryFluxes
@@ -180,7 +181,6 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
 
     phys->boundary_h[jind]=0.0; // Not used??
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
-     //printf("ii=%d, bound->ind2[ii]=%d\n",ii,bound->ind2[ii]);
      phys->boundary_u[jind][k]=bound->boundary_u[k][bound->ind2[ii]]*rampfac;
      phys->boundary_v[jind][k]=bound->boundary_v[k][bound->ind2[ii]]*rampfac;
      phys->boundary_w[jind][k]=bound->boundary_w[k][bound->ind2[ii]]*rampfac;
@@ -188,35 +188,51 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
   }
  
   // Type-3
+/*
+  // Flather condition. This updates the boundary velocity values
+  REAL dh, Umod, Ubc, gfac; 
+  int ne, nf, neigh;
   ii=-1;
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    //jind = iptr-grid->celldist[1]+grid->edgedist[3]-grid->edgedist[2];
+    i = grid->cellp[iptr];
+    ii+=1;
+    gfac = sqrt(9.81/grid->dv[i]);
+    dh = phys->h[i] - bound->h[bound->ind3[ii]]*rampfac;
+    for(nf=0;nf<NFACES;nf++){ 
+      if((neigh=grid->neigh[i*NFACES+nf])==-1) {
+        ne = grid->face[i*NFACES+nf];
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	    Ubc = bound->uc[k][bound->ind3[ii]]*rampfac*grid->n1[ne] + bound->vc[k][bound->ind3[ii]]*rampfac*grid->n2[ne]; 
+	    Umod = Ubc - gfac*dh;
+	    bound->uc[k][bound->ind3[ii]]=Umod*grid->n1[ne]; 
+	    bound->vc[k][bound->ind3[ii]]=Umod*grid->n2[ne]; 
+	}
+      }
+    }
+  }//End Flather condition. Everything should be the same after here...
+*/
+  ii=-1;
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
     ii+=1;
 
     phys->h[i]=bound->h[bound->ind3[ii]]*rampfac;
     //    phys->h[i]=bound->h[bound->ind3[ii]]*sin(omega*prop->rtime)*rampfac;// Test harmonic netcdf type bc
-  //    phys->h[i]=amp*sin(omega*prop->rtime)*rampfac; // Test analytical BC
+    //    phys->h[i]=amp*sin(omega*prop->rtime)*rampfac; // Test analytical BC
   }
+
   // Try recalculating the cell tops here
   ISendRecvCellData2D(phys->h,grid,myproc,comm);
   UpdateDZ(grid,phys,prop,0);
+
   ii=-1;
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    //jind = iptr-grid->celldist[1]+grid->edgedist[3]-grid->edgedist[2];
     i = grid->cellp[iptr];
     ii+=1;
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-//    for(k=0;k<grid->Nk[i];k++) {
-//      phys->uc[i][k]=bound->uc[bound->ind3[ii]][k]*rampfac;
-//      phys->vc[i][k]=bound->vc[bound->ind3[ii]][k]*rampfac;
-//      phys->wc[i][k]=bound->wc[bound->ind3[ii]][k]*rampfac;
       phys->uc[i][k]=bound->uc[k][bound->ind3[ii]]*rampfac;
       phys->vc[i][k]=bound->vc[k][bound->ind3[ii]]*rampfac;
       phys->wc[i][k]=bound->wc[k][bound->ind3[ii]]*rampfac;
-      //phys->uc[i][k]=0.0;
-      //phys->vc[i][k]=0.0;
-      //phys->wc[i][k]=0.0;
     }
   }
   // Need to communicate the cell data for type 3 boundaries
@@ -241,6 +257,7 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
   int i, nf, ne, nc1, nc2, neigh;
   REAL def1, def2;
 
+    REAL rampfac = 1-exp(-prop->rtime/prop->thetaramptime);// rampup factor 
    if(prop->metmodel>=2){// Interpoalte the spatially variable wind stress onto the edges
        for(i=0;i<Nc;i++){
 	  for(nf=0;nf<NFACES;nf++){ 
@@ -255,6 +272,7 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 	     phys->tau_T[ne] = (met->tau_x[nc1]*def1/grid->dg[ne] + met->tau_x[nc2]*def2/grid->dg[ne])*grid->n1[ne] + 
 		(met->tau_y[nc1]*def1/grid->dg[ne] + met->tau_y[nc2]*def2/grid->dg[ne])*grid->n2[ne];  
 	     phys->tau_T[ne] /= RHO0; 
+	     phys->tau_T[ne] *= rampfac;
             }
 	  }
        }
@@ -309,18 +327,19 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
      int j, k, t0, t1, t2; 
      REAL dt, r1, r2, mu;
    
-     t1 = getTimeRec(prop->nctime,bound->time,bound->Nt);
+     t1 = getTimeRecBnd(prop->nctime,bound->time,bound->Nt);
      t0=t1-1;
      t2=t1+1;
 
-     /* Only interpolate the data onto the grid if need to*/
+     /* Only update the boundary data if need to*/
      if (bound->t1!=t1){
 	if(VERBOSE>3 && myproc==0) printf("Updating netcdf boundary data at nc timestep: %d\n",t1);
 	/* Read in the data two time steps*/
-	ReadBdyNC(prop, grid, myproc);
 	bound->t1=t1;
 	bound->t2=t2;
 	bound->t0=t0;
+        //printf("myproc: %d, bound->t0: %d, nctime: %f, rtime: %f \n",myproc,bound->t0, prop->nctime, prop->rtime);
+	ReadBdyNC(prop, grid, myproc);
       }
 
    /*Linear temporal interpolation coefficients*/
@@ -506,19 +525,25 @@ int isGhostEdge(int j, gridT *grid, int myproc){
     int Nseg = bound->Nseg;
 
     //Find the time index of the middle time step (t1) 
-    t1 = getTimeRec(prop->nctime,bound->time,(int)bound->Nt); //this is in met.c
-    bound->t1=t1;
-    t0=t1-1;
+    if(bound->t0==-1){
+       bound->t1 = getTimeRecBnd(prop->nctime,bound->time,(int)bound->Nt); //this is in met.c
+       bound->t0=bound->t1-1;
+       bound->t2=bound->t1+1;
+       printf("myproc: %d, bound->t0: %d, nctime: %f\n",myproc,bound->t0, prop->nctime);
+    }
+    t0 = bound->t0;
 
-    count[1]=Nk;
     count[0]=NT;
-    start[2]=0;
-    start[1]=0;
+    count[1]=Nk;
+
+    count2[0]=NT;
+
     start[0]=t0;
+    start[1]=0;
+    start[2]=0;
 
     start2[0]=t0;
     start2[1]=0;
-    count2[0]=NT;
 
     //if(myproc==0) printf("t0 = %d [Nt = %d]\n",t0,bound->Nt);    
     if(bound->hasType2){
@@ -574,7 +599,7 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 
 	vname = "h";//2D array
 	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_2D(ncid, vname, start2, count2, bound->h_t );
+	nc_read_2D(ncid, vname, start2, count2, bound->h_t, myproc );
 
      }// End read type-3
 
@@ -584,7 +609,7 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 	count2[1]=Nseg;
 	vname = "boundary_Q";//2D array
 	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_2D(ncid, vname, start2, count2, bound->boundary_Q_t );
+	nc_read_2D(ncid, vname, start2, count2, bound->boundary_Q_t, myproc);
 
      }//End flux read
 
@@ -926,6 +951,9 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
     for(j=0;j<(*bound)->Nt;j++){
 	(*bound)->time[j]=0.0;
     }
+    (*bound)->t0=-1;
+    (*bound)->t1=-1;
+    (*bound)->t2=-1;
     for(k=0;k<(*bound)->Nk;k++){
 	(*bound)->z[k]=0.0;
     }
@@ -1053,16 +1081,17 @@ REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2){
 * The size of the array dimension should equal 'count' ie [n, k ,j]
 */
 
-void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray){
+static void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray){
 
     int j, k, n, ii;
     int varid, retval;
-    REAL tmpvec[ (int)count[0] * (int)count[1] * (int)count[2] ];
+    //REAL tmpvec[ (int)count[0] * (int)count[1] * (int)count[2] ];
+    REAL outdata[(int)count[0]][(int)count[1]][(int)count[2]];
 
     //Read the data
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
 	ERR(retval);
-    if ((retval = nc_get_vara_double(ncid, varid, start, count, tmpvec))) 
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &outdata[0][0][0]))) 
 	ERR(retval); 
 
     // Loop through and insert the vector values into an array
@@ -1070,8 +1099,9 @@ void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmp
 	for(k=0;k<(int)count[1];k++){
 	    for(j=0;j<(int)count[2];j++){
 		//Linear index
-		ii = n*(int)count[1]*(int)count[2]+k*(int)count[2]+j;
-		tmparray[n][k][j]=tmpvec[ii];
+		//ii = n*(int)count[1]*(int)count[2]+k*(int)count[2]+j;
+		//tmparray[n][k][j]=tmpvec[ii];
+		tmparray[n][k][j]=outdata[n][k][j];
 	    }
 	}
     }
@@ -1088,26 +1118,46 @@ void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmp
 * The size of the array dimension should equal 'count' ie [n,,j]
 */
 
-void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray){
+static void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc){
 
     int j, n, ii;
     int varid, retval;
-    REAL tmpvec[ (int)count[0] * (int)count[1] ];
+    //REAL tmpvec[ (int)count[0] * (int)count[1] ];
+    REAL outdata[(int)count[0]][(int)count[1]];
 
     //Read the data
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
 	ERR(retval);
-    if ((retval = nc_get_vara_double(ncid, varid, start, count, tmpvec))) 
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &outdata[0][0]))) 
 	ERR(retval); 
 
     // Loop through and insert the vector values into an array
+   
     for(n=0;n<(int)count[0];n++){
 	for(j=0;j<(int)count[1];j++){
 	    //Linear index
-	    ii = n*(int)count[1]+j;
-	    tmparray[n][j]=tmpvec[ii];
+	    //ii = n*(int)count[1]+j;
+	    //tmparray[n][j]=tmpvec[ii];
+	    tmparray[n][j]=outdata[n][j];
+	    //printf("myproc: %d, start[0]: %d, n: %d of %d, j: %d of %d, outdata[n][j]: %f, tmparray[n][j]: %f\n",myproc, (int)start[0], n,(int)count[0],j,(int)count[1],outdata[n][j], tmparray[n][j]);
 	}
     }
-
+  
 }// End function
+
+/*
+* Function: GetTimeRecBnd()
+* ------------------
+* Retuns the index of the first preceding time step in the vector time
+*/
+static int getTimeRecBnd(REAL nctime, REAL *time, int nt){
+    int j;
+
+    for(j=0;j<nt;j++){
+       if (time[j]>=nctime)
+	 return j-1;
+    }
+    return nt;
+}
+
 #endif
