@@ -103,7 +103,7 @@ void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
 static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc, int nonlinear);
 static void getTsurf(gridT *grid, physT *phys);
 static void getchangeT(gridT *grid, physT *phys);
-
+static REAL getToffSet(char starttime[15], char basetime[15]);
 /*
  * Function: AllocatePhysicalVariables
  * Usage: AllocatePhysicalVariables(grid,phys,prop);
@@ -1081,9 +1081,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   // Initialise the netcdf time
 #ifdef USENETCDF 
  // Get the toffSet property
+ //printf("myproc: %d, starttime: %s\n",prop->starttime);
  prop->toffSet = getToffSet(prop->basetime,prop->starttime);
- if (myproc==0) printf("toffSet = %f (%s, %s).\n",prop->toffSet,prop->basetime,prop->starttime);
  prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
+ printf("myproc: %d, toffSet = %f (%s, %s)\n",myproc,prop->toffSet,&prop->basetime,&prop->starttime);
 #endif
 
   // Initialise the boundary data from a netcdf file
@@ -1152,6 +1153,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 #ifdef USENETCDF
     // netcdf file time
     prop->nctime = prop->toffSet*86400.0 + n*prop->dt;
+    //prop->nctime +=  n*prop->dt;
+    //prop->nctime += prop->rtime;
 #endif
 
     if(prop->nsteps>0) {
@@ -5251,6 +5254,31 @@ static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, R
 }
 
 
+/* Function getToffSet()
+ * ------------------
+ * Returns the time offset in days between two time strings - starttime and basetime
+ * 
+ * The time string format is: yyyymmdd.HHMMSS (15 characters)
+ * Uses the time.h libraries
+ */
+static REAL getToffSet(char basetime[15], char starttime[15]){
+	
+    //char *strptime(const char *buf, const char *format, struct tm *tm) 
+    //time_t mktime ( struct tm * timeptr ); 
+    struct tm tm0; 
+    struct tm tm1;
+    time_t t0, t1;
+    //const char time1=*basetime;
+    //const char time2=*starttime;
+
+    strptime(basetime,"%Y%m%d.%H%M%S",&tm0);
+    strptime(starttime,"%Y%m%d.%H%M%S",&tm1);
+    
+    t0 = mktime(&tm0);
+    t1 = mktime(&tm1);
+    return difftime(t1,t0)/86400.0;
+
+}//End function
 
 
 
