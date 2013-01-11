@@ -153,7 +153,7 @@ class Grid(object):
         else:
             clim = [self.dv.min(), self.dv.max()]
         points = np.column_stack((self.xp,self.yp,0.0*self.xp))
-        self.fig, h, ug,title=unsurfm(points,self.cells,self.dv,clim=clim,title='SUNTANS Grid Bathymetry [m]',\
+        self.fig, h, ug,d, title=unsurfm(points,self.cells,self.dv,clim=clim,title='SUNTANS Grid Bathymetry [m]',\
             colormap='gist_earth')
         
     
@@ -172,7 +172,30 @@ class Grid(object):
         plt.plot(xe[self.mark==4],ye[self.mark==4],'co')
         plt.legend(('Node','Edge','Marker=1','Marker=2','Marker=3','Marker=4'))
         plt.axis('equal')
-                    
+    
+    def plotmesh(self):
+        """
+        Plots the outline of the grid mesh
+        """
+        fig = plt.gcf()
+        ax = fig.gca()
+    
+        xlim=self.xlims
+        ylim=self.ylims
+        collection = PolyCollection(self.xy)
+        #collection.set_array(np.array(self.dv))
+        #collection.set_linewidth(0)
+        #collection.set_edgecolors(collection.to_rgba(np.array(z))) 
+        collection.set_facecolors('w')
+        
+        ax.add_collection(collection)
+    
+        ax.set_aspect('equal')
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+
+        return ax, collection
+        
     def cellxy(self):
         """ 
         Returns a list of Nx2 vectors containing the grid cell node coordinates
@@ -253,7 +276,7 @@ class Spatial(Grid):
     
     # Set some default parameters
     tstep=0
-    klayer=0 # -1 get seabed
+    klayer=[0] # -1 get seabed
     # Note that if j is an Nx2 array of floats the nearest cell will be found 
     
     variable='eta'
@@ -1354,7 +1377,7 @@ if __name__ == '__main__':
     """        
     
     # Defaults
-    k = 0
+    k = [0]
     t = 0
     j = 0
     varname = 'u'
@@ -1387,7 +1410,7 @@ if __name__ == '__main__':
         elif opt == '-t':
             t = int(val)
         elif opt == '-k':
-            k = int(val)
+            k = [int(val)]
         elif opt == '-j':
             j = int(val)
         elif opt == '-c':

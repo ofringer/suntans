@@ -21,11 +21,16 @@ class SunTvtk(Spatial):
     The main object is stored in the 'ug' attribute
     
     The scalar data is stored in the 'data' attribute
+    
+    # TODO
+     - Implement vectors
+     - Wrap vector plotting routines (quiver, streamline, ...)
     """
     
     is3D = False
     zscale = 500.0
     clim = None
+    kstart=0 # Starting klayer - set > 0 to ignore top 'kstart' cells
     
     def __init__(self,infile,**kwargs):
         
@@ -35,7 +40,9 @@ class SunTvtk(Spatial):
             
         #
         if self.is3D:
-            self.klayer=np.arange(0,self.Nkmax)
+            self.klayer=np.arange(self.kstart,self.Nkmax)
+            self.Nkmax-=self.kstart
+            self.Nk -= self.kstart
             self.data = np.zeros((self.Nc,self.Nkmax))
             self.data = np.ravel(self.data)
             
@@ -310,7 +317,7 @@ class SunTvtk(Spatial):
         if not self.__dict__.has_key('title'):
             self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15) 
     
-    def animate(self):
+    def animate(self,tstep=None):
         """
         Animates the current scene through all time steps (Interactive)
         """
@@ -320,7 +327,8 @@ class SunTvtk(Spatial):
         #Spatial.loadData(self)
         
         # Load one time step at a time into memory (slower run time)
-        tstep=np.arange(0,len(self.time))
+        if tstep==None:
+            tstep=np.arange(0,len(self.time))
         nt = len(tstep)
         
         @mlab.animate
@@ -352,6 +360,61 @@ class SunTvtk(Spatial):
         
         anim() # Starts the animation.
     
+    def saveanimation(self,outfile,tstep=None,frate=10):
+        """
+        Saves an animation of the current scene to a file (non-interative)
+        
+        Saves a sequence of images and uses ffmpeg to convert to a video format.
+        
+        (I can't get it to pipe directly to ffmpeg as is done by matplotlib)
+        
+        See this:
+            http://stackoverflow.com/questions/4092927/generating-movie-from-python-without-saving-individual-frames-to-files
+        and this...
+            http://stackoverflow.com/questions/13163106/ffmpeg-converting-image-sequence-to-video-results-in-blank-video
+        """
+#        
+        import os
+        # This works for mp4 and mov...
+        cmdstring ='ffmpeg -r %d -i ./.tmpanim%%04d.png -y -loglevel quiet -c:v libx264 -crf 23 -pix_fmt yuv420p %s'%(frate,outfile)
+
+        # Load one time step at a time into memory (slower run time)
+        if tstep==None:
+            tstep=np.arange(0,len(self.time))
+        nt = len(tstep)
+        
+        png_list=[]
+        for ii in range(nt):
+
+            # Loading one time step at a time
+            self.tstep = tstep[ii]
+            self.loadData()
+            self.ug.cell_data.scalars = self.data
+            self.ug.cell_data.scalars.name = 'suntans_scalar'
+                
+            titlestr=self._Spatial__genTitle(tt=ii)
+            self.title.text=titlestr
+            
+            self.fig.scene.render()
+            
+            # This bit saves each img
+            outimg='./.tmpanim%04d.png'%ii
+            png_list.append(outimg)
+#            self.fig.scene.save_png(outimg)
+            mlab.savefig(outimg,figure=self.fig)
+
+            print 'Saving image %s of %d...'%(outimg,nt)
+            
+        # Call ffmpeg within python
+        os.system(cmdstring)
+        
+        print '####\n Animation saved to: \n %s\n####' % outfile
+        # Delete the images
+        print 'Cleaning up temporary images...'
+        for ff in png_list:
+            os.remove(ff)
+        print 'Complete.'
+            
     def plotbathy3d(self,clims=None,**kwargs):
         """
         Adds 3D plot of the bathymetry to the current scene
@@ -395,7 +458,11 @@ class SunTvtk(Spatial):
         Overloaded loadData function - updates the unstructured grid object
         """
         Spatial.loadData(self)
-        self.data=np.ravel(self.data[self.mask3D])
+        if self.is3D:
+            self.data=np.ravel(self.data[self.mask3D])
+        else:
+            self.data=np.ravel(self.data)
+            
         self.ug.cell_data.scalars = self.data
         self.ug.cell_data.scalars.name = 'suntans_scalar' 
         self.ug.modified()        
@@ -420,16 +487,19 @@ class SunTvtk(Spatial):
 #ncfile = 'C:/Projects/GOMGalveston/MODELLING/GalvestonCoarse/rundata/GalvCoarse_TidesRivers3D*nc'
 #ncfile = 'E:/Projects/GOMGalveston/MODELLING/SCENARIOS/CoarseHarmonicTideRivers/GalvCoarse_TidesRivers3D*nc'
 
-#sunvtk = SunTvtk(ncfile,variable='salt',tstep=4,is3D=True)
+#sunvtk = SunTvtk(ncfile,variable='salt',tstep=100,is3D=True,zscale=500.,kstart=1)
+#sunvtk = SunTvtk(ncfile,variable='w',tstep=100,is3D=False,klayer=[-1])
 #sunvtk.loadData()
 
 #sunvtk.plotbathy3d(colormap='bone')
-#sunvtk.isosurface(vv=[4.0,12.0,20.0,28.0],transparent=False,opacity=0.5)
+#sunvtk.isosurface(vv=[4.0,12.0,20.0,28.0],transparent=False,opacity=0.9)
 #sunvtk.surface(representation='wireframe',opacity=0.3)
-#sunvtk.contour(vv=40,opacity=0.6)
+#sunvtk.surface()
+#sunvtk.contour(vv=[4.0,8.0,12.0,16.0,20.0,24.0,28.0,32.0, 33.0],opacity=0.5)
 #sunvtk.sliceplane()
 #sunvtk.volume()
 
 #sunvtk.animate()
 #
+#sunvtk.saveanimation('C:\Projects\GOMGalveston\MOVIES\CoarsePlume2D.mov')
 

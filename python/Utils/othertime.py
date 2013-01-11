@@ -22,6 +22,19 @@ def SecondsSince(timein,basetime = datetime(1990,1,1)):
         timeout.append(dt.total_seconds())
         
     return np.asarray(timeout)
+    
+def MinutesSince(timein,basetime = datetime(1970,1,1)):
+    """
+    Converts a list or array of datetime object into an array of seconds since "basetime"
+    
+    Useful for interpolation and storing in netcdf format
+    """
+    timeout=[]
+    for t in timein:
+        dt = t - basetime
+        timeout.append(dt.total_seconds()/60.0)
+        
+    return np.asarray(timeout)
 
 def datenum2datetime(datenum):
     """
