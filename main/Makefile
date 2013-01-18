@@ -61,6 +61,7 @@ ifneq ($(NETCDF4HOME),)
   NETCDFINCLUDE=-I$(NETCDF4HOME)/include
   NETCDFLD=-lnetcdf
   NETCDFDEF = -DUSENETCDF
+  NETCDFSRC= mynetcdf.c
 else
   NETCDFLIBDIR = 
   NETCDFINCLUDE = 
@@ -85,7 +86,7 @@ DEPFLAGS = -Y
 
 SRCS = 	mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
 	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c tides.c \
-	sources.c diffusion.c met.c $(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE)
+	sources.c diffusion.c met.c $(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE) $(NETCDFSRC)
 OBJS = $(SRCS:.c=.o)
 
 PLOTSRCS = sunplot.c fileio.c
@@ -145,3 +146,4 @@ no-mpi.o: suntans.h no-mpi.h
 sunplot.o: suntans.h fileio.h
 fileio.o: fileio.h defaults.h suntans.h
 met.o: met.h suntans.h fileio.h memory.h grid.h phys.h util.h 
+mynetcdf.o: mynetcdf.h

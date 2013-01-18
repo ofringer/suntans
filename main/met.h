@@ -12,6 +12,8 @@
 #include "phys.h"
 #include "util.h"
 
+#define NTmet 3
+
 /* Structure array for meteorological input data*/
 typedef struct _metinT {
   
@@ -54,6 +56,7 @@ typedef struct _metinT {
   // Time record locators
   int t0;
   int t1;
+  int t2;
   
   // Interpolation Weights
   REAL **WUwind;

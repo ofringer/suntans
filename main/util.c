@@ -272,3 +272,21 @@ inline int max(int a, int b) {
   return a > b ? a : b;
 }
 
+/*
+* Function: QuadInterp()
+* ---------------------
+* 1-D quadratic interpolation function between 3 points (x0,x1,x2) with values (y0,y1,y2);
+*/ 
+
+REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2){
+    REAL L0, L1, L2;
+
+//    printf("x: %f, x0: %f, x1: %f, x2: %f, y0: %f, y1: %f, y2: %f\n",x,x0,x1,x2,y0,y1,y2);
+
+    L0 = (x-x1) * (x-x2) / ( (x0-x1)*(x0-x2) );
+    L1 = (x-x0) * (x-x2) / ( (x1-x0)*(x1-x2) );
+    L2 = (x-x0) * (x-x1) / ( (x2-x0)*(x2-x1) );
+
+    return y0*L0 + y1*L1 + y2*L2;
+
+}//End Function

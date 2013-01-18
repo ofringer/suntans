@@ -16,6 +16,7 @@
 #include "phys.h"
 #include "grid.h"
 #include "met.h"
+#include "util.h"
 
 #define NT 3
 

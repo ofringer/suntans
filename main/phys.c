@@ -1133,6 +1133,15 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
      if(prop->metmodel>=2)       
       updateAirSeaFluxes(prop, grid, phys, met, phys->T);
       
+	//Communicate across processors
+	
+	ISendRecvCellData2D(met->Hs,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hl,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hsw,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
+
     }
   // Initialise the output netcdf file metadata
     if(prop->outputNetcdf>0){
@@ -1248,6 +1257,16 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 #ifdef USENETCDF
       if(prop->metmodel>=2){
 	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
+
+	//Communicate across processors
+	
+	ISendRecvCellData2D(met->Hs,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hl,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hsw,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
+
       }
 #endif
       
@@ -5112,10 +5131,12 @@ static REAL HFaceFlux(int j, int k, REAL *phi, REAL **u, gridT *grid, REAL dt, i
  * Returns the temperature at the surface cell
  */
 static void getTsurf(gridT *grid, physT *phys){
-  int i, ktop;
+  int i, iptr, ktop;
   int Nc = grid->Nc;
   
-  for(i=0;i<Nc;i++) {
+  //for(i=0;i<Nc;i++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
     ktop = grid->ctop[i];
     phys->Tsurf[i] = phys->T[i][ktop];
   }
@@ -5127,10 +5148,12 @@ static void getTsurf(gridT *grid, physT *phys){
  * Returns the change in temperature at the surface cell
  */
 static void getchangeT(gridT *grid, physT *phys){
-  int i, ktop;
+  int i, iptr, ktop;
   int Nc = grid->Nc;
   
-  for(i=0;i<Nc;i++) {
+  //for(i=0;i<Nc;i++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
     ktop = grid->ctop[i];
     phys->dT[i] = phys->T[i][ktop] - phys->Tsurf[i];
   }
