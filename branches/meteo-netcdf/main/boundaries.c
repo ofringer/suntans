@@ -25,10 +25,7 @@ static void FluxtoUV(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
 static void SegmentArea(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 static size_t returndimlenBC(int ncid, char *dimname);
 int isGhostEdge(int j, gridT *grid, int myproc);
-static void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray);
-static void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc);
 #endif 
-REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2);
 static int getTimeRecBnd(REAL nctime, REAL *time, int nt);
 
 /*
@@ -1053,97 +1050,7 @@ static size_t returndimlenBC(int ncid, char *dimname){
  return dimlen;
 } // End function
 
-/*
-* Function: QuadInterp()
-* ---------------------
-* 1-D quadratic interpolation function between 3 points (x0,x1,x2) with values (y0,y1,y2);
-*/ 
 
-REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2){
-    REAL L0, L1, L2;
-
-//    printf("x: %f, x0: %f, x1: %f, x2: %f, y0: %f, y1: %f, y2: %f\n",x,x0,x1,x2,y0,y1,y2);
-
-    L0 = (x-x1) * (x-x2) / ( (x0-x1)*(x0-x2) );
-    L1 = (x-x0) * (x-x2) / ( (x1-x0)*(x1-x2) );
-    L2 = (x-x0) * (x-x1) / ( (x2-x0)*(x2-x1) );
-
-    return y0*L0 + y1*L1 + y2*L2;
-
-}//End Function
-
-/*
-* Function: nc_read_3D()
-* ----------------------
-* Reads a 3D array from a netcdf file and returns the output in an array (not a vector)
-*
-* Warning: there are no dimension checks performed here so be careful.
-* The size of the array dimension should equal 'count' ie [n, k ,j]
-*/
-
-static void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray){
-
-    int j, k, n, ii;
-    int varid, retval;
-    //REAL tmpvec[ (int)count[0] * (int)count[1] * (int)count[2] ];
-    REAL outdata[(int)count[0]][(int)count[1]][(int)count[2]];
-
-    //Read the data
-    if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_vara_double(ncid, varid, start, count, &outdata[0][0][0]))) 
-	ERR(retval); 
-
-    // Loop through and insert the vector values into an array
-    for(n=0;n<(int)count[0];n++){
-	for(k=0;k<(int)count[1];k++){
-	    for(j=0;j<(int)count[2];j++){
-		//Linear index
-		//ii = n*(int)count[1]*(int)count[2]+k*(int)count[2]+j;
-		//tmparray[n][k][j]=tmpvec[ii];
-		tmparray[n][k][j]=outdata[n][k][j];
-	    }
-	}
-    }
-
-}// End function
-
-
-/*
-* Function: nc_read_2D()
-* ----------------------
-* Reads a 2D array from a netcdf file and returns the output in an array (not a vector)
-*
-* Warning: there are no dimension checks performed here so be careful.
-* The size of the array dimension should equal 'count' ie [n,,j]
-*/
-
-static void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc){
-
-    int j, n, ii;
-    int varid, retval;
-    //REAL tmpvec[ (int)count[0] * (int)count[1] ];
-    REAL outdata[(int)count[0]][(int)count[1]];
-
-    //Read the data
-    if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_vara_double(ncid, varid, start, count, &outdata[0][0]))) 
-	ERR(retval); 
-
-    // Loop through and insert the vector values into an array
-   
-    for(n=0;n<(int)count[0];n++){
-	for(j=0;j<(int)count[1];j++){
-	    //Linear index
-	    //ii = n*(int)count[1]+j;
-	    //tmparray[n][j]=tmpvec[ii];
-	    tmparray[n][j]=outdata[n][j];
-	    //printf("myproc: %d, start[0]: %d, n: %d of %d, j: %d of %d, outdata[n][j]: %f, tmparray[n][j]: %f\n",myproc, (int)start[0], n,(int)count[0],j,(int)count[1],outdata[n][j], tmparray[n][j]);
-	}
-    }
-  
-}// End function
 
 /*
 * Function: GetTimeRecBnd()

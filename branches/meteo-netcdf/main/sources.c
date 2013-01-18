@@ -80,10 +80,10 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
 
 void SaltSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met) {
     int i, iptr, k, ktop, gc;
-    if(prop->metmodel>0){	
+    if(prop->metmodel>0 && prop->metmodel < 4){	
 	    REAL L_w, EP, dztop, dzmin_saltflux;
 	    L_w = 2.50e6;            // Latent heat of evaporation of water (J kg^{-1})
-	    dzmin_saltflux=0.01;	
+	    dzmin_saltflux=0.1;	
 
 	    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
 		i = grid->cellp[iptr];
@@ -350,13 +350,13 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
 
       // Set the coefficients of the sources term here
       B[i][k] += 0;
-      A[i][k] += F_SW*0;
+      A[i][k] += F_SW;
       
       z-=grid->dzz[i][k]/2;
     }
   }
 }else if(prop->metmodel>=2){ // COARE3.0 HeatFlux Algorithm or constant flux coefficients
-   int j, k, ktop, iptr;
+   int i, k, ktop, iptr;
    REAL dztop;
    REAL *H0=met->Htmp;
 
@@ -364,7 +364,7 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
    REAL rhocp = RHO0*c_p;
    REAL dHdT;
    REAL eps = 1e-14;
-   REAL dzmin_heatflux = 0.01;  // Minimum allowable depth of top cell for computation of   
+   REAL dzmin_heatflux = 0.1;  // Minimum allowable depth of top cell for computation of   
    // shortwave constants
    REAL ksw1; // light extinction coefficient
    REAL depth, z, topface, botface;
@@ -373,45 +373,49 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
    REAL dT;
    
    
-   for(j=0;j<grid->Nc;j++){
-     ktop = grid->ctop[j];
+  // for(j=0;j<grid->Nc;j++){
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+     ktop = grid->ctop[i];
      // Make sure values beneath surface are zero
-      for(k=ktop;k<grid->Nk[j];k++)
-         A[j][k]=B[j][k]=0.0;
+      for(k=ktop;k<grid->Nk[i];k++)
+         A[i][k]=B[i][k]=0.0;
   
      // Set the flux terms in the top cell for the present time step
-     H0[j] = ( met->Hs[j] + met->Hl[j] + met->Hlw[j] );
+     H0[i] = ( met->Hs[i] + met->Hl[i] + met->Hlw[i] );
      
      // Calculate T+dt array
-     if(phys->dT[j]<=0.0){
-       phys->dT[j]=Min(-1e-4,phys->dT[j]);
+     if(phys->dT[i]<=0.0){
+       phys->dT[i]=Min(-1e-4,phys->dT[i]);
      }else{
-       phys->dT[j]=Max(1e-4,phys->dT[j]);
+       phys->dT[i]=Max(1e-4,phys->dT[i]);
      }
 	
-     phys->Ttmp[j][ktop] = phys->T[j][ktop] + phys->dT[j];
+     phys->Ttmp[i][ktop] = phys->T[i][ktop] + phys->dT[i];
    }
    
    // Evaluate flux terms when the temperature is T + dT
    updateAirSeaFluxes(prop, grid, phys, met, phys->Ttmp);
    
    // Evaluate the implicit source term
-   for(j=0;j<grid->Nc;j++){  
-     ktop = grid->ctop[j];
+  // for(j=0;j<grid->Nc;j++){  
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+     ktop = grid->ctop[i];
      
      // Put the temperature gradient flux terms into B
-     dHdT = ( (met->Hs[j] + met->Hl[j] + met->Hlw[j]) - H0[j]) / phys->dT[j];
+     dHdT = ( (met->Hs[i] + met->Hl[i] + met->Hlw[i]) - H0[i]) / phys->dT[i];
 	   
-     A[j][ktop] = H0[j] - dHdT * phys->T[j][ktop];
-     B[j][ktop] = -dHdT;
+     A[i][ktop] = H0[i] - dHdT * phys->T[i][ktop];
+     B[i][ktop] = -dHdT;
 
-     dztop = Max(dzmin_heatflux,grid->dzz[j][ktop]);
-     A[j][ktop]/=(rhocp*dztop);
-     B[j][ktop]/=(rhocp*dztop);
+     dztop = Max(dzmin_heatflux,grid->dzz[i][ktop]);
+     A[i][ktop]/=(rhocp*dztop);
+     B[i][ktop]/=(rhocp*dztop);
 
      // Evaluate the shortwave radiation terms and put into A
-     for(k=ktop;k<grid->Nk[j];k++) //loop for calculating the local depth (accounts for free surface) 
- 	depth = depth + grid->dzz[j][k]; 
+     for(k=ktop;k<grid->Nk[i];k++) //loop for calculating the local depth (accounts for free surface) 
+ 	depth = depth + grid->dzz[i][k]; 
      
      //if (depth<dztop)
      //	printf("Warning in sources.c: Depth at cell %d = %6.10f (<%6.10f)\n",j,depth,dztop);
@@ -420,11 +424,11 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      ksw1 = 1.0 / Min(prop->Lsw, 0.5*depth);
 
      z=0.0;
-     for(k=ktop;k<grid->Nk[j];k++) {
-       z-=grid->dzz[j][k]/2.0;
+     for(k=ktop;k<grid->Nk[i];k++) {
+       z-=grid->dzz[i][k]/2.0;
  
-       topface = z + grid->dzz[j][k]/2.0; //Depth of the top face of a cell from the surface
-       botface = z - grid->dzz[j][k]/2.0; //Depth of the bottom face of a cell from the surface
+       topface = z + grid->dzz[i][k]/2.0; //Depth of the top face of a cell from the surface
+       botface = z - grid->dzz[i][k]/2.0; //Depth of the bottom face of a cell from the surface
  
        wave1term1 = (exp(topface*ksw1) - exp(botface*ksw1))/(topface - botface);
        wave1term2 = (1.0/(1.0-exp(-2.0*depth*ksw1))) * (exp(-(2.0*depth - topface)*ksw1) - exp(-(2.0*depth - botface)*ksw1))/(topface - botface);
@@ -432,19 +436,28 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
  
        wave1 = wave1term1 + wave1term2 + wave1term3;
        
-       F_SW = wave1 * met->Hsw[j] / rhocp;
+       F_SW = wave1 * met->Hsw[i] / rhocp;
        
-       B[j][k] += 0.0;
-       A[j][k] += F_SW;
+       B[i][k] += 0.0;
+       A[i][k] += F_SW;
        
-       z-=grid->dzz[j][k]/2;
+       z-=grid->dzz[i][k]/2;
+
+       //Zero for Testing
+       //B[i][k] = 0.0;
+       //A[i][k] = 0.0;
+
      }
    }
- }else{
-  int i,k;
-    for(i=0;i<grid->Nc;i++)
-      for(k=0;k<grid->Nk[i];k++)
+ }else{ //Set flux terms to zero
+  int i,k,iptr;
+    //for(i=0;i<grid->Nc;i++)
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+      for(k=0;k<grid->Nk[i];k++){
 	A[i][k]=B[i][k]=0;
+      }
+    }
  }// End if
 } // End Heatsource
 

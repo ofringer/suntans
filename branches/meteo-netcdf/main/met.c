@@ -888,12 +888,54 @@ void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc){
     char *vname;
     size_t start[2];
     size_t count[]={1,1};
-    ptrdiff_t stride[]={1,1};
     
-    t0 = getTimeRec(prop->nctime,metin->time,metin->nt);
+    if(metin->t0==-1){
+	metin->t1 = getTimeRec(prop->nctime,metin->time,metin->nt);
+	metin->t0 = metin->t1-1;
+	metin->t2 = metin->t1+1;
+    }
+    t0 = metin->t0;
     
     //printf("Model time(0) = %f, time index = %d of %d\n",prop->nctime,t0,metin->nt);
-    
+    start[0] = t0;
+    start[1] = 0;
+    count[0] = NTmet;
+
+    vname = "Uwind";
+    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
+    count[1] = metin->NUwind;
+    nc_read_2D(prop->metncid,vname,start,count, metin->Uwind, myproc);
+
+    vname = "Vwind";
+    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
+    count[1] = metin->NVwind;
+    nc_read_2D(prop->metncid,vname,start,count, metin->Vwind, myproc);
+
+    vname = "Tair";
+    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
+    count[1] = metin->NTair;
+    nc_read_2D(prop->metncid,vname,start,count, metin->Tair, myproc); 
+
+    vname = "Pair";
+    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
+    count[1] = metin->NPair;
+    nc_read_2D(prop->metncid,vname,start,count, metin->Pair, myproc);
+
+    vname = "rain";
+    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
+    count[1] = metin->Nrain;
+    nc_read_2D(prop->metncid,vname,start,count, metin->rain, myproc);
+
+    vname = "RH";
+    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
+    count[1] = metin->NRH;
+    nc_read_2D(prop->metncid,vname,start,count, metin->RH, myproc);
+
+    vname = "cloud";
+    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
+    count[1] = metin->Ncloud;
+    nc_read_2D(prop->metncid,vname,start,count, metin->cloud, myproc);
+/*
     vname = "Uwind";
     if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
     if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
@@ -991,6 +1033,8 @@ void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc){
 	if(VERBOSE>3 && myproc==0) printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->cloud[k][j]); 
       }
     }
+    */
+
 //     count[0]=2;
 //     count[1]=metin->NRH;
 //     start[0]=t0;
@@ -1156,39 +1200,44 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
   
   /* Main function for updating the met structure and interpolating onto the model time step */
   
-  int j, t0; 
+  int j, t0, t1, t2; 
   REAL dt, r1, r2;
    
-  t0 = getTimeRec(prop->nctime,metin->time,metin->nt);
+  t1 = getTimeRec(prop->nctime,metin->time,metin->nt);
     
     /* Only interpolate the data onto the grid if need to*/
-    if (metin->t0!=t0){
-      if(VERBOSE>3 && myproc==0) printf("Updating netcdf variable at nc timestep: %d\n",t0);
+    if (metin->t1!=t1){
+      if(VERBOSE>3 && myproc==0) printf("Updating netcdf variable at nc timestep: %d\n",t1);
       /* Read in the data two time steps*/
 #ifdef USENETCDF	    
       ReadMetNC(prop, grid, metin, myproc);
 #endif
-      metin->t0=t0;
-      metin->t1=t0+1;
+      metin->t1=t1;
+      metin->t0=t1-1;
+      metin->t2=t1+1;
       
       /* Interpolate the two time steps onto the grid*/
-      weightInterpArray(metin->Uwind, metin->WUwind, grid->Nc, metin->NUwind, 2, met->Uwind_t);
-      weightInterpArray(metin->Vwind, metin->WVwind, grid->Nc, metin->NVwind, 2, met->Vwind_t);
-      weightInterpArray(metin->Tair, metin->WTair, grid->Nc, metin->NTair, 2, met->Tair_t);
-      weightInterpArray(metin->Pair, metin->WPair, grid->Nc, metin->NPair, 2, met->Pair_t);
-      weightInterpArray(metin->rain, metin->Wrain, grid->Nc, metin->Nrain, 2, met->rain_t);
-      weightInterpArray(metin->RH, metin->WRH, grid->Nc, metin->NRH, 2, met->RH_t);
-      weightInterpArray(metin->cloud, metin->Wcloud, grid->Nc, metin->Ncloud, 2, met->cloud_t);
+      weightInterpArray(metin->Uwind, metin->WUwind, grid->Nc, metin->NUwind, NTmet, met->Uwind_t);
+      weightInterpArray(metin->Vwind, metin->WVwind, grid->Nc, metin->NVwind, NTmet, met->Vwind_t);
+      weightInterpArray(metin->Tair, metin->WTair, grid->Nc, metin->NTair, NTmet, met->Tair_t);
+      weightInterpArray(metin->Pair, metin->WPair, grid->Nc, metin->NPair, NTmet, met->Pair_t);
+      weightInterpArray(metin->rain, metin->Wrain, grid->Nc, metin->Nrain, NTmet, met->rain_t);
+      weightInterpArray(metin->RH, metin->WRH, grid->Nc, metin->NRH, NTmet, met->RH_t);
+      weightInterpArray(metin->cloud, metin->Wcloud, grid->Nc, metin->Ncloud, NTmet, met->cloud_t);
     }
     
     /* Do a linear temporal interpolation */
-    dt = metin->time[metin->t1]-metin->time[metin->t0];
-    r2 = (prop->nctime - metin->time[metin->t0])/dt;
-    r1 = 1.0-r2;
+    //dt = metin->time[metin->t1]-metin->time[metin->t0];
+    //r2 = (prop->nctime - metin->time[metin->t0])/dt;
+    //r1 = 1.0-r2;
     
+    t0=metin->t0;
+    t1=metin->t1;
+    t2=metin->t2;
      //printf("tmod = %f, tlow = %f (r1=%f), thigh = %f (r2=%f)\n",prop->nctime, metin->time[metin->t0],r1,metin->time[metin->t1],r2);
     
     for (j=0;j<grid->Nc;j++){
+    /*
       met->Uwind[j] = met->Uwind_t[0][j]*r1 + met->Uwind_t[1][j]*r2;
       met->Vwind[j] = met->Vwind_t[0][j]*r1 + met->Vwind_t[1][j]*r2;
       met->Tair[j] = met->Tair_t[0][j]*r1 + met->Tair_t[1][j]*r2;
@@ -1196,7 +1245,16 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
       met->rain[j] = met->rain_t[0][j]*r1 + met->rain_t[1][j]*r2;
       met->RH[j] = met->RH_t[0][j]*r1 + met->RH_t[1][j]*r2;
       met->cloud[j] = met->cloud_t[0][j]*r1 + met->cloud_t[1][j]*r2;
-      
+    */
+       //Quadratic temporal interpolation
+       met->Uwind[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Uwind_t[0][j],met->Uwind_t[1][j],met->Uwind_t[2][j]);
+       met->Vwind[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Vwind_t[0][j],met->Vwind_t[1][j],met->Vwind_t[2][j]);
+       met->Tair[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Tair_t[0][j],met->Tair_t[1][j],met->Tair_t[2][j]);
+       met->Pair[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Pair_t[0][j],met->Pair_t[1][j],met->Pair_t[2][j]);
+       met->rain[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->rain_t[0][j],met->rain_t[1][j],met->rain_t[2][j]);
+       met->RH[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->RH_t[0][j],met->RH_t[1][j],met->RH_t[2][j]);
+       met->cloud[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->cloud_t[0][j],met->cloud_t[1][j],met->cloud_t[2][j]);
+
       /* Place bounds on rain, humidity and cloud variables */
        if (met->cloud[j]<0.0) 
 	 met->cloud[j]=0.0;
@@ -1215,9 +1273,8 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
 
 void AllocateMet(propT *prop, gridT *grid, metT **met , int myproc){
   /* Allocates memory to the meteorological structure array on the SUNTANS grid points*/
-  int j, k;
+  int j, k, n;
   int Nc = grid->Nc;
-  int nt = 2;
   
   if(VERBOSE>3 && myproc==0) printf("Allocating met structure...\n");
   *met = (metT *)SunMalloc(sizeof(metT),"AllocateMet");
@@ -1248,21 +1305,21 @@ void AllocateMet(propT *prop, gridT *grid, metT **met , int myproc){
   (*met)->Htmp = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
   (*met)->xtmp = (REAL *)SunMalloc(19*sizeof(REAL),"updateAirSeaFluxes"); 
 
-  (*met)->Uwind_t = (REAL **)SunMalloc(nt*sizeof(REAL *),"AllocateMet");
-  (*met)->Vwind_t = (REAL **)SunMalloc(nt*sizeof(REAL *),"AllocateMet");
-  (*met)->Tair_t = (REAL **)SunMalloc(nt*sizeof(REAL *),"AllocateMet");
-  (*met)->Pair_t = (REAL **)SunMalloc(nt*sizeof(REAL *),"AllocateMet");
-  (*met)->rain_t = (REAL **)SunMalloc(nt*sizeof(REAL *),"AllocateMet");
-  (*met)->RH_t = (REAL **)SunMalloc(nt*sizeof(REAL *),"AllocateMet");
-  (*met)->cloud_t = (REAL **)SunMalloc(nt*sizeof(REAL *),"AllocateMet");
-  for(j=0;j<nt;j++){
-      (*met)->Uwind_t[j] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");   
-      (*met)->Vwind_t[j] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
-      (*met)->Tair_t[j] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
-      (*met)->Pair_t[j] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
-      (*met)->rain_t[j] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
-      (*met)->RH_t[j] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
-      (*met)->cloud_t[j] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
+  (*met)->Uwind_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
+  (*met)->Vwind_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
+  (*met)->Tair_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
+  (*met)->Pair_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
+  (*met)->rain_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
+  (*met)->RH_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
+  (*met)->cloud_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
+  for(n=0;n<NTmet;n++){
+      (*met)->Uwind_t[n] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");   
+      (*met)->Vwind_t[n] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
+      (*met)->Tair_t[n] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
+      (*met)->Pair_t[n] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
+      (*met)->rain_t[n] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
+      (*met)->RH_t[n] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
+      (*met)->cloud_t[n] = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
   }
   
   for(k=0;k<Nc;k++){
@@ -1291,14 +1348,14 @@ void AllocateMet(propT *prop, gridT *grid, metT **met , int myproc){
       (*met)->EP[k] = 0.0;
       (*met)->Htmp[k] = 0.0;
       
-      for(j=0;j<nt;j++){
-	  (*met)->Uwind_t[j][k] = 0.0;
-	  (*met)->Vwind_t[j][k] = 0.0;
-	  (*met)->Tair_t[j][k] = 0.0;
-	  (*met)->Pair_t[j][k] = 0.0;
-	  (*met)->rain_t[j][k] = 0.0;
-	  (*met)->RH_t[j][k] = 0.0;
-	  (*met)->cloud_t[j][k] = 0.0;
+      for(n=0;n<NTmet;n++){
+	  (*met)->Uwind_t[n][k] = 0.0;
+	  (*met)->Vwind_t[n][k] = 0.0;
+	  (*met)->Tair_t[n][k] = 0.0;
+	  (*met)->Pair_t[n][k] = 0.0;
+	  (*met)->rain_t[n][k] = 0.0;
+	  (*met)->RH_t[n][k] = 0.0;
+	  (*met)->cloud_t[n][k] = 0.0;
       }  
   }
   for(j=0;j<19;j++){
@@ -1308,7 +1365,7 @@ void AllocateMet(propT *prop, gridT *grid, metT **met , int myproc){
   
 void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
   /* Allocates memory to the meteorological input structure array*/
-  int j, k, retval;
+  int j, k, n, retval;
   size_t NUwind;
   size_t NVwind;
   size_t NTair;
@@ -1343,9 +1400,9 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
   (*metin)->Ncloud = 1;
   (*metin)->nt = 1;
 #endif
-  (*metin)->t0 = -999;
-  (*metin)->t1 = -999;
-  
+  (*metin)->t0 = -1;
+  (*metin)->t1 = -1;
+  (*metin)->t2 = -1;
  
   
   NUwind = (*metin)->NUwind;
@@ -1411,22 +1468,22 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       (*metin)->Wcloud[j] = (REAL *)SunMalloc(Ncloud*sizeof(REAL),"AllocateMetIn");
   }
   
-  /* Allocate the 2-D variable data (2 time steps)*/
-  (*metin)->Uwind = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocateMetIn");
-  (*metin)->Vwind = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocateMetIn");
-  (*metin)->Tair = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocateMetIn");
-  (*metin)->Pair = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocateMetIn");
-  (*metin)->rain = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocateMetIn");
-  (*metin)->RH = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocateMetIn");
-  (*metin)->cloud = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocateMetIn");
-  for(j=0;j<2;j++){
-      (*metin)->Uwind[j] = (REAL *)SunMalloc(NUwind*sizeof(REAL),"AllocateMetIn");   
-      (*metin)->Vwind[j] = (REAL *)SunMalloc(NVwind*sizeof(REAL),"AllocateMetIn");
-      (*metin)->Tair[j] = (REAL *)SunMalloc(NTair*sizeof(REAL),"AllocateMetIn");
-      (*metin)->Pair[j] = (REAL *)SunMalloc(NPair*sizeof(REAL),"AllocateMetIn");
-      (*metin)->rain[j] = (REAL *)SunMalloc(Nrain*sizeof(REAL),"AllocateMetIn");
-      (*metin)->RH[j] = (REAL *)SunMalloc(NRH*sizeof(REAL),"AllocateMetIn");
-      (*metin)->cloud[j] = (REAL *)SunMalloc(Ncloud*sizeof(REAL),"AllocateMetIn");
+  /* Allocate the 2-D variable data (NTmet time steps)*/
+  (*metin)->Uwind = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMetIn");
+  (*metin)->Vwind = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMetIn");
+  (*metin)->Tair = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMetIn");
+  (*metin)->Pair = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMetIn");
+  (*metin)->rain = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMetIn");
+  (*metin)->RH = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMetIn");
+  (*metin)->cloud = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMetIn");
+  for(n=0;n<NTmet;n++){
+      (*metin)->Uwind[n] = (REAL *)SunMalloc(NUwind*sizeof(REAL),"AllocateMetIn");   
+      (*metin)->Vwind[n] = (REAL *)SunMalloc(NVwind*sizeof(REAL),"AllocateMetIn");
+      (*metin)->Tair[n] = (REAL *)SunMalloc(NTair*sizeof(REAL),"AllocateMetIn");
+      (*metin)->Pair[n] = (REAL *)SunMalloc(NPair*sizeof(REAL),"AllocateMetIn");
+      (*metin)->rain[n] = (REAL *)SunMalloc(Nrain*sizeof(REAL),"AllocateMetIn");
+      (*metin)->RH[n] = (REAL *)SunMalloc(NRH*sizeof(REAL),"AllocateMetIn");
+      (*metin)->cloud[n] = (REAL *)SunMalloc(Ncloud*sizeof(REAL),"AllocateMetIn");
   }
 //   (*metin)->Uwind = (REAL **)SunMalloc(NUwind*sizeof(REAL *),"AllocateMetIn");
 //   (*metin)->Vwind = (REAL **)SunMalloc(NVwind*sizeof(REAL *),"AllocateMetIn");
@@ -1460,8 +1517,8 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->WUwind[k][j]=0.0;
       }
-       for(k=0;k<2;k++){
-	 (*metin)->Uwind[k][j]=0.0;
+       for(n=0;k<NTmet;n++){
+	 (*metin)->Uwind[n][j]=0.0;
       }
   }  
   if(VERBOSE>2 && myproc==0) printf("Vwind, nj = %d, Nc = %d...\n",(*metin)->NVwind,grid->Nc);
@@ -1472,8 +1529,8 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->WVwind[k][j]=0.0;
       }
-       for(k=0;k<2;k++){
-	 (*metin)->Vwind[k][j]=0.0;
+       for(n=0;n<NTmet;n++){
+	 (*metin)->Vwind[n][j]=0.0;
       }
   }  
   if(VERBOSE>2 && myproc==0) printf("Tair, nj = %d, Nc = %d...\n",(*metin)->NTair,grid->Nc);
@@ -1484,8 +1541,8 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->WTair[k][j]=0.0;
       }
-       for(k=0;k<2;k++){
-	 (*metin)->Tair[k][j]=0.0;
+       for(n=0;n<NTmet;n++){
+	 (*metin)->Tair[n][j]=0.0;
       }
   }  
   if(VERBOSE>2 && myproc==0) printf("Pair, nj = %d, Nc = %d...\n",(*metin)->NPair,grid->Nc);
@@ -1495,8 +1552,8 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->WPair[k][j]=0.0;
       }
-       for(k=0;k<2;k++){
-	 (*metin)->Pair[k][j]=0.0;
+       for(n=0;n<NTmet;n++){
+	 (*metin)->Pair[n][j]=0.0;
       }
   }  
   if(VERBOSE>2 && myproc==0) printf("rain, nj = %d, Nc = %d...\n",(*metin)->Nrain,grid->Nc);
@@ -1506,8 +1563,8 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->Wrain[k][j]=0.0;
       }
-       for(k=0;k<2;k++){
-	 (*metin)->rain[k][j]=0.0;
+       for(n=0;n<NTmet;n++){
+	 (*metin)->rain[n][j]=0.0;
       }
   }  
   if(VERBOSE>2 && myproc==0) printf("RH, nj = %d, Nc = %d...\n",(*metin)->NRH,grid->Nc);
@@ -1518,8 +1575,8 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->WRH[k][j]=0.0;
       }
-       for(k=0;k<2;k++){
-	 (*metin)->RH[k][j]=0.0;
+       for(n=0;n<NTmet;n++){
+	 (*metin)->RH[n][j]=0.0;
       }
   }  
   if(VERBOSE>2 && myproc==0) printf("cloud, nj = %d, Nc = %d...\n",(*metin)->Ncloud,grid->Nc);
@@ -1529,8 +1586,8 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->Wcloud[k][j]=0.0;
       }
-       for(k=0;k<2;k++){
-	 (*metin)->cloud[k][j]=0.0;
+       for(n=0;n<NTmet;n++){
+	 (*metin)->cloud[n][j]=0.0;
       }
   }
   if(VERBOSE>2 && myproc==0) printf("time, nt = %d ...\n",(*metin)->nt);
@@ -1757,7 +1814,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
   * Computed terms are stored in the met structure array
   */ 
   
-  int j, ktop, iptr, n;
+  int i, ktop, iptr, n;
   int Nc = grid->Nc;
   REAL *x=met->xtmp; // pointer to vector passed to cor30
   REAL Umag; // Wind Speed magnitude
@@ -1797,12 +1854,12 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
 
   
   //if(myproc==0) printf(" j, Hs, Hl, tau, Hlw, Hsw\n"); 
-  for(j=0;j<Nc;j++){
-// for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-//    j = grid->cellp[iptr];  
-    ktop = grid->ctop[j];
+ // for(j=0;j<Nc;j++){
+ for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];  
+    ktop = grid->ctop[i];
     // Wind speed
-    Umag = sqrt( pow( (met->Uwind[j]-phys->uc[j][ktop]) ,2) + pow( (met->Vwind[j]-phys->vc[j][ktop]),2) );
+    Umag = sqrt( pow( (met->Uwind[i]-phys->uc[i][ktop]) ,2) + pow( (met->Vwind[i]-phys->vc[i][ktop]),2) );
     //Umag = sqrt( pow(met->Uwind[j],2) + pow(met->Vwind[j],2) );
     x[0] = Umag;
 
@@ -1812,39 +1869,39 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     //x[1] = fabs(phys->uc[j][ktop]*met->Uwind[j]/Umag + phys->vc[j][ktop]*met->Vwind[j]/Umag); 
 
     // Water temperature
-    x[2] = T[j][ktop];
+    x[2] = T[i][ktop];
     
     // Air temperature
-    x[3] = met->Tair[j];
+    x[3] = met->Tair[i];
     
     // Water specific humidty
-    x[4] = qsat(T[j][0], met->Pair[j]);
+    x[4] = qsat(T[i][0], met->Pair[i]);
     
     // Air specific humidity
-    x[5] = specifichumidity(met->RH[j],met->Tair[j],met->Pair[j]);
+    x[5] = specifichumidity(met->RH[i],met->Tair[i],met->Pair[i]);
     
     // Longwave radiation
-    met->Hlw[j] = longwave(met->Tair[j],T[j][ktop],met->cloud[j]);
-    x[6] = met->Hlw[j];
+    met->Hlw[i] = longwave(met->Tair[i],T[i][ktop],met->cloud[i]);
+    x[6] = met->Hlw[i];
     
     // Shortwave radiation
-    met->Hsw[j] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[j]);
-    x[7] = met->Hsw[j];
+    met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i]);
+    x[7] = met->Hsw[i];
     
     //rain [mm/hr] (rain heat flux is not included at the moment)
-    x[8] = met->rain[j]*3600;
+    x[8] = met->rain[i]*3600;
     
     //Air pressure [mb]
-    x[10] = met->Pair[j];
+    x[10] = met->Pair[i];
     
     //wind speed height
-    x[11] = met->z_Uwind[j];
+    x[11] = met->z_Uwind[i];
     
     //air temp height
-    x[12] = met->z_Tair[j];
+    x[12] = met->z_Tair[i];
     
     //humidity measurement height
-    x[13] = met->z_RH[j];
+    x[13] = met->z_RH[i];
     
      //Set some constant values
      x[9] = 600.0; 
@@ -1879,11 +1936,11 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
       x[18] = ug;
       */
       // Output the fluxes to the met structure array
-      met->Hs[j] = -x[0];//Note the change of sign
-      met->Hl[j] = -x[1];
-      met->ustar[j] = x[7];//These are not used at present
-      met->Tstar[j] = x[8];
-      met->qstar[j] = x[9];
+      met->Hs[i] = -x[0];//Note the change of sign
+      met->Hl[i] = -x[1];
+      met->ustar[i] = x[7];//These are not used at present
+      met->Tstar[i] = x[8];
+      met->qstar[i] = x[9];
     
       /* Calculate the wind stress components
       * tau_x = rhoa * Cd * S * (Ucurrent - Uwind) : Fairall et al, 1996
@@ -1894,8 +1951,8 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
       //met->tau_x[j] = x[6] * x[15] * x[14] * (met->Uwind[j] - phys->uc[j][ktop]);
       //met->tau_y[j] = x[6] * x[15] * x[14] * (met->Vwind[j] - phys->vc[j][ktop]);
       // No gust speed in stress term
-      met->tau_x[j] = x[6] * x[15] * Umag * (met->Uwind[j] - phys->uc[j][ktop]);
-      met->tau_y[j] = x[6] * x[15] * Umag * (met->Vwind[j] - phys->vc[j][ktop]);
+      met->tau_x[i] = x[6] * x[15] * Umag * (met->Uwind[i] - phys->uc[i][ktop]);
+      met->tau_y[i] = x[6] * x[15] * Umag * (met->Vwind[i] - phys->vc[i][ktop]);
 
       //No surface current dependence 
       //met->tau_x[j] = x[6] * x[15] * x[14] * met->Uwind[j];
@@ -1905,22 +1962,24 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
       //printf("%10.6f, %10.6f, %10.6f, %10.6f\n",x[6],x[15],x[14],met->Vwind[j]);
 
     }else if(prop->metmodel==3){// Compute fluxes with constant parameters
-      met->Hs[j] = - rhoa * cp * Ch * Umag * (x[2] - x[3]);
-      met->Hl[j] = - rhoa * Lv * Ce * Umag * (x[4] - x[5]);
-      met->tau_x[j] = rhoa * Cd * Umag * (met->Uwind[j] - phys->uc[j][ktop]); 
-      met->tau_y[j] = rhoa * Cd * Umag * (met->Vwind[j] - phys->vc[j][ktop]);
+      met->Hs[i] = - rhoa * cp * Ch * Umag * (x[2] - x[3]);
+      met->Hl[i] = - rhoa * Lv * Ce * Umag * (x[4] - x[5]);
+      met->tau_x[i] = rhoa * Cd * Umag * (met->Uwind[i] - phys->uc[i][ktop]); 
+      met->tau_y[i] = rhoa * Cd * Umag * (met->Vwind[i] - phys->vc[i][ktop]);
     }
+
+
     // Check for nans and dump the inputs
     for(n=0;n<19;n++){
     	if(x[n]!=x[n]){
-	   printf("Error in COARE3.0 Algorithm at j = %d, x[%d] = nan.\n",j,n);
-	   printf("Uwind[%d] = %6.10f, z_Uwind = %6.10f m\n",j,met->Uwind[j],met->z_Uwind[j]);
-	   printf("Vwind[%d] = %6.10f, z_Vwind = %6.10f m\n",j,met->Vwind[j],met->z_Vwind[j]);
-	   printf("Tair[%d] = %6.10f, z_Tair = %6.10f m\n",j,met->Tair[j],met->z_Tair[j]);
-	   printf("Pair[%d] = %6.10f\n",j,met->Pair[j]);
-	   printf("rain[%d] = %6.10f\n",j,met->rain[j]);
-	   printf("RH[%d] = %6.10f, z_RH = %6.10f m\n",j,met->RH[j],met->z_RH[j]);
-	   printf("cloud[%d] = %6.10f\n",j,met->cloud[j]);
+	   printf("Error in COARE3.0 Algorithm at i = %d, x[%d] = nan.\n",i,n);
+	   printf("Uwind[%d] = %6.10f, z_Uwind = %6.10f m\n",i,met->Uwind[i],met->z_Uwind[i]);
+	   printf("Vwind[%d] = %6.10f, z_Vwind = %6.10f m\n",i,met->Vwind[i],met->z_Vwind[i]);
+	   printf("Tair[%d] = %6.10f, z_Tair = %6.10f m\n",i,met->Tair[i],met->z_Tair[i]);
+	   printf("Pair[%d] = %6.10f\n",i,met->Pair[i]);
+	   printf("rain[%d] = %6.10f\n",i,met->rain[i]);
+	   printf("RH[%d] = %6.10f, z_RH = %6.10f m\n",i,met->RH[i],met->z_RH[i]);
+	   printf("cloud[%d] = %6.10f\n",i,met->cloud[i]);
 	   MPI_Finalize();
 	   exit(EXIT_FAILURE);
 	}
