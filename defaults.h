@@ -7,11 +7,8 @@
  *
  * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
  * University. All Rights Reserved.
- * 
+ *
  */
-
-//added maxFaces_default=3
-
 #include "suntans.h"
 #include "phys.h"
 
@@ -98,6 +95,16 @@ const int ntoutStore_DEFAULT = 0;
 */
 const int AB_DEFAULT = 2;
 
+/* conserveMomentum
+   Use conservative momentum advection scheme by default.
+*/
+const int conserveMomentum_DEFAULT = 1;
+
+/* thetaM
+   Implicit vertical advection of horizontal momentum when thetaM>0.5.
+   A value of -1 implies that the original conservative scheme is used in UPredictor().
+*/
+const REAL thetaM_DEFAULT = -1;
 
 /* TVDmomentum
    TVD for advection of momentum, default is vanleer

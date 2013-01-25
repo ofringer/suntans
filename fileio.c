@@ -310,7 +310,15 @@ double GetDefaultValue(char *str, int *status) {
 
     return smoothbot_DEFAULT;
 
-  } else {
+ } else if(!strcmp(str,"conserveMomentum")){
+    
+    return conserveMomentum_DEFAULT;
+ 
+ } else if(!strcmp(str,"thetaM")){
+    
+    return thetaM_DEFAULT;
+ 
+ } else {
     *status=0;
     return 0;
   }

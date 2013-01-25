@@ -82,6 +82,7 @@ static void FreeGrid(gridT *grid, int numprocs);
 static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs);
 static inline void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int *nfaces, int maxfaces, int Nc, int Ne);
 static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfaces, int maxfaces, int Nc);
+static inline void Reordergradf(int *face, int *grad, int *gradf, int *nfaces, int maxfaces, int Nc, int Ne);
 static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int myproc);
 static inline void CreateNormalArray(int *grad, int *face, int *normal, int *nfaces, int maxfaces, int Nc);
 static inline void CreateArray(int *grad, int *gradf, int *neigh, int *face, 
@@ -109,7 +110,7 @@ static int GetNk(REAL *dz, REAL localdepth, int Nkmax);
  */
 void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
 {
-  int Np, Ne, Nc, numcorr, maxFaces;
+  int Np, Ne, Nc, numcorr, maxFaces, i;
   gridT *maingrid;
 
   // read in all the filenames from the suntans.dat file
@@ -1196,6 +1197,9 @@ static inline void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face,
   for(n=0;n<Nc;n++)
     for(nf=0;nf<nfaces[n];nf++)
       face[n*maxfaces+nf]=-1; 
+  //for(n=0;n<Ne;n++)
+  //  for(j=0;j<2;j++)
+  //    gradf[2*n+j]=-1;
 
   // over each edge
   for(n=0;n<Ne;n++) {
@@ -1254,6 +1258,29 @@ static inline void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face,
 }
 
 /*
+ * Function: Reordergradf
+ * usage: reorder gradf according to face after reordercellpoints
+ * --------------------------------------------------------------
+ * make gradf cosistent with faces
+ *
+ */
+static inline void Reordergradf(int *face, int *grad, int *gradf, int *nfaces, int maxfaces, int Nc, int Ne){
+  int i, j, k, nc;
+  for(i=0;i<Ne;i++){
+     for(j=0;j<2;j++){
+       nc=grad[i*2+j];
+       if(nc!=-1){
+         for(k=0;k<nfaces[nc];k++){
+            if(i==face[nc*maxfaces+k])
+              gradf[2*i+j]=k;
+              break;
+         }
+       }
+     }
+  }
+}
+
+/*
  * Function: ReorderCellPoints
  * Usage: ReorderCellPoints(face, cells,  Nc)
  * ------------------------------------------
@@ -1267,7 +1294,7 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
   // based on organization of cells (i.e. we will change cells (pointers to the nodes)
   // to be consistent with the existing edge order for interpolation
 
-  int n1[2], n2[2]; int nc, nf, e1, e2, sharednode;
+  int n1[2], n2[2], e3[maxfaces]; int nc, nf, e1, e2, sharednode, i;
   // over each cell
   for(nc=0; nc<Nc; nc++) {
     // consider each face in a cycle
@@ -1285,11 +1312,19 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
 
       // compare nodes to find first value for cells
       sharednode = SharedListValue(n1, n2, 2);
+      //if edge is not clockwise or counter-clockwise 
+      //exchang with the next one
+      if(sharednode==-1){
+         for(i=0;i<(nfaces[nc]-1-nf);i++)
+           e3[i]=face[nc*maxfaces+nf+1+i];
+         for(i=0;i<(nfaces[nc]-2-nf);i++)
+           face[nc*maxfaces+nf+1+i]=e3[i+1];
+         face[nc*maxfaces+nfaces[nc]-1]=e3[0];
+         nf=nf-1;
+      }
       // check for match
       if(sharednode != -1) 
         cells[maxfaces*nc + (nf+1)]  = sharednode;
-      else
-      printf("Error as sharednode in %s not found\n", "ReorderCellPoints");
 
     }
     // consider last pairs of touching faces in cycle
@@ -1303,6 +1338,7 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
 
     // 0th (1st) nodal point will be shared node
     sharednode = SharedListValue(n1, n2, 2);
+
     // check for match
     if(sharednode != -1)
       cells[maxfaces*nc  ]  = sharednode;
@@ -1525,9 +1561,14 @@ void Connectivity(gridT *grid, int myproc)
   // pointers to the face number of given cell corresponding to given edge 
   // (grid->gradf[2*Ne])
   CreateFaceArray(grid->grad,grid->gradf,grid->neigh,grid->face,grid->nfaces,grid->maxfaces,grid->Nc,grid->Ne);
+
   // printf("faces is %d", grid->face[99]);
   // reorder the cell points so that they have structure for use in interpolation
+  // now reordercellpoints may reorder face, so gradf should be reordered
   ReorderCellPoints(grid->face, grid->edges, grid->cells, grid->nfaces, grid->maxfaces, grid->Nc);
+
+  // reorder gradf
+  Reordergradf(grid->face, grid->grad, grid->gradf, grid->nfaces, grid->maxfaces, grid->Nc, grid->Ne);
   // create dot product of unique normal with outward normal
   // (grid->normal[NFACES*Ne]) (always +/- 1)
   CreateNormalArray(grid->grad,grid->face,grid->normal,grid->nfaces,grid->maxfaces,grid->Nc);
@@ -3862,8 +3903,10 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
 
   CreateFaceArray((*localgrid)->grad,(*localgrid)->gradf,(*localgrid)->neigh,
       (*localgrid)->face,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc,(*localgrid)->Ne);
+  
   ReorderCellPoints((*localgrid)->face,(*localgrid)->edges,(*localgrid)->cells,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc);
-
+  // there is no need to use Reordergradf here because face and gradf is already in order for maingrid 
+  
   CreateNormalArray((*localgrid)->grad,(*localgrid)->face,(*localgrid)->normal,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc);
 
   // create node array which will keep track of all nodal neighboors
@@ -4336,11 +4379,20 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
     tmag = sqrt(tx*tx+ty*ty);
     tx = tx/tmag;
     ty = ty/tmag;
+    //corrected part to make we can calculate xe and ye when grad[2n]==1
+    if((*grid)->grad[2*n]>=0){
     xdott = ((*grid)->xv[(*grid)->grad[2*n]]-maingrid->xp[p1])*tx+
       ((*grid)->yv[(*grid)->grad[2*n]]-maingrid->yp[p1])*ty;
     (*grid)->xe[n] = maingrid->xp[p1]+xdott*tx;
     (*grid)->ye[n] = maingrid->yp[p1]+xdott*ty;
-
+    }
+    else{
+    xdott = ((*grid)->xv[(*grid)->grad[2*n+1]]-maingrid->xp[p1])*tx+
+      ((*grid)->yv[(*grid)->grad[2*n+1]]-maingrid->yp[p1])*ty;
+    (*grid)->xe[n] = maingrid->xp[p1]+xdott*tx;
+    (*grid)->ye[n] = maingrid->yp[p1]+xdott*ty;
+    }
+    
     // This is the midpoint of the edge and is not used.
     /*
     (*grid)->xe[n] = 0.5*(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
@@ -4741,7 +4793,7 @@ static void VoronoiStats(gridT *grid) {
   for(n=0;n<grid->Ne;n++) {
     nc1=grid->grad[2*n];
     nc2=grid->grad[2*n+1];
-    if(nc2>=0) {
+    if(nc1>=0 && nc2>=0) {
       dg[numdg] = sqrt(pow(grid->xv[nc1]-grid->xv[nc2],2)+
 		       pow(grid->yv[nc2]-grid->yv[nc1],2));
       numdg++;

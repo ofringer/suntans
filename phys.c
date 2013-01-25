@@ -99,6 +99,8 @@ static REAL HFaceFlux(int j, int k, REAL *phi, REAL **u, gridT *grid, REAL dt,
 static void SetDensity(gridT *grid, physT *phys, propT *prop);
 //static void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
 void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
+static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop,
+				  MPI_Comm comm, int myproc, int nonlinear);
 
 /*
  * Function: AllocatePhysicalVariables
@@ -119,6 +121,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->u = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->uc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->vc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->wc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
 
   // new variables for higher-order interpolation following Wang et al 2011
   (*phys)->nRT1u = (REAL ***)SunMalloc(Np*sizeof(REAL **),"AllocatePhysicalVariables");
@@ -139,8 +142,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->Cn_U2 = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables"); //AB3
 
 
-  (*phys)->wf = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
-
   // for each variable in plan consider the number of layers it affects
   for(j=0;j<Ne;j++) {
     // the following line seems somewhat dubious...
@@ -155,7 +156,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->ut[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_U[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_U2[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");//AB3
-    (*phys)->wf[j] = (REAL *)SunMalloc(grid->Nkc[j]*sizeof(REAL),"AllocatePhysicalVariables");
     /* new interpolation variables */
     // loop over the edges (Nkc vs Nke since for cells Nkc < ik < Nke there should be 0 velocity
     // on face to prevent mass from leaving the system)
@@ -239,6 +239,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   for(i=0;i<Nc;i++) {
     (*phys)->uc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->vc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->wc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->uold[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->vold[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->w[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables");
@@ -367,13 +368,13 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     free(phys->ut[j]);
     free(phys->Cn_U[j]);
     free(phys->Cn_U2[j]); //AB3
-    free(phys->wf[j]);
   }
 
   // free all the arrays over depth for cell-oriented
   for(i=0;i<Nc;i++) {
     free(phys->uc[i]);
     free(phys->vc[i]);
+    free(phys->wc[i]);
     free(phys->uold[i]);
     free(phys->vold[i]);
     free(phys->w[i]);
@@ -390,8 +391,8 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     free(phys->T[i]);
     free(phys->s0[i]);
     free(phys->rho[i]);
-    free(phys->Cn_R[i]);
-    free(phys->Cn_T[i]);
+   // free(phys->Cn_R[i]);
+   // free(phys->Cn_T[i]);
     if(prop->turbmodel==1) {
       free(phys->Cn_q[i]);
       free(phys->Cn_l[i]);
@@ -415,13 +416,13 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   free(phys->hfcoef);
   free(phys->uc);
   free(phys->vc);
+  free(phys->wc);
   free(phys->w);
   free(phys->wnew);
   free(phys->wtmp);
   free(phys->wtmp2);
   free(phys->Cn_W);
   free(phys->Cn_W2); //AB3
-  free(phys->wf);
   free(phys->q);
   free(phys->qc);
   free(phys->qtmp);
@@ -499,7 +500,7 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
 
   if(VERBOSE>1 && myproc==0) printf("Reading from rstore...\n");
   //fixdzz
-  UpdateDZ(grid,phys,prop,-1);  // set h=0 at first
+  UpdateDZ(grid,phys,prop,-1); 
 
   if(fread(&(prop->nstart),sizeof(int),1,prop->StartFID) != 1)
     printf("Error reading prop->nstart\n");
@@ -699,15 +700,13 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
           grid->xe[j],grid->ye[j],grid->n1[j],grid->n2[j],z);
       z-=grid->dz[k]/2;
     }
-    for(k=0;k<grid->Nke[j];k++)
-      phys->wf[j][k]=0;
   }
- 
+
   // Need to compute the velocity vectors at the cell centers based
   // on the initialized velocities at the faces.
   ComputeUC(phys->uc, phys->vc, phys, grid, myproc, prop->interp);
   ComputeUC(phys->uold, phys->vold, phys, grid, myproc, prop->interp);
-  
+
   // send and receive interprocessor data
   ISendRecvCellData3D(phys->uc,grid,myproc,comm);
   ISendRecvCellData3D(phys->vc,grid,myproc,comm);
@@ -835,7 +834,7 @@ void InitializeVerticalGrid(gridT **grid,int myproc)
  * the bottom bathymetry.  That is, if the free surface cuts through cells and leaves
  * any cells dry (or wet), then this function will set the vertical grid spacing 
  * accordingly.
- * If option==-1, set the surface h=0;
+ *
  * If option==1, then it assumes this is the first call and sets dzzold to dzz at
  *   the end of this function.
  * Otherwise it sets dzzold to dzz at the beginning of the function and updates dzz
@@ -1043,8 +1042,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
 
   // Print out memory usage per processor and total memory if this is the first time step
-  if(VERBOSE>2) MemoryStats(grid,myproc,numprocs,comm);
-  
+ if(VERBOSE>2) MemoryStats(grid,myproc,numprocs,comm);
+
   // initialize theta0
   prop->theta0=prop->theta;
 
@@ -1059,32 +1058,26 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
   // get the boundary velocities (boundaries.c)
   BoundaryVelocities(grid,phys,prop,myproc); 
-  
   // get the openboundary flux (boundaries.c)
   OpenBoundaryFluxes(NULL,phys->u,NULL,grid,phys,prop);
-  
   // get the boundary scalars (boundaries.c)
   BoundaryScalars(grid,phys,prop);
- 
   // get the windstress (boundaries.c)
   WindStress(grid,phys,prop,myproc);
-  
   // set the height of the face bewteen cells to compute the flux
   SetFluxHeight(grid,phys,prop);
-
   // set the drag coefficients for bottom friction
   SetDragCoefficients(grid,phys,prop);
-  
   // for laxWendroff and central differencing- compute the numerical diffusion 
   // coefficients required for stability
   if(prop->laxWendroff && prop->nonlinear==2) LaxWendroff(grid,phys,prop,myproc,comm);
-  
+
   // Initialize the Sponge Layer
   InitSponge(grid,myproc);
-  
+
   // main time loop
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
-
+    
     prop->n = n;
     // compute the runtime 
     prop->rtime = n*prop->dt;
@@ -1108,7 +1101,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       t0=Timer();
       // get the flux height (since free surface is changing) which is stored in dzf
       SetFluxHeight(grid,phys,prop);
-     
       // laxWendroff central differencing
       if(prop->laxWendroff && prop->nonlinear==2) 
         LaxWendroff(grid,phys,prop,myproc,comm);
@@ -1121,10 +1113,9 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
        * 5) Horizontal laminar+turbulent diffusion of horizontal momentum
        */
       HorizontalSource(grid,phys,prop,myproc,numprocs,comm);
-      
       // compute the time required for the source
       t_source+=Timer()-t0;
-
+ 
       // Use the explicit part created in HorizontalSource and solve for the 
       // free-surface
       // and hence compute the predicted or hydrostatic horizontal velocity field.  Then
@@ -1135,16 +1126,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // compute U^* and h^* (Eqn 40 and Eqn 31)
       UPredictor(grid,phys,prop,myproc,numprocs,comm);
       ISendRecvCellData2D(phys->h,grid,myproc,comm);
-      
-      // Adjust the velocity field in the new cells if the newcells variable is set 
-      // to 1 in suntans.dat.  Once this is done, send the interprocessor 
-      // u-velocities to the neighboring processors.
-      if(prop->newcells) {
-        NewCells(grid,phys,prop);
-        ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
-      }
       t_predictor+=Timer()-t0;
-
+      
       t0=Timer();
       blowup = CheckDZ(grid,phys,prop,myproc,numprocs,comm);
       t_check+=Timer()-t0;
@@ -1157,7 +1140,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       t0=Timer();
       EddyViscosity(grid,phys,prop,phys->wnew,comm,myproc);
       t_turb+=Timer()-t0;
-
+      
       // Update the salinity only if beta is nonzero in suntans.dat
       if(prop->beta) {
         t0=Timer();
@@ -1167,20 +1150,19 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
         ISendRecvCellData3D(phys->s,grid,myproc,comm);
         t_transport+=Timer()-t0;
       }
-
+      
       // Update the temperature only if gamma is nonzero in suntans.dat
       if(prop->gamma) {
         t0=Timer();
 
         HeatSource(phys->wtmp,phys->uold,grid,phys,prop);
-
         UpdateScalars(grid,phys,prop,phys->wnew,phys->T,phys->boundary_T,phys->Cn_T,
             prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->theta,
             phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDtemp);
         ISendRecvCellData3D(phys->T,grid,myproc,comm);
         t_transport+=Timer()-t0;
       }
-
+     
       // Compute vertical momentum and the nonhydrostatic pressure
       t0=Timer();
       if(prop->nonhydrostatic && !blowup) {
@@ -1244,6 +1226,14 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       ISendRecvCellData3D(phys->vc,grid,myproc,comm);
     }
 
+    // Adjust the velocity field in the new cells if the newcells variable is set 
+    // to 1 in suntans.dat.  Once this is done, send the interprocessor 
+    // u-velocities to the neighboring processors.
+    if(prop->newcells) {
+      NewCells(grid,phys,prop);
+      ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
+    }
+
     // Check whether or not run is blowing up
     t0=Timer();
     blowup=(Check(grid,phys,prop,myproc,numprocs,comm) || blowup);
@@ -1258,6 +1248,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
     if(blowup)
       break;
+
   }
 }
 
@@ -1323,7 +1314,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
   // Adams-Bashforth terms at time step n-1
 
  // Adams Bashforth coefficients
-  if(prop->n==1) {
+  if(prop->n==1 || prop->wetdry) {
     fab1=1;
     fab2=fab3=0;
 
@@ -1455,124 +1446,30 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
   // Compute Eulerian advection of momentum (nonlinear!=0)
   if(prop->nonlinear) {
 
-    // U-fluxes at boundary cells --> V-fluxes handled after we take care of x-component here
-    // for open boundary conditions of type 2
-    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-      j = grid->edgep[jptr];
-      i = grid->grad[2*j];
+    // Interpolate uc to faces and place into ut
+    GetMomentumFaceValues(phys->ut,phys->uc,phys->boundary_u,phys->u,grid,phys,prop,comm,myproc,prop->nonlinear);
 
-      for(k=grid->etop[j];k<grid->Nke[j];k++) {
-        if(phys->utmp2[j][k]>0)
-          phys->ut[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->dzf[j][k];
-        else
-          phys->ut[j][k]=phys->uc[i][k]*grid->dzf[j][k];
+    // Conservative method assumes ut is a flux
+    if(prop->conserveMomentum)
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
+	j=grid->edgep[jptr];
+
+	for(k=grid->etop[j];k<grid->Nke[j];k++)
+	  phys->ut[j][k]*=grid->dzf[j][k];
       }
-    }
-
-    // type 4 boundary conditions used for no slip 
-    // but typically we think of no-slip boundary conditions as 
-    // not having flux across them, so this is more general
-    for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-      j = grid->edgep[jptr];
-
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-        phys->ut[j][k]=phys->boundary_u[jptr-grid->edgedist[2]][k]*grid->dzf[j][k];
-    }
-
-    // Compute the u-component fluxes at the faces
-    
-    if(prop->nonlinear==5) //use tvd for advection of momemtum
-      HorizontalFaceScalars(grid,phys,prop,phys->uc,phys->boundary_u,prop->TVDmomentum,comm,myproc);
-
-    // over each of the "computational" cells
-    // Compute the u-component fluxes at the faces
-    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-      j = grid->edgep[jptr];
-
-      nc1 = grid->grad[2*j];
-      nc2 = grid->grad[2*j+1];
-
-      // figure out which column adjacent to edge is limiter for the
-      // top of the cell (cells much share face to have flux)
-      if(grid->ctop[nc1]>grid->ctop[nc2])
-        kmin = grid->ctop[nc1];
-      else
-        kmin = grid->ctop[nc2];
-
-      for(k=0;k<kmin;k++)
-        phys->ut[j][k]=0;
-
-      // compute mass flow rate by interpolating the velocity to the face flux
-      // note that we can use UFaceFlux to just compute the value directly if 
-      // we have quadratic upwinding available to us
-      // basically Eqn 47
-      for(k=kmin;k<grid->Nke[j];k++) {
-        // compute upwinding data
-        if(phys->u[j][k]>0)
-          nc=nc2;
-        else
-          nc=nc1;
-
-        switch(prop->nonlinear) {
-          case 1:
-            phys->ut[j][k]=phys->uc[nc][k]*grid->dzf[j][k];
-            break;
-          case 2:
-            phys->ut[j][k]=UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
-            break;
-          case 4:
-            phys->ut[j][k]=UFaceFlux(j,k,phys->uc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
-            break;
-          case 5:
-            if(phys->u[j][k]>0)
-              tempu=phys->SfHp[j][k];
-            else
-              tempu=phys->SfHm[j][k];
-            phys->ut[j][k]=tempu*grid->dzf[j][k];
-            break;
-          default:
-            phys->ut[j][k]=phys->uc[nc][k]*grid->dzf[j][k];
-            break;
-        }
-      }
-    }
-
-    // Faces on type 3 cells are always updated with first-order upwind
-
-    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-      i = grid->cellp[iptr];
-
-      for(nf=0;nf<grid->nfaces[i];nf++) {
-        if((ne=grid->neigh[i*grid->maxfaces+nf])!=-1) {
-          j=grid->face[i*grid->maxfaces+nf];
-
-          nc1 = grid->grad[2*j];
-          nc2 = grid->grad[2*j+1];
-
-          if(grid->ctop[nc1]>grid->ctop[nc2])
-            kmin = grid->ctop[nc1];
-          else
-            kmin = grid->ctop[nc2];
-
-          for(k=0;k<kmin;k++)
-            phys->ut[j][k]=0;
-
-          for(k=kmin;k<grid->Nke[j];k++) {
-            if(phys->u[j][k]>0)
-              nc=nc2;
-            else
-              nc=nc1;
-            phys->ut[j][k]=phys->uc[nc][k]*grid->dzf[j][k];
-          }
-        }
-      }
-    }
-
-
 
     // Now compute the cell-centered source terms and put them into stmp
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i=grid->cellp[iptr];
+
+      // Store dzz in a since for conservative scheme need to divide by depth (since ut is a flux)
+      if(prop->conserveMomentum) {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	  a[k]=grid->dzz[i][k];
+      } else {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	  a[k]=1.0;
+      }
 
       // for each face
       for(nf=0;nf<grid->nfaces[i];nf++) {
@@ -1581,123 +1478,30 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
         ne = grid->face[i*grid->maxfaces+nf];
 
         // for all but the top cell layer
-        for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
+        for(k=grid->ctop[i];k<grid->Nk[i];k++) 
           // this is basically Eqn 50, u-component
           phys->stmp[i][k]+=
-            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/
-            (grid->Ac[i]*grid->dzz[i][k]);
+            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
 
         // Top cell is filled with momentum from neighboring cells
-        for(k=grid->etop[ne];k<=grid->ctop[i];k++) 
-          phys->stmp[i][grid->ctop[i]]+=
-            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/
-            (grid->Ac[i]*grid->dzz[i][grid->ctop[i]]);
+	if(prop->conserveMomentum)
+	  for(k=grid->etop[ne];k<grid->ctop[i];k++) 
+	    phys->stmp[i][grid->ctop[i]]+=
+	      phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[grid->ctop[i]]*grid->Ac[i]);
       }
     }
 
-    // note that stmp only has these momentum advection components 
-    // from above right now as 
-    // they were initialized before the nonlinear computation
-  
-    // V-fluxes at boundary cells
-    // should mirror U-fluxes above
-    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-      j = grid->edgep[jptr];
-      i = grid->grad[2*j];
+    // Interpolate vc to faces and place into ut
+    GetMomentumFaceValues(phys->ut,phys->vc,phys->boundary_v,phys->u,grid,phys,prop,comm,myproc,prop->nonlinear);
 
-      for(k=grid->etop[j];k<grid->Nke[j];k++) {
-        if(phys->utmp2[j][k]>0)
-          phys->ut[j][k]=phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->dzf[j][k];
-        else
-          phys->ut[j][k]=phys->vc[i][k]*grid->dzf[j][k];
+    // Conservative method assumes ut is a flux
+    if(prop->conserveMomentum)
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
+	j=grid->edgep[jptr];
+
+	for(k=grid->etop[j];k<grid->Nke[j];k++)
+	  phys->ut[j][k]*=grid->dzf[j][k];
       }
-    }
-
-    // type 4 boundary conditions can be used for no slip
-    for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-      j = grid->edgep[jptr];
-
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-        phys->ut[j][k]=phys->boundary_v[jptr-grid->edgedist[2]][k]*grid->dzf[j][k];
-    }
-
-    if(prop->nonlinear==5) //use tvd for advection of momemtum
-      HorizontalFaceScalars(grid,phys,prop,phys->vc,phys->boundary_v,prop->TVDmomentum,comm,myproc);
-
-    // Compute the v-component fluxes at the faces
-    for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-      j = grid->edgep[jptr];
-
-      nc1 = grid->grad[2*j];
-      nc2 = grid->grad[2*j+1];
-
-      if(grid->ctop[nc1]>grid->ctop[nc2])
-        kmin = grid->ctop[nc1];
-      else
-        kmin = grid->ctop[nc2];
-
-      for(k=0;k<kmin;k++)
-        phys->ut[j][k]=0;
-      for(k=kmin;k<grid->Nke[j];k++) {
-        if(phys->u[j][k]>0)
-          nc=nc2;
-        else
-          nc=nc1;
-
-        switch(prop->nonlinear) {
-          case 1:
-            phys->ut[j][k]=phys->vc[nc][k]*grid->dzf[j][k];
-            break;
-          case 2:
-            phys->ut[j][k]=UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
-            break;
-          case 4:
-            phys->ut[j][k]=UFaceFlux(j,k,phys->vc,phys->u,grid,prop->dt,prop->nonlinear)*grid->dzf[j][k];
-            break;
-          case 5:
-            if(phys->u[j][k]>0)
-              tempu=phys->SfHp[j][k];
-            else
-              tempu=phys->SfHm[j][k];
-            phys->ut[j][k]=tempu*grid->dzf[j][k];
-            break;
-          default:
-            phys->ut[j][k]=phys->vc[nc][k]*grid->dzf[j][k];
-            break;
-        }
-      }
-    }
-
-    // Faces on type 3 cells are always updated with first-order upwind
-    // type 3 cells are the standard stage specification
-    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-      i = grid->cellp[iptr];
-
-      for(nf=0;nf<grid->nfaces[i];nf++) {
-        if((ne=grid->neigh[i*grid->maxfaces+nf])!=-1) {
-          j=grid->face[i*grid->maxfaces+nf];
-
-          nc1 = grid->grad[2*j];
-          nc2 = grid->grad[2*j+1];
-
-          if(grid->ctop[nc1]>grid->ctop[nc2])
-            kmin = grid->ctop[nc1];
-          else
-            kmin = grid->ctop[nc2];
-
-          for(k=0;k<kmin;k++)
-            phys->ut[j][k]=0;
-
-          for(k=kmin;k<grid->Nke[j];k++) {
-            if(phys->u[j][k]>0)
-              nc=nc2;
-            else
-              nc=nc1;
-            phys->ut[j][k]=phys->vc[nc][k]*grid->dzf[j][k];
-          }
-        }
-      }
-    }
 
     // Now compute the cell-centered source terms and put them into stmp.
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
@@ -1706,21 +1510,29 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       for(k=0;k<grid->Nk[i];k++) 
         phys->stmp2[i][k]=0;
 
+      // Store dzz in a since for conservative scheme need to divide by depth (since ut is a flux)
+      if(prop->conserveMomentum) {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	  a[k]=grid->dzz[i][k];
+      } else {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	  a[k]=1.0;
+      }
+
       for(nf=0;nf<grid->nfaces[i];nf++) {
 
         ne = grid->face[i*grid->maxfaces+nf];
 
-        for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
+        for(k=grid->ctop[i];k<grid->Nk[i];k++)
           // Eqn 50, v-component
           phys->stmp2[i][k]+=
-            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/
-            (grid->Ac[i]*grid->dzz[i][k]);
+            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
 
         // Top cell is filled with momentum from neighboring cells
-        for(k=grid->etop[ne];k<=grid->ctop[i];k++) 
-          phys->stmp2[i][grid->ctop[i]]+=
-            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/
-            (grid->Ac[i]*grid->dzz[i][grid->ctop[i]]);
+	if(prop->conserveMomentum)
+	  for(k=grid->etop[ne];k<grid->ctop[i];k++) 
+	    phys->stmp2[i][grid->ctop[i]]+=
+	      phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
       }
     }
 
@@ -1729,70 +1541,73 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     // factors to reduce redundant calculations
 
     /* Vertical advection of momentum calc */
+    // Only if thetaM<0, otherwise use implicit scheme in UPredictor()
 
-    // Now do vertical advection of momentum
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i=grid->cellp[iptr];
-      switch(prop->nonlinear) {
+    if(prop->thetaM<0) {
+      // Now do vertical advection of momentum
+      for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	i=grid->cellp[iptr];
+	switch(prop->nonlinear) {
         case 1:
           for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
             a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
-                (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
+			(phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
             b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
-                (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
+			(phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
           }
           break;
         case 2: case 5:
           for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
             a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
-                  grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
+				   grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1]));
             b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
-                  grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
+				   grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1]));
           }
           break;
         case 4:
           for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
             Cz = 2.0*phys->w[i][k]*prop->dt/(grid->dzz[i][k]+grid->dzz[i][k-1]);
             a[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k]+
-                  grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1])
-                -0.5*Cz*(phys->uc[i][k-1]-phys->uc[i][k]));
+				   grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->uc[i][k-1])
+				  -0.5*Cz*(phys->uc[i][k-1]-phys->uc[i][k]));
             b[k] = phys->w[i][k]*((grid->dzz[i][k-1]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k]+
-                  grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1])
-                -0.5*Cz*(phys->vc[i][k-1]-phys->vc[i][k]));
+				   grid->dzz[i][k]/(grid->dzz[i][k]+grid->dzz[i][k-1])*phys->vc[i][k-1])
+				  -0.5*Cz*(phys->vc[i][k-1]-phys->vc[i][k]));
           }
           break;
         default:
           for(k=grid->ctop[i]+1;k<grid->Nk[i];k++) {
             a[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
-                (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
+			(phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
             b[k] = 0.5*((phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
-                (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
+			(phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
           }
           break;
+	}
+	
+	// Always do first-order upwind in bottom cell if partial stepping is on
+	if(prop->stairstep==0) {
+	  k = grid->Nk[i]-1;
+	  a[k] = 0.5*(
+		      (phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
+		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
+	  b[k] = 0.5*(
+		      (phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
+		      (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
+	}
+	
+	a[grid->ctop[i]]=phys->w[i][grid->ctop[i]]*phys->uc[i][grid->ctop[i]];
+	b[grid->ctop[i]]=phys->w[i][grid->ctop[i]]*phys->vc[i][grid->ctop[i]];
+	a[grid->Nk[i]]=0;
+	b[grid->Nk[i]]=0;
+	
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	  phys->stmp[i][k]+=(a[k]-a[k+1])/grid->dzz[i][k];
+	  phys->stmp2[i][k]+=(b[k]-b[k+1])/grid->dzz[i][k];
+	}
       }
-
-      // Always do first-order upwind in bottom cell if partial stepping is on
-      if(prop->stairstep==0) {
-        k = grid->Nk[i]-1;
-        a[k] = 0.5*(
-            (phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+
-            (phys->w[i][k]-fabs(phys->w[i][k]))*phys->uc[i][k-1]);
-        b[k] = 0.5*(
-            (phys->w[i][k]+fabs(phys->w[i][k]))*phys->vc[i][k]+
-            (phys->w[i][k]-fabs(phys->w[i][k]))*phys->vc[i][k-1]);
-      }
-
-      a[grid->ctop[i]]=phys->w[i][grid->ctop[i]]*phys->uc[i][grid->ctop[i]];
-      b[grid->ctop[i]]=phys->w[i][grid->ctop[i]]*phys->vc[i][grid->ctop[i]];
-      a[grid->Nk[i]]=0;
-      b[grid->Nk[i]]=0;
-
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-        phys->stmp[i][k]+=(a[k]-a[k+1])/grid->dzz[i][k];
-        phys->stmp2[i][k]+=(b[k]-b[k+1])/grid->dzz[i][k];
-      }
-    }
-  } // end of nonlinear computation
+    } // end of nonlinear computation
+  }
 
   // stmp and stmp2 just store the summed C_H and C_V values for horizontal
   // advection (prior to utilization via Eqn 41 or Eqn 47)
@@ -1821,10 +1636,10 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     // on type 4 boundary condition
     for (k=grid->ctop[nc]; k<grid->Nk[nc]; k++){
       phys->stmp[nc][k]  += -2.0*prop->nu_H*(
-          phys->boundary_u[boundary_index][k] - phys->uc[nc][k])/(2.0*grid->dg[j])*
+          phys->boundary_u[boundary_index][k] - phys->uc[nc][k])/grid->dg[j]*
         grid->df[j]/grid->Ac[nc];
       phys->stmp2[nc][k] += -2.0*prop->nu_H*(
-          phys->boundary_v[boundary_index][k] - phys->vc[nc][k])/(2.0*grid->dg[j])*
+          phys->boundary_v[boundary_index][k] - phys->vc[nc][k])/grid->dg[j]*
         grid->df[j]/grid->Ac[nc];
     }
   }
@@ -2012,25 +1827,25 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
  *
  */
 static void NewCells(gridT *grid, physT *phys, propT *prop) {
+  int j, jptr, k;
 
-  int j, jptr, k, nc1, nc2;
-  REAL dz;
-
-  // Correct the velocity resulting from changes in volume
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
 
-    nc1 = grid->grad[2*j];
-    nc2 = grid->grad[2*j+1];
+    if(grid->etop[j]<grid->Nke[j]-1) {    // Only update new cells if there is more than one layer
 
-    if(grid->etop[j]<=grid->etopold[j]) {
-      dz = 0;
-      for(k=grid->etop[j];k<=grid->etopold[j];k++)
-        dz+=0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
+      // If a new cell is created above the old cell then set the velocity in the new cell equal to that in
+      // the old one.
+      //
+      // Otherwise if the free surface jumps up more than one cell then set the velocity equal to the cell beneath
+      // the old one.
 
-      for(k=grid->etop[j];k<=grid->etopold[j];k++)
-        phys->u[j][k]=phys->u[j][grid->etopold[j]]/dz*
-          (0.5*(grid->dzzold[nc1][k]+grid->dzzold[nc2][k]));
+      if(grid->etop[j]==grid->etopold[j]-1) {
+	phys->u[j][grid->etop[j]]=phys->u[j][grid->etopold[j]];
+      } else { 
+	for(k=grid->etop[j];k<=grid->etopold[j];k++)
+	  phys->u[j][k]=phys->u[j][grid->etopold[j]+1];
+      }
     }
   }
 }
@@ -2123,115 +1938,48 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
   // Compute Eulerian advection (nonlinear!=0)
   if(prop->nonlinear) {
     // Compute the w-component fluxes at the faces
-
-    // Fluxes at boundary faces of type 2
-    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-      j = grid->edgep[jptr];
-      i = grid->grad[2*j];
-
-      for(k=grid->etop[j];k<grid->Nke[j];k++) {
-        if(phys->utmp2[j][k]>0)
-          phys->ut[j][k]=phys->boundary_w[jptr-grid->edgedist[2]][k]*grid->dzz[grid->grad[2*j]][k];
-        else
-          phys->ut[j][k]=0.5*(phys->w[i][k]+phys->w[i][k+1])*grid->dzz[i][k];
-      }
-    }
-    // Fluxes at boundary faces of type 4
-    // type 4 boundary conditions used for no slip 
-    for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
-      j = grid->edgep[jptr];
-
-      for(k=grid->etop[j];k<grid->Nke[j];k++)
-        phys->ut[j][k]=phys->boundary_w[jptr-grid->edgedist[2]][k]*grid->dzz[grid->grad[2*j]][k];
+    
+    // First compute w at the cell centers (since w is defined at the faces)
+    for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	phys->wc[i][k]=0.5*(phys->w[i][k]+phys->w[i][k+1]);
     }
 
-    if(prop->nonlinear==1) // Upwind
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-        j = grid->edgep[jptr];
+    // Interpolate wc to faces and place into ut
+    GetMomentumFaceValues(phys->ut,phys->wc,phys->boundary_w,phys->utmp2,grid,phys,prop,comm,myproc,prop->nonlinear);
 
-        nc1 = grid->grad[2*j];
-        nc2 = grid->grad[2*j+1];
+    if(prop->conserveMomentum)
+      for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
+	j=grid->edgep[jptr];
 
-        if(grid->ctop[nc1]>grid->ctop[nc2])
-          kmin = grid->ctop[nc1];
-        else
-          kmin = grid->ctop[nc2];
-
-        for(k=0;k<kmin;k++)
-          phys->ut[j][k]=0;
-
-        for(k=kmin;k<grid->Nke[j];k++) {
-          if(phys->u[j][k]>0)
-            nc = nc2;
-          else
-            nc = nc1;
-
-          phys->ut[j][k]=0.5*(phys->w[nc][k]+phys->w[nc][k+1])*grid->dzz[nc][k];
-        }
+	for(k=grid->etop[j];k<grid->Nke[j];k++)
+	  phys->ut[j][k]*=grid->dzf[j][k];
       }
-    else if(prop->nonlinear==2 || prop->nonlinear==4 || prop->nonlinear==5)
-      for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
-        j = grid->edgep[jptr];
-
-        nc1 = grid->grad[2*j];
-        nc2 = grid->grad[2*j+1];
-
-        if(grid->ctop[nc1]>grid->ctop[nc2])
-          kmin = grid->ctop[nc1];
-        else
-          kmin = grid->ctop[nc2];
-
-        for(k=0;k<kmin;k++)
-          phys->ut[j][k]=0;
-        for(k=kmin;k<grid->Nke[j];k++) 
-          phys->ut[j][k]=0.25*(UFaceFlux(j,k,phys->w,phys->utmp2,grid,prop->dt,prop->nonlinear)+
-              UFaceFlux(j,k+1,phys->w,phys->utmp2,grid,prop->dt,prop->nonlinear))*(grid->dzz[nc1][k]+grid->dzz[nc2][k]);
-      }
-    // Faces on type 3 cells are always updated with first-order upwind
-    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-      i = grid->cellp[iptr];
-
-      for(nf=0;nf<grid->nfaces[i];nf++) {
-        if((ne=grid->neigh[i*grid->maxfaces+nf])!=-1) {
-          j=grid->face[i*grid->maxfaces+nf];
-
-          nc1 = grid->grad[2*j];
-          nc2 = grid->grad[2*j+1];
-
-          if(grid->ctop[nc1]>grid->ctop[nc2])
-            kmin = grid->ctop[nc1];
-          else
-            kmin = grid->ctop[nc2];
-
-          for(k=0;k<kmin;k++)
-            phys->ut[j][k]=0;
-
-          for(k=kmin;k<grid->Nke[j];k++) {
-            if(phys->u[j][k]>0)
-              nc=nc2;
-            else
-              nc=nc1;
-            phys->ut[j][k]=0.5*(phys->w[nc][k]+phys->w[nc][k+1])*grid->dzz[nc][k];
-          }
-        }
-      }
-    }
 
     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
       i=grid->cellp[iptr];
+
+      // For conservative scheme need to divide by depth (since ut is a flux)
+      if(prop->conserveMomentum) {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	  a[k]=grid->dzz[i][k];
+      } else {
+	for(k=grid->ctop[i];k<grid->Nk[i];k++)
+	  a[k]=1.0;
+      }
 
       for(nf=0;nf<grid->nfaces[i];nf++) {
 
         ne = grid->face[i*grid->maxfaces+nf];
 
-        for(k=grid->ctop[i]+1;k<grid->Nk[i];k++)
-          phys->stmp[i][k]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/
-            (grid->Ac[i]*grid->dzz[i][k]);
+        for(k=grid->ctop[i];k<grid->Nk[i];k++)
+          // this is basically Eqn 50, w-component
+          phys->stmp[i][k]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
 
         // Top cell is filled with momentum from neighboring cells
-        for(k=grid->etop[ne];k<=grid->ctop[i];k++) 
-          phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/
-            (grid->Ac[i]*grid->dzz[i][grid->ctop[i]]);
+	if(prop->conserveMomentum)
+	  for(k=grid->etop[ne];k<grid->ctop[i];k++) 
+	    phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
       }
 
       // Vertical advection; note that in this formulation first-order upwinding is not implemented.
@@ -2300,7 +2048,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     // loop over the entire depth
     for (k=grid->ctop[nc]; k<grid->Nke[nc]; k++){
       phys->stmp[nc][k]  += -2.0*prop->nu_H*
-        (phys->boundary_w[boundary_index][k] - 0.5*(phys->w[nc][k] + phys->w[nc][k+1]))/(2.0*grid->dg[j])*
+        (phys->boundary_w[boundary_index][k] - 0.5*(phys->w[nc][k] + phys->w[nc][k+1]))/grid->dg[j]*
         grid->df[j]/grid->Ac[nc];
     }
   }
@@ -2673,9 +2421,9 @@ static void EddyViscosity(gridT *grid, physT *phys, propT *prop, REAL **wnew, MP
 static void UPredictor(gridT *grid, physT *phys, 
     propT *prop, int myproc, int numprocs, MPI_Comm comm)
 {
-  int i, iptr, j, jptr, ne, nf, nf1, normal, nc1, nc2, k;
+  int i, iptr, j, jptr, ne, nf, nf1, normal, nc1, nc2, k, n0, n1;
   REAL sum, dt=prop->dt, theta=prop->theta, h0, boundary_flag;
-  REAL *a, *b, *c, *d, *e1, **E, *a0, *b0, *c0, *d0, theta0;
+  REAL *a, *b, *c, *d, *e1, **E, *a0, *b0, *c0, *d0, theta0, alpha;
 
   a = phys->a;
   b = phys->b;
@@ -2711,7 +2459,7 @@ static void UPredictor(gridT *grid, physT *phys,
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       phys->utmp[j][k]=phys->u[j][k];
   }
-  
+
 
   // Update the velocity in the interior nodes with the old free-surface gradient
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
@@ -2726,10 +2474,16 @@ static void UPredictor(gridT *grid, physT *phys,
       phys->utmp[j][k]-=
         prop->grav*(1-theta)*dt*(phys->h[nc1]-phys->h[nc2])/grid->dg[j];
   }
-  
+
   // Drag term must be fully implicit
   theta0=theta;
   theta=1;
+
+  // Advection term for vertical momentum.  When alpha=1, first-order upwind,
+  // alpha=0 is second-order central.  Always do first-order upwind when doing
+  // vertically-implicit momentum advection
+  alpha=1;
+
   // for each of the computational edges
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
     j = grid->edgep[jptr];
@@ -2757,7 +2511,7 @@ static void UPredictor(gridT *grid, physT *phys,
         c[k]=0;
         d[k]=0;
       }
-   
+
       // Vertical eddy-viscosity interpolated to faces since it is stored
       // at cell-centers.
       for(k=grid->etop[j]+1;k<grid->Nke[j];k++) 
@@ -2777,6 +2531,31 @@ static void UPredictor(gridT *grid, physT *phys,
         b[k]=2.0*(prop->nu+c[k+1])/(0.25*(grid->dzz[nc1][k]+grid->dzz[nc2][k])*
             (grid->dzz[nc1][k]+grid->dzz[nc2][k]+
              grid->dzz[nc1][k+1]+grid->dzz[nc2][k+1]));
+      }
+
+      // Coefficients for vertical momentum advection terms
+      // d[] stores vertical velocity interpolated to faces vertically half-way between U locations
+      // So d[k] contains w defined at the vertical w-location of cell k
+      if(prop->nonlinear && prop->thetaM>=0 && grid->Nke[j]-grid->etop[j]>1) {
+	if(grid->ctop[nc1]>grid->ctop[nc2]) {
+	  n0=nc2;
+	  n1=nc1;
+	} else {
+	  n0=nc1;
+	  n1=nc2;
+	}
+	// Don't do advection on vertical faces without water on both sides.
+	for(k=0;k<grid->ctop[n1];k++)
+	  d[k]=0;
+	for(k=grid->ctop[n1];k<grid->Nke[j];k++)
+	  d[k] = 0.5*(phys->w[n0][k]+phys->w[n1][k]);
+	d[grid->Nke[j]]=0; // Assume w=0 at a corners (even if w is nonzero on one side of the face)
+
+	for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	  a0[k] = (alpha*0.5*(d[k]-fabs(d[k])) + 0.5*(1-alpha)*d[k])/(0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]));
+	  b0[k] = (alpha*0.5*(d[k]+fabs(d[k])-d[k+1]+fabs(d[k+1]))+0.5*(1-alpha)*(d[k]-d[k+1]))/(0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]));
+	  c0[k] = -(alpha*0.5*(d[k+1]+fabs(d[k+1])) + 0.5*(1-alpha)*d[k+1])/(0.5*(grid->dzz[nc1][k]+grid->dzz[nc2][k]));
+	}
       }
 
       // add on explicit diffusion to RHS (utmp)
@@ -2855,6 +2634,20 @@ static void UPredictor(gridT *grid, physT *phys,
         }
       }
 
+      // add on explicit vertical momentum advection only if there is more than one vertical layer edge.
+      if(prop->nonlinear && prop->thetaM>=0 && grid->Nke[j]-grid->etop[j]>1) {
+	for(k=grid->etop[j]+1;k<grid->Nke[j]-1;k++)
+	  phys->utmp[j][k]-=prop->dt*(1-prop->thetaM)*(a0[k]*phys->u[j][k-1]+b0[k]*phys->u[j][k]+c0[k]*phys->u[j][k+1]);
+	
+	// Top boundary
+	phys->utmp[j][grid->etop[j]]-=prop->dt*(1-prop->thetaM)*((a0[grid->etop[j]]+b0[grid->etop[j]])*phys->u[j][grid->etop[j]]
+								 +c0[grid->etop[j]]*phys->u[j][grid->etop[j]+1]);
+	
+	// Bottom boundary
+	phys->utmp[j][grid->Nke[j]-1]-=prop->dt*(1-prop->thetaM)*(a0[grid->Nke[j]-1]*phys->u[j][grid->Nke[j]-2]
+								  +(b0[grid->Nke[j]-1]+c0[grid->Nke[j]-1])*phys->u[j][grid->Nke[j]-1]);
+      }
+
       // Now set up the coefficients for the tridiagonal inversion for the
       // implicit part.  These are given from the arrays above in the discrete operator
       // d^2U/dz^2 = -theta dt a_k U_{k-1} + (1+theta dt (a_k+b_k)) U_k - theta dt b_k U_{k+1}
@@ -2928,6 +2721,23 @@ static void UPredictor(gridT *grid, physT *phys,
 
       }	  
 
+      // Now add on implicit terms for vertical momentum advection, only if there is more than one layer
+      if(prop->nonlinear && prop->thetaM>=0 && grid->Nke[j]-grid->etop[j]>1) {
+	for(k=grid->etop[j]+1;k<grid->Nke[j]-1;k++) {
+	  a[k]+=prop->dt*prop->thetaM*a0[k];
+	  b[k]+=prop->dt*prop->thetaM*b0[k];
+	  c[k]+=prop->dt*prop->thetaM*c0[k];
+	}
+
+	// Top boundary
+	b[grid->etop[j]]+=prop->dt*prop->thetaM*(a0[grid->etop[j]]+b0[grid->etop[j]]);
+	c[grid->etop[j]]+=prop->dt*prop->thetaM*c0[grid->etop[j]];
+	
+	// Bottom boundary 
+	a[grid->Nke[j]-1]+=prop->dt*prop->thetaM*a0[grid->Nke[j]-1];
+	b[grid->Nke[j]-1]+=prop->dt*prop->thetaM*(b0[grid->Nke[j]-1]+c0[grid->Nke[j]-1]);
+      }
+
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
         if(grid->dzz[nc1][k]==0 && grid->dzz[nc2][k]==0) {
           printf("Exiting because dzz[%d][%d]=%f or dzz[%d][%d]=%f\n",
@@ -2975,14 +2785,14 @@ static void UPredictor(gridT *grid, physT *phys,
         printf("Error in function Predictor at j=%d k=%d (U***=nan)\n",j,k);
         exit(1);
       }
-  
+
   // So far we have U*** and D.  Now we need to create h* in htmp.   This
   // will comprise the source term for the free-surface solver.  Before we
   // do this we need to set the new velocity at the open boundary faces and
   // place them into utmp.  
   BoundaryVelocities(grid,phys,prop,myproc);
   OpenBoundaryFluxes(NULL,phys->utmp,NULL,grid,phys,prop);
-  
+
   // for computational cells
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -2999,7 +2809,7 @@ static void UPredictor(gridT *grid, physT *phys,
     }
     phys->htmp[i]=grid->Ac[i]*phys->h[i]-dt*sum;
   }
-  
+
   // Now we have the required components for the CG solver for the free-surface:
   //
   // h^{n+1} - g*(theta*dt)^2/Ac * Sum_{faces} D_{face} dh^{n+1}/dn df N = htmp
@@ -3017,7 +2827,7 @@ static void UPredictor(gridT *grid, physT *phys,
   else if(prop->cgsolver==1)
     // Conjugate-gradient solver
     CGSolve(grid,phys,prop,myproc,numprocs,comm);
-  
+
   // correct cells drying below DRYCELLHEIGHT above the 
   // bathymetry
   for(i=0;i<grid->Nc;i++)
@@ -3125,10 +2935,10 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
   p = phys->htmp;
 
   niters = prop->maxiters;
-  
+
   // Create the coefficients for the operator
   HCoefficients(phys->hcoef,phys->hfcoef,grid,phys,prop);
- 
+
   // For the boundary term (marker of type 3):
   // 1) Need to set x to zero in the interior points, but
   //    leave it as is for the boundary points.
@@ -3146,9 +2956,8 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
     x[i]=0;
   }
   ISendRecvCellData2D(x,grid,myproc,comm);
- 
   OperatorH(x,z,phys->hcoef,phys->hfcoef,grid,phys,prop);
-   
+
   // 2) b = b-z
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
@@ -3368,12 +3177,13 @@ static void OperatorH(REAL *x, REAL *y, REAL *coef, REAL *fcoef, gridT *grid, ph
 
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
-    //printf("\n\n\n\n\nfinish here !!!!!!!!!!!!!!!!!!!1\n\n\n");
+
     y[i] = coef[i]*x[i];
     for(nf=0;nf<grid->nfaces[i];nf++) 
       if(grid->neigh[i*grid->maxfaces+nf]!=-1)
         y[i]-=fcoef[i*grid->maxfaces+nf]*x[grid->neigh[i*grid->maxfaces+nf]];
   }
+
 }
 
 /*
@@ -4016,7 +3826,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       fprintf(prop->ConserveFID,"%e %e %e %e %e %e %e %e\n",prop->rtime,phys->mass,phys->volume,
           phys->Ep-phys->Ep0,phys->Eflux1,phys->Eflux2,phys->Eflux3,phys->Eflux4);
   }
-  
+
   if(!(prop->n%prop->ntout) || prop->n==1+prop->nstart || blowup) {
 
     if(myproc==0 && VERBOSE>1) 
@@ -4037,13 +3847,13 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       }
     }
     fflush(prop->FreeSurfaceFID);
-    
+
     // compute quadratic interpolated estimates for velocity using pretty plot and don't redo work
     if(prop->prettyplot==1 && prop->interp != QUAD) {
       ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
       ComputeUC(phys->uc, phys->vc, phys,grid, myproc, QUAD);
     }
-    
+
     // ut stores the tangential component of velocity on the faces.
     if(ASCII) 
       for(i=0;i<grid->Nc;i++) {
@@ -4090,7 +3900,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
         }
       }
     fflush(prop->HorizontalVelocityFID);
-    
+
     if(ASCII)
       for(i=0;i<grid->Nc;i++) {
         for(k=0;k<grid->Nk[i]+1;k++)
@@ -4114,7 +3924,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
       }
     }
     fflush(prop->VerticalVelocityFID);
-    
+
     if(ASCII) {
       for(i=0;i<grid->Nc;i++) {
         for(k=0;k<grid->Nk[i];k++)
@@ -4130,8 +3940,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
             fprintf(prop->BGSalinityFID,"0.0\n");
         }
       }
-    }
-    else {
+    } else {
       for(k=0;k<grid->Nkmax;k++) {
         for(i=0;i<grid->Nc;i++) {
           if(k<grid->Nk[i])
@@ -4265,7 +4074,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     }
   }
   fflush(prop->VerticalGridFID);
-  
+
   if(prop->n==1)
     fclose(prop->BGSalinityFID);
 
@@ -4337,9 +4146,8 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 
     fclose(prop->StoreFID);
   }
-  
-  SunFree(tmp,grid->Ne*sizeof(REAL),"OutputData");
 
+  SunFree(tmp,grid->Ne*sizeof(REAL),"OutputData");
 }
 
 /*
@@ -4403,7 +4211,6 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->volcheck = MPI_GetValue(DATAFILE,"volcheck","ReadProperties",myproc);
   (*prop)->masscheck = MPI_GetValue(DATAFILE,"masscheck","ReadProperties",myproc);
   (*prop)->nonlinear = MPI_GetValue(DATAFILE,"nonlinear","ReadProperties",myproc);
-  (*prop)->newcells = MPI_GetValue(DATAFILE,"newcells","ReadProperties",myproc);
   (*prop)->wetdry = MPI_GetValue(DATAFILE,"wetdry","ReadProperties",myproc);
   (*prop)->Coriolis_f = MPI_GetValue(DATAFILE,"Coriolis_f","ReadProperties",myproc);
   (*prop)->sponge_distance = MPI_GetValue(DATAFILE,"sponge_distance","ReadProperties",myproc);
@@ -4416,6 +4223,19 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->stairstep = MPI_GetValue(DATAFILE,"stairstep","ReadProperties",myproc);
   (*prop)->AB = MPI_GetValue(DATAFILE,"AB","ReadProperties",myproc); //AB3
   (*prop)->TVDmomentum = MPI_GetValue(DATAFILE,"TVDmomentum","ReadProperties",myproc); 
+  (*prop)->conserveMomentum = MPI_GetValue(DATAFILE,"conserveMomentum","ReadProperties",myproc); 
+  (*prop)->thetaM = MPI_GetValue(DATAFILE,"thetaM","ReadProperties",myproc); 
+  (*prop)->wetdry = MPI_GetValue(DATAFILE,"wetdry","ReadProperties",myproc); 
+
+  // When wetting and drying is desired:
+  // -Do nonconservative momentum advection (conserveMomentum=0)
+  // -Use backward Euler for vertical advection of horizontal momentum (thetaM=1)
+  // -Update new cells (newcells=1)
+  if((*prop)->wetdry) {
+    (*prop)->conserveMomentum = 0;
+    (*prop)->thetaM = 1;
+    (*prop)->newcells = 1;
+  }
 
   if((*prop)->nonlinear==2) {
     (*prop)->laxWendroff = MPI_GetValue(DATAFILE,"laxWendroff","ReadProperties",myproc);
@@ -4450,6 +4270,7 @@ void ReadProperties(propT **prop, int myproc)
 
   // addition for linearized free surface where dzz=dz
   (*prop)->linearFS = (int)MPI_GetValue(DATAFILE,"linearFS","ReadProperties",myproc);
+
 }
 
 /* 
@@ -4751,11 +4572,6 @@ void SetFluxHeight(gridT *grid, physT *phys, propT *prop) {
  */
 //inline static void ComputeUC(physT *phys, gridT *grid, int myproc) {
 inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) {
-  if(grid->maxfaces>3 && interp==1){
-    printf("When maxfaces is %d bigger than 3, we cannot use QUAD method!!!!!!!!",grid->maxfaces);
-    MPI_Finalize();
-    exit(EXIT_FAILURE); 
-  }
 
   switch(interp) {
     case QUAD:
@@ -4790,18 +4606,19 @@ inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, i
   // now we can get the tangential velocities from these results
   //  if(myproc==0) printf("ComputeTangentialVelocity\n");
   ComputeTangentialVelocity(phys, grid, nRT2, tRT2, myproc);
- 
+
   // for each computational cell (non-stage defined)
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     // get cell pointer transfering from boundary coordinates 
     // to grid coordinates
     n=grid->cellp[iptr];
-    
+
     // initialize over all depths
     for(k=0;k<grid->Nk[n];k++) {
       phys->uc[n][k]=0;
       phys->vc[n][k]=0;
     }
+
     // over the entire depth (cell depth)
     // possible mistake here- make sure to the get the right value for the start
     // of the loop (etop?)
@@ -4826,7 +4643,6 @@ inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, i
  * which are outlined in Wang et al, 2011.
  *
  */
-///////////cannot used for quad grid
 static void  ComputeQuadraticInterp(REAL x, REAL y, int ic, int ik, REAL **uc, 
     REAL **vc, physT *phys, gridT *grid, interpolation ninterp, 
     interpolation tinterp, int myproc) {
@@ -5124,3 +4940,133 @@ static REAL HFaceFlux(int j, int k, REAL *phi, REAL **u, gridT *grid, REAL dt, i
       -C/2*(phi[nc1]-phi[nc2]);
   }
 }
+
+/*
+ *
+ */
+static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop,
+				  MPI_Comm comm, int myproc, int nonlinear) {
+  int i, iptr, j, jptr, nc, nf, ne, nc1, nc2, k, kmin;
+  REAL tempu;
+
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j = grid->edgep[jptr];
+    i = grid->grad[2*j];
+
+    for(k=grid->etop[j];k<grid->Nke[j];k++) {
+      if(U[j][k]>0)
+	uface[j][k]=boundary_ui[jptr-grid->edgedist[2]][k];
+      else
+	uface[j][k]=ui[i][k];
+    }
+  }
+
+  // type 4 boundary conditions used for no slip 
+  // but typically we think of no-slip boundary conditions as 
+  // not having flux across them, so this is more general
+  for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+    j = grid->edgep[jptr];
+    
+    for(k=grid->etop[j];k<grid->Nke[j];k++)
+      uface[j][k]=boundary_ui[jptr-grid->edgedist[2]][k];
+  }
+
+  if(prop->nonlinear==5) //use tvd for advection of momemtum
+    HorizontalFaceScalars(grid,phys,prop,ui,boundary_ui,prop->TVDmomentum,comm,myproc);
+
+  // over each of the "computational" cells
+  // Compute the u-component fluxes at the faces
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+    j = grid->edgep[jptr];
+    
+    nc1 = grid->grad[2*j];
+    nc2 = grid->grad[2*j+1];
+
+    // figure out which column adjacent to edge is limiter for the
+    // top of the cell (cells much share face to have flux)
+    if(grid->ctop[nc1]>grid->ctop[nc2])
+      kmin = grid->ctop[nc1];
+    else
+      kmin = grid->ctop[nc2];
+    
+    for(k=0;k<kmin;k++)
+      uface[j][k]=0;
+
+    // compute mass flow rate by interpolating the velocity to the face flux
+    // note that we can use UFaceFlux to just compute the value directly if 
+    // we have quadratic upwinding available to us
+    // basically Eqn 47
+    for(k=kmin;k<grid->Nke[j];k++) {
+      // compute upwinding data
+      if(U[j][k]>0)
+	nc=nc2;
+      else
+	nc=nc1;
+
+      switch(prop->nonlinear) {
+      case 1:
+	uface[j][k]=ui[nc][k];
+            break;
+          case 2:
+            uface[j][k]=UFaceFlux(j,k,ui,U,grid,prop->dt,nonlinear);
+            break;
+          case 4:
+            uface[j][k]=UFaceFlux(j,k,ui,U,grid,prop->dt,nonlinear);
+            break;
+          case 5:
+            if(U[j][k]>0)
+              tempu=phys->SfHp[j][k];
+            else
+              tempu=phys->SfHm[j][k];
+            uface[j][k]=tempu;
+            break;
+          default:
+            uface[j][k]=ui[nc][k];
+            break;
+        }
+      }
+    }
+
+    // Faces on type 3 cells are always updated with first-order upwind
+
+    for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+      i = grid->cellp[iptr];
+
+      for(nf=0;nf<grid->nfaces[i];nf++) {
+        if((ne=grid->neigh[i*grid->maxfaces+nf])!=-1) {
+          j=grid->face[i*grid->maxfaces+nf];
+
+          nc1 = grid->grad[2*j];
+          nc2 = grid->grad[2*j+1];
+
+          if(grid->ctop[nc1]>grid->ctop[nc2])
+            kmin = grid->ctop[nc1];
+          else
+            kmin = grid->ctop[nc2];
+
+          for(k=0;k<kmin;k++)
+            uface[j][k]=0;
+
+          for(k=kmin;k<grid->Nke[j];k++) {
+            if(U[j][k]>0)
+              nc=nc2;
+            else
+              nc=nc1;
+            uface[j][k]=ui[nc][k];
+          }
+        }
+      }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
