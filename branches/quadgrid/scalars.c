@@ -69,7 +69,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
   for(i=0;i<Nc;i++) 
     for(k=0;k<grid->Nk[i];k++) 
       phys->stmp[i][k]=scal[i][k];
-
+ 
   // Add on boundary fluxes, using stmp2 as the temporary storage
   // variable
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
@@ -78,7 +78,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
     for(k=grid->ctop[i];k<grid->Nk[i];k++)
       phys->stmp2[i][k]=0;
   }
-
+ 
   if(boundary_scal) {
     for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
       j = grid->edgep[jptr];
@@ -93,9 +93,10 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
   }
 
   // Compute the scalar on the vertical faces (for horiz. advection)
+
   if(prop->TVD && prop->horiTVD)
     HorizontalFaceScalars(grid,phys,prop,scal,boundary_scal,prop->TVD,comm,myproc); 
-
+  
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
     Ac = grid->Ac[i];

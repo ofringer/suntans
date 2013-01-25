@@ -40,16 +40,22 @@ main(int argc, char *argv[])
     ReadGrid(&grid,myproc,numprocs,comm);
 
   if(SOLVE) {
+    //read parameters in suntans.dat into the solver
     ReadProperties(&prop,myproc);
+    // give space and initialize dzf(edge) dzz(center) dzzold(center)
     InitializeVerticalGrid(&grid,myproc);
+    // give the space for all physical variables
     AllocatePhysicalVariables(grid,&phys,prop);
+    // 
     AllocateTransferArrays(&grid,myproc,numprocs,comm);
-    OpenFiles(prop,myproc);
-    
+    //open all input and output file for read and write
+    OpenFiles(prop,myproc);  
     if(RESTART)
       ReadPhysicalVariables(grid,phys,prop,myproc,comm);
     else
+      // give space while reading the initial condition
       InitializePhysicalVariables(grid,phys,prop,myproc,comm);
+      // main function to solve physics
       Solve(grid,phys,prop,myproc,numprocs,comm);
       FreePhysicalVariables(grid,phys,prop);
       FreeTransferArrays(grid,myproc,numprocs,comm);

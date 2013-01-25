@@ -41,7 +41,7 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, R
   // Pointer Variables for TVD scheme
   sumQ = phys->gradSx;
   sumQC = phys->gradSy;
-
+  
   for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
 
