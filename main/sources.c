@@ -74,10 +74,10 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
 }
 /*
  * Function: SaltSource
+ * --------------------
  * Usage: SaltSource(A,B,grid,phys,prop,met)
  *
 */
-
 void SaltSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met) {
     int i, iptr, k, ktop, gc;
     if(prop->metmodel>0 && prop->metmodel < 4){	
@@ -132,7 +132,7 @@ void SaltSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
  *
  */
 
-void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met) {
+void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met, int myproc, MPI_Comm comm) {
  if(prop->metmodel==1){ //Wood et al., Heat Flux model
   int i, iptr, k, ktop, gc;
   REAL z, dztop, sigma , epsilon_w, epsilon_a, dzmin_heatflux, T_0, T_00, c_p, alpha_0,
@@ -355,7 +355,7 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
       z-=grid->dzz[i][k]/2;
     }
   }
-}else if(prop->metmodel>=2){ // COARE3.0 HeatFlux Algorithm or constant flux coefficients
+}else if(prop->metmodel==2 || prop->metmodel==3){ // COARE3.0 HeatFlux Algorithm or constant flux coefficients
    int i, k, ktop, iptr;
    REAL dztop;
    REAL *H0=met->Htmp;
@@ -385,15 +385,19 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      H0[i] = ( met->Hs[i] + met->Hl[i] + met->Hlw[i] );
      
      // Calculate T+dt array
-     if(phys->dT[i]<=0.0){
+    if(phys->dT[i]<=0.0){
        phys->dT[i]=Min(-1e-4,phys->dT[i]);
      }else{
        phys->dT[i]=Max(1e-4,phys->dT[i]);
      }
+    
 	
      phys->Ttmp[i][ktop] = phys->T[i][ktop] + phys->dT[i];
    }
    
+   //Communicate the temporary Temperature array
+   ISendRecvCellData3D(phys->Ttmp,grid,myproc,comm);
+
    // Evaluate flux terms when the temperature is T + dT
    updateAirSeaFluxes(prop, grid, phys, met, phys->Ttmp);
    
@@ -404,7 +408,7 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      ktop = grid->ctop[i];
      
      // Put the temperature gradient flux terms into B
-     dHdT = ( (met->Hs[i] + met->Hl[i] + met->Hlw[i]) - H0[i]) / phys->dT[i];
+     dHdT = ( (met->Hs[i] + met->Hl[i] + met->Hlw[i]) - H0[i]) /(phys->dT[i] + eps);
 	   
      A[i][ktop] = H0[i] - dHdT * phys->T[i][ktop];
      B[i][ktop] = -dHdT;

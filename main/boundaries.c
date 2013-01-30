@@ -11,22 +11,17 @@
  *
  */
 #include "boundaries.h"
+#include "mynetcdf.h"
 
 // Local functions
 static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp);
 static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag);
 
-#ifdef USENETCDF
-static void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc);
 static void MatchBndPoints(propT *prop, gridT *grid, int myproc);
-void ReadBdyNC(propT *prop, gridT *grid, int myproc);
-void UpdateBdyNC(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
 static void FluxtoUV(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
 static void SegmentArea(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
-static size_t returndimlenBC(int ncid, char *dimname);
 int isGhostEdge(int j, gridT *grid, int myproc);
-#endif 
-static int getTimeRecBnd(REAL nctime, REAL *time, int nt);
+int getTimeRecBnd(REAL nctime, REAL *time, int nt);
 
 /*
  * Function: OpenBoundaryFluxes
@@ -164,10 +159,8 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
    REAL omega = 7.27e-5;
 
    // Update the netcdf boundary data
-#ifdef USENETCDF
    if(prop->netcdfBdy==1) 
        UpdateBdyNC(prop,grid,myproc,comm);
-#endif
 
   // Type-2
   ii=-1;
@@ -284,19 +277,15 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
     }
 }
 
-/****************************************************************
- * Beginning of the boundary netCDF-IO functions
- ****************************************************************/
-#ifdef USENETCDF
- /*
-  * Function: InitBoundaryData()
-  * -----------------------------
-  * Initialise the boundary condition data for the model
-  *
-  * This is called from phys.c
-  */
- void InitBoundaryData(propT *prop, gridT *grid, int myproc){
-   
+/*
+* Function: InitBoundaryData()
+* -----------------------------
+* Initialise the boundary condition data for the model
+*
+* This is called from phys.c
+*/
+void InitBoundaryData(propT *prop, gridT *grid, int myproc){
+
     // Step 1) Allocate the structure array data
 	// Moved to phys.c
 
@@ -473,11 +462,11 @@ static void SegmentArea(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 }//End function SegmentArea()
 
 /*
- * Function: isGhostEdge()
- * ----------------------------
- * Find whether or not an edge is part of a ghost cell on a particular processor
- * I think the quickest test is to find whether one of the other edges has mark==6.
- */
+* Function: isGhostEdge()
+* ----------------------------
+* Find whether or not an edge is part of a ghost cell on a particular processor
+* I think the quickest test is to find whether one of the other edges has mark==6.
+*/
 
 int isGhostEdge(int j, gridT *grid, int myproc){
     int ib, isGhost, nf, ne;
@@ -500,117 +489,6 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 
 }//End function isGhostEdge
 
-  /*
-  * Function: ReadBdyNC()
-  * -----------------------------
-  * Reads in boundary netcdf data into the forward and back time steps 
-  *
-  */     
- void ReadBdyNC(propT *prop, gridT *grid, int myproc){
-    int retval, j, k, n;
-    int t0, t1;
-    int varid;
-    char *vname;
-    size_t start[3];
-    size_t start2[2];
-    size_t count[3];
-    size_t count2[2];
-    int ncid = prop->netcdfBdyFileID;  
-    int Nk = bound->Nk;
-    int Ntype3 = bound->Ntype3;
-    int Ntype2 = bound->Ntype2;
-    int Nseg = bound->Nseg;
-
-    //Find the time index of the middle time step (t1) 
-    if(bound->t0==-1){
-       bound->t1 = getTimeRecBnd(prop->nctime,bound->time,(int)bound->Nt); //this is in met.c
-       bound->t0=bound->t1-1;
-       bound->t2=bound->t1+1;
-       printf("myproc: %d, bound->t0: %d, nctime: %f\n",myproc,bound->t0, prop->nctime);
-    }
-    t0 = bound->t0;
-
-    count[0]=NT;
-    count[1]=Nk;
-
-    count2[0]=NT;
-
-    start[0]=t0;
-    start[1]=0;
-    start[2]=0;
-
-    start2[0]=t0;
-    start2[1]=0;
-
-    //if(myproc==0) printf("t0 = %d [Nt = %d]\n",t0,bound->Nt);    
-    if(bound->hasType2){
-
-	count[2]=Ntype2;
-
-	vname = "boundary_u";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_u_t );
-
-	vname = "boundary_v";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_v_t );
-
-	vname = "boundary_w";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_w_t );
-
-	vname = "boundary_T";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_T_t );
-
-	vname = "boundary_S";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_S_t );
-
-    }
-
-    if(bound->hasType3){
-
-	count[2]=Ntype3;
-	count2[1]=Ntype3;
-
-	vname = "uc";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->uc_t );
-
-	vname = "vc";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->vc_t );
-
-	vname = "wc";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->wc_t );
-
-	vname = "T";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->T_t );
-
-	vname = "S";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->S_t );
-
-	vname = "h";//2D array
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_2D(ncid, vname, start2, count2, bound->h_t, myproc );
-
-     }// End read type-3
-
-     //Flux boundary data
-     if(bound->hasSeg){
-
-	count2[1]=Nseg;
-	vname = "boundary_Q";//2D array
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_2D(ncid, vname, start2, count2, bound->boundary_Q_t, myproc);
-
-     }//End flux read
-
- }//End function
 
 /*
  * Function: MatchBndPoints()
@@ -671,103 +549,6 @@ int isGhostEdge(int j, gridT *grid, int myproc){
     }
  } // End function
 
-/*
- * Function: ReadBndNCcoord()
- * --------------------------
- * Reads the coordinate information from the netcdf file into the boundary structure
- *
- */
-static void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc){
-
-    int retval, j;
-    int varid;
-    char *vname;
-    //int ncid = prop->netcdfBdyFileID; 
-
-    vname = "time";
-    if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...",vname);
-    if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(ncid, varid,bound->time))) 
-      ERR(retval); 
-    if(VERBOSE>2 && myproc==0) printf("done.\n");
-
-    vname = "z";
-    if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...",vname);
-    if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(ncid, varid,bound->z))) 
-      ERR(retval); 
-    if(VERBOSE>2 && myproc==0) printf("done.\n");
-
-    if(bound->hasType3>0){
-
-	vname = "xv";
-	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...",vname);
-	if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	    ERR(retval);
-	if ((retval = nc_get_var_double(ncid, varid,bound->xv))) 
-	  ERR(retval); 
-	if(VERBOSE>2 && myproc==0) printf("done.\n");
-
-	vname = "yv";
-	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...",vname);
-	if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	    ERR(retval);
-	if ((retval = nc_get_var_double(ncid, varid,bound->yv))) 
-	      ERR(retval); 
-	if(VERBOSE>2 && myproc==0) printf("done.\n");
-
-	vname = "cellp";
-	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...",vname);
-	if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	    ERR(retval);
-	if ((retval = nc_get_var_int(ncid, varid,bound->cellp))) 
-	  ERR(retval); 
-	if(VERBOSE>2 && myproc==0) printf("done.\n");
-    }//end if
-
-    if(bound->hasType2>0){
-
-	vname = "xe";
-	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...\n",vname);
-	if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	    ERR(retval);
-	if ((retval = nc_get_var_double(ncid, varid,bound->xe))) 
-	  ERR(retval); 
-
-	vname = "ye";
-	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...\n",vname);
-	if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	    ERR(retval);
-	if ((retval = nc_get_var_double(ncid, varid,bound->ye))) 
-	  ERR(retval); 
-
-	vname = "edgep";
-	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...\n",vname);
-	if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	    ERR(retval);
-	if ((retval = nc_get_var_int(ncid, varid,bound->edgep))) 
-	  ERR(retval); 
-    }//end if
-
-    if(bound->hasSeg>0){
-	vname = "segedgep";
-	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...\n",vname);
-	if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	    ERR(retval);
-	if ((retval = nc_get_var_int(ncid, varid,bound->segedgep))) 
-	  ERR(retval); 
-
-	vname = "segp";
-	if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...\n",vname);
-	if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	    ERR(retval);
-	if ((retval = nc_get_var_int(ncid, varid,bound->segp))) 
-	  ERR(retval); 
-    }
-
- }//End function
 
 /*
  * Function: AllocateBoundaryData()
@@ -1031,33 +812,12 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
  }//End function
 
 
- /*
- * Function: returndimlenBC()
- * --------------------------
- * Returns the length of a dimension 
- * Returns a zero if the dimension is not found and does not raise an error
- */
-static size_t returndimlenBC(int ncid, char *dimname){
- int retval;
- int dimid;
- size_t dimlen;
- 
- if ((retval =nc_inq_dimid(ncid,dimname,&dimid)))
-    return 0;
- 
- if ((retval = nc_inq_dimlen(ncid,dimid, &dimlen)))
-    ERR(retval);
- return dimlen;
-} // End function
-
-
-
 /*
 * Function: GetTimeRecBnd()
 * ------------------
 * Retuns the index of the first preceding time step in the vector time
 */
-static int getTimeRecBnd(REAL nctime, REAL *time, int nt){
+int getTimeRecBnd(REAL nctime, REAL *time, int nt){
     int j;
 
     for(j=0;j<nt;j++){
@@ -1067,4 +827,3 @@ static int getTimeRecBnd(REAL nctime, REAL *time, int nt){
     return nt;
 }
 
-#endif

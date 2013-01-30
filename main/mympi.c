@@ -11,6 +11,7 @@
  */
 #include <errno.h>
 #include "mympi.h"
+#include "mynetcdf.h"
 
 /*
  * Function: StartMpi

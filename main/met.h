@@ -11,6 +11,7 @@
 #include "grid.h"
 #include "phys.h"
 #include "util.h"
+//#include "mynetcdf.h"
 
 #define NTmet 3
 
@@ -123,10 +124,8 @@ typedef struct _metT {
 
 /* Public functions*/
 #ifdef USENETCDF
-  void InitialiseOutputNC(propT *prop, gridT *grid, physT *phys, metT *met, int myproc);
-  void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met,int blowup, int myproc);
   void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc);
-  void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc);
+  void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc, MPI_Comm comm);
   void AllocateMet(propT *prop, gridT *grid, metT **met, int myproc);
   void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc);
 #endif
