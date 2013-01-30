@@ -114,7 +114,7 @@ clobber:	clean
 
 # DO NOT DELETE THIS LINE - Dependencies are appended after it.
 
-mympi.o: mympi.h suntans.h fileio.h
+mympi.o: mympi.h suntans.h fileio.h mynetcdf.h
 grid.o: grid.h suntans.h fileio.h mympi.h partition.h util.h initialization.h
 grid.o: memory.h triangulate.h report.h timer.h
 report.o: report.h mympi.h suntans.h fileio.h grid.h
@@ -122,13 +122,13 @@ util.o: grid.h suntans.h fileio.h mympi.h util.h
 fileio.o: fileio.h defaults.h suntans.h
 phys.o: suntans.h phys.h grid.h fileio.h mympi.h util.h initialization.h
 phys.o: memory.h turbulence.h boundaries.h check.h scalars.h timer.h
-phys.o: profiles.h state.h diffusion.h sources.h met.h
+phys.o: profiles.h state.h diffusion.h sources.h met.h mynetcdf.h
 suntans.o: suntans.h mympi.h fileio.h grid.h phys.h report.h
 initialization.o: fileio.h suntans.h initialization.h
 memory.o: memory.h
 turbulence.o: phys.h suntans.h grid.h fileio.h mympi.h util.h turbulence.h
 turbulence.o: boundaries.h scalars.h
-boundaries.o: boundaries.h suntans.h phys.h grid.h fileio.h mympi.h
+boundaries.o: boundaries.h suntans.h phys.h grid.h fileio.h mympi.h mynetcdf.h
 check.o: check.h grid.h suntans.h fileio.h mympi.h phys.h timer.h memory.h
 scalars.o: scalars.h suntans.h grid.h fileio.h mympi.h phys.h util.h tvd.h
 scalars.o: initialization.h
@@ -145,5 +145,5 @@ partition-noparmetis.o: suntans.h partition.h grid.h fileio.h mympi.h
 no-mpi.o: suntans.h no-mpi.h
 sunplot.o: suntans.h fileio.h
 fileio.o: fileio.h defaults.h suntans.h
-met.o: met.h suntans.h fileio.h memory.h grid.h phys.h util.h 
-mynetcdf.o: mynetcdf.h
+met.o: met.h suntans.h fileio.h memory.h grid.h phys.h util.h mynetcdf.h
+mynetcdf.o: mynetcdf.h suntans.h phys.h grid.h met.h boundaries.h

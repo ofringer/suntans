@@ -24,7 +24,9 @@
 #include "state.h"
 #include "diffusion.h"
 #include "sources.h"
+#include "mynetcdf.h"
 #include "met.h"
+
 
 /*
  * Private Function declarations.
@@ -1129,24 +1131,23 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       InitialiseMetFields(prop, grid, metin, met,myproc);
       
       // Initialise the heat flux variables
-      updateMetData(prop, grid, metin, met, myproc); 
-     if(prop->metmodel>=2)       
-      updateAirSeaFluxes(prop, grid, phys, met, phys->T);
-      
+      updateMetData(prop, grid, metin, met, myproc, comm); 
+     if(prop->metmodel>=2) {      
+	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
+
 	//Communicate across processors
-	
 	ISendRecvCellData2D(met->Hs,grid,myproc,comm);
 	ISendRecvCellData2D(met->Hl,grid,myproc,comm);
 	ISendRecvCellData2D(met->Hsw,grid,myproc,comm);
 	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
 	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
 	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
-
     }
   // Initialise the output netcdf file metadata
     if(prop->outputNetcdf>0){
       InitialiseOutputNC(prop, grid, phys, met, myproc);
     }
+  }
 #endif
   
   // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
@@ -1229,7 +1230,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // Update the meteorological data
 #ifdef USENETCDF
       if(prop->metmodel>0){
-	updateMetData(prop, grid, metin, met, myproc);
+	updateMetData(prop, grid, metin, met, myproc, comm);
 	//if(prop->metmodel==2){
 	//    updateAirSeaFluxes(prop, grid, phys, met, phys->T);
         //}
@@ -1242,7 +1243,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	
 	getTsurf(grid,phys); // Find the surface temperature
 	
-        HeatSource(phys->wtmp,phys->uold,grid,phys,prop,met);
+        HeatSource(phys->wtmp,phys->uold,grid,phys,prop,met, myproc, comm);
 	
         UpdateScalars(grid,phys,prop,phys->wnew,phys->T,phys->boundary_T,phys->Cn_T,
             prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->theta,
@@ -1250,6 +1251,11 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	
 	getchangeT(grid,phys); // Get the change in surface temp
         ISendRecvCellData3D(phys->T,grid,myproc,comm);
+	
+	ISendRecvCellData3D(phys->Ttmp,grid,myproc,comm);
+        ISendRecvCellData2D(phys->dT,grid,myproc,comm);
+        ISendRecvCellData2D(phys->Tsurf,grid,myproc,comm);
+
         t_transport+=Timer()-t0;
       }
 

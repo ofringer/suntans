@@ -1,24 +1,17 @@
 /*
- * Routines for parsing meteorological input data onto the SUNTANS grid
+ * Routines for parsing meteorological input data into SUNTANS 
  * 
  */
 
 #include "met.h"
-#include "phys.h"
+//#include "phys.h"
+#include "mynetcdf.h"
 
 /* Private functions */
-#ifdef USENETCDF
-void ReadMetNCcoord(propT *prop, gridT *grid, metinT *metin,int myproc);
-void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc);
-int getTimeRec(REAL nctime, REAL *time, int nt);
-const void* FillValue(int empty);
-void ravel(REAL **tmparray, REAL *tmpvec, gridT *grid);
-static size_t returndimlen(int ncid, char *dimname);
-#endif
 void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda,int myproc);
 static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL D);
-void weightInterpArray(REAL **D, REAL **klambda, int Nc, int Ns, int nt, REAL **Dout);
-void weightInterpField(REAL *D, REAL **klambda, int Nc, int Ns, REAL *Dout);
+void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, REAL **Dout);
+void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout);
 void linsolve(REAL **A, REAL *b, int N);
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair);
 static REAL qsat(REAL Tw, REAL Pair);
@@ -29,792 +22,14 @@ static REAL psit_30(REAL zet);
 
 /* Start of functions */
 
-
-#ifdef USENETCDF
-void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, int myproc){
-  /*********************************************************************** 
-   * 
-   * Writes output to netcdf file/s
-   * 
-   ************************************************************************/
-   int ncid = prop->outputNetcdfFileID;
-   int varid, retval, k;
-   // Start and count vectors for one, two and three dimensional arrays
-   const size_t startone[] = {prop->nctimectr};
-   const size_t countone[] = {1};
-   const size_t starttwo[] = {prop->nctimectr,0};
-   const size_t counttwo[] = {1,grid->Nc};
-   size_t startthree[] = {prop->nctimectr,0,0};
-   size_t countthree[] = {1,grid->Nkmax,grid->Nc};
-   const size_t countthreew[] = {1,grid->Nkmax+1,grid->Nc};
-   const REAL time[] = {prop->nctime};
-   
-   REAL *tmpvar;
-   // Need to write the 3-D arrays as vectors
-   tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"WriteOutputNC");
-   
-   if(!(prop->n%prop->ntout) || prop->n==1+prop->nstart || blowup) {
-
-    if(myproc==0 && VERBOSE>1){ 
-      if(!blowup) 
-        printf("Outputting data to netcdf at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-      else
-        printf("Outputting blowup data to netcdf at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-    }
-    
-    /* Write the time data*/
-    if ((retval = nc_inq_varid(ncid, "time", &varid)))
-	ERR(retval);
-    if ((retval = nc_put_vara_double(ncid, varid, startone, countone, time )))
-	ERR(retval);
-    
-    /* Write to the physical variables*/
-    if ((retval = nc_inq_varid(ncid, "eta", &varid)))
-	ERR(retval);
-    if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, phys->h )))
- 	ERR(retval);
-    
-    if ((retval = nc_inq_varid(ncid, "u", &varid)))
-	ERR(retval);
-    ravel(phys->uc, tmpvar, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
-	ERR(retval);
-    
-    if ((retval = nc_inq_varid(ncid, "v", &varid)))
-	ERR(retval);
-    ravel(phys->vc, tmpvar, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
-	ERR(retval);
-      
-    // write w at cell top and bottom
-    if ((retval = nc_inq_varid(ncid, "w", &varid)))
-	ERR(retval);
-    ravel(phys->w, tmpvar, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthreew, tmpvar )))
-	ERR(retval);
-    
-    if ((retval = nc_inq_varid(ncid, "nu_v", &varid)))
-	ERR(retval);
-    ravel(phys->nu_tv, tmpvar, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
-	ERR(retval);
-    
-    // Tracers
-     if(prop->beta>0){
-       if ((retval = nc_inq_varid(ncid, "salt", &varid)))
-	  ERR(retval);
-      ravel(phys->s, tmpvar, grid);
-      if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
-	  ERR(retval);
-     }
-     
-     if(prop->gamma>0){
-	if ((retval = nc_inq_varid(ncid, "temp", &varid)))
-	  ERR(retval);
-	ravel(phys->T, tmpvar, grid);
-	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
-	  ERR(retval);
-     }
-      
-     if( (prop->gamma>0) || (prop->beta>0) ){ 
-	if ((retval = nc_inq_varid(ncid, "rho", &varid)))
-	  ERR(retval);
-	ravel(phys->rho, tmpvar, grid);
-	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
-	  ERR(retval);
-     }
-     
-     // Wind variables
-     if(prop->metmodel>0){
-       if ((retval = nc_inq_varid(ncid, "Uwind", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->Uwind )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "Vwind", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->Vwind )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "Tair", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->Tair )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "Pair", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->Pair )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "rain", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->rain )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "RH", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->RH )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "cloud", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->cloud )))
-	 ERR(retval);
-       
-       // Heat flux variables
-       if ((retval = nc_inq_varid(ncid, "Hs", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->Hs )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "Hl", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->Hl )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "Hlw", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->Hlw )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "Hsw", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->Hsw )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "tau_x", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->tau_x )))
-	 ERR(retval);
-       
-       if ((retval = nc_inq_varid(ncid, "tau_y", &varid)))
-	 ERR(retval);
-       if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->tau_y )))
-	 ERR(retval);
-       
-       if(prop->beta > 0.0){
-	  if ((retval = nc_inq_varid(ncid, "EP", &varid)))
-	     ERR(retval);
-	  if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, met->EP )))
-	     ERR(retval);
-       }
-     }
-     
-	  
-     
-    /* Update the time counter*/
-    prop->nctimectr += 1;  
-   }
-   
-   // Free the temporary vector
-   SunFree(tmpvar,grid->Nc*grid->Nkmax,"WriteOuputNC");
-  
-} // End of 
-
-void InitialiseOutputNC(propT *prop, gridT *grid, physT *phys, metT *met, int myproc){
-  /*********************************************************************** 
-   * 
-   * Initialises the output netcdf file/s
-   * 
-   * One file per processor
-   * The pointer to each file is stored in prop->outputNetcdfFileID
-   * 
-   ************************************************************************/
-   int ncid = prop->outputNetcdfFileID;
-   int retval, i ,j;
-   int varid;
-   int dimid_Nc, dimid_Nk, dimid_Np, dimid_nt, dimid_numsides, dimid_Nkw; 
-   int dimidone[1];
-   int dimidtwo[2];
-   int dimidthree[3];
-   int nofill=0;
-   const size_t starttwo[] = {0,0};
-   const size_t counttwo[] = {grid->Nkmax,grid->Nc};
-   REAL *z_r;
-   REAL *z_w;
-   const int DEFLATE=1;
-   const int DEFLATELEVEL=1;
-   
-   /********************************************************************** 
-    *
-    * Define all of the attribute strings manually
-    *		-- this is ugly but will do for now... 
-    *
-    **********************************************************************/
-   
-   /* Global attributes */ 
-   static char globalatt[]="SUNTANS netcdf output file";
-   
-   /* Grid variable attributes */ 
-   static char xv_long_name[]="x coordinate of grid cell centre point";
-   static char xv_units[]="metres";
-   static char yv_long_name[]="y coordinate of grid cell centre point";
-   static char yv_units[]="metres";
-   static char xp_long_name[]="x coordinate of grid nodes";
-   static char xp_units[]="metres";
-   static char yp_long_name[]="y coordinate of grid nodes";
-   static char yp_units[]="metres";
-   static char dv_long_name[]="depth at grid cell centre point";
-   static char dv_units[]="metres";
-   static char dz_long_name[]="Vertical grid z-layer spacing";
-   static char dz_units[]="metres";
-   static char z_r_long_name[]="z coordinate at grid cell mid-height";
-   static char z_r_units[]="metres";
-   static char z_w_long_name[]="z coordinate at grid cell top/bottom";
-   static char z_w_units[]="metres";
-   static char dzz_long_name[]="Cell-centred vertical grid spacing";
-   static char dzz_units[]="metres";
-   static char area_long_name[]="Grid cell area";
-   static char area_units[]="metre2";  
-   static char Nk_long_name[]="Number of vertical layers at grid cell centre";
-   static char cells_long_name[]="Indices to the nodes of each grid cell";
-   static char mnptr_long_name[]="Indices to the grid cells in the unpartitioned grid";
-   
-   /* Time variable attributes 
-    *!!! need to read in the units from the input file!!! */ 
-   static char time_long_name[]="Simulation time";
-   static char time_units[]="seconds since 1990-01-01 00:00:00";
-   
-   /* Physical variable attributes */ 
-   static char eta_long_name[]="Sea surface elevation";
-   static char eta_units[]="metre";
-   static char u_long_name[]="Eastward water velocity component";
-   static char u_units[]="metre second-1";
-   static char v_long_name[]="Northward water velocity component";
-   static char v_units[]="metre second-1";
-   static char w_long_name[]="Vertical water velocity component";
-   static char w_units[]="metre second-1";
-   static char nu_v_long_name[]="Vertical eddy viscosity";
-   static char nu_v_units[]="metre2 second-1";
-   static char salt_long_name[]="Salinity";
-   static char salt_units[]="ppt";
-   static char temp_long_name[]="Water temperature";
-   static char temp_units[]="degrees C";
-   static char rho_long_name[]="Water density";
-   static char rho_units[]="kg m-3";
-   
-   /* Meteorological variable attribute */
-   static char Uwind_long_name[]="Eastward wind velocity component";
-   static char Uwind_units[]="metre second-1";
-   static char Vwind_long_name[]="Northward wind velocity component";
-   static char Vwind_units[]="metre second-1";
-   static char Tair_long_name[]="Air temperature";
-   static char Tair_units[]="degrees C";
-   static char Pair_long_name[]="Air pressure";
-   static char Pair_units[]="millibar";
-   static char rain_long_name[]="Rain fall rate";
-   static char rain_units[]="kg m-2 s-1";
-   static char RH_long_name[]="Relative humidity";
-   static char RH_units[]="percent (%)";
-   static char cloud_long_name[]="Cloud cover fractions";
-   static char cloud_units[]="fraction (0-1)";
-   
-   /* Model calculated air-sea flux parameters */
-   static char Hs_long_name[]="Sensible heat flux";
-   static char Hs_units[]="Watts metre-2";
-   static char Hl_long_name[]="Latent heat flux";
-   static char Hl_units[]="Watts metre-2";
-   static char Hlw_long_name[]="Longwave radiation";
-   static char Hlw_units[]="Watts metre-2";
-   static char Hsw_long_name[]="Shortwave radiation";
-   static char Hsw_units[]="Watts metre-2";
-   static char tau_x_long_name[]="Eastward component surface wind stress";
-   static char tau_x_units[]="Newton metre-2";
-   static char tau_y_long_name[]="Northward component surface wind stress";
-   static char tau_y_units[]="Newton metre-2";
-   static char EP_long_name[]="Evaporation minus precipitation";
-   static char EP_units[]="meter second-1";
-   
-   REAL *tmpvar;
-   // Need to write the 3-D arrays as vectors
-   tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"InitialiseOutputNC");  
-   
-   /* Initialise the depth arrays */
-   z_r = (REAL *)SunMalloc((grid->Nkmax)*sizeof(REAL),"InitialiseOutputNC");
-   z_w = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"InitialiseOutputNC");
-   
-   /**************
-    *
-    * Start writing...
-    *
-    **************/
-   if(VERBOSE>1 && myproc==0) printf("Initialising output netcdf files...\n");
-   
-   // Set the netcdf time ctr to 0
-   prop->nctimectr=0;
-   
-   /* Define the global attributes */
-   if ((retval = nc_put_att_text(ncid, NC_GLOBAL, "title",strlen(globalatt),globalatt)))
-	ERR(retval);
-   
-   /********************************************************************** 
-    *
-    * Define the dimensions
-    *
-    **********************************************************************/
-   if ((retval = nc_def_dim(ncid, "Nc", grid->Nc, &dimid_Nc)))
-	ERR(retval);
-   if ((retval = nc_def_dim(ncid, "Np", grid->Np, &dimid_Np)))
-	ERR(retval);
-   if ((retval = nc_def_dim(ncid, "Nk", grid->Nkmax, &dimid_Nk)))
-	ERR(retval);
-   if ((retval = nc_def_dim(ncid, "Nkw", grid->Nkmax+1, &dimid_Nkw)))
-	ERR(retval);
-   if ((retval = nc_def_dim(ncid, "numsides", NUMEDGECOLUMNS, &dimid_numsides)))
-	ERR(retval);
-   if ((retval = nc_def_dim(ncid, "nt", NC_UNLIMITED, &dimid_nt)))
-	ERR(retval);
-   
-   /********************************************************************** 
-    *
-    * Define the grid variables and attributes 
-    *
-    **********************************************************************/
-   
-   //xv
-   dimidone[0] = dimid_Nc;
-   if ((retval = nc_def_var(ncid,"xv",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   /*Write some attributes*/
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(xv_long_name),xv_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(xv_units),xv_units)))
-	ERR(retval);
-
-    /* Write the data */
-   if ((retval = nc_put_var_double(ncid,varid, grid->xv)))
-     ERR(retval);
-   
-   //yv
-   dimidone[0] = dimid_Nc;
-   if ((retval = nc_def_var(ncid,"yv",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(yv_long_name),yv_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(yv_units),yv_units)))
-	ERR(retval);
-   
-   if ((retval = nc_put_var_double(ncid,varid, grid->yv)))
-     ERR(retval);
-   
-   //dv
-   dimidone[0] = dimid_Nc;
-   if ((retval = nc_def_var(ncid,"dv",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(dv_long_name),dv_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(dv_units),dv_units)))
-	ERR(retval);
-   
-   if ((retval = nc_put_var_double(ncid,varid, grid->dv)))
-     ERR(retval);
-   
-   //area
-   dimidone[0] = dimid_Nc;
-   if ((retval = nc_def_var(ncid,"Ac",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(area_long_name),area_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(area_units),area_units)))
-	ERR(retval);
-   
-   if ((retval = nc_put_var_double(ncid,varid, grid->Ac)))
-     ERR(retval);
-   //Nk
-   dimidone[0] = dimid_Nc;
-   if ((retval = nc_def_var(ncid,"Nk",NC_INT,1,dimidone,&varid)))
-      ERR(retval);
-   
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Nk_long_name),Nk_long_name)))
-	ERR(retval);
-
-   if ((retval = nc_put_var_int(ncid,varid, grid->Nk)))
-     ERR(retval);
-   
-   //xp
-   dimidone[0] = dimid_Np;   
-   if ((retval = nc_def_var(ncid,"xp",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(xp_long_name),xp_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(xp_units),xp_units)))
-	ERR(retval);
-   
-   if ((retval = nc_put_var_double(ncid,varid, grid->xp)))
-     ERR(retval);
-   
-   //yp
-   dimidone[0] = dimid_Np;
-   if ((retval = nc_def_var(ncid,"yp",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(yp_long_name),yp_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(yp_units),yp_units)))
-	ERR(retval);
-   
-   if ((retval = nc_put_var_double(ncid,varid, grid->yp)))
-     ERR(retval);
-   
-   //dz
-   dimidone[0] = dimid_Nk;   
-   if ((retval = nc_def_var(ncid,"dz",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(dz_long_name),dz_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(dz_units),dz_units)))
-	ERR(retval);
-   
-   if ((retval = nc_put_var_double(ncid,varid, grid->dz)))
-     ERR(retval);
-    
-   //mnptr
-   if(grid->mnptr){//Only write if mnptr exists
-       dimidone[0] = dimid_Nc;
-       if ((retval = nc_def_var(ncid,"mnptr",NC_INT,1,dimidone,&varid)))
-	  ERR(retval);
-   
-       if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(mnptr_long_name),mnptr_long_name)))
-	    ERR(retval);
-
-       if ((retval = nc_put_var_int(ncid,varid, grid->mnptr)))
-	 ERR(retval);
-   }
-   
-   //cells
-   dimidtwo[0] = dimid_Nc;
-   dimidtwo[1] = dimid_numsides;
-   if ((retval = nc_def_var(ncid,"cells",NC_INT,2,dimidtwo,&varid)))
-      ERR(retval);
-   
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(cells_long_name),cells_long_name)))
-	ERR(retval);
-
-   //**** Need to check that these are written in the right order - may need to change the order of the dimensions above ****/
-   if ((retval = nc_put_var_int(ncid,varid, grid->cells)))
-     ERR(retval);
-   
-    //time
-   dimidone[0] = dimid_nt;
-   if ((retval = nc_def_var(ncid,"time",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(time_long_name),time_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(time_units),time_units)))
-	ERR(retval);
-   
-   /* Calculate and write the vertical coordinate data */
-   
-   z_w[0]=0.0;
-   for(j=0;j<grid->Nkmax;j++){
-      z_w[j+1] = z_w[j] + grid->dz[j];
-      if(j==0){
-	 z_r[j] = grid->dz[j]*0.5;
-      }else{
-	 z_r[j] = z_r[j-1]+grid->dz[j];
-      }
-   }
-   
-   //z_r
-   dimidone[0] = dimid_Nk;   
-   if ((retval = nc_def_var(ncid,"z_r",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(z_r_long_name),z_r_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(z_r_units),z_r_units)))
-	ERR(retval);
-   
-   if ((retval = nc_put_var_double(ncid,varid, z_r)))
-     ERR(retval);
-   
-   //z_w
-   dimidone[0] = dimid_Nkw;   
-   if ((retval = nc_def_var(ncid,"z_w",NC_DOUBLE,1,dimidone,&varid)))
-      ERR(retval);
-   
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(z_w_long_name),z_w_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(z_w_units),z_w_units)))
-	ERR(retval);
-   
-   if ((retval = nc_put_var_double(ncid,varid, z_w)))
-     ERR(retval);
-   
-    //dzz
-   dimidtwo[0] = dimid_Nk;
-   dimidtwo[1] = dimid_Nc;
-   if ((retval = nc_def_var(ncid,"dzz",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval);
-   if ((retval = nc_def_var_fill(ncid,varid,nofill,FillValue(EMPTY)))) // Sets a _FillValue attribute
-      ERR(retval);
-   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-      ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(dzz_long_name),dzz_long_name)))
-     ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(dzz_units),dzz_units)))
-     ERR(retval);
-   
-   ravel(grid->dzz, tmpvar, grid);
-   if ((retval = nc_put_vara_double(ncid, varid, starttwo, counttwo, tmpvar )))
-	ERR(retval);
-
-   /********************************************************************** 
-    * 
-    * Define the physical variables and attributes 
-    *
-    **********************************************************************/
-   dimidtwo[0] = dimid_nt;
-   dimidtwo[1] = dimid_Nc;
-   
-   dimidthree[0] = dimid_nt;
-   dimidthree[1] = dimid_Nk;
-   dimidthree[2] = dimid_Nc;
-   
-   // eta
-   if ((retval = nc_def_var(ncid,"eta",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(eta_long_name),eta_long_name)))
-	ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(eta_units),eta_units)))
-	ERR(retval);
-   
-   //u
-   if ((retval = nc_def_var(ncid,"u",NC_DOUBLE,3,dimidthree,&varid)))
-      ERR(retval);
-   if ((retval = nc_def_var_fill(ncid,varid,nofill,FillValue(EMPTY)))) // Sets a _FillValue attribute
-      ERR(retval);
-   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-      ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(u_long_name),u_long_name)))
-     ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(u_units),u_units)))
-     ERR(retval);
-   
-   //v
-   if ((retval = nc_def_var(ncid,"v",NC_DOUBLE,3,dimidthree,&varid)))
-     ERR(retval);   
-   if ((retval = nc_def_var_fill(ncid,varid,nofill,FillValue(EMPTY)))) // Sets a _FillValue attribute
-      ERR(retval);
-   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-      ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(v_long_name),v_long_name)))
-     ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(v_units),v_units)))
-     ERR(retval);
-   
-   //w
-   dimidthree[1] = dimid_Nkw;
-   if ((retval = nc_def_var(ncid,"w",NC_DOUBLE,3,dimidthree,&varid)))
-     ERR(retval); 
-   if ((retval = nc_def_var_fill(ncid,varid,nofill,FillValue(EMPTY)))) // Sets a _FillValue attribute
-      ERR(retval);
-   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-      ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(w_long_name),w_long_name)))
-     ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(w_units),w_units)))
-     ERR(retval);
-   
-   dimidthree[1] = dimid_Nk;
-   
-   //nu_v
-   if ((retval = nc_def_var(ncid,"nu_v",NC_DOUBLE,3,dimidthree,&varid)))
-     ERR(retval); 
-   if ((retval = nc_def_var_fill(ncid,varid,nofill,FillValue(EMPTY)))) // Sets a _FillValue attribute
-      ERR(retval);
-   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-      ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(nu_v_long_name),nu_v_long_name)))
-     ERR(retval);
-   if ((retval = nc_put_att_text(ncid, varid, "units",strlen(nu_v_units),nu_v_units)))
-     ERR(retval);
-   
-   //salinity
-   if(prop->beta>0){
-     if ((retval = nc_def_var(ncid,"salt",NC_DOUBLE,3,dimidthree,&varid)))
-      ERR(retval);
-     if ((retval = nc_def_var_fill(ncid,varid,nofill,FillValue(EMPTY)))) // Sets a _FillValue attribute
-      ERR(retval);
-     if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-      ERR(retval);
-     if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(salt_long_name),salt_long_name)))
-       ERR(retval);
-     if ((retval = nc_put_att_text(ncid, varid, "units",strlen(salt_units),salt_units)))
-       ERR(retval);
-   }
-   
-   //temperature
-   if(prop->gamma>0){
-     if ((retval = nc_def_var(ncid,"temp",NC_DOUBLE,3,dimidthree,&varid)))
-      ERR(retval); 
-     if ((retval = nc_def_var_fill(ncid,varid,nofill,FillValue(EMPTY)))) // Sets a _FillValue attribute
-      ERR(retval);
-     if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-      ERR(retval);
-     if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(temp_long_name),temp_long_name)))
-       ERR(retval);
-     if ((retval = nc_put_att_text(ncid, varid, "units",strlen(temp_units),temp_units)))
-       ERR(retval);     
-   }
-   
-   //rho
-   if( (prop->gamma>0) || (prop->beta>0) ){
-     if ((retval = nc_def_var(ncid,"rho",NC_DOUBLE,3,dimidthree,&varid)))
-      ERR(retval);
-     if ((retval = nc_def_var_fill(ncid,varid,nofill,FillValue(EMPTY)))) // Sets a _FillValue attribute
-      ERR(retval);
-     if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-      ERR(retval);
-     if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(rho_long_name),rho_long_name)))
-       ERR(retval);
-     if ((retval = nc_put_att_text(ncid, varid, "units",strlen(rho_units),rho_units)))
-       ERR(retval);   
-   }
-   
-   /* Meteorological variables (2-D)*/
-   
-   if(prop->metmodel>0){
-    // Uwind
-    if ((retval = nc_def_var(ncid,"Uwind",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Uwind_long_name),Uwind_long_name)))
-      ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(Uwind_units),Uwind_units)))
-      ERR(retval);
-    
-    // Vwind
-      if ((retval = nc_def_var(ncid,"Vwind",NC_DOUBLE,2,dimidtwo,&varid)))
-	ERR(retval); 
-      if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Vwind_long_name),Vwind_long_name)))
-	ERR(retval);
-      if ((retval = nc_put_att_text(ncid, varid, "units",strlen(Vwind_units),Vwind_units)))
-	ERR(retval);
-      
-    // Tair
-    if ((retval = nc_def_var(ncid,"Tair",NC_DOUBLE,2,dimidtwo,&varid)))
-	ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Tair_long_name),Tair_long_name)))
-	ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(Tair_units),Tair_units)))
-	ERR(retval);
-    
-    // Pair
-    if ((retval = nc_def_var(ncid,"Pair",NC_DOUBLE,2,dimidtwo,&varid)))
-	ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Pair_long_name),Pair_long_name)))
-	ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(Pair_units),Pair_units)))
-	ERR(retval);
-    
-    // rain
-    if ((retval = nc_def_var(ncid,"rain",NC_DOUBLE,2,dimidtwo,&varid)))
-	ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(rain_long_name),rain_long_name)))
-	ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(rain_units),rain_units)))
-	ERR(retval);
-    
-    //RH
-    if ((retval = nc_def_var(ncid,"RH",NC_DOUBLE,2,dimidtwo,&varid)))
-	ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(RH_long_name),RH_long_name)))
-	ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(RH_units),RH_units)))
-	ERR(retval);
-    
-    //cloud
-    if ((retval = nc_def_var(ncid,"cloud",NC_DOUBLE,2,dimidtwo,&varid)))
-	ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(cloud_long_name),cloud_long_name)))
-	ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(cloud_units),cloud_units)))
-	ERR(retval);
-    
-    /* Surface flux variables */
-    // Hs
-    if ((retval = nc_def_var(ncid,"Hs",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Hs_long_name),Hs_long_name)))
-      ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(Hs_units),Hs_units)))
-      ERR(retval);
-    
-    // Hl
-    if ((retval = nc_def_var(ncid,"Hl",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Hl_long_name),Hl_long_name)))
-      ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(Hl_units),Hl_units)))
-      ERR(retval);
-    
-    // Hlw
-    if ((retval = nc_def_var(ncid,"Hlw",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Hlw_long_name),Hlw_long_name)))
-      ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(Hlw_units),Hlw_units)))
-      ERR(retval);
-    
-    // Hsw
-    if ((retval = nc_def_var(ncid,"Hsw",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(Hsw_long_name),Hsw_long_name)))
-      ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(Hsw_units),Hsw_units)))
-      ERR(retval);
-    
-    // tau_x
-    if ((retval = nc_def_var(ncid,"tau_x",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(tau_x_long_name),tau_x_long_name)))
-      ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(tau_x_units),tau_x_units)))
-      ERR(retval);
-    
-    // tau_y
-    if ((retval = nc_def_var(ncid,"tau_y",NC_DOUBLE,2,dimidtwo,&varid)))
-      ERR(retval); 
-    if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(tau_y_long_name),tau_y_long_name)))
-      ERR(retval);
-    if ((retval = nc_put_att_text(ncid, varid, "units",strlen(tau_y_units),tau_y_units)))
-      ERR(retval);
-     
-    //EP
-    if(prop->beta > 0.0){
-	if ((retval = nc_def_var(ncid,"EP",NC_DOUBLE,2,dimidtwo,&varid)))
-	    ERR(retval); 
-	if ((retval = nc_put_att_text(ncid, varid, "long_name",strlen(EP_long_name),EP_long_name)))
-	    ERR(retval);
-	if ((retval = nc_put_att_text(ncid, varid, "units",strlen(EP_units),EP_units)))
-	    ERR(retval);
-    }
-   }
-   
-   /****** 
-    *End file definition mode
-    ******/
-   if ((retval = nc_enddef(ncid)))
-	ERR(retval);
-
-   // Free the temporary vector
-   SunFree(tmpvar,grid->Nc*grid->Nkmax,"InitialiseOutputNC");
-
-}// End of InitialiseOutputNC
-
-const void* FillValue(int empty){
-  /* Converts the EMPTY value expression type to match the type expected by nc_def_var_fill*/
- empty = (REAL)empty;
-}
-
+/*
+* Function: initialiseMetFields()
+* -----------------------------
+* Driver function to initialise all of the meterological inputs 
+*
+*/
 void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc){
-  /* Wrapper function for initialising all meterological fields */
+ 
   int retval;
   int i,j;
   
@@ -842,365 +57,25 @@ void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int
 	    printf("\n");
     }
  }
-
  
  /*  Interpolate the heights of some variables */
  if(VERBOSE>1 && myproc==0) printf("Interpolating height coordinates onto grid...\n");
- weightInterpField(metin->z_Uwind, metin->WUwind, grid->Nc, metin->NUwind, met->z_Uwind);
- weightInterpField(metin->z_Vwind, metin->WVwind, grid->Nc, metin->NVwind, met->z_Vwind);
- weightInterpField(metin->z_Tair, metin->WTair, grid->Nc, metin->NTair, met->z_Tair);
- weightInterpField(metin->z_RH, metin->WRH, grid->Nc, metin->NRH, met->z_RH);
- 
-
+ weightInterpField(metin->z_Uwind, metin->WUwind, grid, metin->NUwind, met->z_Uwind);
+ weightInterpField(metin->z_Vwind, metin->WVwind, grid, metin->NVwind, met->z_Vwind);
+ weightInterpField(metin->z_Tair, metin->WTair, grid, metin->NTair, met->z_Tair);
+ weightInterpField(metin->z_RH, metin->WRH, grid, metin->NRH, met->z_RH);
   
 } // End of InitialiseMetFields
 
-void ravel(REAL **tmparray, REAL *tmpvec,gridT *grid){
-  /* 
-   * Unravel a 2-D array into a vector 
-   * This is necessary for writing a 2-D array to netcdf
-   */
-  int j,k;
-  int nk=grid->Nkmax, nc=grid->Nc;
-  
-  for(j=0;j<nc;j++){
-    for(k=0;k<nk;k++){
-      if(k<grid->Nk[j]){
-        tmpvec[k*nc+j] = tmparray[j][k];
-      }else{
-	tmpvec[k*nc+j] = EMPTY;
-      }
-    }
-  }
-//   for(k=0;k<nk;k++){
-//     for(j=0;j<nc;j++){
-//       tmpvec[j*k+j] = tmparray[j][k]; 
-//     }
-//   }
-//   
-}
-
-void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc){
-    /* Read the met data from a netcddf file for the initial two time steps*/ 
-    int retval, j,k;
-    int t0;
-    int varid;
-    char *vname;
-    size_t start[2];
-    size_t count[]={1,1};
-    
-    if(metin->t0==-1){
-	metin->t1 = getTimeRec(prop->nctime,metin->time,metin->nt);
-	metin->t0 = metin->t1-1;
-	metin->t2 = metin->t1+1;
-    }
-    t0 = metin->t0;
-    
-    //printf("Model time(0) = %f, time index = %d of %d\n",prop->nctime,t0,metin->nt);
-    start[0] = t0;
-    start[1] = 0;
-    count[0] = NTmet;
-
-    vname = "Uwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    count[1] = metin->NUwind;
-    nc_read_2D(prop->metncid,vname,start,count, metin->Uwind, myproc);
-
-    vname = "Vwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    count[1] = metin->NVwind;
-    nc_read_2D(prop->metncid,vname,start,count, metin->Vwind, myproc);
-
-    vname = "Tair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    count[1] = metin->NTair;
-    nc_read_2D(prop->metncid,vname,start,count, metin->Tair, myproc); 
-
-    vname = "Pair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    count[1] = metin->NPair;
-    nc_read_2D(prop->metncid,vname,start,count, metin->Pair, myproc);
-
-    vname = "rain";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    count[1] = metin->Nrain;
-    nc_read_2D(prop->metncid,vname,start,count, metin->rain, myproc);
-
-    vname = "RH";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    count[1] = metin->NRH;
-    nc_read_2D(prop->metncid,vname,start,count, metin->RH, myproc);
-
-    vname = "cloud";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    count[1] = metin->Ncloud;
-    nc_read_2D(prop->metncid,vname,start,count, metin->cloud, myproc);
 /*
-    vname = "Uwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    for (j=0;j<metin->NUwind;j++){
-      for (k=0;k<2;k++){
-	start[0]=t0+k;
-	start[1]=j;
-	if ((retval = nc_get_vara_double(prop->metncid, varid, start, count, &metin->Uwind[k][j]))) 
-	    ERR(retval); 
-	if(VERBOSE>3 && myproc==0) printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->Uwind[k][j]); 
-      }
-    }
-    
-    vname = "Vwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    for (j=0;j<metin->NVwind;j++){
-      for (k=0;k<2;k++){
-	start[0]=t0+k;
-	start[1]=j;
-	if ((retval = nc_get_vara_double(prop->metncid, varid, start, count, &metin->Vwind[k][j]))) 
-	    ERR(retval); 
-	 if(VERBOSE>3 && myproc==0) printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->Vwind[k][j]); 
-      }
-    }
-    
-    vname = "Tair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    for (j=0;j<metin->NTair;j++){
-      for (k=0;k<2;k++){
-	start[0]=t0+k;
-	start[1]=j;
-	if ((retval = nc_get_vara_double(prop->metncid, varid, start, count, &metin->Tair[k][j]))) 
-	    ERR(retval); 
-	if(VERBOSE>3 && myproc==0) printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->Tair[k][j]); 
-      }
-    }
-    
-    vname = "Pair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    for (j=0;j<metin->NPair;j++){
-      for (k=0;k<2;k++){
-	start[0]=t0+k;
-	start[1]=j;
-	if ((retval = nc_get_vara_double(prop->metncid, varid, start, count, &metin->Pair[k][j]))) 
-	    ERR(retval); 
-	if(VERBOSE>3 && myproc==0) printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->Pair[k][j]); 
-      }
-    }
-    
-    vname = "rain";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    for (j=0;j<metin->Nrain;j++){
-      for (k=0;k<2;k++){
-	start[0]=t0+k;
-	start[1]=j;
-	if ((retval = nc_get_vara_double(prop->metncid, varid, start, count, &metin->rain[k][j]))) 
-	    ERR(retval); 
-	if(VERBOSE>3 && myproc==0) printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->rain[k][j]); 
-      }
-    }
-    
-    vname = "RH";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    for (j=0;j<metin->NRH;j++){
-      for (k=0;k<2;k++){
-	start[0]=t0+k;
-	start[1]=j;
-	if ((retval = nc_get_vara_double(prop->metncid, varid, start, count, &metin->RH[k][j]))) 
-	    ERR(retval); 
-	if(VERBOSE>3 && myproc==0) printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->RH[k][j]); 
-      }
-    }
-    
-    vname = "cloud";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from netcdf file...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    for (j=0;j<metin->Ncloud;j++){
-      for (k=0;k<2;k++){
-	start[0]=t0+k;
-	start[1]=j;
-	if ((retval = nc_get_vara_double(prop->metncid, varid, start, count, &metin->cloud[k][j]))) 
-	    ERR(retval); 
-	if(VERBOSE>3 && myproc==0) printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->cloud[k][j]); 
-      }
-    }
-    */
-
-//     count[0]=2;
-//     count[1]=metin->NRH;
-//     start[0]=t0;
-//     start[1]=0;
-//     if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-// 	ERR(retval);
-//     if ((retval = nc_get_vars_double(prop->metncid, varid, start, count,stride, metin->RH))) 
-// 	ERR(retval); 
-//     for (j=0;j<metin->NRH;j++){
-//        for (k=0;k<2;k++){
-// 	  printf("%s[%d][%d] = %10.6f .\n",vname,j,k,metin->RH[k][j]); 
-//        }
-//     }
-    
-}
-
-void ReadMetNCcoord(propT *prop, gridT *grid, metinT *metin, int myproc){
+* Function: updateMetData()
+* -----------------------------
+* Main function for updating the met structure and interpolating onto the model time step 
+*
+*/
+void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc, MPI_Comm comm){
   
-    /* Read the data from the meteorological netcdf file into the metin structure */
-    int retval, j;
-    int varid;
-    char *vname;
-
-    /* Get the horizontal coordintates*/
-    vname = "x_Uwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->x_Uwind))) 
-      ERR(retval); 
-    vname = "y_Uwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->y_Uwind))) 
-      ERR(retval); 
-    vname = "x_Vwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->x_Vwind))) 
-      ERR(retval); 
-    vname = "y_Vwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->y_Vwind))) 
-      ERR(retval); 
-    vname = "x_Tair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->x_Tair))) 
-      ERR(retval); 
-    vname = "y_Tair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->y_Tair))) 
-      ERR(retval); 
-    vname = "x_Pair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->x_Pair))) 
-      ERR(retval); 
-    vname = "y_Pair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->y_Pair))) 
-      ERR(retval); 
-    vname = "x_rain";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->x_rain))) 
-      ERR(retval); 
-    vname = "y_rain";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->y_rain))) 
-      ERR(retval); 
-    vname = "x_RH";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->x_RH))) 
-      ERR(retval); 
-    vname = "y_RH";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->y_RH))) 
-      ERR(retval); 
-    vname = "x_cloud";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->x_cloud))) 
-      ERR(retval); 
-    vname = "y_cloud";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->y_cloud))) 
-      ERR(retval); 
-    
-    /* Vertical coordinates */
-    vname = "z_Uwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->z_Uwind))) 
-      ERR(retval); 
-    vname = "z_Vwind";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->z_Vwind))) 
-      ERR(retval); 
-    vname = "z_Tair";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->z_Tair))) 
-      ERR(retval); 
-    vname = "z_RH";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->z_RH))) 
-      ERR(retval); 
-    
-    /* Time */
-    vname = "Time";
-    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
-    if ((retval = nc_inq_varid(prop->metncid, vname, &varid)))
-	ERR(retval);
-    if ((retval = nc_get_var_double(prop->metncid, varid,metin->time))) 
-      ERR(retval); 
-    
-}
-
-
-static size_t returndimlen(int ncid, char *dimname){
- /* Returns the length of a dimension */
- int retval;
- int dimid;
- size_t dimlen;
- 
- if ((retval =nc_inq_dimid(ncid,dimname,&dimid)))
-    ERR(retval);
- 
- if ((retval = nc_inq_dimlen(ncid,dimid, &dimlen)))
-    ERR(retval);
- return dimlen;
-}
-#endif
-
-void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc){
-  
-  /* Main function for updating the met structure and interpolating onto the model time step */
-  
-  int j, t0, t1, t2; 
+  int j,i,iptr, t0, t1, t2; 
   REAL dt, r1, r2;
    
   t1 = getTimeRec(prop->nctime,metin->time,metin->nt);
@@ -1209,21 +84,20 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
     if (metin->t1!=t1){
       if(VERBOSE>3 && myproc==0) printf("Updating netcdf variable at nc timestep: %d\n",t1);
       /* Read in the data two time steps*/
-#ifdef USENETCDF	    
       ReadMetNC(prop, grid, metin, myproc);
-#endif
+
       metin->t1=t1;
       metin->t0=t1-1;
       metin->t2=t1+1;
       
       /* Interpolate the two time steps onto the grid*/
-      weightInterpArray(metin->Uwind, metin->WUwind, grid->Nc, metin->NUwind, NTmet, met->Uwind_t);
-      weightInterpArray(metin->Vwind, metin->WVwind, grid->Nc, metin->NVwind, NTmet, met->Vwind_t);
-      weightInterpArray(metin->Tair, metin->WTair, grid->Nc, metin->NTair, NTmet, met->Tair_t);
-      weightInterpArray(metin->Pair, metin->WPair, grid->Nc, metin->NPair, NTmet, met->Pair_t);
-      weightInterpArray(metin->rain, metin->Wrain, grid->Nc, metin->Nrain, NTmet, met->rain_t);
-      weightInterpArray(metin->RH, metin->WRH, grid->Nc, metin->NRH, NTmet, met->RH_t);
-      weightInterpArray(metin->cloud, metin->Wcloud, grid->Nc, metin->Ncloud, NTmet, met->cloud_t);
+      weightInterpArray(metin->Uwind, metin->WUwind, grid, metin->NUwind, NTmet, met->Uwind_t);
+      weightInterpArray(metin->Vwind, metin->WVwind, grid, metin->NVwind, NTmet, met->Vwind_t);
+      weightInterpArray(metin->Tair, metin->WTair, grid, metin->NTair, NTmet, met->Tair_t);
+      weightInterpArray(metin->Pair, metin->WPair, grid, metin->NPair, NTmet, met->Pair_t);
+      weightInterpArray(metin->rain, metin->Wrain, grid, metin->Nrain, NTmet, met->rain_t);
+      weightInterpArray(metin->RH, metin->WRH, grid, metin->NRH, NTmet, met->RH_t);
+      weightInterpArray(metin->cloud, metin->Wcloud, grid, metin->Ncloud, NTmet, met->cloud_t);
     }
     
     /* Do a linear temporal interpolation */
@@ -1236,7 +110,9 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
     t2=metin->t2;
      //printf("tmod = %f, tlow = %f (r1=%f), thigh = %f (r2=%f)\n",prop->nctime, metin->time[metin->t0],r1,metin->time[metin->t1],r2);
     
-    for (j=0;j<grid->Nc;j++){
+//    for (j=0;j<grid->Nc;j++){
+ for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];  
     /*
       met->Uwind[j] = met->Uwind_t[0][j]*r1 + met->Uwind_t[1][j]*r2;
       met->Vwind[j] = met->Vwind_t[0][j]*r1 + met->Vwind_t[1][j]*r2;
@@ -1247,13 +123,13 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
       met->cloud[j] = met->cloud_t[0][j]*r1 + met->cloud_t[1][j]*r2;
     */
        //Quadratic temporal interpolation
-       met->Uwind[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Uwind_t[0][j],met->Uwind_t[1][j],met->Uwind_t[2][j]);
-       met->Vwind[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Vwind_t[0][j],met->Vwind_t[1][j],met->Vwind_t[2][j]);
-       met->Tair[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Tair_t[0][j],met->Tair_t[1][j],met->Tair_t[2][j]);
-       met->Pair[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Pair_t[0][j],met->Pair_t[1][j],met->Pair_t[2][j]);
-       met->rain[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->rain_t[0][j],met->rain_t[1][j],met->rain_t[2][j]);
-       met->RH[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->RH_t[0][j],met->RH_t[1][j],met->RH_t[2][j]);
-       met->cloud[j] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->cloud_t[0][j],met->cloud_t[1][j],met->cloud_t[2][j]);
+       met->Uwind[i] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Uwind_t[0][i],met->Uwind_t[1][i],met->Uwind_t[2][i]);
+       met->Vwind[i] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Vwind_t[0][i],met->Vwind_t[1][i],met->Vwind_t[2][i]);
+       met->Tair[i] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Tair_t[0][i],met->Tair_t[1][i],met->Tair_t[2][i]);
+       met->Pair[i] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->Pair_t[0][i],met->Pair_t[1][i],met->Pair_t[2][i]);
+       met->rain[i] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->rain_t[0][i],met->rain_t[1][i],met->rain_t[2][i]);
+       met->RH[i] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->RH_t[0][i],met->RH_t[1][i],met->RH_t[2][i]);
+       met->cloud[i] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->cloud_t[0][i],met->cloud_t[1][i],met->cloud_t[2][i]);
 
       /* Place bounds on rain, humidity and cloud variables */
        if (met->cloud[j]<0.0) 
@@ -1267,12 +143,24 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
        if (met->RH[j]>100.0)
 	 met->RH[j]=100.0;
     }
+
+    //Communicate the arrays
+    ISendRecvCellData2D(met->Uwind,grid,myproc,comm);
+    ISendRecvCellData2D(met->Vwind,grid,myproc,comm);
+    ISendRecvCellData2D(met->Tair,grid,myproc,comm);
+    ISendRecvCellData2D(met->Pair,grid,myproc,comm);
+    ISendRecvCellData2D(met->rain,grid,myproc,comm);
+    ISendRecvCellData2D(met->RH,grid,myproc,comm);
+    ISendRecvCellData2D(met->cloud,grid,myproc,comm);
 } // End of updateMetData
 
-
-
+/*
+* Function: AllocateMet()
+* -----------------------------
+* Allocates memory to the meteorological structure array on the SUNTANS grid points
+*
+*/
 void AllocateMet(propT *prop, gridT *grid, metT **met , int myproc){
-  /* Allocates memory to the meteorological structure array on the SUNTANS grid points*/
   int j, k, n;
   int Nc = grid->Nc;
   
@@ -1363,8 +251,13 @@ void AllocateMet(propT *prop, gridT *grid, metT **met , int myproc){
   }
 } // End of function
   
+/*
+* Function: AllocateMetIn()
+* -----------------------------
+* Allocates memory to the meteorological input structure array
+*
+*/
 void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
-  /* Allocates memory to the meteorological input structure array*/
   int j, k, n, retval;
   size_t NUwind;
   size_t NVwind;
@@ -1485,27 +378,6 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       (*metin)->RH[n] = (REAL *)SunMalloc(NRH*sizeof(REAL),"AllocateMetIn");
       (*metin)->cloud[n] = (REAL *)SunMalloc(Ncloud*sizeof(REAL),"AllocateMetIn");
   }
-//   (*metin)->Uwind = (REAL **)SunMalloc(NUwind*sizeof(REAL *),"AllocateMetIn");
-//   (*metin)->Vwind = (REAL **)SunMalloc(NVwind*sizeof(REAL *),"AllocateMetIn");
-//   (*metin)->Tair = (REAL **)SunMalloc(NTair*sizeof(REAL *),"AllocateMetIn");
-//   (*metin)->Pair = (REAL **)SunMalloc(NPair*sizeof(REAL *),"AllocateMetIn");
-//   (*metin)->rain = (REAL **)SunMalloc(Nrain*sizeof(REAL *),"AllocateMetIn");
-//   (*metin)->RH = (REAL **)SunMalloc(NRH*sizeof(REAL *),"AllocateMetIn");
-//   (*metin)->cloud = (REAL **)SunMalloc(Ncloud*sizeof(REAL *),"AllocateMetIn");
-//   for(j=0;j<NUwind;j++){
-//       (*metin)->Uwind[j] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocateMetIn");}
-//   for(j=0;j<NVwind;j++){    
-//       (*metin)->Vwind[j] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocateMetIn");}
-//   for(j=0;j<NTair;j++){
-//       (*metin)->Tair[j] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocateMetIn");}
-//   for(j=0;j<NPair;j++){
-//       (*metin)->Pair[j] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocateMetIn");}
-//   for(j=0;j<Nrain;j++){
-//       (*metin)->rain[j] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocateMetIn");}
-//   for(j=0;j<NRH;j++){
-//       (*metin)->RH[j] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocateMetIn");}
-//   for(j=0;j<Ncloud;j++){
-//       (*metin)->cloud[j] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocateMetIn");}
   
   /* Initialises all of the input meteorological arrays with zeros*/ 
   // Need to allocate variable by variable as the lengths are different
@@ -1597,24 +469,15 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 }
 
 
-int getTimeRec(REAL nctime, REAL *time, int nt){
-   /* Retuns the index of the first preceding time step in the vector time*/
-   int j;
-   
-   for(j=0;j<nt;j++){
-      if (time[j]>=nctime)
-	return j-1;
-   }
-   return nt;
-}
-
-/* These functions can be moved to util.c later*/
+/*
+* Function calcInterpWeights()
+* ----------------------------
+* Calculates the interpolation weights for all grid points based on "Ns" interpolants
+* at cooridinates (xo, yo)
+*/
 void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda, int myproc){
-    /* Calculates the interpolation weights for all grid points based on "Ns" interpolants
-     * at cooridinates (xo, yo)
-     */
     
-    int j,i, jj,ii;
+    int j, i, jj, ii, iptr;
     int Nc = grid->Nc;
     REAL sumgamma, dist, tmp;
     REAL *gamma;
@@ -1634,7 +497,9 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
     
     if(prop->varmodel==0){ // Inverse distance weighting
       if(VERBOSE>1 && myproc==0) printf("Calculating interpolation weights using inverse distance weighting...\n");     
-      for(i=0;i<Nc;i++){
+      //for(i=0;i<Nc;i++){
+     for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	i = grid->cellp[iptr];  
 	sumgamma=0.0;
 	for(j=0;j<Ns;j++){
 	    dist = pow(grid->xv[i]-xo[j],2) + pow(grid->yv[i]-yo[j],2);
@@ -1679,7 +544,9 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
 // 	}
 	
 	// Loop through each model grid point and calculate the  weights
-	for(i=0;i<Nc;i++){
+	//for(i=0;i<Nc;i++){
+	for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	  i = grid->cellp[iptr];  
 	  for(j=0;j<Ns;j++){
 	    dist = sqrt( pow(grid->xv[i]-xo[j],2) + pow(grid->yv[i]-yo[j],2) );
 	    gamma[j] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
@@ -1720,10 +587,15 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
     }// end of kriging   
 } // End of calcInterpWeights
 
+/*
+* Function: semivariogram()
+* -------------------------
+* Calculates the semivariogram function used by the kriging interpolation scheme
+*
+*/
 static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL D){
   
   REAL tmp;
- // Calculates the semivariogram function 
  if (varmodel==1){
    // Spherical model
    if(D > range){
@@ -1736,11 +608,18 @@ static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL
  }  
 }
 
-void weightInterpArray(REAL **D, REAL **klambda, int Nc, int Ns, int nt, REAL **Dout){
-  /* Perform weighted interpolation on a field D [2d-array]*/
-  int i,j, k;
+/*
+* Function: weightInterpArray()
+* -----------------------------
+* Perform weighted interpolation on a field D [2d-array]
+*
+*/
+void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, REAL **Dout){
+  int i,j, k, iptr;
   for(k=0;k<nt;k++){
-    for(i=0;i<Nc;i++){
+    //for(i=0;i<Nc;i++){
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+        i = grid->cellp[iptr];  
 	Dout[k][i] = 0.0;
 	for(j=0;j<Ns;j++){
 	    Dout[k][i] += klambda[i][j] * D[k][j];
@@ -1749,11 +628,18 @@ void weightInterpArray(REAL **D, REAL **klambda, int Nc, int Ns, int nt, REAL **
   }
 }
 
-void weightInterpField(REAL *D, REAL **klambda, int Nc, int Ns, REAL *Dout){
-  /* Perform weighted interpolation on a field D [vector]*/
-  int i,j;
+/* 
+* Function: weightInterpField()
+* -----------------------------
+* Perform weighted interpolation on a field D [vector]
+*
+*/
+void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout){
+  int i,j,iptr;
   
-  for(i=0;i<Nc;i++){
+//  for(i=0;i<Nc;i++){
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];  
       Dout[i] = 0.0;
       for(j=0;j<Ns;j++){
 	  Dout[i] += klambda[i][j] * D[j];
@@ -1761,16 +647,18 @@ void weightInterpField(REAL *D, REAL **klambda, int Nc, int Ns, REAL *Dout){
   }
 }
 
+/*
+* Function: linsolve()
+* --------------------
+* Solves a linear system of equations A.x=b
+* 
+* A is a square matrix and b is a vector.
+* The solution x is returned in vector b
+* 
+* Reference:
+* 	Golub and Van Loan, "Matrix Computations", 1999, Ch 3
+*/
 void linsolve(REAL **A, REAL *b, int N){
-  
-  /* Solves a linear system of equations A.x=b
-   * 
-   * A is a square matrix and b is a vector.
-   * The solution x is returned in vector b
-   * 
-   * Reference:
-   * 	Golub and Van Loan, "Matrix Computations", 1999, Ch 3
-   */
 
   int i,j,k;
   REAL sumi;
@@ -1807,12 +695,17 @@ void linsolve(REAL **A, REAL *b, int N){
   }  
 } // End of linsolve
 
+
+/*
+* Function: updateAirSeaFluxes()
+* ------------------------------
+* Main routine for calculating the air-sea heat and salt fluxes
+*
+* Computed terms are stored in the met structure array
+*
+* These routines are activated when "metmodel" = 2 or 3 in suntans.dat
+*/ 
 void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **T){
- /*
-  * Main routine for calculating the air-sea heat and salt fluxes
-  *
-  * Computed terms are stored in the met structure array
-  */ 
   
   int i, ktop, iptr, n;
   int Nc = grid->Nc;
@@ -1860,7 +753,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     ktop = grid->ctop[i];
     // Wind speed
     Umag = sqrt( pow( (met->Uwind[i]-phys->uc[i][ktop]) ,2) + pow( (met->Vwind[i]-phys->vc[i][ktop]),2) );
-    //Umag = sqrt( pow(met->Uwind[j],2) + pow(met->Vwind[j],2) );
+    //Umag = sqrt( pow(met->Uwind[i],2) + pow(met->Vwind[i],2) );
     x[0] = Umag;
 
     // Surface current speed in wind direction
@@ -1875,7 +768,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     x[3] = met->Tair[i];
     
     // Water specific humidty
-    x[4] = qsat(T[i][0], met->Pair[i]);
+    x[4] = qsat(T[i][ktop], met->Pair[i]);
     
     // Air specific humidity
     x[5] = specifichumidity(met->RH[i],met->Tair[i],met->Pair[i]);
@@ -1961,7 +854,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
       //met->tau_y[j] = 1.2 * 0.0011 * x[14] * met->Vwind[j];
       //printf("%10.6f, %10.6f, %10.6f, %10.6f\n",x[6],x[15],x[14],met->Vwind[j]);
 
-    }else if(prop->metmodel==3){// Compute fluxes with constant parameters
+    }else if(prop->metmodel>=3){// Compute fluxes with constant parameters
       met->Hs[i] = - rhoa * cp * Ch * Umag * (x[2] - x[3]);
       met->Hl[i] = - rhoa * Lv * Ce * Umag * (x[4] - x[5]);
       met->tau_x[i] = rhoa * Cd * Umag * (met->Uwind[i] - phys->uc[i][ktop]); 
@@ -1980,6 +873,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
 	   printf("rain[%d] = %6.10f\n",i,met->rain[i]);
 	   printf("RH[%d] = %6.10f, z_RH = %6.10f m\n",i,met->RH[i],met->z_RH[i]);
 	   printf("cloud[%d] = %6.10f\n",i,met->cloud[i]);
+	   printf("T[%d][%d] = %6.10f\n",i,ktop,T[i][ktop]);
 	   MPI_Finalize();
 	   exit(EXIT_FAILURE);
 	}
@@ -1988,45 +882,55 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
   //SunFree(x,19,"updateAirSeaFluxes");
 } // End updateAirFluxes
 
+
+/* 
+* Function: specifichumidity()
+* ----------------------------
+* Convert relative humidity (%) to specific humidity (kg/kg 
+*/
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair){
- /* 
-  * Convert relative humidity (%) to specific humidity (kg/kg 
-  */
  
  REAL cff;
+ REAL eps=1e-10;
  /*
   * Compute air saturation vapor pressure (mb), using Teten formula.
   */
-  cff=(1.0007+3.46E-6*Pair)*6.1121*exp(17.502*Ta/(240.97+Ta));
+  cff=(1.0007+3.46E-6*Pair)*6.1121*exp(17.502*Ta/(240.97+Ta+eps));
   
   /*
   *  Compute specific humidity at Saturation, Qair (kg/kg).
   */
   cff=cff*RH/100;                    // Vapor pres (mb)
-  return (0.62197*(cff/(Pair-0.378*cff))); // Spec hum (kg/kg)
+  return (0.62197*(cff/(Pair-0.378*cff+eps))); // Spec hum (kg/kg)
 } // End specifichumidity
 
+
+/*
+* Function: qsat()
+ -----------------
+* Compute water saturation vapor pressure (mb), using Teten formula.
+*/
 static REAL qsat(REAL Tw, REAL Pair){
- /*
-  *Compute water saturation vapor pressure (mb), using Teten formula.
-  */
  REAL cff;
- 
- cff=(1.0007+3.46E-6*Pair)*6.1121* exp(17.502*Tw/(240.97+Tw));
+ REAL eps=1e-10;
+
+ cff=(1.0007+3.46E-6*Pair)*6.1121* exp(17.502*Tw/(240.97+Tw+eps));
 
   //  Vapor Pressure reduced for salinity (Kraus & Businger, 1994, pp 42).
   cff=cff*0.98;
  
-  return (0.62197*(cff/(Pair-0.378*cff)));
+  return (0.62197*(cff/(Pair-0.378*cff+eps)));
 } // End qsat
 
-
+/*
+* Function: longwave()
+* --------------------
+* Calculate net longwave radiation into water
+*
+* Ref: Martin and McCutcheon, "Hydrodynamics and Transport for Water
+* Quality Modeling", 1999
+*/
 static REAL longwave(REAL Ta, REAL Tw, REAL C_cloud){
-  /* Calculate net longwave radiation into water
-   *
-   * Ref: Martin and McCutcheon, "Hydrodynamics and Transport for Water
-   * Quality Modeling", 1999
-   */
   
   // Constants
   const REAL T_ref = 273.16;             // conversion from C to K
@@ -2052,11 +956,13 @@ static REAL longwave(REAL Ta, REAL Tw, REAL C_cloud){
 
 } // End longwave
 
+/*
+* Function: shortwave()
+* ---------------------
+* Compute solar radiation flux using the Gill, 1982 formulae 
+*
+*/
 REAL shortwave(REAL time, REAL Lat,REAL C_cloud){
-  /*
-   *Compute solar radiation flux using the Gill, 1982 formulae 
-   *
-   */
   
   const REAL S=1368.0;  //[W m-2]
   const REAL albedo = 0.06;
@@ -2084,19 +990,22 @@ REAL shortwave(REAL time, REAL Lat,REAL C_cloud){
   
 } // End shortwave
 
+
+/* 
+* Function:  cor30a()
+* -------------------
+* Calculates air-sea fluxes using bulk flux formulation
+*
+* References:
+*	Fairall et al, 1996, JGR
+*  	Fairall et al, 2003, Journal of Climate
+*
+* See:
+*	http://coaps.fsu.edu/COARE/flux_algor/
+*
+* This code is adapted from cor30.m matlab function
+*/
 static void cor30a(REAL *y){
-  /* 
- * Air-Sea fluxes based on bulk flux formulation
- *
- * References:
- *	Fairall et al, 1996, JGR
- *  	Fairall et al, 2003, Journal of Climate
- *
- * See:
- *	http://coaps.fsu.edu/COARE/flux_algor/
- *
- * Adapted from cor30.m matlab function
- */
   
   /* Get variables from the input vector */
   REAL u=y[0]; //wind speed (m/s]  at height zu [m]
@@ -2323,6 +1232,7 @@ static void cor30a(REAL *y){
   //   1   2   3   4  5   6  7  8   9  10   11   12  13  14  15  16 17 18    19      20    21  22
 } // End cor30a
 
+/* Velocity stability function */
 static REAL psiu_30(REAL zet){
   
   REAL x, psik, psic, f, c,  psi;
@@ -2342,6 +1252,7 @@ static REAL psiu_30(REAL zet){
   
 } // End psiu_30
 
+/* Temperature stability function */
 static REAL psit_30(REAL zet){
  
   REAL x, psik, psic, f, c,  psi;
