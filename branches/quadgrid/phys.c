@@ -756,7 +756,8 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
  */
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop) {
   int i, j;
-
+  // if set Z0, it will calculate Cd from log law. if Cd is given directly, it will set value to 
+  // phys->Cd
   if(prop->z0T==0) 
     for(j=0;j<grid->Ne;j++) 
       phys->CdT[j]=prop->CdT;
@@ -834,7 +835,7 @@ void InitializeVerticalGrid(gridT **grid,int myproc)
  * the bottom bathymetry.  That is, if the free surface cuts through cells and leaves
  * any cells dry (or wet), then this function will set the vertical grid spacing 
  * accordingly.
- *
+ * calculate new dz according to new free surface
  * If option==1, then it assumes this is the first call and sets dzzold to dzz at
  *   the end of this function.
  * Otherwise it sets dzzold to dzz at the beginning of the function and updates dzz
@@ -1038,7 +1039,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
   // Compute the initial quantities for comparison to determine conservative properties
   prop->n=0;
-  // this make sure that we aren't loosing mass/energy
+  // this make sure that we aren't loosing mass/energy at first step and set the control value for 
+  // conservatives
   ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
 
   // Print out memory usage per processor and total memory if this is the first time step
@@ -1055,7 +1057,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   prop->n=prop->nstart;
   // initialize the time (often used for boundary/initial conditions)
   prop->rtime=prop->nstart*prop->dt;
-
+   
+  // get from boundaries.c in examples files
   // get the boundary velocities (boundaries.c)
   BoundaryVelocities(grid,phys,prop,myproc); 
   // get the openboundary flux (boundaries.c)
@@ -1070,7 +1073,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   SetDragCoefficients(grid,phys,prop);
   // for laxWendroff and central differencing- compute the numerical diffusion 
   // coefficients required for stability
-  if(prop->laxWendroff && prop->nonlinear==2) LaxWendroff(grid,phys,prop,myproc,comm);
+  if(prop->laxWendroff && prop->nonlinear==2) LaxWendroff(grid,phys,prop,myproc,comm); 
+  // in diffusion.c
 
   // Initialize the Sponge Layer
   InitSponge(grid,myproc);
@@ -3702,6 +3706,7 @@ static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int mypr
 
   // volh is the horizontal integral of h+d, whereas vol is the
   // 3-d integral of dzz
+  // volh using the total depth, volume accumulated in different layers 
   mass=0;
   volume=0;
   volh=0;
@@ -4159,10 +4164,11 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
  *
  */
 void ReadProperties(propT **prop, int myproc)
-{
+{ int max;
   // allocate memory
   *prop = (propT *)SunMalloc(sizeof(propT),"ReadProperties");
-
+  // max get value for maxfaces to define interp and prettyplot
+  max = MPI_GetValue(DATAFILE,"maxFaces","ReadProperties",myproc);
   // set values from suntans.dat file (DATAFILE)
   (*prop)->thetaramptime = MPI_GetValue(DATAFILE,"thetaramptime","ReadProperties",myproc);
   (*prop)->theta = MPI_GetValue(DATAFILE,"theta","ReadProperties",myproc);
@@ -4267,7 +4273,12 @@ void ReadProperties(propT **prop, int myproc)
 
   // additional data for pretty plot methods
   (*prop)->prettyplot = MPI_GetValue(DATAFILE,"prettyplot","ReadProperties",myproc);
-
+  // when maxFaces>3 we cannot use quadratic and prettyplot so set all zero
+  if(max>3){
+  (*prop)->prettyplot = 0;
+  (*prop)->interp = PEROT;
+  printf("Because maxFaces=%d >3, so prettyplot and interp are all set to be 0 automatically.\n",max);
+  }
   // addition for linearized free surface where dzz=dz
   (*prop)->linearFS = (int)MPI_GetValue(DATAFILE,"linearFS","ReadProperties",myproc);
 
@@ -4525,6 +4536,7 @@ void SetFluxHeight(gridT *grid, physT *phys, propT *prop) {
       grid->dzf[j][k]=0;
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
 //      grid->dzf[j][k]=UFaceFlux(j,k, grid->dzz, phys->u, grid,prop->dt,prop->nonlinear);
+      // do the interpolation on dzz to get dzf
       grid->dzf[j][k]=UpWind(phys->u[j][k],grid->dzz[nc1][k],grid->dzz[nc2][k]);
 
     k=grid->Nke[j]-1;
@@ -4574,6 +4586,7 @@ void SetFluxHeight(gridT *grid, physT *phys, propT *prop) {
 inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) {
 
   switch(interp) {
+    
     case QUAD:
       // using Wang et al 2011 methods
       ComputeUCRT(ui, vi, phys,grid, myproc);
