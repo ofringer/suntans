@@ -45,8 +45,7 @@ main(int argc, char *argv[])
     // give space and initialize dzf(edge) dzz(center) dzzold(center)
     InitializeVerticalGrid(&grid,myproc);
     // give the space for all physical variables
-    AllocatePhysicalVariables(grid,&phys,prop);
-    // 
+    AllocatePhysicalVariables(grid,&phys,prop); 
     AllocateTransferArrays(&grid,myproc,numprocs,comm);
     //open all input and output file for read and write
     OpenFiles(prop,myproc);  
