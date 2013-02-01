@@ -60,3 +60,16 @@ def YearDay(timein):
         timeout.append(dt.total_seconds()/86400.0)
         
     return np.asarray(timeout)
+    
+def getMonth(timein):
+    """
+    Converts a list or array of datetime object into an array of months
+    
+    Useful for calculating monthly distributions
+    """
+
+    month=[]
+    for t in timein:
+        month.append(t.month)
+        
+    return np.asarray(month)

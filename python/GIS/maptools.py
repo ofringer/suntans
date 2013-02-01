@@ -346,6 +346,74 @@ def Contour2Shp(C,outfile):
     # Close the shape file
     shapeData.Destroy()
     print 'Complete - shapefile written to:\n      %s'%outfile
+ 
+def Polygon2GIS(xynodes,shpfile,zone,CS='WGS84',north=True):
+    """
+    Convert a list of polygons (Nx2 arrays) to a GIS vector format: KML or SHP.
+    
+    Each item in the list should contain an Nx2 array where column one is the x 
+    coordinates and column two is the y coordinates of a polygon. Polygon should be closed.
+    
+    The output format is based on the outfile extension.
+    
+    The projection is assumed to be UTM. 
+    """
+    import osgeo.ogr, osgeo.osr
+    import os
+    
+    # Set the projection
+    srs = osgeo.osr.SpatialReference()
+    if north:
+        proj = "UTM %d (%s) in northern hemisphere."%(zone,CS)
+    else:
+        proj = "UTM %d (%s) in southern hemisphere."%(zone,CS)
+        
+    srs.SetProjCS( proj );
+    srs.SetWellKnownGeogCS( CS );
+    srs.SetUTM( zone, True );
+        
+    # Create the shape file
+    ext=shpfile[-3:]
+    if ext.lower()=='shp':
+        driver = osgeo.ogr.GetDriverByName('ESRI Shapefile')
+    elif ext.lower()=='kml':
+        driver = osgeo.ogr.GetDriverByName('KML')
+    else:
+        print 'Error. Unknown file extension: %s'%ext.lower()
+        return
+    
+    
+    if os.path.exists(shpfile):
+        os.unlink(shpfile)
+    shapeData = driver.CreateDataSource(shpfile)
+    
+    # Create a layer
+    layer = shapeData.CreateLayer('Grid', srs, osgeo.ogr.wkbPolygon)
+    layerDefinition = layer.GetLayerDefn()    
+    
+    # Loop through the list of nodes to get the coordinates of each polygon
+    ctr=0
+    for xy in xynodes:
+        ctr+=1
+        ring = osgeo.ogr.Geometry(osgeo.ogr.wkbLinearRing)
+        
+        # Add points individually to the polygon
+        for nodes in xy:
+            ring.AddPoint(nodes[0],nodes[1])
+            
+        poly = osgeo.ogr.Geometry(osgeo.ogr.wkbPolygon)
+        poly.AddGeometry(ring)
+    
+        # Update the feature with the polygon data
+        featureIndex = ctr
+        feature = osgeo.ogr.Feature(layerDefinition)
+        feature.SetGeometry(poly)
+        feature.SetFID(featureIndex)
+        layer.CreateFeature(feature)
+        feature.Destroy()
+    # Close the shape file
+    shapeData.Destroy()
+    print 'Complete - file written to:\n      %s'%shpfile
     
 ###Testing###
 #LL=[-94.2,27.0]

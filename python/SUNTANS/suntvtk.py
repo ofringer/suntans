@@ -214,13 +214,13 @@ class SunTvtk(Spatial):
         if not self.__dict__.has_key('title'):
             self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
         
-    def contour(self,vv=[20],clim=None,**kwargs):
+    def contour(self,vv=[10],clim=None,**kwargs):
         """
         Filled contour plot of scalar data
         """
         
-        if self.clim==None:
-            self.clim = [self.data.min(), self.data.max()]
+        if clim==None:
+            clim = [self.data.min(), self.data.max()]
         
         # Create a new scene if there isn't one
         if not self.__dict__.has_key('fig'):
@@ -230,7 +230,7 @@ class SunTvtk(Spatial):
         src = mlab.pipeline.cell_to_point_data(self.ug)
         
         # Add the contour_surface module to the scene
-        self.h=mlab.pipeline.contour_surface(src,contours=vv,line_width=1.0,**kwargs)
+        self.h=mlab.pipeline.contour_surface(src,contours=vv,line_width=1.0,vmax=clim[1],vmin=clim[0],**kwargs)
         self.h.contour.filled_contours=True # This is the trick to fill the contours
         
         # Add a colorbar if the isn't one
@@ -415,6 +415,14 @@ class SunTvtk(Spatial):
             os.remove(ff)
         print 'Complete.'
             
+#    def savefig(self,outfile):
+#        """
+#        Saves the current scene to an image
+#        """
+#        self.fig.scene.save(outfile)
+#            
+#        print 'SUNTANS image saved to file:%s'%outfile
+        
     def plotbathy3d(self,clims=None,**kwargs):
         """
         Adds 3D plot of the bathymetry to the current scene
@@ -486,16 +494,17 @@ class SunTvtk(Spatial):
 
 #ncfile = 'C:/Projects/GOMGalveston/MODELLING/GalvestonCoarse/rundata/GalvCoarse_TidesRivers3D*nc'
 #ncfile = 'E:/Projects/GOMGalveston/MODELLING/SCENARIOS/CoarseHarmonicTideRivers/GalvCoarse_TidesRivers3D*nc'
+#ncfile = 'C:\\Projects\\GOMGalveston\\MODELLING\\GalvestonMedium\\rundata\\GalvMedium_TidesRivers_Aug_049.nc'
 
-#sunvtk = SunTvtk(ncfile,variable='salt',tstep=100,is3D=True,zscale=500.,kstart=1)
+#sunvtk = SunTvtk(ncfile,variable='salt',tstep=1,is3D=True,zscale=500.,kstart=1)
 #sunvtk = SunTvtk(ncfile,variable='w',tstep=100,is3D=False,klayer=[-1])
 #sunvtk.loadData()
 
 #sunvtk.plotbathy3d(colormap='bone')
-#sunvtk.isosurface(vv=[4.0,12.0,20.0,28.0],transparent=False,opacity=0.9)
+#sunvtk.isosurface(vv=[4.0,12.0,20.0,28.0],transparent=False,opacity=0.7)
 #sunvtk.surface(representation='wireframe',opacity=0.3)
 #sunvtk.surface()
-#sunvtk.contour(vv=[4.0,8.0,12.0,16.0,20.0,24.0,28.0,32.0, 33.0],opacity=0.5)
+#sunvtk.contour(vv=[4.0,8.0,12.0,16.0,20.0,24.0,28.0,32.0, 33.0],opacity=1.0)
 #sunvtk.sliceplane()
 #sunvtk.volume()
 
