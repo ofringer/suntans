@@ -28,6 +28,7 @@ class SunTvtk(Spatial):
     """
     
     is3D = False
+    vector_overlay=False
     zscale = 500.0
     clim = None
     kstart=0 # Starting klayer - set > 0 to ignore top 'kstart' cells
@@ -143,16 +144,16 @@ class SunTvtk(Spatial):
             pt1=pt2
             #print k, nc
             
-        verts = np.zeros((nv*nz,3))
+        self.verts = np.zeros((nv*nz,3))
         pv1 = 0
         for k in range(0,nz):
-            verts[pv1:pv1+nv,0] = self.xp
-            verts[pv1:pv1+nv,1] = self.yp
-            verts[pv1:pv1+nv,2] = -self.z_w[k] * self.zscale
+            self.verts[pv1:pv1+nv,0] = self.xp
+            self.verts[pv1:pv1+nv,1] = self.yp
+            self.verts[pv1:pv1+nv,2] = -self.z_w[k] * self.zscale
             pv1 += nv
             
         wedge_type = tvtk.Wedge().cell_type
-        self.ug = tvtk.UnstructuredGrid(points=verts)
+        self.ug = tvtk.UnstructuredGrid(points=self.verts)
         self.ug.set_cells(wedge_type, nodes)
         
         self.ug.cell_data.scalars = self.data
@@ -270,6 +271,8 @@ class SunTvtk(Spatial):
     def volume(self,clim=None,**kwargs):
         """
         3D volumetric plot of scalar data
+        
+        **Warning** This is really slow and memory hungry!
         """
         if self.clim==None:
             self.clim = [self.data.min(), self.data.max()]
@@ -316,7 +319,49 @@ class SunTvtk(Spatial):
         # Add a title if there isn't one
         if not self.__dict__.has_key('title'):
             self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15) 
-    
+            
+    def vector(self,color=(0,0,0),subsample=1,scale=1e-3,line_width=1.0,**kwargs):
+        """
+        Overlay vectors onto the current scence
+        """
+        
+        self.vector_overlay=True
+        
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
+        
+        self.loadVectorVTK()
+        src = mlab.pipeline.cell_to_point_data(self.ug)
+        self.h=mlab.pipeline.vectors(src,color=color,mask_points=subsample,scale_factor=1./scale,scale_mode='vector',line_width=line_width,**kwargs)
+        
+    def streamline(self,**kwargs):
+        
+        """
+        Plots streamlines
+        
+        This doesn't seem to really work on an unstructured mesh. 
+        The lines stop at the cell boundaries.
+        
+        See here:
+            http://mindseye.no/2010/09/25/using-mayavi-to-visualize-electric-fields/
+        """
+        
+        self.vector_overlay=True
+        
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
+        
+        self.loadVectorVTK()
+        #src = mlab.pipeline.add_dataset(self.ug)
+        src = mlab.pipeline.cell_to_point_data(self.ug)
+        self.h=mlab.pipeline.streamline(src,**kwargs)
+        
+        self.h.stream_tracer.initial_integration_step = 0.001
+        self.h.stream_tracer.maximum_propagation=10000.0
+        
+        
     def animate(self,tstep=None):
         """
         Animates the current scene through all time steps (Interactive)
@@ -347,10 +392,15 @@ class SunTvtk(Spatial):
                 #self.ug.cell_data.scalars.name = 'suntans_scalar'
                   
                 # Loading one time step at a time
+                if self.vector_overlay==True:
+                    self.loadVectorVTK()
+                    
                 self.tstep = tstep[ii]
                 self.loadData()
                 self.ug.cell_data.scalars = self.data
                 self.ug.cell_data.scalars.name = 'suntans_scalar'
+                
+                
                     
                 titlestr=self._Spatial__genTitle(tt=ii)
                 self.title.text=titlestr
@@ -388,6 +438,10 @@ class SunTvtk(Spatial):
 
             # Loading one time step at a time
             self.tstep = tstep[ii]
+            
+            if self.vector_overlay==True:
+                self.loadVectorVTK()
+                    
             self.loadData()
             self.ug.cell_data.scalars = self.data
             self.ug.cell_data.scalars.name = 'suntans_scalar'
@@ -473,11 +527,24 @@ class SunTvtk(Spatial):
             
         self.ug.cell_data.scalars = self.data
         self.ug.cell_data.scalars.name = 'suntans_scalar' 
-        self.ug.modified()        
+        self.ug.modified()      
+        
+    def loadVectorVTK(self):
+        """
+        Loads vector data into the unstructured grid object
+        """
+        u,v,w = self.getVector() # This seems to do the masking (sub-classing??)
+        
+        velocity = np.array((u,v,w)).T
+        self.ug.cell_data.vectors =  velocity
+        self.ug.cell_data.vectors.name = 'suntans_vector' 
+        self.ug.modified()  
         
     def __setitem__(self,key,value):
         """
         Updates the unstructured grid object, ug, when the 'data' key is updated
+        
+        This is required when e.g., a variable is modified and re-inserted into the object
         """
         if key == "data":
             self.data=value

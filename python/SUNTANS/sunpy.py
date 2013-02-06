@@ -195,7 +195,27 @@ class Grid(object):
         ax.set_ylim(ylim)
 
         return ax, collection
+    
+    def plothist(self):
+        """
+        Histogram plot of distances between cell voronoi points
+        """
+        if not self.__dict__.has_key('dg'):
+            self.calc_dg()
+            
+        dg = self.dg
+        ind = np.argwhere(dg!=0) # boundary edges have dg = 0
+            
+        fig = plt.gcf()
+        ax = fig.gca()
         
+        plt.hist(self.dg[ind],bins=100,log=False)
+        textstr='Min = %3.1f m\nMean = %3.1f m\nMedian = %3.1f m\nMax = %3.1f m'%\
+           (np.min(self.dg[ind]),np.mean(self.dg[ind]),np.median(self.dg[ind]),np.max(self.dg[ind]))
+        plt.text(0.7,0.8,textstr,transform=ax.transAxes)
+        plt.xlabel('dg [m]')
+        plt.ylabel('Edge Count')
+            
     def cellxy(self):
         """ 
         Returns a list of Nx2 vectors containing the grid cell node coordinates
@@ -268,6 +288,33 @@ class Grid(object):
         dist,ind=self.kd.query(xy,k=NNear)
         
         return dist, ind
+        
+    def calc_dg(self):
+        """
+        Manually calculate the distance between voronoi points, 'dg'
+        """
+        print 'Calculating dg...'
+        print np.shape(self.grad)
+        
+        grad = self.grad
+        Ne = len(grad)
+        for ii in range(Ne):
+            if grad[ii,0]==-1:
+                grad[ii,0]=grad[ii,1]
+            elif grad[ii,1]==-1:
+                grad[ii,1]=grad[ii,0]
+                
+                
+        x1 = self.xv[grad[:,0]]
+        x2 = self.xv[grad[:,1]]
+        y1 = self.yv[grad[:,0]]
+        y2 = self.yv[grad[:,1]]
+        
+        dx=x1-x2
+        dy=y1-y2
+        
+        self.dg = np.sqrt( dx*dx + dy*dy )
+        
 #################################################
 
 class Spatial(Grid):
@@ -278,7 +325,7 @@ class Spatial(Grid):
     tstep=0
     klayer=[0] # -1 get seabed
     # Note that if j is an Nx2 array of floats the nearest cell will be found 
-    
+
     variable='eta'
     
     # Plotting parmaters
@@ -288,15 +335,18 @@ class Spatial(Grid):
         
         self.ncfile = ncfile
         
+
+        self.__dict__.update(kwargs)
+
         # Open the netcdf file
         self.__openNc()
         
         # Load the grid (superclass)
         Grid.__init__(self, ncfile)  
         
-        self.j=np.arange(0,self.Nc) # Grid cell number for time series
-        
         #self.xy = self.cellxy()
+        if not self.__dict__.has_key('j'):
+            self.j=np.arange(0,self.Nc) # Grid cell number for time series
         
         # Load the time variable
         self.loadTime()
@@ -307,8 +357,6 @@ class Spatial(Grid):
         # Check the j index
         self.__checkIndex()
         
-        self.__dict__.update(kwargs)
-
      
     def loadData(self):
         """ 
@@ -328,7 +376,8 @@ class Spatial(Grid):
             if self.klayer[0]==-1: # grab the seabed values
                 klayer = np.arange(0,self.Nkmax)
 
-                if type(self.tstep)==int:
+                #if type(self.tstep)==int:
+                if isinstance(self.tstep,(int,long)):
                     data=nc.variables[self.variable][self.tstep,klayer,self.j]
                     self.data = data[self.Nk[self.j],self.j]
                 else: # need to extract timestep by timestep for animations to save memory
@@ -648,6 +697,8 @@ class Spatial(Grid):
         w=self.data.copy()
         
         self.variable=tmpvar
+        # Reload the original variable data
+        self.loadData()
         
         return u,v,w
         
@@ -699,11 +750,12 @@ class Spatial(Grid):
         Ensure that the j property is a single or an array of integers
         """
         
-        shp = np.shape(self.j)
-        
-        if len(shp)==1:
+        #shp = np.shape(self.j)
+        #shp = self.j
+
+        if isinstance(self.j[0], int):
             return
-        elif len(shp)==2:
+        else:
             print 'x/y coordinates input instead of cell index. Finding nearest neighbours.'
             dd, j = self.findNearest(self.j)
             print 'Nearest cell: %d, xv[%d]: %6.10f, yv[%d]: %6.10f'%(j,j,self.xv[j],j,self.yv[j])
