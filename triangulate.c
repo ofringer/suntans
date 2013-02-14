@@ -68,7 +68,7 @@ int GetTriangulation(gridT **grid, int myproc) {
 		       Nc, Ne, Np);
   
   if(myproc==0 && VERBOSE>0) printf("Initializing Main Grid...\n");  
-  InitMainGrid(grid,Np,Ne,Nc);
+  InitMainGrid(grid,Np,Ne,Nc,myproc,(*grid)->maxfaces);
 
   for(n=0;n<(*grid)->Np;n++) {
     (*grid)->xp[n]=out.pointlist[2*n];
