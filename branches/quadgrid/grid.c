@@ -4658,7 +4658,7 @@ static int CorrectVoronoi(gridT *grid, int myproc)
     nc1 = grid->grad[2*n];
     nc2 = grid->grad[2*n+1];
     
-    if(nc1 != -1 && nc2 != -1) {
+    if(nc1 != -1 && nc2 != -1 && grid->nfaces[nc1]==3 && grid->nfaces[nc2]==3) {
       xv1 = grid->xv[nc1];
       xv2 = grid->xv[nc2];
       yv1 = grid->yv[nc1];
@@ -4749,26 +4749,26 @@ static int CorrectAngles(gridT *grid, int myproc) ///questions
     xv_sum=0;
     yv_sum=0;
     k=0;
-    for(i=0;i<grid->nfaces[n]-2;i++){
-      xc1 = grid->xp[grid->cells[n*grid->maxfaces+i]];
-      xc2 = grid->xp[grid->cells[n*grid->maxfaces+i+1]];
-      xc3 = grid->xp[grid->cells[n*grid->maxfaces+i+2]];
-      yc1 = grid->yp[grid->cells[n*grid->maxfaces]];
-      yc2 = grid->yp[grid->cells[n*grid->maxfaces+i+1]];
-      yc3 = grid->yp[grid->cells[n*grid->maxfaces+i+2]];
-      mag1 = sqrt(pow(xc2-xc1,2)+pow(yc2-yc1,2));
-      mag2 = sqrt(pow(xc3-xc1,2)+pow(yc3-yc1,2));
-      mag3 = sqrt(pow(xc3-xc2,2)+pow(yc3-yc2,2));
-      dot1 = (mag1*mag1+mag2*mag2-mag3*mag3)/(2*mag1*mag2);
-      dot2 = (mag2*mag2+mag3*mag3-mag1*mag1)/(2*mag2*mag3);
-      dot3 = (mag3*mag3+mag1*mag1-mag2*mag2)/(2*mag3*mag1);
+    if(grid->nfaces[n]==3){
+      for(i=0;i<grid->nfaces[n]-2;i++){
+        xc1 = grid->xp[grid->cells[n*grid->maxfaces+i]];
+        xc2 = grid->xp[grid->cells[n*grid->maxfaces+i+1]];
+        xc3 = grid->xp[grid->cells[n*grid->maxfaces+i+2]];
+        yc1 = grid->yp[grid->cells[n*grid->maxfaces]];
+        yc2 = grid->yp[grid->cells[n*grid->maxfaces+i+1]];
+        yc3 = grid->yp[grid->cells[n*grid->maxfaces+i+2]];
+        mag1 = sqrt(pow(xc2-xc1,2)+pow(yc2-yc1,2));
+        mag2 = sqrt(pow(xc3-xc1,2)+pow(yc3-yc1,2));
+        mag3 = sqrt(pow(xc3-xc2,2)+pow(yc3-yc2,2));
+        dot1 = (mag1*mag1+mag2*mag2-mag3*mag3)/(2*mag1*mag2);
+        dot2 = (mag2*mag2+mag3*mag3-mag1*mag1)/(2*mag2*mag3);
+        dot3 = (mag3*mag3+mag1*mag1-mag2*mag2)/(2*mag3*mag1);
 
-      if(dot1<=cosVoronoiRatio ||
-	 dot2<=cosVoronoiRatio ||
-	 dot3<=cosVoronoiRatio) {
-	k++;
-        xv_sum=xv_sum+(xc1+xc2+xc3)/3;
-	yv_sum=yv_sum+(yc1+yc2+yc3)/3;
+        if(dot1<=cosVoronoiRatio || dot2<=cosVoronoiRatio || dot3<=cosVoronoiRatio) {
+	  k++;
+          xv_sum=xv_sum+(xc1+xc2+xc3)/3;
+	  yv_sum=yv_sum+(yc1+yc2+yc3)/3;
+        }
       }
     }
     if(k>0){
