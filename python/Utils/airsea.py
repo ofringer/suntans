@@ -13,6 +13,7 @@ Stanford University
 """
 
 import numpy as np
+import operator
 import pdb
 
 def heatFluxes(Uwind,Vwind,Ta,Tw,Pa,RH,cloud):
@@ -246,9 +247,80 @@ def convertSpeedDirn(theta,rho):
     
     return u, v
     
+def convertUV2SpeedDirn(u,v,convention='current'):
+    """
+    Convert velocity components into speed and direction (in degrees north)
+    
+    Set 'convention' = 'wind' to flip directions to "from" instead of "to"
+    
+    Adapted from matlab code:
+    function [theta,rho] = cart2compass(u,v)
+    %CART2COMPASS convert cartesian coordinates into
+    % speed and direction data (degN).
+    %    [THETA,RHO] = CART2COMPASS convert the vectors u and v
+    %      from a cartesian reference system into rho (e.g. speed) with
+    %      direction theta (degree North).
+    %
+    %   See also CART2POL
+    %
+    
+    % Author: Arnaud Laurent
+    % Creation : March 20th 2009
+    % MATLAB version: R2007b
+    %
+    
+    [theta,rho] = cart2pol(u,v);
+    
+    theta = theta*180/pi;
+    
+    idx = find(theta<0);
+    theta(idx) = 360 + theta(idx);
+    
+    idx = find(theta>=0&theta<90);
+    theta_comp(idx,1) = abs(theta(idx) - 90);
+    
+    idx = find(theta>=90&theta<=360);
+    theta_comp(idx,1) = abs(450 - theta(idx));
+    
+    theta = theta_comp;
+    """
+    pi=np.pi
+    
+    theta,rho = cart2pol(u,v)
+    
+    theta = theta*180.0/pi
+        
+    idx = np.argwhere(theta<0.0)
+    theta[idx] = theta[idx] + 360.0
+    
+    #idx = np.argwhere(theta>=0.0&theta<90.0)
+    fltr=operator.and_(theta>=0.0, theta<90.0)
+    idx = np.argwhere(fltr)
+    theta[idx] = np.abs(theta[idx] - 90.0)
+    
+    #idx = np.argwhere(theta>=90.0&theta<=360.0)
+    fltr=operator.and_(theta>=90.0, theta<=360.0)
+    idx = np.argwhere(fltr)
+    theta[idx] = np.abs(450.0 - theta[idx])
+    
+    # flip the direction    
+    if convention=='wind':
+        theta = np.mod(theta+180.0, 360.0)
+        
+    return theta, rho    
+    
 def pol2cart(th,rho):
     """Convert polar coordinates to cartesian"""
     x = rho * np.cos(th)
     y = rho * np.sin(th)
 
     return x, y
+    
+def cart2pol(x,y):
+    """
+    Convert cartesian to polar coordinates
+    """
+    th = np.angle(x+1j*y)
+    rho = np.abs(x+1j*y)
+    
+    return th, rho

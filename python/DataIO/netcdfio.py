@@ -63,6 +63,7 @@ def writePointData2Netcdf(ncfile,data,globalatts):
                 # Create the coordinate variables
                 tmpvar=grp.createVariable(cc['Name'],'f8',(dimname,))
                 tmpvar[:] = cc['Value']
+
                 
                 # Create the attributes
                 for aa in cc.keys():

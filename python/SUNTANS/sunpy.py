@@ -60,6 +60,7 @@ class Grid(object):
         self.xp = pointdata[:,0]
         self.yp = pointdata[:,1]
         self.dv = pointdata[:,2] # zero to start
+        self.Np = len(self.xp)
         
         self.xv = celldata[:,0]
         self.yv = celldata[:,1]
@@ -104,6 +105,7 @@ class Grid(object):
         
         self.xp = nc.variables['xp'][:]
         self.yp = nc.variables['yp'][:]
+        self.Np = len(self.xp)
         self.xv = nc.variables['xv'][:]
         self.yv = nc.variables['yv'][:]
         self.dv = nc.variables['dv'][:]
@@ -315,6 +317,35 @@ class Grid(object):
         
         self.dg = np.sqrt( dx*dx + dy*dy )
         
+    def pnt2cells(self,pnt_i):
+        """
+        Returns the cell indices for a point, pnt_i
+        
+        (Stolen from Rusty's TriGrid class)
+        """
+        if not self.__dict__.has_key('_pnt2cells'):
+            # build hash table for point->cell lookup
+            self._pnt2cells = {}
+            for i in range(self.Nc):
+                for j in range(3):
+                    if not self._pnt2cells.has_key(self.cells[i,j]):
+                        #self._pnt2cells[self.cells[i,j]] = set()
+                        self._pnt2cells[self.cells[i,j]] = []
+                    #self._pnt2cells[self.cells[i,j]].add(i)
+                    self._pnt2cells[self.cells[i,j]].append(i)
+        return self._pnt2cells[pnt_i]
+        
+    def cell2node(self,cell_scalar):
+        """
+        Map a cell-based scalar onto a node
+        
+        This is calculated via a mean of the cells connected to a node(point)
+        """
+        
+        node_scalar = [np.mean(cell_scalar[self.pnt2cells(ii)]) for ii in range(self.Np)]
+        
+        return np.array(node_scalar)
+        
 #################################################
 
 class Spatial(Grid):
@@ -411,7 +442,7 @@ class Spatial(Grid):
 
 
     
-    def plot(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
+    def plot(self,z=None,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
         """
           Plot the unstructured grid data
         """
@@ -419,22 +450,25 @@ class Spatial(Grid):
         if not self.__dict__.has_key('data'):
             self.loadData()
             
+        if z==None:
+            z=self.data
+            
         # Find the colorbar limits if unspecified
         if self.clim==None:
             self.clim=[]
-            self.clim.append(np.min(self.data))
-            self.clim.append(np.max(self.data))
+            self.clim.append(np.min(z))
+            self.clim.append(np.max(z))
         # Set the xy limits
         if xlims==None or ylims==None:
             xlims=self.xlims 
             ylims=self.ylims
         
         if self.__dict__.has_key('patches'):
-             self.patches.set_array(self.data)
+             self.patches.set_array(z)
              self.ax.add_collection(self.patches)
         else:
             #tic = time.clock()
-            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.data,xlim=xlims,ylim=ylims,\
+            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,z,xlim=xlims,ylim=ylims,\
                 clim=self.clim,**kwargs)
             plt.title(self.__genTitle())
             
@@ -478,13 +512,16 @@ class Spatial(Grid):
 #             pdb.set_trace()
 #             h2 = mlab.pipeline.streamline(magnitude)
             
-    def plotTS(self,j=0,**kwargs):
+    def plotTS(self,j=None,**kwargs):
         """
          Plots a time series of the data at a given grid cell given by:
              self.j, self.klayer
         """
 
         # Load the time-series
+        if j == None:
+            j = self.j
+            
         self.tstep = np.arange(0,len(self.time))
         self.j=j
         self.loadData()

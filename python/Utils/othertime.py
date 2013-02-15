@@ -10,6 +10,8 @@ Created on Fri Dec 07 15:39:15 2012
 from datetime import datetime,timedelta
 import numpy as np
 
+import pdb
+
 def SecondsSince(timein,basetime = datetime(1990,1,1)):
     """
     Converts a list or array of datetime object into an array of seconds since "basetime"
@@ -17,9 +19,18 @@ def SecondsSince(timein,basetime = datetime(1990,1,1)):
     Useful for interpolation and storing in netcdf format
     """
     timeout=[]
-    for t in timein:
-        dt = t - basetime
-        timeout.append(dt.total_seconds())
+    try:
+        timein = timein.tolist()
+    except:
+        timein = timein
+    
+    try:
+        for t in timein:
+            dt = t - basetime
+            timeout.append(dt.total_seconds())
+    except:
+        dt = timein - basetime
+        timeout.append(dt.total_seconds()) 
         
     return np.asarray(timeout)
     
@@ -29,12 +40,22 @@ def MinutesSince(timein,basetime = datetime(1970,1,1)):
     
     Useful for interpolation and storing in netcdf format
     """
-    timeout=[]
-    for t in timein:
-        dt = t - basetime
-        timeout.append(dt.total_seconds()/60.0)
-        
-    return np.asarray(timeout)
+#    timeout=[]
+#    try:
+#        timein = timein.tolist()
+#    except:
+#        timein = timein
+#    
+#    try:
+#        for t in timein:
+#            dt = t - basetime
+#            timeout.append(dt.total_seconds()/60.0)
+#    except:
+#        dt = timein - basetime
+#        timeout.append(dt.total_seconds()/60.0) 
+#        
+#    return np.asarray(timeout)
+    return SecondsSince(timein, basetime = basetime)/60.0
 
 def datenum2datetime(datenum):
     """
@@ -73,3 +94,29 @@ def getMonth(timein):
         month.append(t.month)
         
     return np.asarray(month)
+    
+def findNearest(t,timevec):
+    """
+    Return the index from timevec the nearest time point to time, t. 
+    
+    """
+    tnow = SecondsSince(t)
+    tvec = SecondsSince(timevec)
+    
+    tdist = np.abs(tnow - tvec)
+    
+    idx = np.argwhere(tdist == tdist.min())
+    
+#    return idx, tdist[idx]
+
+#    tclose =  min (timevec, key=lambda x: abs (x-t))[0]
+#    try:
+#        tclose =  min (timevec, key=lambda x: abs (x-t))[0]
+#    except:
+#        timevec = timevec.tolist()
+#        tclose =  min (timevec, key=lambda x: abs (x-t))[0]
+        
+#    idx =  np.argwhere(timevec==tclose)
+    
+    return int(idx[0])
+    
