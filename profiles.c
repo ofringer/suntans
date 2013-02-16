@@ -92,11 +92,11 @@ void InterpData(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int numpro
   if(prop->n==prop->nstart+1) {
     existProfs=GetProfileVariables();
     if(existProfs) {
-      
+
       // Compute nearest-neighbor indices and determine the processor on which each
       // point is located.
       InitializeOutputIndices(grid,comm,numprocs,myproc);
-      
+
       // Open the data files only if specified in the variable ProfileVariables in suntans.dat.
       OpenDataFiles(myproc);
       
@@ -105,7 +105,7 @@ void InterpData(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int numpro
       AllInitialWriteToFiles(grid,prop,comm,numprocs,myproc);
     }
   }
-  
+
   // Output the profile data at the frequency specified by ntoutProfs
   if(existProfs && !(prop->n%ntoutProfs)) 
     WriteAllProfileData(grid,phys,prop,comm,numprocs,myproc);
@@ -157,13 +157,15 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
     getfield(ifid,str);
     getfield(ifid,str);
     getfield(ifid,str);
-    for(nf=0;nf<grid->nfaces[i];nf++) 
+    for(nf=0;nf<grid->nfaces[i];nf++) {
       cells[i*grid->maxfaces+nf]=(int)getfield(ifid,str);
-    getfield(ifid,str);
-    getfield(ifid,str);
-    getfield(ifid,str);
+      //printf("%d,%d\n",(i*grid->maxfaces+nf),cells[i*grid->maxfaces+nf]);
+    }
+    for(nf=0;nf<grid->nfaces[i];nf++)
+      getfield(ifid,str);
   }
   fclose(ifid);
+
   // Points are also not avialable anymore in the grid struct.
   MPI_GetFile(filename,DATAFILE,"points","InitializeOutputIndices",myproc);
   Np = MPI_GetSize(filename,"InitializeOutputIndices",myproc);
@@ -188,7 +190,7 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   // in which it was loaded.  dataXY contains the x-y coordinates loaded in from the file.
   dataIndices = (int *)SunMalloc(numTotalDataPoints*sizeof(int),"InitializeOutputIndices");
   dataXY = (REAL *)SunMalloc(2*numTotalDataPoints*sizeof(REAL),"InitializeOutputIndices");
-  
+
   ifid = fopen(filename,"r");
   numLocalDataPoints=0;
   for(i=0;i<numTotalDataPoints;i++) {
@@ -290,15 +292,18 @@ static int IsOnGrid(REAL x, REAL y, REAL *xp, REAL *yp, int *cells, int *celldis
 
   // Need to make sure only check the computational cells, not the interprocessor boundary
   // cells.
+
   for(iptr=celldist[0];iptr<celldist[2];iptr++) {
     i = cellp[iptr];
-
     for(nf=0;nf<nfaces[i];nf++) {
+      //printf("%d, %d\n",nf,cells[(i*maxfaces+nf)]);
       xg[nf]=xp[cells[i*maxfaces+nf]];
-      yg[nf]=yp[cells[i*maxfaces+nf]];
+      yg[nf]=yp[cells[i*maxfaces+nf]]; 
     }
+
     if(InPolygon(x,y,xg,yg,nfaces[i]))
       return 1;
+
   }
   return 0;
 }
