@@ -159,9 +159,8 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
     getfield(ifid,str);
     for(nf=0;nf<grid->nfaces[i];nf++) 
       cells[i*grid->maxfaces+nf]=(int)getfield(ifid,str);
-    getfield(ifid,str);
-    getfield(ifid,str);
-    getfield(ifid,str);
+    for(nf=0;nf<grid->nfaces[i];nf++)
+      getfield(ifid,str);
   }
   fclose(ifid);
 
