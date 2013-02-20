@@ -187,7 +187,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
 void InitializeVerticalGrid(gridT **grid,int myproc);
 void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void OpenFiles(propT *prop, int myproc);
-void ReadProperties(propT **prop, int myproc);
+void ReadProperties(propT **prop, gridT **grid, int myproc);
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
 REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind);
 REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);

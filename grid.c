@@ -782,7 +782,7 @@ void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Co
  *
  */
 void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces)
-{
+{ int n;
   *grid = (gridT *)SunMalloc(sizeof(gridT),"InitMainGrid");
   
   // Number of cells
@@ -816,8 +816,14 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces
   // parts added
   // allocate nfaces and maxfaces
   (*grid)->nfaces= (int *)SunMalloc((*grid)->Nc*sizeof(int),"InitMainGrid");
-  // Load the faces' number of each cell and calculate the maximum nfaces 
-  ReadNfaces(*grid, myproc, maxFaces);
+  // Load the faces' number of each cell and calculate the maximum nfaces
+  // if -t not use READNFACES
+  if(!TRIANGULATE){ 
+    ReadNfaces(*grid, myproc, maxFaces);
+  }else{ 
+    for(n=0;n<Nc;n++)
+      (*grid)->nfaces[n]=3;
+   }
 
   // Pointers to xp,yp coordinates of vertices that make up polygons (0<cells<Np)
   (*grid)->cells = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"InitMainGrid");
