@@ -1119,7 +1119,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       HorizontalSource(grid,phys,prop,myproc,numprocs,comm);
       // compute the time required for the source
       t_source+=Timer()-t0;
- 
+
       // Use the explicit part created in HorizontalSource and solve for the 
       // free-surface
       // and hence compute the predicted or hydrostatic horizontal velocity field.  Then
@@ -1246,6 +1246,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     t0=Timer();
     OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
     InterpData(grid,phys,prop,comm,numprocs,myproc);
+
     t_io+=Timer()-t0;
     // Output progress
     Progress(prop,myproc,numprocs);
@@ -4157,18 +4158,18 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
 
 /*
  * Function: ReadProperties
- * Usage: ReadProperties(prop,myproc);
+ * Usage: ReadProperties(prop,grid,myproc);
  * -----------------------------------
  * This function reads in the properties specified in the suntans.dat
  * data file.  Note that if an entry does not exist, a default can be used.
  *
  */
-void ReadProperties(propT **prop, int myproc)
+void ReadProperties(propT **prop, gridT **grid, int myproc)
 { int max;
   // allocate memory
   *prop = (propT *)SunMalloc(sizeof(propT),"ReadProperties");
   // max get value for maxfaces to define interp and prettyplot
-  max = MPI_GetValue(DATAFILE,"maxFaces","ReadProperties",myproc);
+  max = (*grid)->maxfaces;//MPI_GetValue(DATAFILE,"maxFaces","ReadProperties",myproc);
   // set values from suntans.dat file (DATAFILE)
   (*prop)->thetaramptime = MPI_GetValue(DATAFILE,"thetaramptime","ReadProperties",myproc);
   (*prop)->theta = MPI_GetValue(DATAFILE,"theta","ReadProperties",myproc);
