@@ -1,173 +1,43 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % File name: quadrid.m
-% Description: Create Cartesian grid files for use with the quad
-% version of suntans.  Horizontal grid stretching can be used by
-% setting STRETCH=true;
+% Description: Create grid files for a quad grid.
 %
-% If stretching in the x-direction is employed, then the grid consists
-% of a refined region in the middle of the domain with a width Lr and
-% number of grid points Nxr in this region.  Nxr can be set either by
-% deciding on a desired resolution in the refined region or it can
-% just be set arbitrarily. i.e. There is no need to set dxr (see
-% below) to compute a stretched grid.
+% Oliver Fringer
+% Stanford University
+% 18 October 2012
 %
-<<<<<<< .mine
-% The grid is stretched to the left and right of the refined 
-% region by an amount r which is determined to ensure that the
-% total length of the domain matches L.  Schematically, the grid
-% centers would look like
-%
-%           | .    .   .  . ........... .  .   .    . |
-%
-%           |<-----Ls ----->|<---Lr-->|<------Ls ---->|
-%
-% Here, the length of the refined region is Lr and the length of each
-% of the stretched regions is Ls=(L-Lr)/2.  Therefore, the number of
-% grid cells in the refined region is Nxr and the number in each
-% stretched region is Nxs=(Nx-Nxr)/2.  Note that if (Nx-Nxr) is not 
-% divisible by 2 then Nxr is increased by 1.
-%
-% The function stretchgrid(xpg,ypg,Lr,Nxr,rmax) takes as its
-% input xpg and ypg which are the vertices of the grid 
-% arranged in 2D arrays (i.e. not 1d arrays). rmax should be 1.1
-% but it can of course be large depending on how mutch stretching
-% is desired. Note that in order for r to be obtained, a solution
-% to the following algebraic equation is needed:
-%
-% r^Nxs - 1 - Ls*(Nxr/Lr)*(r-1) = 0,
-%
-% In cases of small Nxs (too few cells in stretched region) or
-% small Lr/Nxr (too much refinement), this may require an
-% exceedingly large stretching factor and in some cases the solver
-% fsolve() will not find a solution.
-%
-% revised by Yun Zhang 2/18/2013 @Stanford
-% 1) make dx=dy=1 and dxr=1/K to avoid numerical error fault
-% 2) make sure grad(i,1)!=-1
-=======
-% The grid is stretched to the left and right of the refined 
-% region by an amount r which is determined to ensure that the
-% total length of the domain matches L.  Schematically, the grid
-% centers would look like
-%
-%           | .    .   .  . ........... .  .   .    . |
-%
-%           |<-----Ls ----->|<---Lr-->|<------Ls ---->|
-%
-% Here, the length of the refined region is Lr and the length of each
-% of the stretched regions is Ls=(L-Lr)/2.  Therefore, the number of
-% grid cells in the refined region is Nxr and the number in each
-% stretched region is Nxs=(Nx-Nxr)/2.  Note that if (Nx-Nxr) is not 
-% divisible by 2 then Nxr is increased by 1.
-%
-% The function stretchgrid(xpg,ypg,Lr,Nxr,rmax) takes as its
-% input xpg and ypg which are the vertices of the grid 
-% arranged in 2D arrays (i.e. not 1d arrays). rmax should be 1.1
-% but it can of course be large depending on how mutch stretching
-% is desired. Note that in order for r to be obtained, a solution
-% to the following algebraic equation is needed:
-%
-% r^Nxs - 1 - Ls*(Nxr/Lr)*(r-1) = 0,
-%
-% In cases of small Nxs (too few cells in stretched region) or
-% small Lr/Nxr (too much refinement), this may require an
-% exceedingly large stretching factor and in some cases the solver
-% fsolve() will not find a solution.
-%
->>>>>>> .r644
+% may have error when dx & dy is very small
+% add ampfactor 
+% revised by Yun Zhang
+% 2/12/2013 @Stanford
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-<<<<<<< .mine
-% Directory in which points.dat, cells,dat, edges.dat files will be
-% placed
-datadir='.';
-
-=======
-% Directory in which points.dat, cells,dat, edges.dat files will be
-% placed
-datadir='c:\cygwin\home\fringer\suntans-examples\lockexchange\rundata';
-
->>>>>>> .r644
 % Length and width of domain
-<<<<<<< .mine
-L = 1000;
-W = 10;
-=======
-L = 100;
-W = 10;
->>>>>>> .r644
+L = 200000;
+W = 1732.1;
 
 % Number of cells
-<<<<<<< .mine
 Nx = 100;
 Ny = 1;
 ampfacx=Nx/L;
 ampfacy=Ny/W;
 L=Nx;
 W=Ny;
-dx=1;
-dy=1;
-=======
-Nx = 100;
-Ny = 1;
->>>>>>> .r644
-
-<<<<<<< .mine
-% Whether or not to employ stretching
-STRETCHING=1;
-
-% Length of resolved region
-Lr = 20;
-Lramp =Lr*ampfacx;
-% Resolution of resolved region (which is constant). In this case
-% the grid spacing is half the original spacing.
-K=2; % the resolution for dx/dxr
-dxr = 1/K;
-
-% Number of grid points in resolved region
-Nxr = ceil(Lramp/dxr);
-
-% Maximum acceptable stretching factor. The code will exit if the
-% stretching factor needed to give the refined region exceeds rmax.
-rmax = 1.1;
-
-% Boundary condition types:
-% 1 solid free-slip wall
-% 2 velocity specified
-% 3 free-surface specified
-=======
-% Whether or not to employ stretching
-STRETCHING=true;
-
-% Length of resolved region
-Lr = 20;
-
-% Resolution of resolved region (which is constant). In this case
-% the grid spacing is half the original spacing.
-dxr = (L/Nx)/2;
-
-% Number of grid points in resolved region
-Nxr = ceil(Lr/dxr);
-
-% Maximum acceptable stretching factor. The code will exit if the
-% stretching factor needed to give the refined region exceeds rmax.
-rmax = 1.1;
-
-% Boundary condition types:
-% 1 solid free-slip wall
-% 2 velocity specified
-% 3 free-surface specified
->>>>>>> .r644
-WestBoundary = 1;
+% Boundary condition types
+WestBoundary = 2;
 EastBoundary = 1;
 NorthBoundary = 1;
 SouthBoundary = 1;
 
+dx = 1;
+dy = 1;
+
+
 N = (Nx+1)*(Ny+1);
-[xpg,ypg] = ndgrid([0:dx:L],[0:dy:W]);
-xp = xpg(:);
-yp = ypg(:);
+[xp,yp] = ndgrid([0:dx:L],[0:dy:W]);
+xp = xp(:);
+yp = yp(:);
 Np = length(xp);
 
 [xv,yv] = ndgrid([dx/2:dx:L-dx/2],[dy/2:dy:W-dy/2]);
@@ -306,19 +176,6 @@ end
 %   end
 % end
 
-<<<<<<< .mine
-% Now we can stretch the grid without destroying the connectivity
-if(STRETCHING)
-  [xv,yv,xp,yp]=stretchgrid(xpg,ypg,Lramp,Nxr,rmax);
-end
-=======
-% Now we can stretch the grid without destroying the connectivity
-if(STRETCHING)
-  [xv,yv,xp,yp]=stretchgrid(xpg,ypg,Lr,Nxr,rmax);
-end
->>>>>>> .r644
-
-<<<<<<< .mine
 % output
 celloutput=zeros(Nc,11);
 celloutput(:,1)=4;
@@ -330,9 +187,9 @@ celloutput(:,8:11)=neigh;
 edgeoutput=zeros(Ne,5);
 %find open BC to make sure grad[2*j]~=-1
 loc=find(mark~=0 & mark~=1);
-edgeoutput(:,1:2)=edges;
+edgeoutput(:,1:2)=edges(:,1:2);
 edgeoutput(:,3)=mark;
-edgeoutput(:,4:5)=grad;
+edgeoutput(:,4:5)=grad(:,1:2);
 for i=1:length(loc)
     if grad(i,1)==-1
         edgeoutput(loc,5)=-1;
@@ -351,35 +208,8 @@ for i=1:Ne
     nc2=grad(i,2);
     if(nc1~=-1 & nc2~=-1)
         dis(i)=((xv(nc1)-xv(nc2))^2+(yv(nc1)-yv(nc2))^2)^0.5;
-=======
-% output
-celloutput=zeros(Nc,11);
-celloutput(:,1)=4;
-celloutput(:,2)=xv;
-celloutput(:,3)=yv;
-celloutput(:,4:7)=cells;
-celloutput(:,8:11)=neigh;
-
-edgeoutput=zeros(Ne,5);
-edgeoutput(:,1:2)=edges;
-edgeoutput(:,3)=mark;
-edgeoutput(:,4:5)=grad;
-
-pointoutput=zeros(Np,3);
-pointoutput(:,1)=xp;
-pointoutput(:,2)=yp;
-
-%check results (should be edge length)
-dis=3*ones(Ne,1);
-for i=1:Ne
-    nc1=grad(i,1);
-    nc2=grad(i,2);
-    if(nc1~=-1 & nc2~=-1)
-        dis(i)=((xv(nc1)-xv(nc2))^2+(yv(nc1)-yv(nc2))^2)^0.5;
->>>>>>> .r644
     end
 end
-<<<<<<< .mine
 
 
 
@@ -397,51 +227,21 @@ edgeoutput(loc,i)=edgeoutput(loc,i)-1;
 end
 
 
+datadir='.';
 cells_file = [datadir,'/cells.dat'];
 cellsf = fopen(cells_file,'w');
 fprintf(cellsf, '%1.0f %12.10e %12.10e %1.0f %1.0f %1.0f %1.0f %1.0f %1.0f %1.0f %1.0f\n', celloutput');
 status = fclose(cellsf);   
 
+
+datadir='.';
 points_file = [datadir,'/points.dat'];
 pointsf = fopen(points_file,'w');
 fprintf(pointsf, '%12.10e %12.10e %1.0f\n', pointoutput');
 status = fclose(pointsf);   
 
-edges_file = [datadir,'/edges.dat'];
-edgesf = fopen(edges_file,'w');
-fprintf(edgesf, '%1.0f %1.0f %1.0f %1.0f %1.0f\n', edgeoutput');
-status = fclose(edgesf);   
 
-
-
-=======
-
-
-
-celloutput(:,4:7)=celloutput(:,4:7)-1;
-for i=8:11
-loc=find(celloutput(:,i)~=-1);
-celloutput(loc,i)=celloutput(loc,i)-1;
-end
-
-edgeoutput(:,1:2)=edgeoutput(:,1:2)-1;
-
-for i=4:5
-loc=find(edgeoutput(:,i)~=-1);
-edgeoutput(loc,i)=edgeoutput(loc,i)-1;
-end
-
-
-cells_file = [datadir,'/cells.dat'];
-cellsf = fopen(cells_file,'w');
-fprintf(cellsf, '%1.0f %12.10e %12.10e %1.0f %1.0f %1.0f %1.0f %1.0f %1.0f %1.0f %1.0f\n', celloutput');
-status = fclose(cellsf);   
-
-points_file = [datadir,'/points.dat'];
-pointsf = fopen(points_file,'w');
-fprintf(pointsf, '%12.10e %12.10e %1.0f\n', pointoutput');
-status = fclose(pointsf);   
-
+datadir='.';
 edges_file = [datadir,'/edges.dat'];
 edgesf = fopen(edges_file,'w');
 fprintf(edgesf, '%1.0f %1.0f %1.0f %1.0f %1.0f\n', edgeoutput');
@@ -450,4 +250,3 @@ status = fclose(edgesf);
 
 
 
->>>>>>> .r644
