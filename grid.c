@@ -4563,7 +4563,7 @@ REAL GetCircumcircleRadius(REAL *xt, REAL *yt, int Nf)
 REAL GetArea(REAL *xt, REAL *yt, int Nf)
 {
   REAL b,r1,r2,h,l,xt2[3],yt2[3],area;
-
+  int i;
   if(Nf==3) {
     b=sqrt(pow(xt[1]-xt[0],2)+
 	   pow(yt[1]-yt[0],2));
@@ -4576,16 +4576,18 @@ REAL GetArea(REAL *xt, REAL *yt, int Nf)
     return 0.5*b*h;
   }
   else 
-    if(Nf==4) {
+    if(Nf>3) {
       area=GetArea(xt,yt,3);
-      xt2[0]=xt[2];
-      xt2[1]=xt[3];
-      xt2[2]=xt[0];
-      yt2[0]=yt[2];
-      yt2[1]=yt[3];
-      yt2[2]=yt[0];
-      area+=GetArea(xt2,yt2,3);
-      return area;
+      for(i=0;i<(Nf-3);i++){        
+        xt2[0]=xt[(i+2)];
+        xt2[1]=xt[(i+3)];
+        xt2[2]=xt[0];
+        yt2[0]=yt[(i+2)];
+        yt2[1]=yt[(i+3)];
+        yt2[2]=yt[0];
+        area+=GetArea(xt2,yt2,3);
+      }
+    return area;
     }
   return 0;
 }
