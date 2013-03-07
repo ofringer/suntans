@@ -1576,6 +1576,7 @@ void DrawVoronoiPoints(float *xv, float *yv, int Nc) {
     yp = 	axesPosition[3]*height*(1-(yv[i]-dataLimits[2])/
 					(dataLimits[3]-dataLimits[2]));
     FillCircle(xp,yp,POINTSIZE,red,pix);
+    //printf("cell=%d xv=%f yv=%f\n", xv[i],yv[i]);
   }
 }
 
@@ -2980,11 +2981,13 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       
       sprintf(string,"%s.%d",CELLCENTEREDFILE,proc);
       fid = MyFOpen(string,"r","ReadData");
+      //printf("Nc[proc=%d]=%d\n",proc,data->Nc[proc]);
       for(i=0;i<data->Nc[proc];i++) {
 	// This line was removed since 1 less int is printed to this file
 	// in grid.c (mnptr is no longer printed).
 	//	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
 	fscanf(fid,"%d %f %f %f %f %d",&ind,&(data->xv[proc][i]),&(data->yv[proc][i]), &xind,&(data->depth[proc][i]),&ind);
+  //printf("proc:%d cell:%d xv=%f yv=%f\n",proc,i,data->xv[proc][i],data->yv[proc][i]);
         for(kk=0;kk<data->nfaces[proc][i];kk++)
           fscanf(fid,"%d ",&(data->face[proc][data->maxfaces*i+kk]));
         for(kk=0;kk<data->nfaces[proc][i];kk++)
@@ -3501,7 +3504,7 @@ void GetCAxes(REAL datamin, REAL datamax) {
     if(caxis[0]==caxis[1])
       printf("Color axes limits may not be equal.  Try again: ");
     else if(caxis[0]<datamin && caxis[1]>datamax)
-      printf("Axes must be in the range [%.2e, %.2e].  Try again: ");
+      printf("Axes must be in the range [%.2e, %.2e].  Try again: ",datamin,datamax);
     fscanf(stdin,"%f %f",&caxis[0],&caxis[1]);
   }
 }
