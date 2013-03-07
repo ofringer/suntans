@@ -3505,6 +3505,7 @@ void GetCAxes(REAL datamin, REAL datamax) {
       printf("Color axes limits may not be equal.  Try again: ");
     else if(caxis[0]<datamin && caxis[1]>datamax)
       printf("Axes must be in the range [%.2e, %.2e].  Try again: ",datamin,datamax);
+
     fscanf(stdin,"%f %f",&caxis[0],&caxis[1]);
   }
 }
