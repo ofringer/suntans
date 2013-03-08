@@ -252,10 +252,10 @@ loc=find(mark~=0 & mark~=1);
 edgeoutput(:,1:2)=edges;
 edgeoutput(:,3)=mark;
 edgeoutput(:,4:5)=grad;
-for i=1:length(loc)
-    if grad(i,1)==-1
-        edgeoutput(loc,5)=-1;
-        edgeoutput(loc,4)=grad(i,2);
+for m=1:length(loc)
+    if grad(m,1)==-1
+        edgeoutput(m,5)=-1;
+        edgeoutput(m,4)=grad(m,2);
     end
 end
 
