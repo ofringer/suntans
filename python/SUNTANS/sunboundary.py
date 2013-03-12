@@ -332,6 +332,41 @@ class Boundary(object):
         
         print 'Boundary data sucessfully written to: %s'%ncfile
         
+    def scatter(self,varname='S',klayer=0,tstep=0,**kwargs):
+        """
+        Colored scatter plot of boundary data
+        """
+        
+        z = self[varname]
+        z = z[tstep,klayer,:]
+        
+        if varname in ['S','T','h','uc','vc','wc']:
+            x = self.xv
+            y = self.yv
+        else:
+            x = self.xe
+            y = self.ye
+        
+        fig = plt.gcf()
+        ax = fig.gca()
+        
+        s1 = plt.scatter(x,y,s=30,c=z,**kwargs)
+        
+        ax.set_aspect('equal')
+        plt.colorbar()
+        
+        titlestr='Boundary variable : %s \n z: %3.1f [m], Time: %s'%(varname,self.z[klayer],\
+        datetime.strftime(self.time[tstep],'%d-%b-%Y %H:%M:%S'))
+        
+        plt.title(titlestr)
+        
+        return s1
+        
+    def __getitem__(self,y):
+        x = self.__dict__.__getitem__(y)
+        return x
+        
+        
         
 def modifyBCmarker(suntanspath,bcfile):
     """

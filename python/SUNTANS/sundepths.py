@@ -56,10 +56,6 @@ class DepthDriver(object):
         self.indata = Inputs(depthfile,convert2utm=False,CS=self.CS,utmzone=self.utmzone,\
         isnorth=self.isnorth,vdatum=self.vdatum)
 
-        # Initialise the Interpolation class
-        print 'Building interpolant class...'
-        self.F = interpXYZ(self.indata.XY,self.indata.Zin,method=self.interpmethod,NNear=self.NNear,\
-        p=self.p,varmodel=self.varmodel,nugget=self.nugget,sill=self.sill,vrange=self.vrange)
 
     def __call__(self,suntanspath,depthmax=0.0):
         
@@ -70,9 +66,14 @@ class DepthDriver(object):
         self.grd = sunpy.Grid(self.suntanspath)
         self.xy = np.column_stack((self.grd.xv,self.grd.yv))
         
+        # Initialise the Interpolation class
+        print 'Building interpolant class...'
+        self.F = interpXYZ(self.indata.XY,self.xy,method=self.interpmethod,NNear=self.NNear,\
+        p=self.p,varmodel=self.varmodel,nugget=self.nugget,sill=self.sill,vrange=self.vrange)
+
         # Interpolate the data
         print 'Interpolating data...'
-        self.grd.dv = self.F(self.xy)
+        self.grd.dv = self.F(self.indata.Zin)
         
         # Smooth
         if self.smooth:
@@ -102,8 +103,8 @@ class DepthDriver(object):
         Smooth the data by running an interpolant over the model grid points
         """
         print 'Smoothing the data...'
-        Fsmooth = interpXYZ(self.xy,self.grd.dv,method=self.smoothmethod,NNear=self.smoothnear)
-        self.grd.dv = Fsmooth(self.xy)
+        Fsmooth = interpXYZ(self.xy,self.xy,method=self.smoothmethod,NNear=self.smoothnear)
+        self.grd.dv = Fsmooth(self.grd.dv)
 
     def plot(self):
         """
