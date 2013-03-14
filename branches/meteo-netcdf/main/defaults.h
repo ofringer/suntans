@@ -159,3 +159,6 @@ const char *basetime_DEFAULT =  "19900101.000000";
 
 // NetCDF boundary conidtion default
 const int netcdfBdy_DEFAULT = 0;
+
+// Read initial condition netcdf
+const int readinitialnc_DEFAULT = 0;

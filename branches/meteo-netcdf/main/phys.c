@@ -606,9 +606,27 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
 {
   int i, j, k, ktop, Nc=grid->Nc;
   REAL z, *stmp;
+  int Nci, Nki, T0;
+
 
   prop->nstart=0;
+  
+  // Initialise the netcdf time
+  prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+  prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
 
+  if (prop->readinitialnc>0){
+#ifdef USENETCDF
+
+    ReadInitialNCcoord(prop,grid,&Nci,&Nki,&T0,myproc);
+
+    //size_t count2[] = {1,Nci};
+    //size_t start2[] = {T0,0};
+    //size_t count3[] = {1,Nki,Nci};
+    //size_t start3[] = {T0,0,0};
+
+#endif
+  }
   // Need to update the vertical grid and fix any cells in which
   // dzz is too small when h=0.
    UpdateDZ(grid,phys,prop, -1);
@@ -627,10 +645,14 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   */
 
   // Initialize the free surface
-  for(i=0;i<Nc;i++) {
-    phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
-    if(phys->h[i]<-grid->dv[i] + DRYCELLHEIGHT) 
-      phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
+  if (prop->readinitialnc){
+     ReturnFreeSurfaceNC(prop,phys,grid,Nci,T0,myproc);
+  }else{
+    for(i=0;i<Nc;i++) {
+      phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
+      if(phys->h[i]<-grid->dv[i] + DRYCELLHEIGHT) 
+        phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
+    }
   }
 
   // Need to update the vertical grid after updating the free surface.
@@ -652,7 +674,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   // Initialize the temperature, salinity, and background salinity
   // distributions.  Since z is not stored, need to use dz[k] to get
   // z[k].
-  if(prop->readSalinity) {
+  if(prop->readSalinity && prop->readinitialnc == 0) {
     stmp = (REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
     if(fread(stmp,sizeof(REAL),grid->Nkmax,prop->InitSalinityFID) != grid->Nkmax)
       printf("Error reading stmp first\n");
@@ -664,8 +686,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->s0[i][k]=stmp[k];
       }
     SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
-  } 
-  else {
+  } else if(prop->readinitialnc){
+     ReturnSalinityNC(prop,phys,grid,Nci,Nki,T0,myproc);
+  } else {
     for(i=0;i<Nc;i++) {
       z = 0;
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -677,7 +700,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     }
   }
 
-  if(prop->readTemperature) {
+  if(prop->readTemperature && prop->readinitialnc == 0) {
     stmp = (REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
     if(fread(stmp,sizeof(REAL),grid->Nkmax,prop->InitTemperatureFID) != grid->Nkmax)
       printf("Error reading stmp second\n");
@@ -688,8 +711,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->T[i][k]=stmp[k];
 
     SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
-  } 
-  else {
+   } else if(prop->readinitialnc){
+        ReturnTemperatureNC(prop,phys,grid,Nci,Nki,T0,myproc);
+  } else {  
     for(i=0;i<Nc;i++) {
       z = 0;
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -699,7 +723,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       }
     }
   }
-
+ 
   // Initialize the velocity field 
   for(j=0;j<grid->Ne;j++) {
     z = 0;
@@ -1080,23 +1104,17 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   // initialize the time (often used for boundary/initial conditions)
   prop->rtime=prop->nstart*prop->dt;
  
-  // Initialise the netcdf time
-#ifdef USENETCDF 
- // Get the toffSet property
- //printf("myproc: %d, starttime: %s\n",prop->starttime);
- prop->toffSet = getToffSet(prop->basetime,prop->starttime);
- prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
- printf("myproc: %d, toffSet = %f (%s, %s)\n",myproc,prop->toffSet,&prop->basetime,&prop->starttime);
-#endif
+  // Initialise the netcdf time (moved to InitializePhysicalVariables)
+  // Get the toffSet property
+  //printf("myproc: %d, starttime: %s\n",prop->starttime);
+  //prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+  //prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
+  //printf("myproc: %d, toffSet = %f (%s, %s)\n",myproc,prop->toffSet,&prop->basetime,&prop->starttime);
 
   // Initialise the boundary data from a netcdf file
   if(prop->netcdfBdy==1){
-#ifdef USENETCDF
     AllocateBoundaryData(prop, grid, &bound, myproc);
     InitBoundaryData(prop, grid, myproc);
-  //#else
-  // Raise an error
-#endif
   }
 
   // get the boundary velocities (boundaries.c)
@@ -1117,8 +1135,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   InitSponge(grid,myproc);
 
   
-#ifdef USENETCDF
-
   // Initialise the meteorological forcing input fields
     if(prop->metmodel>0){
       if (prop->gamma==0.0){
@@ -1143,12 +1159,12 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
 	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
     }
+  }
+
   // Initialise the output netcdf file metadata
-    if(prop->outputNetcdf>0){
+    if(prop->outputNetcdf==1){
       InitialiseOutputNC(prop, grid, phys, met, myproc);
     }
-  }
-#endif
   
   // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
   WindStress(grid,phys,prop,met,myproc);
@@ -1160,12 +1176,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     // compute the runtime 
     prop->rtime = n*prop->dt;
     
-#ifdef USENETCDF
     // netcdf file time
     prop->nctime = prop->toffSet*86400.0 + n*prop->dt;
     //prop->nctime +=  n*prop->dt;
     //prop->nctime += prop->rtime;
-#endif
 
     if(prop->nsteps>0) {
 
@@ -1228,14 +1242,12 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       t_turb+=Timer()-t0;
 
       // Update the meteorological data
-#ifdef USENETCDF
       if(prop->metmodel>0){
 	updateMetData(prop, grid, metin, met, myproc, comm);
 	//if(prop->metmodel==2){
 	//    updateAirSeaFluxes(prop, grid, phys, met, phys->T);
         //}
       }
-#endif
 
       // Update the temperature only if gamma is nonzero in suntans.dat
       if(prop->gamma) {
@@ -1260,7 +1272,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       }
 
       // Update the air-sea fluxes --> these are used for the previous time step source term and for the salt flux implicit term (salt tracer solver therefore needs to go next)
-#ifdef USENETCDF
       if(prop->metmodel>=2){
 	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
 
@@ -1274,7 +1285,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
 
       }
-#endif
       
       // Update the salinity only if beta is nonzero in suntans.dat
       if(prop->beta) {
@@ -1375,10 +1385,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // Write to binary
       OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
     }else {
-#ifdef USENETCDF
       // Output data to netcdf
       WriteOuputNC(prop, grid, phys, met, blowup, myproc);
-#endif
     }
     InterpData(grid,phys,prop,comm,numprocs,myproc);
     t_io+=Timer()-t0;
@@ -4383,6 +4391,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->range = MPI_GetValue(DATAFILE,"range","ReadProperties",myproc);
   (*prop)->outputNetcdf = (int)MPI_GetValue(DATAFILE,"outputNetcdf","ReadProperties",myproc);
   (*prop)->netcdfBdy = (int)MPI_GetValue(DATAFILE,"netcdfBdy","ReadProperties",myproc);
+  (*prop)->readinitialnc = (int)MPI_GetValue(DATAFILE,"readinitialnc","ReadProperties",myproc);
   (*prop)->Lsw = MPI_GetValue(DATAFILE,"Lsw","ReadProperties",myproc);
   (*prop)->Cda = MPI_GetValue(DATAFILE,"Cda","ReadProperties",myproc);
   (*prop)->Ce = MPI_GetValue(DATAFILE,"Ce","ReadProperties",myproc);
@@ -4438,13 +4447,19 @@ void OpenFiles(propT *prop, int myproc)
 {
   char str[BUFFERLENGTH], filename[BUFFERLENGTH];
 
-  if(prop->readSalinity) {
+  if(prop->readSalinity && prop->readinitialnc == 0) {
     MPI_GetFile(filename,DATAFILE,"InitSalinityFile","OpenFiles",myproc);
     prop->InitSalinityFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
   }
-  if(prop->readTemperature) {
+  if(prop->readTemperature && prop->readinitialnc == 0) {
     MPI_GetFile(filename,DATAFILE,"InitTemperatureFile","OpenFiles",myproc);
     prop->InitTemperatureFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
+  }
+  if(prop->readinitialnc>0){
+    MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
+#ifdef USENETCDF
+    prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+#endif
   }
   if(prop->metmodel>0){
     MPI_GetFile(filename,DATAFILE,"metfile","OpenFiles",myproc);

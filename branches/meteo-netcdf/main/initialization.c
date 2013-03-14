@@ -14,6 +14,7 @@
 #include "fileio.h"
 #include "suntans.h"
 #include "initialization.h"
+#include "mynetcdf.h"
 
 #define sech 1/cosh
 /*
