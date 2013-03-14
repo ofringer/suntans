@@ -178,7 +178,7 @@ typedef struct _propT {
        *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,    
        *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID; 
   interpolation interp; int prettyplot;
-  int metmodel,  varmodel, outputNetcdf, outputNetcdfFileID, metncid, netcdfBdy, netcdfBdyFileID;
+  int metmodel,  varmodel, outputNetcdf, outputNetcdfFileID, metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID;
   REAL nctime, toffSet;
   int nctimectr;
   REAL nugget, sill, range, Lsw, Cda, Ce, Ch;

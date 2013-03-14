@@ -894,6 +894,7 @@ void InitialiseOutputNC(propT *prop, gridT *grid, physT *phys, metT *met, int my
    // Free the temporary vector
    SunFree(tmpvar,grid->Nc*grid->Nkmax,"InitialiseOutputNC");
 
+
 }// End of InitialiseOutputNC
 
 /* 
@@ -1253,7 +1254,7 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc){
      }// End read type-3
 
      //Flux boundary data
-     if(bound->hasSeg){
+     if(bound->hasType2 && bound->hasSeg){
 
 	count2[1]=Nseg;
 	vname = "boundary_Q";//2D array
@@ -1384,5 +1385,163 @@ size_t returndimlenBC(int ncid, char *dimname){
 /*###############################################################
 *
 * Initial contition input NetCDF functions
-*
-#################################################################*/
+*/
+
+/*
+ * Function: ReadInitialNCcoord()
+ * -----------------------------
+ * Reads the dimensions from the initial condition netcdf file
+ *
+ */
+ void ReadInitialNCcoord(propT *prop, gridT *grid, int *Nci, int *Nki, int *T0, int myproc){
+
+    int Nt;
+
+   // Read the spatial dimension sizes
+    *Nci = (int)returndimlenBC(prop->initialNCfileID,"Nc");
+    *Nki = (int)returndimlenBC(prop->initialNCfileID,"Nk");
+
+    // Check the dimension with the grid
+    if(*Nki != grid->Nkmax){
+	printf("Error! Number of layers in initial condition file (%d) not equal to Nkmax (%d).\n",*Nki,grid->Nkmax); 
+	MPI_Finalize();
+        exit(EXIT_FAILURE);
+    }
+
+    // Find the index of the closest time point, T0
+    Nt = (int)returndimlenBC(prop->initialNCfileID,"Nt");
+    *T0 = getICtime(prop,Nt, myproc);
+    return;
+
+ } // End function
+
+/*
+ * Function: getICtime()
+ * -----------------------------
+ * Return the closest time index from the initial condition file
+ *
+ */
+int getICtime(propT *prop, int Nt, int myproc){
+
+   int retval, varid;
+   int ncid = prop->initialNCfileID;
+   REAL time[Nt]; 
+   char *vname;
+
+   vname = "time";
+    if(VERBOSE>2 && myproc==0) printf("Reading initial condition %s...",vname);
+    if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	ERR(retval);
+    if ((retval = nc_get_var_double(ncid, varid, time))) 
+      ERR(retval); 
+    if(VERBOSE>2 && myproc==0) printf("done.\n");
+
+    return getTimeRecBnd(prop->nctime, time, (int)Nt);
+
+} // End function
+
+/*
+ * Function: ReturnFreeSurfaceNC()
+ * -------------------------------
+ * Reads the free surface from the initial condition netcdf array
+ *
+ */
+void ReturnFreeSurfaceNC(propT *prop, physT *phys, gridT *grid, int Nci, int T0, int myproc){
+   int i;
+   size_t start[] = {T0, 0};
+   size_t count[] = {1,Nci};
+   REAL htmp[Nci];
+
+   int varid, retval;
+   int ncid = prop->initialNCfileID;
+
+   if(VERBOSE>1 && myproc==0) printf("Reading free-surface initial condition from netcdf file...");
+   //printf("Initial condition file: T0 = %d, Nci = %d\n",T0,Nci);
+   //nc_read_2D(prop->initialNCfileID, "eta", start, count, htmp , myproc);
+    if ((retval = nc_inq_varid(ncid, "eta", &varid)))
+	ERR(retval);
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+     phys->h[i]=htmp[grid->mnptr[i]];
+     //phys->h[i]=0;
+     if(phys->h[i]<-grid->dv[i] + DRYCELLHEIGHT) 
+       phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
+  }
+} // End function
+
+
+/*
+ * Function: ReturnSalinityNC()
+ * -------------------------------
+ * Reads the salinity from the initial condition netcdf array
+ *
+ */
+void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki, int T0, int myproc){
+   int i,k;
+   size_t start[] = {T0, 0, 0};
+   size_t count[] = {1, Nki, Nci};
+   REAL htmp[Nki][Nci];
+
+   int varid, retval;
+   int ncid = prop->initialNCfileID;
+
+   if(VERBOSE>1 && myproc==0) printf("Reading salinity initial condition from netcdf file...");
+    if ((retval = nc_inq_varid(ncid, "S", &varid)))
+	ERR(retval);
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0][0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	 phys->s[i][k]=htmp[k][grid->mnptr[i]];
+	 phys->s0[i][k]=htmp[k][grid->mnptr[i]];
+      }
+  }
+} // End function
+
+
+/*
+ * Function: ReturnTemperatureNC()
+ * -------------------------------
+ * Reads the salinity from the initial condition netcdf array
+ *
+ */
+void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki, int T0, int myproc){
+   int i,k;
+   size_t start[] = {T0, 0, 0};
+   size_t count[] = {1, Nki, Nci};
+   REAL htmp[Nki][Nci];
+
+   int varid, retval;
+   int ncid = prop->initialNCfileID;
+
+   if(VERBOSE>1 && myproc==0) printf("Reading temperature initial condition from netcdf file...");
+    if ((retval = nc_inq_varid(ncid, "T", &varid)))
+	ERR(retval);
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0][0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	 phys->T[i][k]=htmp[k][grid->mnptr[i]];
+      }
+  }
+} // End function
+
+/*
+* Function: GetTimeRecBnd()
+* ------------------
+* Retuns the index of the first preceding time step in the vector time
+*/
+int getTimeRecBnd(REAL nctime, REAL *time, int nt){
+    int j;
+
+    for(j=0;j<nt;j++){
+       if (time[j]>=nctime)
+	 return j-1;
+    }
+    return nt;
+}
+

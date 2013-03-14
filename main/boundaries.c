@@ -368,7 +368,7 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 	}
     }
     // Interpolate Q and find the velocities based on the (dynamic) segment area
-    if(bound->hasSeg>0){
+    if(bound->hasType2 && bound->hasSeg>0){
 	for (j=0;j<bound->Nseg;j++){
 	  bound->boundary_Q[j] = QuadInterp(prop->nctime,bound->time[t0],bound->time[t1],bound->time[t2],bound->boundary_Q_t[0][j],bound->boundary_Q_t[1][j],bound->boundary_Q_t[2][j]);
 	}
@@ -811,19 +811,4 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
     if(myproc==0) printf("Finished Zeroing Type 3 boundary arrays...\n");
  }//End function
 
-
-/*
-* Function: GetTimeRecBnd()
-* ------------------
-* Retuns the index of the first preceding time step in the vector time
-*/
-int getTimeRecBnd(REAL nctime, REAL *time, int nt){
-    int j;
-
-    for(j=0;j<nt;j++){
-       if (time[j]>=nctime)
-	 return j-1;
-    }
-    return nt;
-}
 

@@ -366,6 +366,10 @@ double GetDefaultValue(char *str, int *status) {
     
    return netcdfBdy_DEFAULT;   
 
+} else if(!strcmp(str,"readinitialnc")) {
+    
+   return readinitialnc_DEFAULT;   
+
 }else {
     *status=0;
     return 0;
