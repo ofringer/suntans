@@ -10,12 +10,17 @@ Created on Fri Mar 08 15:09:46 2013
 """
 
 import numpy as np
-from netCDF4 import Dataset, num2date
+from netCDF4 import Dataset, MFDataset, num2date
 from datetime import datetime, timedelta
-
+import matplotlib.pyplot as plt
 from scipy import interpolate
 from interpXYZ import interpXYZ
 import othertime
+
+try:
+    from octant.slice import isoslice
+except:
+    print 'Warning - could not import octant package.'
 
 import pdb
 
@@ -33,7 +38,10 @@ class roms_grid(object):
         Read in the main grid variables from the grid netcdf file
         """
         
-        nc = Dataset(self.grdfile)
+        try: 
+            nc = MFDataset(self.grdfile, 'r')
+        except:
+            nc = Dataset(self.grdfile, 'r')  
         
         self.angle = nc.variables['angle'][:]
         self.lon_rho =  nc.variables['lon_rho'][:]
@@ -45,6 +53,7 @@ class roms_grid(object):
         self.lat_u =  nc.variables['lat_u'][:]
         self.lat_v =  nc.variables['lat_v'][:]
         self.h = nc.variables['h'][:]
+        self.f = nc.variables['f'][:]
         
         self.mask_rho =  nc.variables['mask_rho'][:]
         self.mask_psi =  nc.variables['mask_psi'][:]
@@ -86,6 +95,305 @@ class roms_grid(object):
         xy = ll2utm(np.hstack((np.reshape(lon,(M*N,1)),np.reshape(lat,(M*N,1)))),utmzone,north=isnorth)
         
         return np.reshape(xy[:,0],(M,N)), np.reshape(xy[:,1],(M,N)) 
+        
+        
+class ROMS(roms_grid):
+    """
+    General class for reading and plotting ROMS model output
+    """
+    
+    varname = 'zeta'
+    JRANGE = None
+    IRANGE = None
+    
+    zlayer = False # True load z layer, False load sigma layer
+    K = [0] # Layer to extract, 0 bed, -1 surface, -99 all
+    tstep = [0] # - 1 last step, -99 all time steps
+    
+    clim = None # Plot limits
+    
+        
+    def __init__(self,romsfile,**kwargs):
+        
+        self.__dict__.update(kwargs)
+        
+        self.romsfile = romsfile
+        
+        # Load the grid        
+        roms_grid.__init__(self,self.romsfile)
+        
+        # Open the netcdf object
+        self._openNC()
+        
+        # Load the time information
+        self._loadTime()
+        
+        # Check the spatial indices of the variable
+        self._loadVarCoords()
+        
+        self._checkCoords(self.varname)
+        
+        # Check the vertical coordinates                
+        self._readVertCoords()
+        
+        self._checkVertCoords(self.varname)
+        
+    
+    def listCoordVars(self):
+        """
+        List all of the variables that have the 'coordinate' attribute
+        """
+        
+        for vv in self.nc.variables.keys():
+            if hasattr(self.nc.variables[vv],'coordinates'):
+                print '%s - %s'%(vv,self.nc.variables[vv].long_name)
+            
+    def loadData(self,varname=None,tstep=None):
+        """
+        Loads model data from the netcdf file
+        """
+        
+        if varname == None:
+            varname=self.varname
+            self._checkCoords(varname)
+        else:
+            self._checkCoords(varname)
+            
+            if self.ndim == 4:
+                self._checkVertCoords(varname)
+            
+        if tstep == None:
+            tstep = self.tstep
+            
+            
+        if self.ndim == 2:
+            data = self.nc.variables[varname][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
+        elif self.ndim == 3:
+            data = self.nc.variables[varname][tstep,self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
+        elif self.ndim == 4:
+            data = self.nc.variables[varname][tstep,self.K,self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
+        
+        if self.ndim == 4 and self.zlayer==True:
+            # Slice along z layers
+            print 'Extracting data along z-coordinates...'
+            dataz = np.zeros((len(tstep),)+self.X.shape)
+            
+            for ii,tt in enumerate(tstep):
+                Z = self.calcDepth(zeta=self.loadData(varname='zeta',tstep=[tt]))
+                dataz[ii,:,:] = isoslice(data[ii,:,:,:].squeeze(),Z,self.Z)
+                
+            data = dataz
+        
+        self._checkCoords(self.varname)            
+        # Reduce rank
+        return data.squeeze()
+        
+    def calcDepth(self,zeta=None):
+        """
+        Calculates the depth array for the current variable
+        """
+        
+        return get_depth(self.S,self.C,self.hc,self.h,zeta=zeta, Vtransform=self.Vtransform).squeeze()
+     
+    def pcolor(self,data=None,titlestr=None,**kwargs):
+        """
+        Pcolor plot of the data in variable
+        """
+        
+        if data==None:
+            data=self.loadData()
+            
+        if self.clim==None:
+            clim=[data.min(),data.max()]
+        else:
+            clim=self.clim
+            
+        fig = plt.gcf()
+        ax = fig.gca()
+        
+        p1 = plt.pcolor(self.X,self.Y,data,vmin=clim[0],vmax=clim[1],**kwargs)
+        
+        ax.set_aspect('equal')
+        plt.colorbar(p1)
+        
+        if titlestr==None:
+            plt.title(self._genTitle(self.tstep[0]))
+        else:
+            plt.title(titlestr)
+        
+        return p1
+    
+    def contourf(self, data=None, VV=20, titlestr=None,**kwargs):
+        """
+        contour plot of the data in variable
+        """
+        
+        if data==None:
+            data=self.loadData()
+            
+        if self.clim==None:
+            clim=[data.min(),data.max()]
+        else:
+            clim=self.clim
+            
+        fig = plt.gcf()
+        ax = fig.gca()
+        
+        p1 = plt.contourf(self.X,self.Y,data,VV,vmin=clim[0],vmax=clim[1],**kwargs)
+        
+        ax.set_aspect('equal')
+        plt.colorbar(p1)
+        
+        if titlestr==None:
+            plt.title(self._genTitle(self.tstep[0]))
+        else:
+            plt.title(titlestr)
+        
+        return p1
+        
+    def contourbathy(self,clevs=np.arange(0,3000,100),**kwargs):
+                
+        p1 = plt.contour(self.lon_rho,self.lat_rho,self.h,clevs,**kwargs)
+        
+        return p1
+    
+    def _genTitle(self,tstep):
+        """
+        Generates a title for plots
+        """
+        if self.zlayer:
+            titlestr = '%s [%s]\nz: %6.1f m, %s'%(self.long_name,self.units,self.Z,datetime.strftime(self.time[tstep],'%d-%b-%Y %H:%M:%S'))            
+        else:
+            titlestr = '%s [%s]\nsigma[%d], %s'%(self.long_name,self.units,self.K[0],datetime.strftime(self.time[tstep],'%d-%b-%Y %H:%M:%S'))            
+            
+        return titlestr
+
+    def _checkCoords(self,varname):
+        """
+        Load the x and y coordinates of the present variable, self.varname
+        """
+        #print 'updating coordinate info...'
+        C = self.varcoords[varname].split()        
+        self.ndim = len(C)
+        
+        self.xcoord = C[0]
+        self.ycoord = C[1]
+          
+        if self.JRANGE==None:
+            self.JRANGE = [0,self[self.xcoord].shape[0]]
+        if self.IRANGE==None:
+            self.IRANGE = [0,self[self.xcoord].shape[1]]
+            
+        # Check the dimension size
+        if self.JRANGE[1] > self[self.xcoord].shape[0]:
+            print 'Warning JRANGE outside of size range. Setting equal size.'
+            self.JRANGE[1] = self[self.xcoord].shape[0]
+            
+        if self.IRANGE[1] > self[self.xcoord].shape[1]:
+            print 'Warning JRANGE outside of size range. Setting equal size.'
+            self.IRANGE[1] = self[self.xcoord].shape[1]
+            
+        if not self.__dict__.has_key('X'):
+            self.X = self[self.xcoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
+            self.Y = self[self.ycoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
+            
+        # Load the long_name and units from the variable
+        self.long_name = self.nc.variables[varname].long_name
+        self.units = self.nc.variables[varname].units
+    
+    def _checkVertCoords(self,varname):
+        """
+        Load the vertical coordinate info
+        """
+        
+        # First put K into a list
+        #if not type(self.K)=='list':
+        #    self.K = [self.K]
+        try:
+            K = self.K[0] #  a list
+            self.K = self.K
+        except:
+            # not a list
+            self.K = [self.K]
+         
+        C = self.varcoords[varname].split() 
+        
+        ndim = len(C)
+        
+        if ndim == 4:
+            self.zcoord = C[2] 
+            self.Nz = len(self[self.zcoord])
+            
+            if self.K[0] == -99:
+                self.K = range(0,self.Nz)
+                
+            if self.zlayer==True: # Load all layers when zlayer is true
+                self.Z = self.K[0]
+                self.K = range(0,self.Nz)
+                
+        if self.zcoord == 's_rho':
+            self.S = self.s_rho[self.K]
+            self.C = self.Cs_r[self.K]
+        elif self.zcoord == 's_w':
+            self.S = self.s_w[self.K]
+            self.C = self.Cs_w[self.K]
+            
+        
+    def _readVertCoords(self):
+        """
+        Read the vertical coordinate information
+        """
+        nc = self.nc
+        
+        self.Cs_r = nc.variables['Cs_r'][:]
+        self.Cs_w = nc.variables['Cs_w'][:]
+        self.s_rho = nc.variables['s_rho'][:]
+        self.s_w = nc.variables['s_w'][:]
+        self.hc = nc.variables['hc'][:]
+        self.Vstretching = nc.variables['Vstretching'][:]
+        self.Vtransform = nc.variables['Vtransform'][:]
+
+        
+    def _loadVarCoords(self):
+        """
+        Load the variable coordinates into a dictionary
+        """
+        self.varcoords={}
+        for vv in self.nc.variables.keys():
+            if hasattr(self.nc.variables[vv],'coordinates'):
+                self.varcoords.update({vv:self.nc.variables[vv].coordinates})
+                
+    def _openNC(self):
+        """
+        Load the netcdf object
+        """
+        try: 
+            self.nc = MFDataset(self.romsfile, 'r')
+        except:
+            self.nc = Dataset(self.romsfile, 'r')
+            
+    def _loadTime(self):
+        """
+        Load the netcdf time as a vector datetime objects
+        """
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+        nc = self.nc
+        t = nc.variables['ocean_time']
+        self.time = num2date(t[:],t.units)  
+        
+    def __getitem__(self,y):
+        x = self.__dict__.__getitem__(y)
+        return x
+        
+    def __setitem__(self,key,value):
+        
+        if key == 'varname':
+            self.varname=value
+            self._checkCoords(value)
+        else:
+            self.__dict__[key]=value
+            
+            
 
 class roms_subset(roms_grid):
     """
@@ -410,7 +718,7 @@ class roms_interp(roms_grid):
         self.Nz_roms = self.s_rho.shape[0]
         self.Nt_roms = self.time.shape[0]
         
-    def interp(self):
+    def interp(self,zinterp='linear',tinterp=3):
         """
         Performs the interpolation in this order:
             1) Interpolate onto the horizontal coordinates
@@ -453,24 +761,25 @@ class roms_interp(roms_grid):
                 vold[k,:] = self.Fuv(tmp[self.mask_uv==1])
     
             # Calculate depths (zeta dependent)
-            zroms = get_depth(self.s_rho,self.Cs_r,self.hc, h, zetaroms[tstep,:], Vtransform=self.Vtransform)
+	    #zroms = get_depth(self.s_rho,self.Cs_r,self.hc, h, zetaroms[tstep,:], Vtransform=self.Vtransform)
+	    zroms = get_depth(self.s_rho,self.Cs_r,self.hc, h, zeta=zetaroms[tstep,:], Vtransform=self.Vtransform)
     
             # Interpolate vertically
             for ii in range(0,self.Nx):
                 y = tempold[:,ii]
-                Fz = interpolate.interp1d(zroms[:,ii],y,kind='quadratic',bounds_error=False,fill_value=y[0])
+                Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
                 temproms[tstep,:,ii] = Fz(self.zi)
                 
                 y = saltold[:,ii]
-                Fz = interpolate.interp1d(zroms[:,ii],y,kind='quadratic',bounds_error=False,fill_value=y[0])
+                Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
                 saltroms[tstep,:,ii] = Fz(self.zi)
                 
                 y = uold[:,ii]
-                Fz = interpolate.interp1d(zroms[:,ii],y,kind='quadratic',bounds_error=False,fill_value=y[0])
+                Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
                 uroms[tstep,:,ii] = Fz(self.zi)
                 
                 y = vold[:,ii]
-                Fz = interpolate.interp1d(zroms[:,ii],y,kind='quadratic',bounds_error=False,fill_value=y[0])
+                Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
                 vroms[tstep,:,ii] = Fz(self.zi)
             
         # End time loop
@@ -478,23 +787,30 @@ class roms_interp(roms_grid):
         # Initialise the output arrays @ output time step
         
         # Interpolate temporally
-        troms = othertime.SecondsSince(self.time)
-        tout = othertime.SecondsSince(self.timei)
-        
-        Ft = interpolate.interp1d(troms,zetaroms,axis=0,kind='quadratic',bounds_error=False)
-        zetaout = Ft(tout)
-        
-        Ft = interpolate.interp1d(troms,temproms,axis=0,kind='quadratic',bounds_error=False)
-        tempout = Ft(tout)
-        
-        Ft = interpolate.interp1d(troms,saltroms,axis=0,kind='quadratic',bounds_error=False)
-        saltout = Ft(tout)
-        
-        Ft = interpolate.interp1d(troms,uroms,axis=0,kind='quadratic',bounds_error=False)
-        uout = Ft(tout)
-        
-        Ft = interpolate.interp1d(troms,vroms,axis=0,kind='quadratic',bounds_error=False)
-        vout = Ft(tout)
+        if self.Nt_roms > 1:
+            troms = othertime.SecondsSince(self.time)
+            tout = othertime.SecondsSince(self.timei)
+            
+            Ft = interpolate.interp1d(troms,zetaroms,axis=0,kind=tinterp,bounds_error=False)
+            zetaout = Ft(tout)
+            
+            Ft = interpolate.interp1d(troms,temproms,axis=0,kind=tinterp,bounds_error=False)
+            tempout = Ft(tout)
+            
+            Ft = interpolate.interp1d(troms,saltroms,axis=0,kind=tinterp,bounds_error=False)
+            saltout = Ft(tout)
+            
+            Ft = interpolate.interp1d(troms,uroms,axis=0,kind=tinterp,bounds_error=False)
+            uout = Ft(tout)
+            
+            Ft = interpolate.interp1d(troms,vroms,axis=0,kind=tinterp,bounds_error=False)
+            vout = Ft(tout)
+        else:
+            zetaout = zetaroms
+            tempout = temproms
+            saltout = saltroms
+            uout = uroms
+            vout = vroms
         
         return zetaout, tempout, saltout, uout, vout
         

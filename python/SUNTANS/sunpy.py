@@ -59,7 +59,7 @@ class Grid(object):
         
         self.xp = pointdata[:,0]
         self.yp = pointdata[:,1]
-        self.dv = pointdata[:,2] # zero to start
+        #self.dv = pointdata[:,2] # zero to start
         self.Np = len(self.xp)
         
         self.xv = celldata[:,0]
@@ -346,6 +346,55 @@ class Grid(object):
         
         return np.array(node_scalar)
         
+    def writeNC(self,outfile):
+        """
+        Export to a netcdf file
+        """
+        
+        nc = Dataset(outfile, 'w', format='NETCDF4_CLASSIC')
+        nc.Description = 'SUNTANS History file'
+        nc.Author = ''
+        nc.Created = datetime.now().isoformat()
+
+        nc.createDimension('Nc', self.Nc)
+        nc.createDimension('Np', self.Np)
+        nc.createDimension('Nk', self.Nkmax)
+        nc.createDimension('Nkw', self.Nkmax+1)
+        nc.createDimension('numsides', 3)
+        nc.createDimension('nt', 0)
+        
+        # Write the grid variables
+        def write_nc_var(var, name, dimensions, attdict, dtype='f8'):
+            tmp=nc.createVariable(name, dtype, dimensions)
+            for aa in attdict.keys():
+                tmp.setncattr(aa,attdict[aa])
+            nc.variables[name][:] = var
+    
+        write_nc_var(self.xv,'xv',('Nc'),{'long_name':'x coordinate of grid cell centre point','units':'metres'})
+        write_nc_var(self.yv,'yv',('Nc'),{'long_name':'y coordinate of grid cell centre point','units':'metres'})
+        write_nc_var(self.xp,'xp',('Np'),{'long_name':'x coordinate of grid node','units':'metres'})
+        write_nc_var(self.yp,'yp',('Np'),{'long_name':'y coordinate of grid node','units':'metres'})		
+        write_nc_var(self.dz,'dz',('Nk'),{'long_name':'Vertical grid z-layer spacing','units':'metres'})
+        write_nc_var(self.z_r,'z_r',('Nk'),{'long_name':'z coordinate at grid cell mid-height','units':'metres'})
+        write_nc_var(self.Nk,'Nk',('Nc'),{'long_name':'Number of vertical layers at grid cell centre'},dtype='i4')
+        write_nc_var(self.cells,'cells',('Nc','numsides'),{'long_name':'Indices to the nodes of each grid cell'},dtype='i4')
+        if self.__dict__.has_key('dv'):
+            write_nc_var(self.dv,'dv',('Nc'),{'long_name':'depth at grid cell centre point','units':'metres'})
+  
+        # Write the time variable
+        #write_nc_var(nc,[],'time',('nt'),{'long_name':'Simulation time','units':'seconds since 1990-01-01 00:00:00'})
+        nc.close()
+
+    def create_nc_var(self,outfile,var, name, dimensions, attdict, dtype='f8'):
+        
+        nc = Dataset(outfile, 'a')
+        tmp=nc.createVariable(name, dtype, dimensions)
+        for aa in attdict.keys():
+            tmp.setncattr(aa,attdict[aa])
+        nc.variables[name][:] = var	
+        nc.close()
+
+		
 #################################################
 
 class Spatial(Grid):
@@ -383,11 +432,11 @@ class Spatial(Grid):
         self.loadTime()
         
         # Update tstep 
-        self.__updateTstep()
+        self.updateTstep()
         
         # Check the j index
-        self.__checkIndex()
-        
+        self.j = self.checkIndex()
+
      
     def loadData(self):
         """ 
@@ -402,6 +451,7 @@ class Spatial(Grid):
         if ndim==1:
             self.data=nc.variables[self.variable][self.j]
         elif ndim==2:
+            #print self.j
             self.data=nc.variables[self.variable][self.tstep,self.j]
         else:
             if self.klayer[0]==-1: # grab the seabed values
@@ -419,7 +469,8 @@ class Spatial(Grid):
                         data=nc.variables[self.variable][t,klayer,self.j]
                         self.data[i,:] = data[self.Nk[self.j],self.j]
             else:
-                self.data=nc.variables[self.variable][self.tstep,self.klayer,self.j]
+	        klayer = self.klayer[0]
+                self.data=nc.variables[self.variable][self.tstep,klayer,self.j]
         
         # Mask the data
 #        try:
@@ -476,6 +527,53 @@ class Spatial(Grid):
              u,v,w = self.getVector()
              plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[0,1::subsample],v[0,1::subsample],scale=scale,scale_units='xy')
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
+            
+    def contourf(self, clevs=20,z=None,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
+        """
+        Filled contour plot of  unstructured grid data
+        """
+        from matplotlib import tri
+        
+        if not self.__dict__.has_key('data'):
+            self.loadData()
+            
+        if z==None:
+            z=self.data
+            
+        # Find the colorbar limits if unspecified
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(z))
+            self.clim.append(np.max(z))
+        # Set the xy limits
+        if xlims==None or ylims==None:
+            xlims=self.xlims 
+            ylims=self.ylims
+        
+        # Create a matplotlib triangulation to contour the data       
+        t =tri.Triangulation(self.xp,self.yp,self.cells)
+        
+        # Filled contour of amplitude
+        fig = plt.gcf()
+        ax = fig.gca()
+        
+        # Amplitude plot (note that the data must be on nodes for tricontourf)
+        V = np.linspace(self.clim[0],self.clim[1],clevs)
+        camp = plt.tricontourf(t, self.cell2node(z), V, **kwargs)
+        
+                
+        ax.set_aspect('equal')
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
+        
+        axcb = fig.colorbar(camp)
+        
+        plt.title(self.__genTitle())
+            
+        if vector_overlay:
+             u,v,w = self.getVector()
+             plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[1::subsample],v[1::subsample],scale=scale,scale_units='xy')
+             
             
     def plotvtk(self,vector_overlay=False,scale=1e-3,subsample=1,**kwargs):
         """
@@ -572,8 +670,8 @@ class Spatial(Grid):
         # Find the colorbar limits if unspecified
         if self.clim==None:
             self.clim=[]
-            self.clim.append(np.min(self.data))
-            self.clim.append(np.max(self.data))
+            self.clim.append(np.min(self.data.ravel()))
+            self.clim.append(np.max(self.data.ravel()))
            
         # Set the xy limits
         if xlims==None or ylims==None:
@@ -581,7 +679,7 @@ class Spatial(Grid):
             ylims=self.ylims
         
             
-        collection = PolyCollection(self.xy)
+        collection = PolyCollection(self.xy,**kwargs)
         collection.set_array(np.array(self.data[0,:]))
         collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
         ax.add_collection(collection)    
@@ -595,7 +693,7 @@ class Spatial(Grid):
         if vector_overlay:
             u=U[0,:]
             v=V[0,:]
-            qh=plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[0,1::subsample],v[0,1::subsample]\
+            qh=plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[1::subsample],v[1::subsample]\
              ,scale=scale,scale_units='xy')
   
         def init():
@@ -609,7 +707,7 @@ class Spatial(Grid):
             collection.set_edgecolors(collection.to_rgba(np.array((self.data[i,:])))) 
             title.set_text(self.__genTitle(i))
             if vector_overlay:
-                qh.set_UVC(U[i,0,1::subsample],V[i,0,1::subsample])
+                qh.set_UVC(U[i,1::subsample],V[i,1::subsample])
 
             return (title,collection,qh)
   
@@ -767,7 +865,7 @@ class Spatial(Grid):
                 
         return titlestr
         
-    def __updateTstep(self):
+    def updateTstep(self):
         """
         Updates the tstep variable: -99 all steps, -1 last step
         """
@@ -782,7 +880,7 @@ class Spatial(Grid):
             elif self.tstep==-1:
                 self.tstep=len(self.time)-1
                 
-    def __checkIndex(self):
+    def checkIndex(self):
         """
         Ensure that the j property is a single or an array of integers
         """
@@ -791,12 +889,13 @@ class Spatial(Grid):
         #shp = self.j
 
         if isinstance(self.j[0], int):
-            return
+            return self.j
         else:
             print 'x/y coordinates input instead of cell index. Finding nearest neighbours.'
             dd, j = self.findNearest(self.j)
             print 'Nearest cell: %d, xv[%d]: %6.10f, yv[%d]: %6.10f'%(j,j,self.xv[j],j,self.yv[j])
-            self.j = j
+            #self.j = j.copy()
+	    return j
 
                   
 class Profile(object):

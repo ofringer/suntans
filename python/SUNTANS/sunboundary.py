@@ -23,11 +23,13 @@ Created on Fri Nov 02 15:24:12 2012
 
 
 import sunpy
+from sunpy import Grid
 import numpy as np
 import matplotlib.pyplot as plt
 from maptools import readShpPoly
 import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
 from datetime import datetime, timedelta
+import othertime
 
 import pdb
 
@@ -366,7 +368,61 @@ class Boundary(object):
         x = self.__dict__.__getitem__(y)
         return x
         
+class InitialCond(Grid):
+    """
+    SUNTANS initial condition class
+    """
+    
+    def __init__(self,suntanspath,timestep):
         
+        self.suntanspath = suntanspath
+        
+        Grid.__init__(self,suntanspath)
+        
+        # Get the time timestep
+        self.time = datetime.strptime(timestep,'%Y%m%d.%H%M')
+        
+        # Initialise the output array
+        self.initArrays()
+        
+    def initArrays(self):
+        """
+        Initialise the output arrays
+        """
+
+        self.uc = np.zeros((self.Nkmax,self.Nc))
+        self.vc = np.zeros((self.Nkmax,self.Nc))
+        #self.wc = np.zeros((self.Nkmax,self.Nc))
+        self.T = np.zeros((self.Nkmax,self.Nc))
+        self.S = np.zeros((self.Nkmax,self.Nc))
+        self.h = np.zeros((self.Nc,)) 
+    
+    def writeNC(self,outfile):
+        """
+        Export the results to a netcdf file
+        """
+        
+        # Fill in the depths with zero
+        if not self.__dict__.has_key('dv'):
+            self.dv = np.zeros((self.Nc,))
+        if not self.__dict__.has_key('Nk'):
+            self.Nk = self.Nkmax*np.ones((self.Nc,))
+            
+        Grid.writeNC(self,outfile)
+        
+        # write the time variable
+        t= othertime.SecondsSince(self.time)
+        self.create_nc_var(outfile,t,'time',('nt'),{'long_name':'Simulation time','units':'seconds since 1990-01-01 00:00:00'})
+        
+        # Write the other variables
+        self.create_nc_var(outfile,self.h,'eta',('nt','Nc'),{'long_name':'Sea surface elevation','units':'metres'})
+        self.create_nc_var(outfile,self.uc,'u',('nt','Nk','Nc'),{'long_name':'Eastward water velocity component','units':'metre second-1'})
+        self.create_nc_var(outfile,self.vc,'v',('nt','Nk','Nc'),{'long_name':'Northward water velocity component','units':'metre second-1'})
+        self.create_nc_var(outfile,self.S,'S',('nt','Nk','Nc'),{'long_name':'Salinity','units':'ppt'})
+        self.create_nc_var(outfile,self.T,'T',('nt','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C'})
+        
+        print 'Initial condition file written to: %s'%outfile
+
         
 def modifyBCmarker(suntanspath,bcfile):
     """

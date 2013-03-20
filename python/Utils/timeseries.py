@@ -11,9 +11,71 @@ import numpy as np
 import matplotlib.pyplot as plt
 import othertime
 from datetime import datetime, timedelta
+from uspectra import uspectra
 
 import pdb
 
+def harmonic_fit(t,X,frq,axis=0):
+    """
+    Least-squares harmonic fit on an array, X, with frequencies, frq. 
+    
+    X - vector [Nt] or array [Nt, (size)]
+    t - vector [Nt]
+    frq - vector [Ncon]
+    
+    where, dimension with Nt should correspond to axis = axis.
+    """
+
+    t = np.asarray(t)
+    
+    # Reshape the array sizes
+    X = X.swapaxes(0, axis)
+    sz = X.shape
+    lenX = np.prod(sz[1:])
+    
+    if not len(t) == sz[0]:
+        raise 'length of t (%d) must equal dimension of X (%s)'%(len(t),sz[0])
+    
+    X = np.reshape(X,(sz[0],lenX))
+    
+    # Resize the frequency array (this may need to go)
+    frq=np.asarray(frq) 
+    Nfrq = frq.shape[axis]
+    sz0 = frq.shape
+    if len(sz0)>1:
+        frq = frq.swapaxes(0, axis)
+        szf = frq.shape
+        lenf = np.prod(szf[1:])
+        if not lenf == lenX:
+            raise 'the size of the non-varying array X must equal the size of frq'
+        
+        frq = np.reshape(frq,(szf[0],lenf))
+    else:
+        frq = np.repeat(frq,lenX)
+        frq = np.reshape(frq,(Nfrq,lenX))
+     
+    # Initialize the amplitude and phase arrays
+    Amp = np.zeros((Nfrq,lenX))
+    Phs = np.zeros((Nfrq,lenX))
+    
+    # Initialise the harmonic object. This object does all of the work...
+    U = uspectra(t,X[:,0],frq=frq[:,0],method='lsqfast')
+    
+    for ii in range(0,lenX):
+        # Update the 'y' data in the grid class. This invokes a harmonic fit 
+        U.frq = frq[:,ii]
+        U['y'] = X[:,ii]
+			
+	   # Calculate the phase and amplitude
+        Amp[:,ii], Phs[:,ii] = U.phsamp()
+        
+    # reshape the array
+    Amp = np.reshape(Amp,(Nfrq,)+sz[1:])
+    Phs = np.reshape(Phs,(Nfrq,)+sz[1:])
+    
+    # Output back along the original axis
+    return Amp.swapaxes(axis,0), Phs.swapaxes(axis,0)
+    
 def monthlyhist(t,y,ylim=0.1,xlabel='',ylabel='',title='',**kwargs):
     """
     Plots 12 histograms on a 6x2 matrix of variable, y, grouped by calendar month
