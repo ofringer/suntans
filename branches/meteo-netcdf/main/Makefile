@@ -23,6 +23,7 @@ else
   MPIDEF = -DNOMPI
 endif
 OPTFLAGS = -O2
+#OPTFLAGS = -O0 -g
 
 XLDFLAGS=-lX11 -lm
 XINC=/usr/include
