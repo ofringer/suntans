@@ -169,9 +169,20 @@ FILE *MPI_FOpen(char *file, char *perms, char *caller, int myproc) {
       return ncid;
     }
   }
-#endif     
+/*
+ * Function: MPI_NCClose(int ncid)
+ * -------------------------------
+ * Wrapper function for nc_close()
+ */
+int MPI_NCClose(int ncid){
+    int retval;
+    if ((retval = nc_close(ncid)))
+	ERR(retval);
+    return retval;
+}
 
 
+#endif
 /*
  * Function: MPI_GetSize
  * Usage: N = MPI_GetSize(filename,"ReadMainGrid",myproc);

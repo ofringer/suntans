@@ -1163,7 +1163,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
   // Initialise the output netcdf file metadata
     if(prop->outputNetcdf==1){
-      InitialiseOutputNC(prop, grid, phys, met, myproc);
+      InitialiseOutputNCugrid(prop, grid, phys, met, myproc);
     }
   
   // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
@@ -1395,6 +1395,26 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
     if(blowup)
       break;
+
+    //Close all open netcdf file
+    if(prop->n==prop->nsteps+prop->nstart) {
+      if(prop->outputNetcdf==1){
+	//printf("Closing output netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->outputNetcdfFileID);
+      }
+      if(prop->netcdfBdy==1){
+	//printf("Closing boundary netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->netcdfBdyFileID);
+      }
+      if(prop->readinitialnc==1){
+	//printf("Closing initial netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->initialNCfileID );
+      }
+      if(prop->metmodel>0){
+	//printf("Closing met netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->metncid);
+      }
+    }
   }
 }
 
@@ -4455,17 +4475,23 @@ void OpenFiles(propT *prop, int myproc)
     MPI_GetFile(filename,DATAFILE,"InitTemperatureFile","OpenFiles",myproc);
     prop->InitTemperatureFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
   }
-  if(prop->readinitialnc>0){
-    MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
+  if(prop->netcdfBdy>0){
+    MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
 #ifdef USENETCDF
-    prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+    prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+	//if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
+#else
+   // Attempting to use netcdf boundaries without netcdf libraries
+      printf("Error: NetCDF Libraries required for prop->netcdfBdy > 0\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
 #endif
   }
-  if(prop->metmodel>0){
+if(prop->metmodel>0){
     MPI_GetFile(filename,DATAFILE,"metfile","OpenFiles",myproc);
 #ifdef USENETCDF
     prop->metncid = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-	if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
+	//if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
 #else
    // Attempting to use heat flux model without netcdf libraries
       printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
@@ -4473,16 +4499,11 @@ void OpenFiles(propT *prop, int myproc)
       exit(EXIT_FAILURE);
 #endif
   }
-  if(prop->netcdfBdy>0){
-    MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
+
+  if(prop->readinitialnc>0){
+    MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
 #ifdef USENETCDF
-    prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-	if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
-#else
-   // Attempting to use netcdf boundaries without netcdf libraries
-      printf("Error: NetCDF Libraries required for prop->netcdfBdy > 0\n");
-      MPI_Finalize();
-      exit(EXIT_FAILURE);
+    prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
 #endif
   }
 
