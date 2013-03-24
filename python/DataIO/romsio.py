@@ -188,6 +188,11 @@ class ROMS(roms_grid):
         # Reduce rank
         return data.squeeze()
         
+    def loadTimeSeries(self,x,y,z=None,varname=None):
+        """
+        Load a time series
+        """
+        
     def calcDepth(self,zeta=None):
         """
         Calculates the depth array for the current variable

@@ -390,12 +390,12 @@ class InitialCond(Grid):
         Initialise the output arrays
         """
 
-        self.uc = np.zeros((self.Nkmax,self.Nc))
-        self.vc = np.zeros((self.Nkmax,self.Nc))
+        self.uc = np.zeros((1,self.Nkmax,self.Nc))
+        self.vc = np.zeros((1,self.Nkmax,self.Nc))
         #self.wc = np.zeros((self.Nkmax,self.Nc))
-        self.T = np.zeros((self.Nkmax,self.Nc))
-        self.S = np.zeros((self.Nkmax,self.Nc))
-        self.h = np.zeros((self.Nc,)) 
+        self.T = np.zeros((1,self.Nkmax,self.Nc))
+        self.S = np.zeros((1,self.Nkmax,self.Nc))
+        self.h = np.zeros((1,self.Nc)) 
     
     def writeNC(self,outfile):
         """
@@ -448,6 +448,11 @@ def modifyBCmarker(suntanspath,bcfile):
         print 'Error - could not find any polygons with the field name "marker" in shapefile: %s'%bcfile
         return
     
+    XY,edge_id = readShpPoly(bcfile,FIELDNAME='edge_id')
+    if len(XY)<1:
+        print 'Error - could not find any polygons with the field name "edge_id" in shapefile: %s'%bcfile
+        return
+    
     # Plot before updates
     #plt.figure()
     #grd.plotBC()
@@ -460,9 +465,7 @@ def modifyBCmarker(suntanspath,bcfile):
         
     # Find the points inside each of the polygon and assign new bc
     grd.edgeflag = grd.mark*0 # Flag to identify linked edges/segments (marker=4 only)
-    segmentID=0
-    for xpoly, bctype in zip(XY,newmarker):
-        segmentID += 1
+    for xpoly, bctype,segmentID in zip(XY,newmarker,edge_id):
         ind0 = grd.mark>0
         edges = np.asarray([xe[ind0],ye[ind0]])
         mark = grd.mark[ind0]

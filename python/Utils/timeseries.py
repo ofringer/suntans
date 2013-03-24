@@ -9,11 +9,138 @@ Stanford University
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import mlab
+from scipy import signal, interpolate
 import othertime
 from datetime import datetime, timedelta
-from uspectra import uspectra
+from uspectra import uspectra, getTideFreq
 
 import pdb
+
+class timeseries(object):
+    """
+    Class for handling time series data
+    
+    Methods include:
+        - Power spectral density (plot)
+        - Filtering
+        - Interpolation
+        - Plotting
+    """
+    
+    basetime = datetime(1900,1,1)
+    
+    def __init__(self,t,y,**kwargs):
+        
+        self.__dict__.update(kwargs)        
+        self.t = t # independent variable (t,x, etc)
+        self.y = y # dependent variable
+        
+        self.tsec = othertime.SecondsSince(self.t,basetime=self.basetime)
+        
+        self.ny = np.size(self.y)
+        
+        self._checkDT()
+        
+    def psd(self, plot=True,**kwargs):
+        """
+        Power spectral density
+        
+        Uses Lomb-Scargle for unequally spaced data
+        """
+        
+        if self.isequal==False:
+            print 'Warning - time series is unequally spaced consider using lomb-scargle fft'
+            
+        Pyy,frq = mlab.psd(self.y,Fs=1.0/self.dt,NFFT=self.ny/2,scale_by_freq=True)
+        
+        if plot:
+            plt.loglog(frq,Pyy,**kwargs)
+            plt.xlabel('Freq. [Hz]')
+            plt.ylabel('PSD')
+            plt.grid(b=1)
+        
+        return Pyy, frq
+        
+    def filt(self,cutoff_dt, btype='low',order=3):
+        """
+        Butterworth filter the time series
+        
+        Inputs:
+            cutoff_dt - cuttoff period [seconds]
+            btype - 'low' or 'high'
+        """
+        
+        if self.isequal==False:
+            print 'Warning - time series is unequally spaced. Use self.interp to interpolate onto an equal grid'
+        
+        Wn = self.dt/cutoff_dt
+        (b, a) = signal.butter(order, Wn, btype=btype, analog=0, output='ba')
+        
+        return signal.filtfilt(b, a, self.y)
+        
+    def interp(self,tstart,tend,dt,method=3):
+        """
+        Interpolate the data onto an equally spaced vector
+        
+        tstart and tend - string with format 'yyyymmdd.HHMMSS'
+        
+        method - method passed to interp1d
+        """
+        
+        # Create the time vector
+        tnew = othertime.TimeVector(tstart,tend,dt,timeformat ='%Y%m%d.%H%M%S')
+        t = othertime.SecondsSince(tnew,basetime = self.basetime)
+        
+        F = interpolate.interp1d(self.tsec,self.y,kind=method)
+        
+        return tnew, F(t)
+        
+        
+    def tidefit(self,frqnames=None,basetime=None):
+        """
+        Perform a tidal harmonic fit to the data
+        
+        Returns the amp, phase, frequencies and fitted time series
+        """
+        
+        # Get the tidal fruequencies
+        if frqnames == None:
+			# This returns the default frequencies from the uspectra class
+            frq,frqnames = getTideFreq(Fin=None)
+        else:
+            frq,frqnames = getTideFreq(Fin=self.frqnames)
+            
+        # Call the uspectra method
+        U = uspectra(self.tsec,self.y,frq=frq,method='lsqfast')
+        
+        amp,phs = U.phsamp(phsbase=basetime)
+        
+        return amp, phs, frq, U.invfft()   
+        
+    def plot(self,**kwargs):
+        """
+        Plot
+        """
+        
+        plt.plot(self.t,self.y,**kwargs)
+        
+        
+    def _checkDT(self):
+        """
+        Check that the time series is equally spaced
+        """
+        dt = np.diff(self.tsec)
+        
+        dt_unique = np.unique(dt)
+        
+        if np.size(dt_unique) == 1:
+            self.isequal = True
+        else:
+            self.isequal = False
+            
+        self.dt = dt[0]
+
 
 def harmonic_fit(t,X,frq,axis=0):
     """

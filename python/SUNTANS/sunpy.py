@@ -81,16 +81,7 @@ class Grid(object):
             print 'Warning could not find vertspace.dat in folder, setting Nkmax=1'
             vertspace=0.0
             
-        self.dz=vertspace
-        self.Nkmax=np.size(self.dz)
-        
-        # Calculate the mid-point depth
-        if not self.Nkmax == 1:
-            z_bot = np.cumsum(self.dz)
-            z_top = np.hstack((0.0,z_bot[:-1]))
-            self.z_r = 0.5*(z_bot+z_top)
-        else:
-            self.z_r=0.0
+        self.setDepth(vertspace)
         
     def __loadnc(self):
         
@@ -252,7 +243,18 @@ class Grid(object):
             print 'Error - number of points in depth file (%d) does not match Nc (%d)'%(len(depths),self.Nc)
         else:
             self.dv=depths[:,2]
+    
+    def saveVertspace(self,filename):
+        """
+        Saves vertspace.dat
+        """
+        f = open(filename,'w')
+        
+        for dz in self.dz:
+            f.write('%10.6f\n'%(dz))
             
+        f.close()
+        
         
     def saveEdges(self,filename):
         """
@@ -316,7 +318,44 @@ class Grid(object):
         dy=y1-y2
         
         self.dg = np.sqrt( dx*dx + dy*dy )
+    
+    def setDepth(self,vertspace):
+        """
+        Calculates and sets the depth variables based on the vertspace vector
+        """
+        self.dz=vertspace
+        self.Nkmax=np.size(self.dz)
         
+        # Calculate the mid-point depth
+        if not self.Nkmax == 1:
+            z_bot = np.cumsum(self.dz)
+            z_top = np.hstack((0.0,z_bot[:-1]))
+            self.z_r = 0.5*(z_bot+z_top)
+        else:
+            self.z_r=0.0
+            
+    def calcVertSpace(self, Nkmax, r, depthmax):
+        """
+        Calculates the vertical spacing based on an exponential stretching function
+        """
+        
+        vertspace = np.zeros((Nkmax,))
+        
+        if r < 1.0 or r > 1.1:
+            print 'r must be between 1.0 and 1.1'
+            
+        if Nkmax == 0:
+            vertspace[0] = depthmax
+        else:
+            if r == 1.0:
+                vertspace[0] = depthmax/Nkmax
+            else:
+                vertspace[0] = depthmax * (r-1.0) / (r**float(Nkmax) - 1.0)
+            for k in range(1,Nkmax):
+                vertspace[k] = r*vertspace[k-1]
+                
+        return vertspace
+            
     def pnt2cells(self,pnt_i):
         """
         Returns the cell indices for a point, pnt_i
@@ -838,33 +877,6 @@ class Spatial(Grid):
         return u,v,w
         
         
-    def __del__(self):
-        self.nc.close()
-        
-    def __openNc(self):
-        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
-        try: 
-            self.nc = MFDataset(self.ncfile, 'r')
-        except:
-            self.nc = Dataset(self.ncfile, 'r')
-        
-    def __genTitle(self,tt=None):
-        
-        if tt ==None:
-            if type(self.tstep)==int:
-                tt = self.tstep
-            else:
-                tt = self.tstep[0]
-            
-        if self.klayer[0]>=0:
-            zlayer = '%3.1f [m]'%self.z_r[self.klayer[0]]
-        elif self.klayer[0]==-1:
-            zlayer = 'seabed'
-        titlestr='%s [%s]\n z: %s, Time: %s'%(self.long_name,self.units,zlayer,\
-                datetime.strftime(self.time[tt],'%d-%b-%Y %H:%M:%S'))
-                
-        return titlestr
-        
     def updateTstep(self):
         """
         Updates the tstep variable: -99 all steps, -1 last step
@@ -896,6 +908,33 @@ class Spatial(Grid):
             print 'Nearest cell: %d, xv[%d]: %6.10f, yv[%d]: %6.10f'%(j,j,self.xv[j],j,self.yv[j])
             #self.j = j.copy()
 	    return j
+     
+    def __del__(self):
+        self.nc.close()
+        
+    def __openNc(self):
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+        try: 
+            self.nc = MFDataset(self.ncfile, 'r')
+        except:
+            self.nc = Dataset(self.ncfile, 'r')
+        
+    def __genTitle(self,tt=None):
+        
+        if tt ==None:
+            if type(self.tstep)==int:
+                tt = self.tstep
+            else:
+                tt = self.tstep[0]
+            
+        if self.klayer[0]>=0:
+            zlayer = '%3.1f [m]'%self.z_r[self.klayer[0]]
+        elif self.klayer[0]==-1:
+            zlayer = 'seabed'
+        titlestr='%s [%s]\n z: %s, Time: %s'%(self.long_name,self.units,zlayer,\
+                datetime.strftime(self.time[tt],'%d-%b-%Y %H:%M:%S'))
+                
+        return titlestr
 
                   
 class Profile(object):

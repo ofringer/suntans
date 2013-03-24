@@ -12,6 +12,23 @@ import numpy as np
 
 import pdb
 
+def TimeVector(starttime,endtime,dt,timeformat ='%Y%m%d.%H%M'):
+    """
+    Create a vector of datetime objects
+    """
+    # build a list of timesteps
+    t1 = datetime.strptime(starttime,timeformat)
+    t2 = datetime.strptime(endtime,timeformat)
+    
+    time = []
+    t0=t1
+    while t0 <= t2:
+        time.append(t0)
+        t0 += timedelta(seconds=dt)
+
+    return np.asarray(time)
+    
+    
 def SecondsSince(timein,basetime = datetime(1990,1,1)):
     """
     Converts a list or array of datetime object into an array of seconds since "basetime"

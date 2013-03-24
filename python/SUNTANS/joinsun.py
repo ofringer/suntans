@@ -419,9 +419,9 @@ if __name__ == '__main__':
         elif opt == '-n':
             numprocs=int(val)
             
-    nsteps = 6
-    numprocs = 48
-    suntanspath='C:\\Projects\\GOMGalveston\\MODELLING\\GalvestonCoarse\\rundata'
-    basename = 'GalvCoarse_ROMS_Coupling.nc'      
+    #nsteps = 6
+    #numprocs = 48
+    #suntanspath='C:\\Projects\\GOMGalveston\\MODELLING\\GalvestonCoarse\\rundata'
+    #basename = 'GalvCoarse_ROMS_Coupling.nc'      
             
     main(suntanspath,basename,numprocs,nsteps)

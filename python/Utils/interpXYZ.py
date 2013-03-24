@@ -48,7 +48,6 @@ class interpXYZ(object):
         self.XY = XY
         self.XYout = XYout
         
-        
         if self.method=='nn':
             #print 'Building DEM with Nearest Neighbour interpolation...'
             self._nearestNeighbour()
@@ -219,11 +218,11 @@ class Inputs(object):
         print 'Reading data from: %s...'%self.infile
         if self.infile[-3:]=='.gz':
             LL,self.Zin = read_xyz_gz(self.infile)
-        if self.infile[-3:]=='txt':
+        elif self.infile[-3:] in ['txt','dat']:
             LL,self.Zin = read_xyz(self.infile)
         elif self.infile[-3:]=='shp':
-            LL,self.Zin = readShpBathy(self.infile)
-        if self.infile[-3:]=='.nc':
+            LL,self.Zin = readShpBathy(self.infile,FIELDNAME='contour')
+        elif self.infile[-3:]=='.nc':
             self.loadnc()
             LL = self._returnXY(self.xgrd,self.ygrd)
             self.Zin = np.ravel(self.Zin)
@@ -241,7 +240,7 @@ class Inputs(object):
             self.XY=ll2utm(LL,self.utmzone,self.CS,self.isnorth)
         else:
             self.XY=LL
-            
+   
         self._returnNonNan()
         
     def _returnXY(self, x, y):
@@ -368,10 +367,22 @@ def read_xyz(fname):
     for line in f:
         ii+=1
         if ii > 0:
-            xyz = line.split(', ')
+            xyz = line.split()
             XY[ii-1,0] = float(xyz[0]) 
             XY[ii-1,1] = float(xyz[1])
             Z[ii-1,0] = float(xyz[2])
+#            try: # comma delimeted
+#                xyz = line.split(', ')
+#                XY[ii-1,0] = float(xyz[0]) 
+#                XY[ii-1,1] = float(xyz[1])
+#                Z[ii-1,0] = float(xyz[2])
+#            except: # space delimitede
+#                xyz = line.split(' ')
+#                XY[ii-1,0] = float(xyz[0]) 
+#                XY[ii-1,1] = float(xyz[1])
+#                print xyz[2]
+#                Z[ii-1,0] = float(xyz[2])
+                
             
     f.close()
       
