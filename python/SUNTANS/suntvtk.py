@@ -190,22 +190,22 @@ class SunTvtk(Spatial):
         """
         self.cb = mlab.colorbar(object=self.h,orientation='vertical')
     
-    def surface(self,**kwargs):
+    def surface(self,clim=None,**kwargs):
         """
         Surface plot of the scalar in the 'data' attribute with mayavi
         
         Works on the 2D and 3D data
         """
 
-        if self.clim==None:
-            self.clim = [self.data.min(), self.data.max()]
+        if clim==None:
+            clim = [self.data.min(), self.data.max()]
         
         # Create a new scene if there isn't one
         if not self.__dict__.has_key('fig'):
             self.newscene()
         
         src = mlab.pipeline.add_dataset(self.ug)
-        self.h=mlab.pipeline.surface(src,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
+        self.h=mlab.pipeline.surface(src,vmin=clim[0],vmax=clim[1],**kwargs)
         
         # Add a colorbar if the isn't one
         if not self.__dict__.has_key('cb'):
@@ -340,8 +340,6 @@ class SunTvtk(Spatial):
         """
         Plots streamlines
         
-        This doesn't seem to really work on an unstructured mesh. 
-        The lines stop at the cell boundaries.
         
         See here:
             http://mindseye.no/2010/09/25/using-mayavi-to-visualize-electric-fields/
@@ -354,13 +352,76 @@ class SunTvtk(Spatial):
             self.newscene()
         
         self.loadVectorVTK()
-        #src = mlab.pipeline.add_dataset(self.ug)
-        src = mlab.pipeline.cell_to_point_data(self.ug)
+        src = mlab.pipeline.add_dataset(self.ug)
+        #src = mlab.pipeline.cell_to_point_data(self.ug)
         self.h=mlab.pipeline.streamline(src,**kwargs)
         
-        self.h.stream_tracer.initial_integration_step = 0.001
+        self.h.stream_tracer.initial_integration_step = 0.1
         self.h.stream_tracer.maximum_propagation=10000.0
+        self.h.stream_tracer.integration_direction = 'both'
         
+    def streammesh(self,nx=30,ny=30,**kwargs):
+        """
+        Plots streamlines originating from points on a mesh
+        """
+        
+        
+        self.vector_overlay=True
+        
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
+        
+        self.loadVectorVTK()
+        src = mlab.pipeline.add_dataset(self.ug)
+#        src = mlab.pipeline.cell_to_point_data(self.ug) # This colours the streamlines by the scalar field
+             
+        X = np.linspace(self.xv.min(),self.xv.max(),nx)
+        y0 =self.yv.min()
+        y1 = self.yv.max()
+        streams=[]
+        for x in X:
+            stream=mlab.pipeline.streamline(src,seedtype='line',**kwargs)
+            stream.stream_tracer.initial_integration_step = 0.1
+            stream.stream_tracer.maximum_propagation=10000.0
+            stream.stream_tracer.integration_direction = 'both'
+            stream.seed.widget.point1 = [x,y1,0.1]
+            stream.seed.widget.point2 = [x,y0,0.1]
+            stream.seed.widget.resolution = ny
+            streams.append(stream)
+
+        # Go back through and turn them off
+        for stream in streams:
+            stream.seed.widget.enabled = False
+         
+        return streams
+
+
+    # Plane method  # Won't work on 2D data
+#        stream=mlab.pipeline.streamline(src,seedtype='plane')
+#        stream.seed.widget.point1 = [self.xv.min(),self.yv.min(),0.0]
+#        stream.seed.widget.point2 = [self.xv.max(),self.yv.max(),0.0]
+#        stream.seed.widget.normal_to_z_axis=True
+#        pdb.set_trace()
+        
+        
+        # Point method - very slow way of creating mesh
+#        X,Y = np.meshgrid(np.linspace(self.xv.min(),self.xv.max(),nx),np.linspace(self.yv.min(),self.yv.max(),ny))
+#        X=X.ravel()
+#        Y=Y.ravel()
+#        Z=Y*0
+#        stream=[]        
+#        for x,y,z in zip(X,Y,Z):
+#            h=mlab.pipeline.streamline(src,seedtype='point',**kwargs)
+#            #pdb.set_trace()
+#            h.seed.widget.position = [x,y,z] # set the stream widget to the same position as the charges
+#            h.seed.widget.enabled = False
+#            h.stream_tracer.initial_integration_step = 0.1
+#            h.stream_tracer.maximum_propagation=10000.0
+#            h.stream_tracer.integration_direction = 'both'
+#            stream.append(h)
+            
+                    
         
     def animate(self,tstep=None):
         """
@@ -535,9 +596,23 @@ class SunTvtk(Spatial):
         """
         u,v,w = self.getVector() # This seems to do the masking (sub-classing??)
         
-        velocity = np.array((u,v,w)).T
-        self.ug.cell_data.vectors =  velocity
-        self.ug.cell_data.vectors.name = 'suntans_vector' 
+       
+        if self.is3D==False:
+            # Point data
+            up = self.cell2node(u)
+            vp = self.cell2node(v)
+            wp = self.cell2node(w)
+            wp *= 0.0 # Zero w for 2-D plots
+        
+            velocity = np.array((up,vp,wp)).T
+            self.ug.point_data.vectors =  velocity
+            self.ug.point_data.vectors.name = 'suntans_vector' 
+
+        else: # 3D
+            velocity = np.array((u,v,w)).T
+            self.ug.cell_data.vectors =  velocity
+            self.ug.cell_data.vectors.name = 'suntans_vector' 
+        
         self.ug.modified()  
         
     def __setitem__(self,key,value):

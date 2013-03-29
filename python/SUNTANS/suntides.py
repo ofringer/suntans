@@ -8,12 +8,16 @@ Created on Mon Feb 11 10:01:04 2013
 """
 
 import numpy as np
-import netcdfio
 from netCDF4 import Dataset
-from sunpy import Spatial, unsurf
-import uspectra
 from datetime import datetime
 import matplotlib.pyplot as plt
+
+import netcdfio
+from sunpy import Spatial, unsurf
+import uspectra
+from timeseries import timeseries
+from suntans_ugrid import ugrid
+import othertime
 
 import pdb
 
@@ -174,7 +178,93 @@ class suntides(Spatial):
         #titlestr='%s Amplitude\n%s [%s]\nPhase contours interval: %3.1f hr'%(self.frqnames[ii],self.long_name,self.units,phsint/3600.)
         titlestr='%s Amplitude\nPhase contour interval: %3.1f hr'%(self.frqnames[ii],phsint/3600.)
         plt.title(titlestr)
+
+class sunfilter(Spatial):
+    """
+    Class for temporally filtering suntans model output
+    """
+    
+    ftype='low'
+    order=3
+    cutoff_dt = 34.0*3600.0 # Cutoff time period in hours
+    
+    def __init__(self,ncfile,**kwargs):
+        """
+        Initialise the suntides class 
         
+        See sunpy.Spatial class for list of kwargs
+        """
+        
+        self.__dict__.update(kwargs)
+        
+        Spatial.__init__(self,ncfile,**kwargs)
+            
+    def __call__(self,tstart,tend,varname=None):
+        """
+        Calls the filter class
+        """
+        self.tstep=self.getTstep(tstart,tend)
+        
+        if not varname == None:
+            self.variable = varname
+        
+        self.loadData()
+        
+        # Load the data into a time series object (this has a filter method)
+        T = timeseries(self.time[self.tstep],np.swapaxes(self.data,0,-1)) # Time dimension needs to be last (filtfilt may have a bug)
+                
+        dataout = T.filt(self.cutoff_dt,btype=self.ftype,axis=-1,order=self.order)  
+        
+        return np.swapaxes(dataout,-1,0) # Return with the dimensions in the right order
+        
+    def filter2nc(self,outfile,tstart,tend,substep=12,varlist=None,**kwargs):
+        """
+        Filters the variables in the list, varlist, and outputs the results to netcdf
+        
+        """
+        self.__dict__.update(kwargs)
+        
+        if varlist == None:
+            varlist = ['eta','uc','vc','w']
+            
+        # Create the output file 
+        self.writeNC(outfile)
+        
+        # Create the output variables
+        for vv in varlist:
+            print 'Creating variable: %s'%vv
+            self.create_nc_var(outfile, vv, ugrid[vv]['dimensions'], ugrid[vv]['attributes'],\
+                dtype=ugrid[vv]['dtype'],zlib=ugrid[vv]['zlib'],complevel=ugrid[vv]['complevel'],fill_value=ugrid[vv]['fill_value'])
+        
+        self.create_nc_var(outfile,'time', ugrid['time']['dimensions'], ugrid['time']['attributes'])
+        
+        # Loop through and filter each variable (do layer by layer on 3D variables for sake of memory)        
+        nc = Dataset(outfile,'a')
+        
+        # Create the time variable first
+        tstep=self.getTstep(tstart,tend)
+        nctime = othertime.SecondsSince(self.time[tstep[0]:tstep[-1]:substep])
+
+        nc.variables['time'][:] = nctime
+        
+        for vv in varlist:
+            print 'Filtering variable: %s'%vv
+            
+            if len(ugrid[vv]['dimensions']) == 2:
+                dataf = self.__call__(tstart,tend,varname=vv)
+                nc.variables[vv][:] = dataf[::substep,:].copy()
+            elif len(ugrid[vv]['dimensions']) == 3:
+                for kk in range(0,self.Nkmax):
+                    print '   layer: %d'%kk
+                    self.klayer = [kk]
+                    dataf = self.__call__(tstart,tend,varname=vv)
+                    nc.variables[vv][:,kk,:] = dataf[::substep,:].copy()
+
+
+        nc.close()
+        print '#####\nComplete - Filtered data written to: \n%s \n#####'%outfile
+        
+    
 def findCon(name,conList):
     """
     Returns the index of a constituent from a list

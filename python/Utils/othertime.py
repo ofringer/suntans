@@ -57,33 +57,27 @@ def MinutesSince(timein,basetime = datetime(1970,1,1)):
     
     Useful for interpolation and storing in netcdf format
     """
-#    timeout=[]
-#    try:
-#        timein = timein.tolist()
-#    except:
-#        timein = timein
-#    
-#    try:
-#        for t in timein:
-#            dt = t - basetime
-#            timeout.append(dt.total_seconds()/60.0)
-#    except:
-#        dt = timein - basetime
-#        timeout.append(dt.total_seconds()/60.0) 
-#        
-#    return np.asarray(timeout)
     return SecondsSince(timein, basetime = basetime)/60.0
 
-def datenum2datetime(datenum):
+def datenum2datetime(timein):
     """
     Convert a matlab datenum float type to a python datetime object
     """
-    datenum-=366.0 # There is a leap year difference in the reference time
-    day = np.floor(datenum)
-    hms = datenum - day
-    tday = datetime.fromordinal(int(day))
-    
-    return tday+timedelta(days=hms)
+    try:
+        timein = timein.tolist()
+    except:
+        timein = timein
+     
+    timeout=[]
+    for datenum in timein:
+        datenum-=366.0 # There is a leap year difference in the reference time
+        day = np.floor(datenum)
+        hms = datenum - day
+        tday = datetime.fromordinal(int(day))
+        
+        timeout.append(tday+timedelta(days=hms))
+        
+    return timeout
     
 def YearDay(timein):
     """

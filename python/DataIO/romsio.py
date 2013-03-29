@@ -53,7 +53,10 @@ class roms_grid(object):
         self.lat_u =  nc.variables['lat_u'][:]
         self.lat_v =  nc.variables['lat_v'][:]
         self.h = nc.variables['h'][:]
-        self.f = nc.variables['f'][:]
+        try:
+            self.f = nc.variables['f'][:]
+        except:
+            print 'No f'
         
         self.mask_rho =  nc.variables['mask_rho'][:]
         self.mask_psi =  nc.variables['mask_psi'][:]
@@ -180,7 +183,12 @@ class ROMS(roms_grid):
             
             for ii,tt in enumerate(tstep):
                 Z = self.calcDepth(zeta=self.loadData(varname='zeta',tstep=[tt]))
-                dataz[ii,:,:] = isoslice(data[ii,:,:,:].squeeze(),Z,self.Z)
+                if len(Z.shape) > 1:
+                    dataz[ii,:,:] = isoslice(data[ii,:,:,:].squeeze(),Z,self.Z)
+                else:
+                    # Isoslice won't work on 1-D arrays
+                    F = interpolate.interp1d(Z,data[ii,:,:,:].squeeze())
+                    dataz[ii,:,:] = F(self.Z)
                 
             data = dataz
         
@@ -188,17 +196,55 @@ class ROMS(roms_grid):
         # Reduce rank
         return data.squeeze()
         
-    def loadTimeSeries(self,x,y,z=None,varname=None):
+    def loadTimeSeries(self,x,y,z=None,varname=None,trange=None):
         """
-        Load a time series
+        Load a time series at point x,y
+        
+        Set z=None to load all layers, else load depth
         """
+        
+        if varname == None:
+            self.varname = self.varname
+        else:
+            self.varname = varname
+            self._checkCoords(self.varname)
+
+                     
+        if self.ndim == 4:
+            self._checkVertCoords(self.varname)
+            if z == None:
+                self.zlayer=False
+                self.K = [-99]
+            else:
+                self.zlayer=True
+                self.K = [z]
+                
+        if trange==None:
+            tstep=np.arange(0,self.Nt)
+        
+        # Set the index range to grab            
+        JI = self.findNearset(x,y,grid=self.gridtype)
+        
+        self.JRANGE = [JI[0][0], JI[0][0]+1]
+        self.IRANGE = [JI[0][1], JI[0][1]+1]
+                
+        if self.zlayer:
+            Zout = z
+        else:
+            # Return the depths at each time step
+            h = self.h[self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]].squeeze()
+            zeta=self.loadData(varname='zeta',tstep=tstep)
+            h = h*np.ones(zeta.shape)
+            Zout = get_depth(self.S,self.C,self.hc,h,zeta=zeta, Vtransform=self.Vtransform).squeeze()
+     
+        return self.loadData(varname=varname,tstep=tstep), Zout
         
     def calcDepth(self,zeta=None):
         """
         Calculates the depth array for the current variable
         """
-        
-        return get_depth(self.S,self.C,self.hc,self.h,zeta=zeta, Vtransform=self.Vtransform).squeeze()
+        h = self.h[self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]].squeeze()
+        return get_depth(self.S,self.C,self.hc,h,zeta=zeta, Vtransform=self.Vtransform).squeeze()
      
     def pcolor(self,data=None,titlestr=None,**kwargs):
         """
@@ -298,13 +344,20 @@ class ROMS(roms_grid):
             print 'Warning JRANGE outside of size range. Setting equal size.'
             self.IRANGE[1] = self[self.xcoord].shape[1]
             
-        if not self.__dict__.has_key('X'):
-            self.X = self[self.xcoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
-            self.Y = self[self.ycoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
+        self.X = self[self.xcoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
+        self.Y = self[self.ycoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
             
         # Load the long_name and units from the variable
         self.long_name = self.nc.variables[varname].long_name
         self.units = self.nc.variables[varname].units
+        
+        # Set the grid type
+        if self.xcoord[-3:]=='rho':
+            self.gridtype='rho'
+        elif self.xcoord[-3:]=='n_u':
+            self.gridtype='u'
+        elif self.xcoord[-3:]=='n_v':
+            self.gridtype='v'
     
     def _checkVertCoords(self,varname):
         """
@@ -336,12 +389,12 @@ class ROMS(roms_grid):
                 self.Z = self.K[0]
                 self.K = range(0,self.Nz)
                 
-        if self.zcoord == 's_rho':
-            self.S = self.s_rho[self.K]
-            self.C = self.Cs_r[self.K]
-        elif self.zcoord == 's_w':
-            self.S = self.s_w[self.K]
-            self.C = self.Cs_w[self.K]
+            if self.zcoord == 's_rho':
+                self.S = self.s_rho[self.K]
+                self.C = self.Cs_r[self.K]
+            elif self.zcoord == 's_w':
+                self.S = self.s_w[self.K]
+                self.C = self.Cs_w[self.K]
             
         
     def _readVertCoords(self):
@@ -385,6 +438,7 @@ class ROMS(roms_grid):
         nc = self.nc
         t = nc.variables['ocean_time']
         self.time = num2date(t[:],t.units)  
+        self.Nt = np.size(self.time)
         
     def __getitem__(self,y):
         x = self.__dict__.__getitem__(y)

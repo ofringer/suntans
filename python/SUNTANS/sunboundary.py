@@ -45,6 +45,10 @@ class Boundary(object):
         timeinfo - (3x1 tuple) (starttime,endtime,dt) where starttime/endtime
             have format 'yyyymmdd.HHMM' and dt in seconds
     """
+    
+    utmzone = 15
+    isnorth = True
+    
     def __init__(self,suntanspath,timeinfo):
         
         self.suntanspath = suntanspath
@@ -363,6 +367,53 @@ class Boundary(object):
         plt.title(titlestr)
         
         return s1
+    
+    def roms2boundary(self,romsfile):
+        """
+        Interpolates ROMS data onto the type-3 boundary cells
+        
+        """
+        import romsio
+
+        # Include type 3 cells only
+        roms = romsio.roms_interp(romsfile,self.xv,self.yv,-self.z,self.time)
+        
+        h, T, S, uc, vc = roms.interp()
+        
+        self.h+=h
+        self.T+=T
+        self.S+=S
+        self.uc+=uc
+        self.vc+=vc
+        
+    def otis2boundary(self,otisfile,conlist=None):
+        """
+        Interpolates the OTIS tidal data onto all type-3 boundary cells
+        
+        Note that the values are added to the existing arrays (h, uc, vc)
+        """
+        from maptools import utm2ll
+        import read_otps
+        
+        xy = np.hstack((self.xv,self.yv))
+        ll = utm2ll(xy,self.utmzone,north=self.isnorth)
+        
+        if self.__dict__.has_key('dv'):
+            z=self.dv
+        else:
+            print 'Using OTIS depths to calculate velocity. Set self.dv to change this.'
+            z=None
+            
+        h,U,V = read_otps.tide_pred(otisfile,ll[:,0],ll[:,1],np.array(self.time),z=z,conlist=conlist)
+        
+        # Update the arrays - note that the values are added to the existing arrays
+        self.h += h
+        for k in range(self.Nk):
+            self.uc[:,k,:] += U
+            self.vc[:,k,:] += V
+            
+        print 'Finished interpolating OTIS tidal data onto boundary arrays.'
+       
         
     def __getitem__(self,y):
         x = self.__dict__.__getitem__(y)
@@ -401,6 +452,8 @@ class InitialCond(Grid):
         """
         Export the results to a netcdf file
         """
+        from suntans_ugrid import ugrid
+        from netCDF4 import Dataset
         
         # Fill in the depths with zero
         if not self.__dict__.has_key('dv'):
@@ -412,15 +465,25 @@ class InitialCond(Grid):
         
         # write the time variable
         t= othertime.SecondsSince(self.time)
-        self.create_nc_var(outfile,t,'time',('nt'),{'long_name':'Simulation time','units':'seconds since 1990-01-01 00:00:00'})
+        self.create_nc_var(outfile,'time', ugrid['time']['dimensions'], ugrid['time']['attributes'])        
         
-        # Write the other variables
-        self.create_nc_var(outfile,self.h,'eta',('nt','Nc'),{'long_name':'Sea surface elevation','units':'metres'})
-        self.create_nc_var(outfile,self.uc,'u',('nt','Nk','Nc'),{'long_name':'Eastward water velocity component','units':'metre second-1'})
-        self.create_nc_var(outfile,self.vc,'v',('nt','Nk','Nc'),{'long_name':'Northward water velocity component','units':'metre second-1'})
-        self.create_nc_var(outfile,self.S,'S',('nt','Nk','Nc'),{'long_name':'Salinity','units':'ppt'})
-        self.create_nc_var(outfile,self.T,'T',('nt','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C'})
+        # Create the other variables
+        self.create_nc_var(outfile,'eta',('time','Nc'),{'long_name':'Sea surface elevation','units':'metres'})
+        self.create_nc_var(outfile,'uc',('time','Nk','Nc'),{'long_name':'Eastward water velocity component','units':'metre second-1'})
+        self.create_nc_var(outfile,'vc',('time','Nk','Nc'),{'long_name':'Northward water velocity component','units':'metre second-1'})
+        self.create_nc_var(outfile,'S',('time','Nk','Nc'),{'long_name':'Salinity','units':'ppt'})
+        self.create_nc_var(outfile,'T',('time','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C'})
         
+        # now write the variables...
+        nc = Dataset(outfile,'a')
+        nc.variables['time'][:]=t
+        nc.variables['eta'][:]=self.h
+        nc.variables['uc'][:]=self.uc
+        nc.variables['vc'][:]=self.vc
+        nc.variables['S'][:]=self.S
+        nc.variables['T'][:]=self.T
+        nc.close()
+                
         print 'Initial condition file written to: %s'%outfile
 
         

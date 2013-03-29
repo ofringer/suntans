@@ -13,6 +13,8 @@ import numpy as np
 from datetime import datetime
 import os, time, getopt, sys
 from scipy import spatial
+import othertime
+from suntans_ugrid import ugrid
 
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
@@ -73,6 +75,7 @@ class Grid(object):
         self.grad = np.asarray(edgedata[:,3:5],int)
         if np.size(edgedata,1)==6:
             self.edgeflag = np.asarray(edgedata[:,5],int)
+        self.Ne = self.edges.shape[0]
         
         # Load the vertical grid info from vertspace.dat if it exists
         try:
@@ -85,7 +88,15 @@ class Grid(object):
         
     def __loadnc(self):
         
-        """Load the grid variables into the object from a netcdf file"""
+        """
+        Load the grid variables into the object from a netcdf file
+        
+        Try statements are for backward compatibility  
+        
+        Variables loaded are presently:
+        'xp','yp','xv','yv','xe','ye','cells','face','edges','neigh','grad',
+        'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke'
+        """
         
         #print self.infile
         
@@ -94,35 +105,30 @@ class Grid(object):
         except:
             nc = Dataset(self.infile, 'r')     
         
-        self.xp = nc.variables['xp'][:]
-        self.yp = nc.variables['yp'][:]
-        self.Np = len(self.xp)
-        self.xv = nc.variables['xv'][:]
-        self.yv = nc.variables['yv'][:]
-        self.dv = nc.variables['dv'][:]
-        self.cells = nc.variables['cells'][:]
-        self.Nc = len(self.xv)
-        self.dz = nc.variables['dz'][:]
-        self.Nkmax = len(self.dz)
-        self.Nk = nc.variables['Nk'][:]
-        self.Nk -= 1 # needs to be zero based
+        # Get the dimension sizes
+        self.Nc = nc.dimensions['Nc'].__len__()
+        self.Np = nc.dimensions['Np'].__len__()
         try:
-            self.Ac = nc.variables['Ac'][:]
+           self.Ne = nc.dimensions['Ne'].__len__()
         except:
-            print 'Warning no area variable, Ac, present...' 
+            print 'Edge dimension not found'
+            
+        self.Nkmax = nc.dimensions['Nk'].__len__()
         
-        try:
-            self.z_r = nc.variables['z_r'][:]
-        except:
-            print 'Warning no depth variable, z_r, present...' 
-        try:
-            self.z_w = nc.variables['z_w'][:]
-        except:
-            print 'Warning no depth variable, z_r, present...' 
+        gridvars = ['xp','yp','xv','yv','xe','ye','cells','face','edges','neigh','grad',\
+        'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
         
-        #print nc.variables.keys()
+        for vv in gridvars:
+            try:
+                setattr(self,vv,nc.variables[vv][:])
+            except:
+                print 'Cannot find variable: %s'%vv
+                
+        self.Nk-=1 #These need to be zero based
+        self.Nke-=1 
+        
         nc.close()
-     
+             
     def plot(self,**kwargs):
         """
           Plot the unstructured grid data
@@ -380,14 +386,17 @@ class Grid(object):
         
         This is calculated via a mean of the cells connected to a node(point)
         """
+        # Simple mean
+        #node_scalar = [np.mean(cell_scalar[self.pnt2cells(ii)]) for ii in range(self.Np)]
         
-        node_scalar = [np.mean(cell_scalar[self.pnt2cells(ii)]) for ii in range(self.Np)]
-        
+        # Area weighted interpolation
+        node_scalar = [np.sum(cell_scalar[self.pnt2cells(ii)]*self.Ac[self.pnt2cells(ii)])\
+            / np.sum( self.Ac[self.pnt2cells(ii)]) for ii in range(self.Np)]
         return np.array(node_scalar)
         
     def writeNC(self,outfile):
         """
-        Export to a netcdf file
+        Export the grid variables to a netcdf file
         """
         
         nc = Dataset(outfile, 'w', format='NETCDF4_CLASSIC')
@@ -397,10 +406,15 @@ class Grid(object):
 
         nc.createDimension('Nc', self.Nc)
         nc.createDimension('Np', self.Np)
+        try:
+            nc.createDimension('Ne', self.Ne)
+        except:
+            print 'No dimension: Ne'
         nc.createDimension('Nk', self.Nkmax)
         nc.createDimension('Nkw', self.Nkmax+1)
         nc.createDimension('numsides', 3)
-        nc.createDimension('nt', 0)
+        nc.createDimension('two', 2)
+        nc.createDimension('time', 0) # Unlimited
         
         # Write the grid variables
         def write_nc_var(var, name, dimensions, attdict, dtype='f8'):
@@ -409,29 +423,30 @@ class Grid(object):
                 tmp.setncattr(aa,attdict[aa])
             nc.variables[name][:] = var
     
-        write_nc_var(self.xv,'xv',('Nc'),{'long_name':'x coordinate of grid cell centre point','units':'metres'})
-        write_nc_var(self.yv,'yv',('Nc'),{'long_name':'y coordinate of grid cell centre point','units':'metres'})
-        write_nc_var(self.xp,'xp',('Np'),{'long_name':'x coordinate of grid node','units':'metres'})
-        write_nc_var(self.yp,'yp',('Np'),{'long_name':'y coordinate of grid node','units':'metres'})		
-        write_nc_var(self.dz,'dz',('Nk'),{'long_name':'Vertical grid z-layer spacing','units':'metres'})
-        write_nc_var(self.z_r,'z_r',('Nk'),{'long_name':'z coordinate at grid cell mid-height','units':'metres'})
-        write_nc_var(self.Nk,'Nk',('Nc'),{'long_name':'Number of vertical layers at grid cell centre'},dtype='i4')
-        write_nc_var(self.cells,'cells',('Nc','numsides'),{'long_name':'Indices to the nodes of each grid cell'},dtype='i4')
-        if self.__dict__.has_key('dv'):
-            write_nc_var(self.dv,'dv',('Nc'),{'long_name':'depth at grid cell centre point','units':'metres'})
-  
-        # Write the time variable
-        #write_nc_var(nc,[],'time',('nt'),{'long_name':'Simulation time','units':'seconds since 1990-01-01 00:00:00'})
+        gridvars = ['suntans_mesh','cells','face','edges','neigh','grad','xp','yp','xv','yv','xe','ye',\
+            'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
+        
+        self.suntans_mesh=[0]  
+        for vv in gridvars:
+            if self.__dict__.has_key(vv):
+                print 'Writing variables: %s'%vv
+                write_nc_var(self[vv],vv,ugrid[vv]['dimensions'],ugrid[vv]['attributes'],dtype=ugrid[vv]['dtype'])
+
         nc.close()
 
-    def create_nc_var(self,outfile,var, name, dimensions, attdict, dtype='f8'):
+    def create_nc_var(self,outfile, name, dimensions, attdict, dtype='f8',zlib=False,complevel=0,fill_value=999999.0):
         
         nc = Dataset(outfile, 'a')
-        tmp=nc.createVariable(name, dtype, dimensions)
+        tmp=nc.createVariable(name, dtype, dimensions,zlib=zlib,complevel=complevel,fill_value=fill_value)
         for aa in attdict.keys():
             tmp.setncattr(aa,attdict[aa])
-        nc.variables[name][:] = var	
+        #nc.variables[name][:] = var	
         nc.close()
+        
+    def __getitem__(self,y):
+        x = self.__dict__.__getitem__(y)
+        return x
+        
 
 		
 #################################################
@@ -508,7 +523,7 @@ class Spatial(Grid):
                         data=nc.variables[self.variable][t,klayer,self.j]
                         self.data[i,:] = data[self.Nk[self.j],self.j]
             else:
-	        klayer = self.klayer[0]
+                klayer = self.klayer
                 self.data=nc.variables[self.variable][self.tstep,klayer,self.j]
         
         # Mask the data
@@ -680,7 +695,7 @@ class Spatial(Grid):
         if mod+'.'+name == 'matplotlib.figure.Figure':
             self.fig.savefig(outfile,dpi=dpi)
         else:
-            self.fig.scene.save(outfile)
+            self.fig.scene.save(outfile,size=dpi)
             
         print 'SUNTANS image saved to file:%s'%outfile
     
@@ -858,11 +873,11 @@ class Spatial(Grid):
         """
         tmpvar = self.variable
         
-        self.variable='u'
+        self.variable='uc'
         self.loadData()
         u=self.data.copy()
         
-        self.variable='v'
+        self.variable='vc'
         self.loadData()
         v=self.data.copy()
         
@@ -876,6 +891,27 @@ class Spatial(Grid):
         
         return u,v,w
         
+    def getTstep(self,tstart,tend,timeformat='%Y%m%d.%H%M'):
+        """
+        Returns a vector of the time indices between tstart and tend
+        
+        tstart and tend can be string with format=timeformat ['%Y%m%d.%H%M' - default]
+        
+        Else tstart and tend can be datetime objects
+        """
+        
+        try:
+            t0 = datetime.strptime(tstart,timeformat)
+            t1 = datetime.strptime(tend,timeformat)
+        except:
+            # Assume the time is already in datetime format
+            t0 = tstart
+            t1 = tend
+                        
+        n1 = othertime.findNearest(t0,self.time)
+        n2 = othertime.findNearest(t1,self.time)
+        
+        return np.arange(n1,n2)
         
     def updateTstep(self):
         """
@@ -891,7 +927,8 @@ class Spatial(Grid):
                 self.tstep=np.arange(0,len(self.time))
             elif self.tstep==-1:
                 self.tstep=len(self.time)-1
-                
+       
+            
     def checkIndex(self):
         """
         Ensure that the j property is a single or an array of integers

@@ -29,6 +29,7 @@ class timeseries(object):
     """
     
     basetime = datetime(1900,1,1)
+    VERBOSE=False
     
     def __init__(self,t,y,**kwargs):
         
@@ -42,27 +43,50 @@ class timeseries(object):
         
         self._checkDT()
         
-    def psd(self, plot=True,**kwargs):
+    def psd(self, plot=True,nbandavg=1,**kwargs):
         """
         Power spectral density
         
-        Uses Lomb-Scargle for unequally spaced data
+        nbandavg = Number of fft bins to average
         """
         
-        if self.isequal==False:
+        if self.isequal==False and self.VERBOSE:
             print 'Warning - time series is unequally spaced consider using lomb-scargle fft'
+        
+
+        NFFT = int(2**(np.floor(np.log2(self.ny/nbandavg)))) # Nearest power of 2 to length of data
             
-        Pyy,frq = mlab.psd(self.y,Fs=1.0/self.dt,NFFT=self.ny/2,scale_by_freq=True)
+        Pyy,frq = mlab.psd(self.y-self.y.mean(),Fs=2*np.pi/self.dt,NFFT=NFFT,window=mlab.window_hanning,scale_by_freq=True)
         
         if plot:
             plt.loglog(frq,Pyy,**kwargs)
-            plt.xlabel('Freq. [Hz]')
+            plt.xlabel('Freq. [$cycles s^{-1}$]')
             plt.ylabel('PSD')
             plt.grid(b=1)
         
         return Pyy, frq
         
-    def filt(self,cutoff_dt, btype='low',order=3):
+    def specgram(self, NFFT=256,noverlap=128,plot=True,vv=29, **kwargs):
+        """
+        Spectrogram plot
+        """
+        from matplotlib.colors import LogNorm
+        
+        Pyy,frq,tmid = mlab.specgram(self.y-self.y.mean(),Fs=2*np.pi/self.dt,window=mlab.window_hanning,\
+            scale_by_freq=True,noverlap=noverlap,NFFT=NFFT)
+            
+        if plot==True:
+            ax3=plt.gca()
+            plt.contourf(tmid*2*np.pi,frq,Pyy,vv,norm=LogNorm())
+            ax3.set_yscale('log')
+            #ax3.set_xlim((1e-4,1e-2))
+            #ax3.set_ylim([tmid.min(),tmid.max()])
+            ax3.set_ylabel("$\\omega [rad.s^{-1}]$")
+            ax3.set_xticklabels([])
+    
+        return Pyy,frq,tmid
+        
+    def filt(self,cutoff_dt, btype='low',order=3,axis=-1):
         """
         Butterworth filter the time series
         
@@ -71,13 +95,15 @@ class timeseries(object):
             btype - 'low' or 'high'
         """
         
-        if self.isequal==False:
+        if self.isequal==False and self.VERBOSE:
             print 'Warning - time series is unequally spaced. Use self.interp to interpolate onto an equal grid'
         
         Wn = self.dt/cutoff_dt
         (b, a) = signal.butter(order, Wn, btype=btype, analog=0, output='ba')
         
-        return signal.filtfilt(b, a, self.y)
+        return signal.filtfilt(b, a, self.y, axis=axis)
+#        return signal.lfilter(b, a, self.y, axis=axis)
+
         
     def interp(self,tstart,tend,dt,method=3):
         """
@@ -118,13 +144,23 @@ class timeseries(object):
         
         return amp, phs, frq, U.invfft()   
         
-    def plot(self,**kwargs):
+    def plot(self,angle=17,**kwargs):
         """
         Plot
+        
+        Rotates date lables
         """
         
         plt.plot(self.t,self.y,**kwargs)
+        plt.xticks(rotation=angle)
+    
+    def save2txt(self,txtfile):
+        f = open(txtfile,'w')
         
+        for t,v in zip(self.tsec,self.y):
+            f.write('%10.6f\t%10.6f\n'%(t,v))
+            
+        f.close()
         
     def _checkDT(self):
         """
@@ -139,7 +175,7 @@ class timeseries(object):
         else:
             self.isequal = False
             
-        self.dt = dt[0]
+        self.dt = dt[1]
 
 
 def harmonic_fit(t,X,frq,axis=0):

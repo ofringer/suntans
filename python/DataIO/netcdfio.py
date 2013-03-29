@@ -58,7 +58,7 @@ def writePointData2Netcdf(ncfile,data,globalatts):
                 dimname = cc['Name']
                 dimlength = np.size(cc['Value']) 
                 grp.createDimension(dimname,dimlength)
-                #print dimname, dimlength
+                print dimname, dimlength
                 
                 # Create the coordinate variables
                 tmpvar=grp.createVariable(cc['Name'],'f8',(dimname,))
@@ -75,7 +75,7 @@ def writePointData2Netcdf(ncfile,data,globalatts):
             coordList = [str(x) for x in dd[vv]['coordinates'].split(', ')]
             tmpvar = grp.createVariable(vv,'f8',(coordList))
             # Write the data
-            #print vv, np.size(dd[vv]['Data']), coordList
+            print vv, np.size(dd[vv]['Data']), coordList
             tmpvar[:] = dd[vv]['Data']
             # Write the attriute data
             for aa in dd[vv].keys():
