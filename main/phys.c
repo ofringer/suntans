@@ -242,6 +242,10 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->nRT2v[i] = (REAL *)SunMalloc(grid->Nkp[i]*sizeof(REAL),
         "AllocatePhysicalVariables");
   }
+  // Netcdf write variables
+  (*phys)->tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->tmpvarE = (REAL *)SunMalloc(grid->Ne*grid->Nkmax*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->tmpvarW = (REAL *)SunMalloc(grid->Nc*(grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
 
   // for each cell allocate memory for the number of layers at that location
   for(i=0;i<Nc;i++) {
@@ -1397,6 +1401,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       break;
 
     //Close all open netcdf file
+    /*
     if(prop->n==prop->nsteps+prop->nstart) {
       if(prop->outputNetcdf==1){
 	//printf("Closing output netcdf file on processor: %d\n",myproc);
@@ -1415,6 +1420,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       	MPI_NCClose(prop->metncid);
       }
     }
+    */
   }
 }
 
@@ -4504,6 +4510,11 @@ if(prop->metmodel>0){
     MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
 #ifdef USENETCDF
     prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+#else
+   // Attempting to use heat flux model without netcdf libraries
+      printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
 #endif
   }
 

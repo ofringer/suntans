@@ -152,6 +152,7 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
   int i, ii, j, jj, jind, iptr, jptr, n, k;
   REAL u,v,w,h;
 
+   //printf("#####\nUpdating boundary velocities on processor: %d\n#####\n",myproc);
   REAL rampfac = 1-exp(-prop->rtime/prop->thetaramptime);//Tidal rampup factor 
 
    // Test
@@ -159,8 +160,11 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
    REAL omega = 7.27e-5;
 
    // Update the netcdf boundary data
-   if(prop->netcdfBdy==1) 
+   if(prop->netcdfBdy==1){ 
        UpdateBdyNC(prop,grid,myproc,comm);
+       // Wait for all processors
+       MPI_Barrier(comm);
+   }
 
   // Type-2
   ii=-1;
@@ -169,7 +173,7 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
     j = grid->edgep[jptr];
     ii+=1;
 
-    phys->boundary_h[jind]=0.0; // Not used??
+    //phys->boundary_h[jind]=0.0; // Not used??
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
      phys->boundary_u[jind][k]=bound->boundary_u[k][bound->ind2[ii]]*rampfac;
      phys->boundary_v[jind][k]=bound->boundary_v[k][bound->ind2[ii]]*rampfac;
@@ -222,7 +226,7 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       phys->uc[i][k]=bound->uc[k][bound->ind3[ii]]*rampfac;
       phys->vc[i][k]=bound->vc[k][bound->ind3[ii]]*rampfac;
-      phys->wc[i][k]=bound->wc[k][bound->ind3[ii]]*rampfac;
+      //phys->wc[i][k]=bound->wc[k][bound->ind3[ii]]*rampfac;
     }
   }
   // Need to communicate the cell data for type 3 boundaries
@@ -298,7 +302,6 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 
     // Step 4) Read in the forward and backward time steps into the boundary arrays
     ReadBdyNC(prop, grid, myproc);
-
    
     
  }//end function
@@ -310,7 +313,7 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
   *
   */     
  void UpdateBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
-     int j, k, t0, t1, t2; 
+     int n, j, k, t0, t1, t2; 
      REAL dt, r1, r2, mu;
    
      t1 = getTimeRecBnd(prop->nctime,bound->time,bound->Nt);
@@ -326,6 +329,14 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 	bound->t0=t0;
         //printf("myproc: %d, bound->t0: %d, nctime: %f, rtime: %f \n",myproc,bound->t0, prop->nctime, prop->rtime);
 	ReadBdyNC(prop, grid, myproc);
+	//Try this to avoid parallel read errors
+	/*
+	for(n=0;n<64;n++){
+	    MPI_Barrier(comm);
+	    if(n==myproc)
+		ReadBdyNC(prop, grid, myproc);
+	}
+	*/
       }
 
    /*Linear temporal interpolation coefficients*/
@@ -340,8 +351,8 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
     //r1 = 1.0-r2;
 
 //    if (myproc==0) printf("t1: %f, %t2: %f, tnow:%f, ,mu %f, r2: %f, r1: %f\n",bound->time[bound->t0],bound->time[bound->t1], prop->nctime, mu, r2, r1);
-
     if(bound->hasType2>0){
+	//printf("Updating type-2 boundaries on proc %d\n",myproc);
 	for (j=0;j<bound->Ntype2;j++){
 	  for (k=0;k<bound->Nk;k++){
 	    //Quadratic temporal interpolation
@@ -353,11 +364,14 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 	  }
 	}
     }
-
     if(bound->hasType3>0){
+	//printf("Updating type-3 boundaries on proc %d\n",myproc);
 	for (j=0;j<bound->Ntype3;j++){
 	  for (k=0;k<bound->Nk;k++){
 	    // Quadratic temporal interpolation
+	    //printf("bound->S[0][0] = %f\n",bound->S[0][0]);
+	    //printf("bound->S_t[1][0][0] = %f, bound->S[0][0] = %f\n",bound->S_t[1][0][0],bound->S[0][0]);
+	    bound->uc[k][j] = bound->uc_t[1][k][j];
 	    bound->uc[k][j] = QuadInterp(prop->nctime,bound->time[t0],bound->time[t1],bound->time[t2],bound->uc_t[0][k][j],bound->uc_t[1][k][j],bound->uc_t[2][k][j]);
 	    bound->vc[k][j] = QuadInterp(prop->nctime,bound->time[t0],bound->time[t1],bound->time[t2],bound->vc_t[0][k][j],bound->vc_t[1][k][j],bound->vc_t[2][k][j]);
 	    bound->wc[k][j] = QuadInterp(prop->nctime,bound->time[t0],bound->time[t1],bound->time[t2],bound->wc_t[0][k][j],bound->wc_t[1][k][j],bound->wc_t[2][k][j]);
@@ -367,6 +381,7 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 	  bound->h[j] = QuadInterp(prop->nctime,bound->time[t0],bound->time[t1],bound->time[t2],bound->h_t[0][j],bound->h_t[1][j],bound->h_t[2][j]);
 	}
     }
+   // printf("Updating flux (Q) boundaries on proc %d\n",myproc);
     // Interpolate Q and find the velocities based on the (dynamic) segment area
     if(bound->hasType2 && bound->hasSeg>0){
 	for (j=0;j<bound->Nseg;j++){
@@ -375,6 +390,7 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 	// This function does the actual conversion
 	FluxtoUV(prop,grid,myproc,comm);
     }
+    //printf("Finished updatiing boundaries on %d\n",myproc);
 
  }//End function
 

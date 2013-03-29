@@ -85,6 +85,8 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
       if(VERBOSE>3 && myproc==0) printf("Updating netcdf variable at nc timestep: %d\n",t1);
       /* Read in the data two time steps*/
       ReadMetNC(prop, grid, metin, myproc);
+      //Wait for the other processors
+      MPI_Barrier(comm);
 
       metin->t1=t1;
       metin->t0=t1-1;
@@ -132,16 +134,16 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
        met->cloud[i] = QuadInterp(prop->nctime,metin->time[t0],metin->time[t1],metin->time[t2],met->cloud_t[0][i],met->cloud_t[1][i],met->cloud_t[2][i]);
 
       /* Place bounds on rain, humidity and cloud variables */
-       if (met->cloud[j]<0.0) 
-	 met->cloud[j]=0.0;
-       if (met->cloud[j]>1.0)
-	 met->cloud[j]=1.0;
-       if (met->rain[j]<0.0) 
-	 met->rain[j]=0.0;
-       if (met->RH[j]<0.0)
-	 met->RH[j]=0.0;
-       if (met->RH[j]>100.0)
-	 met->RH[j]=100.0;
+       if (met->cloud[i]<0.0) 
+	 met->cloud[i]=0.0;
+       if (met->cloud[i]>1.0)
+	 met->cloud[i]=1.0;
+       if (met->rain[i]<0.0) 
+	 met->rain[i]=0.0;
+       if (met->RH[i]<0.0)
+	 met->RH[i]=0.0;
+       if (met->RH[i]>100.0)
+	 met->RH[i]=100.0;
     }
 
     //Communicate the arrays
@@ -319,7 +321,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       printf("Nc = %d\n",Nc);
   }
   /* Allocate the coordinate vectors*/
-  printf("Allocating coordinates...\n");
+  //printf("Allocating coordinates...\n");
   (*metin)->x_Uwind = (REAL *)SunMalloc(NUwind*sizeof(REAL),"AllocateMetIn");
   (*metin)->x_Vwind = (REAL *)SunMalloc(NVwind*sizeof(REAL),"AllocateMetIn");
   (*metin)->x_Tair = (REAL *)SunMalloc(NTair*sizeof(REAL),"AllocateMetIn");
@@ -513,7 +515,7 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
 	}
       }
     
-    SunFree(gamma,Ns,"CalcInterpWeights");
+    //SunFree(gamma,Ns,"CalcInterpWeights");
     
     }else{ // kriging
 	if(VERBOSE>1 && myproc==0)  printf("Calculating interpolation weights using kriging...\n");
@@ -579,11 +581,13 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
 	} 
 	
       // Free up the arrays
+      /*
       SunFree(gamma,Ns+1,"CalcInterpWeights");
       for (j=0;j<Ns+1;j++){
 	SunFree(C[j],Ns+1,"CalcInterpWeights");
 	SunFree(Ctmp[j],Ns+1,"CalcInterpWeights");
       }
+      */
     }// end of kriging   
 } // End of calcInterpWeights
 

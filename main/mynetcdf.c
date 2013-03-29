@@ -13,11 +13,12 @@
 
 const void* FillValue(int empty);
 static void ravel(REAL **tmparray, REAL *tmpvec, gridT *grid);
+static void ravelW(REAL **tmparray, REAL *tmpvec,gridT *grid);
 static void ravelEdge(REAL **tmparray, REAL *tmpvec, gridT *grid);
 static void nc_addattr(int ncid, int varid, char *attname, char *attvalue);
 
-static void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray);
-static void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc);
+void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray);
+void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc);
 
 /*########################################################
 *
@@ -34,7 +35,7 @@ static void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL
 * The size of the array dimension should equal 'count' ie [n, k ,j]
 */
 
-static void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray){
+void nc_read_3D(int ncid, char *vname, size_t start[3], size_t count[3], REAL ***tmparray){
 
     int j, k, n, ii;
     int varid, retval;
@@ -44,6 +45,8 @@ static void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL
     //Read the data
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
 	ERR(retval);
+//    if ((retval = nc_get_vara_double(ncid, varid, start, count, &tmparray[0][0][0]))) 
+//	ERR(retval);    
     if ((retval = nc_get_vara_double(ncid, varid, start, count, &outdata[0][0][0]))) 
 	ERR(retval); 
 
@@ -71,19 +74,23 @@ static void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL
 * The size of the array dimension should equal 'count' ie [n,,j]
 */
 
-static void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc){
+void nc_read_2D(int ncid, char *vname, size_t start[2], size_t count[2], REAL **tmparray, int myproc){
 
     int j, n, ii;
     int varid, retval;
     //REAL tmpvec[ (int)count[0] * (int)count[1] ];
     REAL outdata[(int)count[0]][(int)count[1]];
 
+  //  printf("nc_read_2d -- Proc: %d, vname: %s, start[%d][%d], count[%d][%d]",myproc,vname,(int)start[0],(int)start[1],(int)count[0],(int)count[1]);
+  
     //Read the data
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
 	ERR(retval);
+    //if ((retval = nc_get_vara_double(ncid, varid, start, count, &tmparray[0][0]))) 
+    //  ERR(retval); 
+    
     if ((retval = nc_get_vara_double(ncid, varid, start, count, &outdata[0][0]))) 
 	ERR(retval); 
-
     // Loop through and insert the vector values into an array
     for(n=0;n<(int)count[0];n++){
 	for(j=0;j<(int)count[1];j++){
@@ -94,6 +101,7 @@ static void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL
 	    //printf("myproc: %d, start[0]: %d, n: %d of %d, j: %d of %d, outdata[n][j]: %f, tmparray[n][j]: %f\n",myproc, (int)start[0], n,(int)count[0],j,(int)count[1],outdata[n][j], tmparray[n][j]);
 	}
     }
+    //printf(" Done\n");
 }// End function
 
 /*
@@ -138,10 +146,10 @@ void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, 
 
    nc_set_log_level(3); // This helps with debugging errors
    
-   REAL *tmpvar, *tmpvarE;
+   //REAL *tmpvar, *tmpvarE;
    // Need to write the 3-D arrays as vectors
-   tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"WriteOutputNC");
-   tmpvarE = (REAL *)SunMalloc(grid->Ne*grid->Nkmax*sizeof(REAL),"WriteOutputNC");
+   //tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"WriteOutputNC");
+   //tmpvarE = (REAL *)SunMalloc(grid->Ne*grid->Nkmax*sizeof(REAL),"WriteOutputNC");
    
    if(!(prop->n%prop->ntout) || prop->n==1+prop->nstart || blowup) {
 
@@ -166,73 +174,73 @@ void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, 
     
     if ((retval = nc_inq_varid(ncid, "uc", &varid)))
 	ERR(retval);
-    ravel(phys->uc, tmpvar, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
+    ravel(phys->uc, phys->tmpvar, grid);
+    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	ERR(retval);
     
     if ((retval = nc_inq_varid(ncid, "vc", &varid)))
 	ERR(retval);
-    ravel(phys->vc, tmpvar, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
+    ravel(phys->vc, phys->tmpvar, grid);
+    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	ERR(retval);
       
     // write w at cell top and bottom
     if ((retval = nc_inq_varid(ncid, "w", &varid)))
 	ERR(retval);
-    ravel(phys->w, tmpvar, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthreew, tmpvar )))
+    ravelW(phys->w, phys->tmpvarW, grid);
+    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthreew, phys->tmpvarW )))
 	ERR(retval);
-    
+
     if ((retval = nc_inq_varid(ncid, "nu_v", &varid)))
 	ERR(retval);
-    ravel(phys->nu_tv, tmpvar, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
+    ravel(phys->nu_tv, phys->tmpvar, grid);
+    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	ERR(retval);
     
     // Tracers
      if(prop->beta>0){
        if ((retval = nc_inq_varid(ncid, "salt", &varid)))
 	  ERR(retval);
-      ravel(phys->s, tmpvar, grid);
-      if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
+      ravel(phys->s, phys->tmpvar, grid);
+      if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	  ERR(retval);
      }
      
      if(prop->gamma>0){
 	if ((retval = nc_inq_varid(ncid, "temp", &varid)))
 	  ERR(retval);
-	ravel(phys->T, tmpvar, grid);
-	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
+	ravel(phys->T, phys->tmpvar, grid);
+	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	  ERR(retval);
      }
       
      if( (prop->gamma>0) || (prop->beta>0) ){ 
 	if ((retval = nc_inq_varid(ncid, "rho", &varid)))
 	  ERR(retval);
-	ravel(phys->rho, tmpvar, grid);
-	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
+	ravel(phys->rho, phys->tmpvar, grid);
+	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	  ERR(retval);
      }
 
      // Vertical grid spacing
      if ((retval = nc_inq_varid(ncid, "dzz", &varid)))
        ERR(retval);
-     ravel(grid->dzz, tmpvar, grid);
-     if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvar )))
+     ravel(grid->dzz, phys->tmpvar, grid);
+     if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
        ERR(retval);
 
      countthree[2] = grid->Ne;
      if ((retval = nc_inq_varid(ncid, "dzf", &varid)))
        ERR(retval);
-     ravelEdge(grid->dzf, tmpvarE, grid);
-     if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvarE )))
+     ravelEdge(grid->dzf, phys->tmpvarE, grid);
+     if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvarE )))
         ERR(retval);
 
      // Edge normal velocity
      if ((retval = nc_inq_varid(ncid, "U", &varid)))
 	ERR(retval);
-     ravelEdge(phys->u, tmpvarE, grid);
-     if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, tmpvarE )))
+     ravelEdge(phys->u, phys->tmpvarE, grid);
+     if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvarE )))
         ERR(retval);
 
      // Wind variables
@@ -318,8 +326,8 @@ void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, 
    }
    
    // Free the temporary vector
-   SunFree(tmpvar,grid->Nc*grid->Nkmax,"WriteOuputNC");
-   SunFree(tmpvarE,grid->Ne*grid->Nkmax,"WriteOuputNC");
+   //SunFree(tmpvar,grid->Nc*grid->Nkmax*sizeof(REAL),"WriteOuputNC");
+   //SunFree(tmpvarE,grid->Ne*grid->Nkmax*sizeof(REAL),"WriteOuputNC");
   
 } // End of function
 
@@ -1002,8 +1010,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
 	ERR(retval);
 
    // Free the temporary vectors
-   SunFree(z_r,grid->Nkmax,"InitialiseOutputNCugrid");
-   SunFree(z_w,(grid->Nkmax+1),"InitialiseOutputNCugrid");
+   //SunFree(z_r,grid->Nkmax*sizeof(REAL),"InitialiseOutputNCugrid");
+   //SunFree(z_w,(grid->Nkmax+1)*sizeof(REAL),"InitialiseOutputNCugrid");
    //SunFree(tmpvar,grid->Nc*grid->Nkmax,"InitialiseOutputNC");
 
 
@@ -1645,6 +1653,29 @@ static void ravel(REAL **tmparray, REAL *tmpvec,gridT *grid){
   }
 }//End of function
 
+
+/* 
+* Function: ravelW()
+* -----------------
+* Unravel a 2-D SUNTANS array [Nc, Nk+1] into a vector 
+* This is necessary for writing a 2-D array to netcdf as the missing cells need to be filled
+*
+*/
+static void ravelW(REAL **tmparray, REAL *tmpvec,gridT *grid){
+  int j,k;
+  int nk=grid->Nkmax+1, nc=grid->Nc;
+  
+  for(j=0;j<nc;j++){
+    for(k=0;k<nk;k++){
+      if(k<grid->Nk[j]+1){
+        tmpvec[k*nc+j] = tmparray[j][k];
+      }else{
+	tmpvec[k*nc+j] = (REAL)EMPTY;
+      }
+    }
+  }
+}//End of function
+
 /* 
 * Function: ravelEdge()
 * -----------------
@@ -1903,25 +1934,25 @@ size_t returndimlen(int ncid, char *dimname){
 #################################################################*/
 
 /*
-* Function: ReadBdyNC()
-* -----------------------------
-* Reads in boundary netcdf data into the forward and back time steps 
-*
-*/     
+ * Function: ReadBdyNC()
+ * -----------------------------
+ * Reads in boundary netcdf data into the forward and back time steps 
+ *
+ */     
 void ReadBdyNC(propT *prop, gridT *grid, int myproc){
     int retval, j, k, n;
     int t0, t1;
     int varid;
     char *vname;
-    size_t start[3];
-    size_t start2[2];
-    size_t count[3];
-    size_t count2[2];
+    size_t start[]={0,0,0};
+    size_t start2[]={0,0};
+    size_t count[]={0,0,0};
+    size_t count2[]={0,0};
     int ncid = prop->netcdfBdyFileID;  
-    int Nk = bound->Nk;
-    int Ntype3 = bound->Ntype3;
-    int Ntype2 = bound->Ntype2;
-    int Nseg = bound->Nseg;
+    size_t Nk = bound->Nk;
+    size_t Ntype3 = bound->Ntype3;
+    size_t Ntype2 = bound->Ntype2;
+    size_t Nseg = bound->Nseg;
 
     //Find the time index of the middle time step (t1) 
     if(bound->t0==-1){
@@ -1972,13 +2003,14 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc){
     }
 
     if(bound->hasType3){
-
+	count[0]=NT;
+	count[1]=Nk;
 	count[2]=Ntype3;
 	count2[1]=Ntype3;
 
 	vname = "uc";
 	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->uc_t );
+        nc_read_3D(ncid, vname, start, count, bound->uc_t );
 
 	vname = "vc";
 	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
@@ -1994,7 +2026,8 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc){
 
 	vname = "S";
 	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->S_t );
+	nc_read_3D(ncid, vname, start, count, bound->S_t);
+	//printf("bound->S[1][0][0] = %f\n",bound->S_t[1][0][0]);
 
 	vname = "h";//2D array
 	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
@@ -2011,7 +2044,6 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc){
 	nc_read_2D(ncid, vname, start2, count2, bound->boundary_Q_t, myproc);
 
      }//End flux read
-
  }//End function
 
 /*

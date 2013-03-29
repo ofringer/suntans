@@ -159,6 +159,11 @@ typedef struct _physT {
   REAL *dT;
   REAL **Ttmp;
 
+  // Variables for netcdf write
+  REAL *tmpvar;
+  REAL *tmpvarW;
+  REAL *tmpvarE;
+
 } physT;
 
 /*
