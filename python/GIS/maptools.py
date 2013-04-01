@@ -32,7 +32,7 @@ def ll2utm(LL,zone,CS='WGS84',north=True):
         
     srs.SetProjCS( proj );
     srs.SetWellKnownGeogCS( CS );
-    srs.SetUTM( zone, True );
+    srs.SetUTM( zone, north );
     
     srsLatLong = srs.CloneGeogCS()
     ct = osr.CoordinateTransformation(srsLatLong,srs )
@@ -63,7 +63,7 @@ def utm2ll(XY,zone,CS='WGS84',north=True):
         
     srs.SetProjCS( proj );
     srs.SetWellKnownGeogCS( CS );
-    srs.SetUTM( zone, True );
+    srs.SetUTM( zone, north );
     
     srsLatLong = srs.CloneGeogCS()
     ct = osr.CoordinateTransformation(srs,srsLatLong )
