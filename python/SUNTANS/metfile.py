@@ -212,14 +212,22 @@ class metdata(object):
         
         nc.close()
     
-    def plot(self,site=0):
+    def plot(self,site=0,rangeplot=True):
         """ 
         Time-series plotting method
         """        
         self.fig = plt.gcf()        
         plt.plot(self.time,self.data[:,site])
+        if rangeplot:
+            upper = np.max(self.data,1)
+            lower = np.min(self.data,1)
+            plt.fill_between(self.time,lower,y2=upper,color=[0.5, 0.5, 0.5],alpha=0.7)
+            
         plt.ylabel('%s [%s]'%(self.Name,self.units))
+        plt.xticks(rotation=17)
         plt.title('%s\n x: %10.2f, y: %10.2f, z: %10.2f'%(self.longname,self.x[site],self.y[site],self.z[site]))
         plt.grid(b=True)
-        plt.show()
+        #plt.show()
+
+
         

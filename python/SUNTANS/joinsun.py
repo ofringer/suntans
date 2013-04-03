@@ -50,8 +50,8 @@ def main(suntanspath,basename,numprocs,nstep=-1):
     init_ncvars(ncfile,outfile,variables,grd)
     
     # Step 6) Write out the cell based variables based on their rank
-    #nowritevars = ['cells','face','neigh','normal','edges','grad','def']
-    nowritevars = []
+    nowritevars = ['face','neigh','grad'] # These need special attention
+    #nowritevars = []
     if nsteps==-1:
         nc = Dataset(outfile,'a',format='NETCDF4')
     else:
@@ -78,13 +78,12 @@ def main(suntanspath,basename,numprocs,nstep=-1):
             isCellEdge=True
         elif vv['isEdge']:
             isCellEdge=True            
-            
-        # Write the time-varying dimensions
-        if isCellEdge and vname not in nowritevars:
-            print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
-            
 
-            if nsteps == -1:
+        if nsteps == -1:
+            
+            # Write the time-varying dimensions
+            if isCellEdge and vname not in nowritevars:
+                print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
                 # Write all time steps to the file
                 nc.variables['time'][:]=ncin[0].variables['time'][:]
                 
@@ -128,155 +127,207 @@ def main(suntanspath,basename,numprocs,nstep=-1):
                             outvar[:,:,eptr[n]]=ncin[n].variables[vname][:,:,:]
                     nc.variables[vname][:,:,:]=outvar  
                     
+            elif vname in nowritevars:
+                print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
+                sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
+                outvar=np.zeros(sz)
+                for n in range(numprocs):
+                    if vname == 'grad': # edge_face_connectivity
+                        outvar[eptr[n],:] = cptr[n][ncin[n].variables[vname][:,:]]
+                    elif vname == 'face': # face_edge_connectivity
+                        outvar[cptr[n],:] = eptr[n][ncin[n].variables[vname][:,:]]
+                    elif vname == 'neigh': # face_face_connectivity
+                        outvar[cptr[n],:] = cptr[n][ncin[n].variables[vname][:,:]]
+                    nc.variables[vname][:,:]=outvar
+                    
+                    
                 # Write the buffer to disk
                 nc.sync()
-            else:
-                # Write "nsteps" time steps to the file
-                tf=-1
+        else: # Write "nsteps" time steps to the file
+    
+            tf=-1
+            
+            outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
+            nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
+                    
+            if vv['ndims']==1 and isCellEdge and vname not in nowritevars: 
+                sz = (dims[vv['Dimensions'][0]])
+                outvar=np.zeros(sz)
+                for n in range(numprocs):
+                    if vv['isCell']:
+                        outvar[cptr[n]]=ncin[n].variables[vname][:]
+                    elif vv['isEdge']:
+                        outvar[eptr[n]]=ncin[n].variables[vname][:]
+                nc.variables[vname][:]=outvar
+            
+            elif vv['ndims']==2 and not vv['isTime'] and isCellEdge and vname not in nowritevars:# Stationary 2D variables 
+                sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
+                outvar=np.zeros(sz)
+                for n in range(numprocs):
+                    if vv['isCell']:
+                        outvar[cptr[n],:]=ncin[n].variables[vname][:,:]
+                    elif vv['isEdge']:
+                        outvar[eptr[n],:]=ncin[n].variables[vname][:,:]
+                nc.variables[vname][:,:]=outvar  
                 
-                outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
-                nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
-
-                if vv['ndims']==1: 
-                    sz = (dims[vv['Dimensions'][0]])
-                    outvar=np.zeros(sz)
-                    for n in range(numprocs):
-                        if vv['isCell']:
-                            outvar[cptr[n]]=ncin[n].variables[vname][:]
-                        elif vv['isEdge']:
-                            outvar[eptr[n]]=ncin[n].variables[vname][:]
-                    nc.variables[vname][:]=outvar
-                
-                elif vv['ndims']==2 and not vv['isTime']:# Stationary 2D variables 
-                    sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
-                    outvar=np.zeros(sz)
-                    for n in range(numprocs):
-                        if vv['isCell']:
-                            outvar[cptr[n],:]=ncin[n].variables[vname][:,:]
-                        elif vv['isEdge']:
-                            outvar[eptr[n],:]=ncin[n].variables[vname][:,:]
-                    nc.variables[vname][:,:]=outvar    
+            elif vname in nowritevars:
+                print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
+                sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
+                outvar=np.zeros(sz)
+                for n in range(numprocs):
+                    if vname == 'grad': # edge_face_connectivity
+                        outvar[eptr[n],:] = cptr[n][ncin[n].variables[vname][:,:]]
+                    elif vname == 'face': # face_edge_connectivity
+                        outvar[cptr[n],:] = eptr[n][ncin[n].variables[vname][:,:]]
+                    elif vname == 'neigh': # face_face_connectivity
+                        outvar[cptr[n],:] = cptr[n][ncin[n].variables[vname][:,:]]
+                    nc.variables[vname][:,:]=outvar 
                
-                t1=0
-                for t in range(nt):
-                    tf+=1
+            t1=0
+            for t in range(nt):
+                tf+=1
+                
+                if tf == nsteps:
+                    tout = range(t1,t)
+                    # Write all of the data
+                    print '     Writing variable: %s, for t = (%d,%d)'%(vv['Name'],t1,t)
+                    nc.variables['time'][:]=ncin[0].variables['time'][tout]
+                    if vv['ndims']==2 and vv['isTime'] and isCellEdge and vname not in nowritevars:
+                        sz = (t-t1,dims[vv['Dimensions'][1]])
+                        outvar=np.zeros(sz)
+                        for n in range(numprocs):
+                            if vv['isCell']:
+                                outvar[:,cptr[n]]=ncin[n].variables[vname][tout,:]
+                            elif vv['isEdge']:
+                                outvar[:,eptr[n]]=ncin[n].variables[vname][tout,:]
+                                
+                        nc.variables[vname][:,:]=outvar
+                    elif vv['ndims']==3 and vv['isTime'] and isCellEdge and vname not in nowritevars:
+                        sz = (t-t1,dims[vv['Dimensions'][1]],dims[vv['Dimensions'][2]])
+                        outvar=np.zeros(sz)
+                        for n in range(numprocs):
+                            if vv['isCell']:
+                                outvar[:,:,cptr[n]]=ncin[n].variables[vname][tout,:,:]
+                            elif vv['isEdge']:
+                                outvar[:,:,eptr[n]]=ncin[n].variables[vname][tout,:,:]
+                                
+                        nc.variables[vname][:,:,:]=outvar
+                        
                     
-                    if tf == nsteps:
-                        tout = range(t1,t)
-                        # Write all of the data
-                        print '     Writing variable: %s, for t = (%d,%d)'%(vv['Name'],t1,t)
-                        nc.variables['time'][:]=ncin[0].variables['time'][tout]
-                        if vv['ndims']==2 and vv['isTime']:
-                            sz = (t-t1,dims[vv['Dimensions'][1]])
+                    t1=t+1
+                    
+                    # Create a new file
+                    tf=0
+                    ctr+=1
+                    if makenewfile:
+                        outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
+                        nc.close()
+                        init_nc(outfile,variables,dims,globalatts)
+                        init_ncvars(ncfile,outfile,variables,grd)
+                        nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
+                        
+                        if vv['ndims']==1 and isCellEdge and vname not in nowritevars: 
+                            sz = (dims[vv['Dimensions'][0]])
                             outvar=np.zeros(sz)
                             for n in range(numprocs):
                                 if vv['isCell']:
-                                    outvar[:,cptr[n]]=ncin[n].variables[vname][tout,:]
+                                    outvar[cptr[n]]=ncin[n].variables[vname][:]
                                 elif vv['isEdge']:
-                                    outvar[:,eptr[n]]=ncin[n].variables[vname][tout,:]
-                                    
+                                    outvar[eptr[n]]=ncin[n].variables[vname][:]
+                            nc.variables[vname][:]=outvar
+                        
+                        elif vv['ndims']==2 and not vv['isTime'] and isCellEdge and vname not in nowritevars:# Stationary 2D variables 
+                            sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
+                            outvar=np.zeros(sz)
+                            for n in range(numprocs):
+                                if vv['isCell']:
+                                    outvar[cptr[n],:]=ncin[n].variables[vname][:,:]
+                                elif vv['isEdge']:
+                                    outvar[eptr[n],:]=ncin[n].variables[vname][:,:]
                             nc.variables[vname][:,:]=outvar
-                        elif vv['ndims']==3 and vv['isTime']:
-                            sz = (t-t1,dims[vv['Dimensions'][1]],dims[vv['Dimensions'][2]])
+                        elif vname in nowritevars:
+                            print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
+                            sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
+                            outvar=np.zeros(sz)
+                            for n in range(numprocs):
+                                if vname == 'grad': # edge_face_connectivity
+                                    outvar[eptr[n],:] = cptr[n][ncin[n].variables[vname][:,:]]
+                                elif vname == 'face': # face_edge_connectivity
+                                    outvar[cptr[n],:] = eptr[n][ncin[n].variables[vname][:,:]]
+                                elif vname == 'neigh': # face_face_connectivity
+                                    outvar[cptr[n],:] = cptr[n][ncin[n].variables[vname][:,:]]
+                                nc.variables[vname][:,:]=outvar                               
+                        
+                    else:
+                        outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
+                        nc.close()
+                        nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
+                        
+                        if vv['ndims']==1 and isCellEdge and vname not in nowritevars: 
+                            sz = (dims[vv['Dimensions'][0]])
                             outvar=np.zeros(sz)
                             for n in range(numprocs):
                                 if vv['isCell']:
-                                    outvar[:,:,cptr[n]]=ncin[n].variables[vname][tout,:,:]
+                                    outvar[cptr[n]]=ncin[n].variables[vname][:]
                                 elif vv['isEdge']:
-                                    outvar[:,:,eptr[n]]=ncin[n].variables[vname][tout,:,:]
-                                    
-                            nc.variables[vname][:,:,:]=outvar
-                            
+                                    outvar[eptr[n]]=ncin[n].variables[vname][:]
+                            nc.variables[vname][:]=outvar
                         
-                        t1=t+1
+                        elif vv['ndims']==2 and not vv['isTime'] and isCellEdge and vname not in nowritevars:# Stationary 2D variables 
+                            sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
+                            outvar=np.zeros(sz)
+                            for n in range(numprocs):
+                                if vv['isCell']:
+                                    outvar[cptr[n],:]=ncin[n].variables[vname][:,:]
+                                elif vv['isEdge']:
+                                    outvar[eptr[n],:]=ncin[n].variables[vname][:,:]
+                            nc.variables[vname][:,:]=outvar     
+                            
+                        elif vname in nowritevars:
+                            print '     variable: %s, ndims = %s'%(vv['Name'],vv['ndims'])
+                            sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
+                            outvar=np.zeros(sz)
+                            for n in range(numprocs):
+                                if vname == 'grad': # edge_face_connectivity
+                                    outvar[eptr[n],:] = cptr[n][ncin[n].variables[vname][:,:]]
+                                elif vname == 'face': # face_edge_connectivity
+                                    outvar[cptr[n],:] = eptr[n][ncin[n].variables[vname][:,:]]
+                                elif vname == 'neigh': # face_face_connectivity
+                                    outvar[cptr[n],:] = cptr[n][ncin[n].variables[vname][:,:]]
+                                nc.variables[vname][:,:]=outvar 
                         
-                        # Create a new file
-                        tf=0
-                        ctr+=1
-                        if makenewfile:
-                            outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
-                            nc.close()
-                            init_nc(outfile,variables,dims,globalatts)
-                            init_ncvars(ncfile,outfile,variables,grd)
-                            nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
-                            
-                            if vv['ndims']==1: 
-                                sz = (dims[vv['Dimensions'][0]])
-                                outvar=np.zeros(sz)
-                                for n in range(numprocs):
-                                    if vv['isCell']:
-                                        outvar[cptr[n]]=ncin[n].variables[vname][:]
-                                    elif vv['isEdge']:
-                                        outvar[eptr[n]]=ncin[n].variables[vname][:]
-                                nc.variables[vname][:]=outvar
-                            
-                            elif vv['ndims']==2 and not vv['isTime']:# Stationary 2D variables 
-                                sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
-                                outvar=np.zeros(sz)
-                                for n in range(numprocs):
-                                    if vv['isCell']:
-                                        outvar[cptr[n],:]=ncin[n].variables[vname][:,:]
-                                    elif vv['isEdge']:
-                                        outvar[eptr[n],:]=ncin[n].variables[vname][:,:]
-                                nc.variables[vname][:,:]=outvar                              
-                            
-                        else:
-                            outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
-                            nc.close()
-                            nc = Dataset(outfile,'a',format='NETCDF4_CLASSIC')
-                            
-                            if vv['ndims']==1: 
-                                sz = (dims[vv['Dimensions'][0]])
-                                outvar=np.zeros(sz)
-                                for n in range(numprocs):
-                                    if vv['isCell']:
-                                        outvar[cptr[n]]=ncin[n].variables[vname][:]
-                                    elif vv['isEdge']:
-                                        outvar[eptr[n]]=ncin[n].variables[vname][:]
-                                nc.variables[vname][:]=outvar
-                            
-                            elif vv['ndims']==2 and not vv['isTime']:# Stationary 2D variables 
-                                sz = (dims[vv['Dimensions'][0]],dims[vv['Dimensions'][1]])
-                                outvar=np.zeros(sz)
-                                for n in range(numprocs):
-                                    if vv['isCell']:
-                                        outvar[cptr[n],:]=ncin[n].variables[vname][:,:]
-                                    elif vv['isEdge']:
-                                        outvar[eptr[n],:]=ncin[n].variables[vname][:,:]
-                                nc.variables[vname][:,:]=outvar            
-                            
-                    elif t == nt-1: # Last time step
-                        tout = range(t1,t)
-                        # Just write all of the data
-                        print '     Writing variable: %s, for t = (%d,%d) '%\
-                            (vv['Name'],t1,t)
-                        nc.variables['time'][:]=ncin[0].variables['time'][tout]
+                elif t == nt-1: # Last time step
+                    tout = range(t1,t)
+                    # Just write all of the data
+                    print '     Writing variable: %s, for t = (%d,%d) '%\
+                        (vv['Name'],t1,t)
+                    nc.variables['time'][:]=ncin[0].variables['time'][tout]
 
-                        if vv['ndims']==2 and vv['isTime']:
-                            sz = (t-t1,dims[vv['Dimensions'][1]])
-                            outvar=np.zeros(sz)
-                            for n in range(numprocs):
-                                if vv['isCell']:
-                                    outvar[:,cptr[n]]=ncin[n].variables[vname][tout,:]
-                                elif vv['isEdge']:
-                                    outvar[:,eptr[n]]=ncin[n].variables[vname][tout,:]
-                                    
-                            nc.variables[vname][:,:]=outvar
-                        elif vv['ndims']==3 and vv['isTime']:
-                            sz = (t-t1,dims[vv['Dimensions'][1]],dims[vv['Dimensions'][2]])
-                            outvar=np.zeros(sz)
-                            for n in range(numprocs):
-                                if vv['isCell']:
-                                    outvar[:,:,cptr[n]]=ncin[n].variables[vname][tout,:,:]
-                                elif vv['isEdge']:
-                                    outvar[:,:,eptr[n]]=ncin[n].variables[vname][tout,:,:]
-                                    
-                            nc.variables[vname][:,:,:]=outvar
+                    if vv['ndims']==2 and vv['isTime'] and isCellEdge and vname not in nowritevars:
+                        sz = (t-t1,dims[vv['Dimensions'][1]])
+                        outvar=np.zeros(sz)
+                        for n in range(numprocs):
+                            if vv['isCell']:
+                                outvar[:,cptr[n]]=ncin[n].variables[vname][tout,:]
+                            elif vv['isEdge']:
+                                outvar[:,eptr[n]]=ncin[n].variables[vname][tout,:]
+                                
+                        nc.variables[vname][:,:]=outvar
+                    elif vv['ndims']==3 and vv['isTime'] and isCellEdge and vname not in nowritevars:
+                        sz = (t-t1,dims[vv['Dimensions'][1]],dims[vv['Dimensions'][2]])
+                        outvar=np.zeros(sz)
+                        for n in range(numprocs):
+                            if vv['isCell']:
+                                outvar[:,:,cptr[n]]=ncin[n].variables[vname][tout,:,:]
+                            elif vv['isEdge']:
+                                outvar[:,:,eptr[n]]=ncin[n].variables[vname][tout,:,:]
+                                
+                        nc.variables[vname][:,:,:]=outvar
+                
                     
-                        
-                # Flag to stop generating new files after the first variable    
-                makenewfile=False
-                nc.close()
+            # Flag to stop generating new files after the first variable    
+            makenewfile=False
+            nc.close()
                                  
     # Close the file for processor n 
     for n in range(numprocs):
@@ -419,9 +470,9 @@ if __name__ == '__main__':
         elif opt == '-n':
             numprocs=int(val)
             
-    #nsteps = 6
-    #numprocs = 48
-    #suntanspath='C:\\Projects\\GOMGalveston\\MODELLING\\GalvestonCoarse\\rundata'
-    #basename = 'GalvCoarse_ROMS_Coupling.nc'      
+    nsteps = 4
+    numprocs = 64
+    suntanspath='C:\\Projects\\GOMGalveston\\MODELLING\\GalvestonCoarse\\rundata'
+    basename = 'GalvCoarse_ROMS_Coupling.nc'      
             
     main(suntanspath,basename,numprocs,nsteps)

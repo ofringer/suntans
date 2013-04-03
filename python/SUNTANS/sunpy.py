@@ -15,6 +15,7 @@ import os, time, getopt, sys
 from scipy import spatial
 import othertime
 from suntans_ugrid import ugrid
+import operator
 
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
@@ -120,12 +121,18 @@ class Grid(object):
         
         for vv in gridvars:
             try:
-                setattr(self,vv,nc.variables[vv][:])
+                if vv=='def': # Cannot have this attribute name in python!
+                    setattr(self,'DEF',nc.variables[vv][:])
+                else:
+                    setattr(self,vv,nc.variables[vv][:])
             except:
                 print 'Cannot find variable: %s'%vv
                 
         self.Nk-=1 #These need to be zero based
-        self.Nke-=1 
+        try:
+            self.Nke-=1
+        except:
+            ''
         
         nc.close()
              
@@ -394,6 +401,76 @@ class Grid(object):
             / np.sum( self.Ac[self.pnt2cells(ii)]) for ii in range(self.Np)]
         return np.array(node_scalar)
         
+    def gradH(self,phi,k=0):
+        """
+        Computes the horizontal gradient of variable, phi, along layer, k.
+        
+        Returns: d(phi)/dx, d(phi)/dy
+        
+        Based on MATLAB code sungradient.m
+        """
+        ne = self.face #edge-indices
+        
+        Gn_phi = self.GradientAtFace(phi,ne,k)
+        
+        Gx_phi = Gn_phi * self.n1[ne] * self.DEF * self.df[ne]
+        Gy_phi = Gn_phi * self.n2[ne] * self.DEF * self.df[ne]
+        dX = np.sum(Gx_phi,axis=1)/self.Ac;
+        dY = np.sum(Gy_phi,axis=1)/self.Ac;
+        
+        return dX, dY
+
+        
+    def GradientAtFace(self,phi,jj,k):
+            
+        grad1 = self.grad[:,0]
+        grad2 = self.grad[:,1]
+        nc1 = grad1[jj]
+        nc2 = grad2[jj]
+                
+        # check for edges (use logical indexing)
+        ind1 = nc1==-1
+        nc1[ind1]=nc2[ind1]
+        ind2 = nc2==-1
+        nc2[ind2]=nc1[ind2]
+        
+        # check depths (walls)
+        indk = operator.or_(k>=self.Nk[nc1], k>=self.Nk[nc2])
+        ind3 = operator.and_(indk, self.Nk[nc2]>self.Nk[nc1])
+        nc1[ind3]=nc2[ind3]
+        ind4 = operator.and_(indk, self.Nk[nc1]>self.Nk[nc2])
+        nc2[ind4]=nc1[ind4]
+        
+        # Calculate gradient across face            
+        return (phi[nc1]-phi[nc2]) / self.dg[jj]
+            
+#        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#        function [data] = GradientAtFace(jj,phi,grd,k)
+#        
+#        grad1 = grd.grad(:,1);
+#        grad2 = grd.grad(:,2);
+#        nc1 = grad1(jj);
+#        nc2 = grad2(jj);
+#        
+#        % check for edges (use logical indexing)
+#        ind1 = nc1==-1; 
+#        nc1(ind1)=nc2(ind1);
+#        ind2 = nc2==-1;
+#        nc2(ind2)=nc1(ind2);
+#        clear ind1 ind2
+#        
+#        % check depths (walls)
+#        indk = ( k>=grd.Nk(nc1)) | (k>=grd.Nk(nc2) );
+#        ind3 = indk & (grd.Nk(nc2)>grd.Nk(nc1));
+#        nc1(ind3)=nc2(ind3);
+#        ind4 = indk & (grd.Nk(nc1)>grd.Nk(nc2));
+#        nc2(ind4)=nc1(ind4);
+#        
+#        % Calculate gradient across face
+#        Dj = grd.dg(jj);
+#        data = (phi(nc1)-phi(nc2)) ./ Dj;
+
+        
     def writeNC(self,outfile):
         """
         Export the grid variables to a netcdf file
@@ -492,48 +569,53 @@ class Spatial(Grid):
         self.j = self.checkIndex()
 
      
-    def loadData(self):
+    def loadData(self,variable=None):
         """ 
             Load the specified suntans variable data as a vector
             
         """
+        if variable==None:
+            variable=self.variable
+            
         nc = self.nc
-        self.long_name = nc.variables[self.variable].long_name
-        self.units= nc.variables[self.variable].units
-        #        ndims = len(nc.variables[self.variable].dimensions)
-        ndim = nc.variables[self.variable].ndim
+        self.long_name = nc.variables[variable].long_name
+        self.units= nc.variables[variable].units
+        #        ndims = len(nc.variables[variable].dimensions)
+        ndim = nc.variables[variable].ndim
         if ndim==1:
-            self.data=nc.variables[self.variable][self.j]
+            self.data=nc.variables[variable][self.j]
         elif ndim==2:
             #print self.j
-            self.data=nc.variables[self.variable][self.tstep,self.j]
+            self.data=nc.variables[variable][self.tstep,self.j]
         else:
             if self.klayer[0]==-1: # grab the seabed values
                 klayer = np.arange(0,self.Nkmax)
 
                 #if type(self.tstep)==int:
                 if isinstance(self.tstep,(int,long)):
-                    data=nc.variables[self.variable][self.tstep,klayer,self.j]
+                    data=nc.variables[variable][self.tstep,klayer,self.j]
                     self.data = data[self.Nk[self.j],self.j]
                 else: # need to extract timestep by timestep for animations to save memory
                     self.data=np.zeros((len(self.tstep),len(self.j)))
                     i=-1
                     for t in self.tstep:
                         i+=1
-                        data=nc.variables[self.variable][t,klayer,self.j]
+                        data=nc.variables[variable][t,klayer,self.j]
                         self.data[i,:] = data[self.Nk[self.j],self.j]
             else:
                 klayer = self.klayer
-                self.data=nc.variables[self.variable][self.tstep,klayer,self.j]
+                self.data=nc.variables[variable][self.tstep,klayer,self.j]
         
         # Mask the data
 #        try:
-#            fillval = nc.variables[self.variable]._FillValue
+#            fillval = nc.variables[variable]._FillValue
 #        except:
         fillval = 999999.0
         
         self.mask = self.data==fillval
         self.data[self.mask]=0.
+        
+        return self.data
         
         
     def loadTime(self):
@@ -556,8 +638,8 @@ class Spatial(Grid):
             self.loadData()
             
         if z==None:
-            z=self.data
-            
+            z=self.data.ravel()
+        
         # Find the colorbar limits if unspecified
         if self.clim==None:
             self.clim=[]
@@ -568,14 +650,14 @@ class Spatial(Grid):
             xlims=self.xlims 
             ylims=self.ylims
         
-        if self.__dict__.has_key('patches'):
-             self.patches.set_array(z)
-             self.ax.add_collection(self.patches)
-        else:
+#        if self.__dict__.has_key('patches'):
+#             self.patches.set_array(z)
+#             self.ax.add_collection(self.patches)
+#        else:
             #tic = time.clock()
-            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,z,xlim=xlims,ylim=ylims,\
-                clim=self.clim,**kwargs)
-            plt.title(self.__genTitle())
+        self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,z,xlim=xlims,ylim=ylims,\
+            clim=self.clim,**kwargs)
+        plt.title(self.__genTitle())
             
         if vector_overlay:
              u,v,w = self.getVector()

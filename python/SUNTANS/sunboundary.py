@@ -24,12 +24,14 @@ Created on Fri Nov 02 15:24:12 2012
 
 import sunpy
 from sunpy import Grid
+from netCDF4 import Dataset, num2date
 import numpy as np
 import matplotlib.pyplot as plt
 from maptools import readShpPoly
 import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
 from datetime import datetime, timedelta
 import othertime
+import os
 
 import pdb
 
@@ -50,20 +52,32 @@ class Boundary(object):
     isnorth = True
     
     def __init__(self,suntanspath,timeinfo):
+        """
+        Initialise boundary path.
         
-        self.suntanspath = suntanspath
-        self.timeinfo = timeinfo
+        To load data directly from an existing file:
+            Boundary('boundary_ncfile.nc',0)
+        """
+        if os.path.isdir(suntanspath):
         
-        self.grd = sunpy.Grid(suntanspath)
+            self.suntanspath = suntanspath
+            self.timeinfo = timeinfo
+            
+            self.grd = sunpy.Grid(suntanspath)
+            
+            self._loadBoundary()
+            
+            self.getTime()
+            
+            # Initialise the output arrays
+            self.initArrays()
+            
+        else:
+            print 'Loading boundary data from a NetCDF file...'
+            self.infile = suntanspath
+            self._loadBoundaryNC()
         
-        self.loadBoundary()
-        
-        self.getTime()
-        
-        # Initialise the output arrays
-        self.initArrays()
-        
-    def loadBoundary(self):
+    def _loadBoundary(self):
         """
         Load the coordinates and indices for type 2 and 3 BC's
         """
@@ -119,12 +133,12 @@ class Boundary(object):
         Load the timeinfo into a list of datetime objects
         """
         # build a list of timesteps
-        t1 = datetime.strptime(self.timeinfo[0],'%Y%m%d.%H%M')
-        t2 = datetime.strptime(self.timeinfo[1],'%Y%m%d.%H%M')
+        t1 = datetime.strptime(self.timeinfo[0],'%Y%m%d.%H%M%S')
+        t2 = datetime.strptime(self.timeinfo[1],'%Y%m%d.%H%M%S')
         
         self.time = []
         t0=t1
-        while t0 < t2:
+        while t0 <= t2:
             self.time.append(t0)
             t0 += timedelta(seconds=self.timeinfo[2])
         
@@ -338,13 +352,63 @@ class Boundary(object):
         
         print 'Boundary data sucessfully written to: %s'%ncfile
         
+    def _loadBoundaryNC(self):
+        """
+        Load the boundary class data from a netcdf file
+        """
+        
+        nc = Dataset(self.infile, 'r')     
+        
+        # Get the dimension sizes
+        self.Nk = nc.dimensions['Nk'].__len__()
+        self.N2 = nc.dimensions['Ntype2'].__len__()
+        self.N3 = nc.dimensions['Ntype3'].__len__()
+        self.Nseg = nc.dimensions['Nseg'].__len__()
+        self.Nt = nc.dimensions['Nt'].__len__()
+        
+        t = nc.variables['time']
+        self.time = num2date(t[:],t.units)
+        
+        self.z = nc.variables['z'][:]
+        
+        if self.N3>0:
+            self.cellp = nc.variables['cellp'][:]
+            self.xv = nc.variables['xv'][:]
+            self.yv = nc.variables['yv'][:]
+            self.uc = nc.variables['uc'][:]
+            self.vc = nc.variables['vc'][:]
+            self.wc = nc.variables['wc'][:]
+            self.T = nc.variables['T'][:]
+            self.S = nc.variables['S'][:]
+            self.h = nc.variables['h'][:]
+            
+        if self.N2>0:
+            self.edgep = nc.variables['edgep'][:]
+            self.xe = nc.variables['xe'][:]
+            self.ye = nc.variables['ye'][:]
+            self.boundary_u = nc.variables['boundary_u'][:]
+            self.boundary_v = nc.variables['boundary_v'][:]
+            self.boundary_w = nc.variables['boundary_w'][:]
+            self.boundary_T = nc.variables['boundary_T'][:]
+            self.boundary_S = nc.variables['boundary_S'][:]
+            
+        if self.Nseg>0:
+            self.segp = nc.variables['segp'][:]
+            self.segedgep = nc.variables['segedgep'][:]
+            self.boundary_Q = nc.variables['boundary_Q'][:]
+                    
+        nc.close()
+        
     def scatter(self,varname='S',klayer=0,tstep=0,**kwargs):
         """
         Colored scatter plot of boundary data
         """
         
         z = self[varname]
-        z = z[tstep,klayer,:]
+        if len(z.shape)==2:
+            z = z[tstep,:]
+        else:
+            z = z[tstep,klayer,:]
         
         if varname in ['S','T','h','uc','vc','wc']:
             x = self.xv
@@ -353,8 +417,8 @@ class Boundary(object):
             x = self.xe
             y = self.ye
         
-        fig = plt.gcf()
-        ax = fig.gca()
+        self.fig = plt.gcf()
+        ax = self.fig.gca()
         
         s1 = plt.scatter(x,y,s=30,c=z,**kwargs)
         
@@ -367,8 +431,43 @@ class Boundary(object):
         plt.title(titlestr)
         
         return s1
+        
+    def plot(self,varname='S',klayer=0,j=0,rangeplot=True,**kwargs):
+        """
+        Colored scatter plot of boundary data
+        """
+        
+        z = self[varname]
+        if len(z.shape)==2:
+            z = z[:,j]
+        else:
+            z = z[:,klayer,j]
+        
+        self.fig = plt.gcf()
+        s1 = plt.plot(self.time,z,**kwargs)
+        if rangeplot:
+            upper = np.max(self[varname],axis=-1)
+            lower = np.min(self[varname],axis=-1)
+            if len(upper.shape)==2:
+                upper=np.max(upper,axis=-1)
+                lower=np.max(lower,axis=-1)
+            plt.fill_between(self.time,lower,y2=upper,color=[0.5, 0.5, 0.5],alpha=0.7)
+        
+        plt.xticks(rotation=17)
+        
+        
+        titlestr='Boundary variable : %s \n z: %3.1f [m]'%(varname,self.z[klayer])
+        
+        plt.title(titlestr)
+        
+        return s1
+        
+    def savefig(self,outfile,dpi=150):
+        
+        self.fig.savefig(outfile,dpi=dpi)
+        print 'Boundary condition image saved to file:%s'%outfile
     
-    def roms2boundary(self,romsfile):
+    def roms2boundary(self,romsfile,setUV=False):
         """
         Interpolates ROMS data onto the type-3 boundary cells
         
@@ -383,8 +482,9 @@ class Boundary(object):
         self.h+=h
         self.T+=T
         self.S+=S
-        self.uc+=uc
-        self.vc+=vc
+        if setUV:
+            self.uc+=uc
+            self.vc+=vc
         
     def otis2boundary(self,otisfile,conlist=None):
         """
@@ -431,7 +531,7 @@ class InitialCond(Grid):
         Grid.__init__(self,suntanspath)
         
         # Get the time timestep
-        self.time = datetime.strptime(timestep,'%Y%m%d.%H%M')
+        self.time = datetime.strptime(timestep,'%Y%m%d.%H%M%S')
         
         # Initialise the output array
         self.initArrays()
@@ -446,7 +546,22 @@ class InitialCond(Grid):
         #self.wc = np.zeros((self.Nkmax,self.Nc))
         self.T = np.zeros((1,self.Nkmax,self.Nc))
         self.S = np.zeros((1,self.Nkmax,self.Nc))
-        self.h = np.zeros((1,self.Nc)) 
+        self.h = np.zeros((1,self.Nc))
+        
+    def roms2ic(self,romsfile,setUV=False):
+        """
+        Interpolates ROMS data onto the SUNTANS grid
+        """
+        import romsio
+        
+        romsi = romsio.roms_interp(romsfile,self.xv.reshape((self.Nc,1)),\
+            self.yv.reshape((self.Nc,1)),-self.z_r,[self.time,self.time])
+
+        self.h, self.T, self.S, self.uc, self.vc = romsi.interp()
+        
+        if not setUV:
+            self.uc *= 0 
+            self.vc *= 0
     
     def writeNC(self,outfile):
         """

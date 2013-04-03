@@ -13,7 +13,7 @@ import numpy as np
 import airsea
 import netcdfio
 
-def main(vartype,bbox,timestart,timeend,ncfile,dbfile=''):
+def main(vartype,bbox,timestart,timeend,ncfile,dbfile=None):
     varlookup ={'CurrentsActive':'currents','WaterLevelActive':'water_surface_height_above_reference_datum',\
     'Salinity':'sea_water_salinity','Conductivity':'sea_water_electrical_conductivity'}
     
@@ -55,7 +55,7 @@ def main(vartype,bbox,timestart,timeend,ncfile,dbfile=''):
     
     # Update the database
     #createObsDB(dbfile)
-    if len(dbfile)>0:
+    if not dbfile == None:
         print 'Updating database: %s'%dbfile
         netcdfio.netcdfObs2DB(ncfile,dbfile)                
 
@@ -295,14 +295,14 @@ def parseWaterLev(data,staInfo,ID):
 
 ###
 
-if __name__=="__main__":
-    ###
-    # Inputs
-    bbox = [-95.40,-94.49,28.8,29.9]
-    vartype = 'WaterLevelActive'
-    vartype = 'Conductivity'
-    timestart = datetime(2000,1,1)
-    timeend = datetime(2000,1,6)
-    ncfile = 'C:\Projects\GOMGalveston\DATA\Ocean\IOOS_Salinity_20002012.nc'
-    dbfile = 'C:/Projects/GOMGalveston/DATA/GalvestonObs.db's
-    main(vartype,bbox,timestart,timeend,ncfile,dbfile)
+#if __name__=="__main__":
+#    ###
+#    # Inputs
+#    bbox = [-95.40,-94.49,28.8,29.9]
+#    vartype = 'WaterLevelActive'
+#    vartype = 'Conductivity'
+#    timestart = datetime(2000,1,1)
+#    timeend = datetime(2000,1,6)
+#    ncfile = 'C:\Projects\GOMGalveston\DATA\Ocean\IOOS_Salinity_20002012.nc'
+#    dbfile = 'C:/Projects/GOMGalveston/DATA/GalvestonObs.db'
+#    main(vartype,bbox,timestart,timeend,ncfile,dbfile)

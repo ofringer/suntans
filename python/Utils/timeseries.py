@@ -105,7 +105,7 @@ class timeseries(object):
 #        return signal.lfilter(b, a, self.y, axis=axis)
 
         
-    def interp(self,tstart,tend,dt,method=3):
+    def interp(self,tstart,tend,dt,method='linear',timeformat='%Y%m%d.%H%M%S'):
         """
         Interpolate the data onto an equally spaced vector
         
@@ -115,10 +115,11 @@ class timeseries(object):
         """
         
         # Create the time vector
-        tnew = othertime.TimeVector(tstart,tend,dt,timeformat ='%Y%m%d.%H%M%S')
+        tnew = othertime.TimeVector(tstart,tend,dt,timeformat =timeformat)
         t = othertime.SecondsSince(tnew,basetime = self.basetime)
         
         F = interpolate.interp1d(self.tsec,self.y,kind=method)
+        #F = interpolate.UnivariateSpline(self.tsec,self.y,k=method)
         
         return tnew, F(t)
         
@@ -238,6 +239,55 @@ def harmonic_fit(t,X,frq,axis=0):
     
     # Output back along the original axis
     return Amp.swapaxes(axis,0), Phs.swapaxes(axis,0)
+    
+def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=3600.0):
+    """
+    Load station data from a database file
+    
+    Inputs:
+        dbfile - location of database file
+        stationID - Station ID in database
+        varname - variable name e.g. 'waterlevel', 'discharge', 'salinity'
+        
+        timeinfo (optional) - tuple with (starttime,endtime,dt). Format 'yyyymmdd.HHMMSS'
+            Use this to interpolate onto a constant time vector
+        filttype (optional) - 'low' or 'high' 
+            Set this to filter data
+            
+    Returns:
+        timeseries object
+        -1 on error
+            
+    """
+    from netcdfio import queryNC
+    
+    outvar = ['NetCDF_Filename','NetCDF_GroupID','StationName']
+    tablename = 'observations'
+    #condition = 'Variable_Name = "%s" and StationID = "%s"' % (varname,stationID)
+    condition = 'Variable_Name = "%s" and StationID LIKE "%%%s"' % (varname,stationID)
+    
+    print 'Querying database...'
+    print condition
+    data, query = queryNC(dbfile,outvar,tablename,condition)  
+    
+    if len(data)==0:
+        print '!!! Warning - Did not find any stations matching query. Returning -1 !!!'
+        return -1
+    else:
+        ts = timeseries(data[0]['time'],data[0][varname].ravel())
+        
+    if not timeinfo==None:
+        print 'Interpolating station data between %s and %s\n'%(timeinfo[0],timeinfo[1])
+        tnew,ynew = ts.interp(timeinfo[0],timeinfo[1],timeinfo[2])
+        ts = timeseries(tnew,ynew)
+        ts.dt = timeinfo[2] # This needs updating
+        
+    if not filttype==None:
+        print '%s-pass filtering output data. Cutoff period = %f [s].'%(filttype,cutoff)
+        yfilt = ts.filt(cutoff,btype=filttype)
+        ts.y = yfilt.copy()
+        
+    return ts
     
 def monthlyhist(t,y,ylim=0.1,xlabel='',ylabel='',title='',**kwargs):
     """
