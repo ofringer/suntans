@@ -290,17 +290,20 @@ def convertUV2SpeedDirn(u,v,convention='current'):
     
     theta = theta*180.0/pi
         
-    idx = np.argwhere(theta<0.0)
+    #idx = np.argwhere(theta<0.0)
+    idx = np.where(theta<0.0)
     theta[idx] = theta[idx] + 360.0
     
     #idx = np.argwhere(theta>=0.0&theta<90.0)
     fltr=operator.and_(theta>=0.0, theta<90.0)
-    idx = np.argwhere(fltr)
+    #idx = np.argwhere(fltr)
+    idx = np.where(fltr)
     theta[idx] = np.abs(theta[idx] - 90.0)
     
     #idx = np.argwhere(theta>=90.0&theta<=360.0)
     fltr=operator.and_(theta>=90.0, theta<=360.0)
-    idx = np.argwhere(fltr)
+    #idx = np.argwhere(fltr)
+    idx = np.where(fltr)
     theta[idx] = np.abs(450.0 - theta[idx])
     
     # flip the direction    

@@ -23,8 +23,7 @@ class SunTvtk(Spatial):
     The scalar data is stored in the 'data' attribute
     
     # TODO
-     - Implement vectors
-     - Wrap vector plotting routines (quiver, streamline, ...)
+        - Interpolation routine
     """
     
     is3D = False

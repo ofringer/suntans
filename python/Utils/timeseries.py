@@ -37,6 +37,9 @@ class timeseries(object):
         self.t = t # independent variable (t,x, etc)
         self.y = y # dependent variable
         
+        self.shape = self.y.shape
+        self.ndim = len(self.shape)
+        
         self.tsec = othertime.SecondsSince(self.t,basetime=self.basetime)
         
         self.ny = np.size(self.y)
@@ -77,12 +80,13 @@ class timeseries(object):
             
         if plot==True:
             ax3=plt.gca()
-            plt.contourf(tmid*2*np.pi,frq,Pyy,vv,norm=LogNorm())
+            plt.contourf(tmid*2*np.pi,frq,Pyy,vv,norm=LogNorm(),**kwargs)
             ax3.set_yscale('log')
             #ax3.set_xlim((1e-4,1e-2))
             #ax3.set_ylim([tmid.min(),tmid.max()])
             ax3.set_ylabel("$\\omega [rad.s^{-1}]$")
-            ax3.set_xticklabels([])
+            plt.colorbar()
+            #ax3.set_xticklabels([])
     
         return Pyy,frq,tmid
         
@@ -118,7 +122,15 @@ class timeseries(object):
         tnew = othertime.TimeVector(tstart,tend,dt,timeformat =timeformat)
         t = othertime.SecondsSince(tnew,basetime = self.basetime)
         
-        F = interpolate.interp1d(self.tsec,self.y,kind=method)
+        # Don't include nan points
+        
+        if self.ndim > 1:
+            # Interpolate multidimensional arrays without a mask
+            F = interpolate.interp1d(self.tsec,self.y.T,kind=method,axis=-1)
+        else:
+            mask = np.isnan(self.y) == False
+            F = interpolate.interp1d(self.tsec[mask],self.y[mask],kind=method,axis=0)
+        
         #F = interpolate.UnivariateSpline(self.tsec,self.y,k=method)
         
         return tnew, F(t)
@@ -145,6 +157,108 @@ class timeseries(object):
         
         return amp, phs, frq, U.invfft()   
         
+    def running_harmonic(self,omega,windowlength=3*86400.0,overlap=12*3600.0, plot=True):
+        """
+        Running harmonic fit of the time series at frequency, omega. 
+        
+        windowlength - length of each time window [seconds]
+        overlap - overlap between windows [seconds]
+        """
+        
+        # Make sure that omega is a list
+        try:
+            len(omega)
+        except:
+            omega=[omega]
+        
+        pt1,pt2 = window_index_time(self.t,windowlength,overlap)
+        npt = len(pt1)
+        tmid = []
+        amp = np.zeros((npt,))
+        phs = np.zeros((npt,))
+        ymean = np.zeros((npt,))
+        ii=-1
+        for t1,t2 in zip(pt1,pt2):
+            ii+=1
+            # Perform the harmonic fit on the segment
+            U = uspectra(self.t[t1:t2],self.y[t1:t2],frq=omega,method='lsqfast')
+            # Reference the phase to the start of the time series
+            amp[ii],phs[ii] = U.phsamp(phsbase = self.t[0])
+            
+            # Return the mid time point
+            ind = np.floor(t1 + (t2-t1)/2)
+            tmid.append(self.t[ind])
+            
+            # Return the fitted time series
+            ymean[ii] = self.y[t1:t2].mean()
+            #yout[t1:t2] += ymean + U.invfft()
+
+            
+        tmid = np.asarray(tmid)
+        
+
+        
+        if plot:
+            plt.subplot(211)
+            self.plot()
+            plt.plot(tmid,ymean,'r')
+            plt.fill_between(tmid,ymean-amp,y2=ymean+amp,color=[0.5,0.5,0.5],alpha=0.5)
+            plt.legend(('Original Signal','Harmonic reconstruction'))
+            
+            ax=plt.subplot(212)
+            plt.fill_between(tmid,amp,alpha=0.5)
+            plt.xticks(rotation=17)
+            plt.ylabel('Amplitude')
+            ax.set_xlim([self.t[0],self.t[-1]])
+            
+            
+        return tmid, amp, phs
+            
+    def running_mean(self,windowlength=3*86400.0,overlap=12*3600.0, plot=True):
+        """
+        Running mean and RMS of the time series
+        
+        windowlength - length of each time window [seconds]
+        overlap - overlap between windows [seconds]
+        """
+        
+        # Make sure that omega is a list
+
+        pt1,pt2 = window_index_time(self.t,windowlength,overlap)
+        npt = len(pt1)
+        tmid = []
+        ymean = np.zeros((npt,))
+        yrms = np.zeros((npt,))
+
+        ii=-1
+        for t1,t2 in zip(pt1,pt2):
+            ii+=1
+
+            ymean[ii] = self.y[t1:t2].mean()
+            yrms[ii] = crms(self.tsec[t1:t2],self.y[t1:t2]-ymean[ii])
+            
+            # Return the mid time point
+            ind = np.floor(t1 + (t2-t1)/2)
+            tmid.append(self.t[ind])
+   
+        tmid = np.asarray(tmid)
+        
+        if plot:
+            plt.subplot(211)
+            self.plot()
+            plt.plot(tmid,ymean,'r')
+            plt.fill_between(tmid,ymean-yrms,y2=ymean+yrms,color=[0.5,0.5,0.5],alpha=0.5)
+            plt.legend(('Original Signal','Mean','$\pm$ RMS'))
+            
+            ax=plt.subplot(212)
+            plt.fill_between(tmid,yrms,alpha=0.7)
+            plt.xticks(rotation=17)
+            plt.ylabel('RMS')
+            ax.set_xlim([self.t[0],self.t[-1]])
+            
+            
+        return tmid, ymean, yrms           
+        
     def plot(self,angle=17,**kwargs):
         """
         Plot
@@ -152,9 +266,20 @@ class timeseries(object):
         Rotates date lables
         """
         
-        plt.plot(self.t,self.y,**kwargs)
+        h1=plt.plot(self.t,self.y,**kwargs)
         plt.xticks(rotation=angle)
-    
+        
+        return h1 
+        
+    def fillplot(self,angle=17,alpha=0.7,**kwargs):
+        """
+        
+        """
+        h1=plt.fill_between(self.t,self.y,alpha=alpha,**kwargs)
+        plt.xticks(rotation=angle)
+        
+        return h1 
+        
     def save2txt(self,txtfile):
         f = open(txtfile,'w')
         
@@ -175,17 +300,22 @@ class timeseries(object):
             self.isequal = True
         else:
             self.isequal = False
-            
-        self.dt = dt[1]
+        
+        try:
+            self.dt = dt[1]
+        except:
+            self.dt = 0.0
 
 
-def harmonic_fit(t,X,frq,axis=0):
+def harmonic_fit(t,X,frq,mask=None,axis=0,phsbase=None):
     """
     Least-squares harmonic fit on an array, X, with frequencies, frq. 
     
     X - vector [Nt] or array [Nt, (size)]
     t - vector [Nt]
     frq - vector [Ncon]
+    mask - array [(size non-time X)]
+    phsbase - phase offset
     
     where, dimension with Nt should correspond to axis = axis.
     """
@@ -201,6 +331,11 @@ def harmonic_fit(t,X,frq,axis=0):
         raise 'length of t (%d) must equal dimension of X (%s)'%(len(t),sz[0])
     
     X = np.reshape(X,(sz[0],lenX))
+    
+    if not mask == None:
+        mask = np.reshape(mask,(lenX,))
+    else:
+        mask = np.ones((lenX,))
     
     # Resize the frequency array (this may need to go)
     frq=np.asarray(frq) 
@@ -226,12 +361,15 @@ def harmonic_fit(t,X,frq,axis=0):
     U = uspectra(t,X[:,0],frq=frq[:,0],method='lsqfast')
     
     for ii in range(0,lenX):
-        # Update the 'y' data in the grid class. This invokes a harmonic fit 
-        U.frq = frq[:,ii]
-        U['y'] = X[:,ii]
-			
-	   # Calculate the phase and amplitude
-        Amp[:,ii], Phs[:,ii] = U.phsamp()
+        
+        if mask[ii]==True:
+            # Update the 'y' data in the grid class. This invokes a harmonic fit 
+            
+            U.frq = frq[:,ii]
+            U['y'] = X[:,ii]
+    			
+            # Calculate the phase and amplitude
+            Amp[:,ii], Phs[:,ii] = U.phsamp(phsbase=phsbase)
         
     # reshape the array
     Amp = np.reshape(Amp,(Nfrq,)+sz[1:])
@@ -240,7 +378,7 @@ def harmonic_fit(t,X,frq,axis=0):
     # Output back along the original axis
     return Amp.swapaxes(axis,0), Phs.swapaxes(axis,0)
     
-def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=3600.0):
+def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=3600.0,output_meta=False):
     """
     Load station data from a database file
     
@@ -274,7 +412,8 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
         print '!!! Warning - Did not find any stations matching query. Returning -1 !!!'
         return -1
     else:
-        ts = timeseries(data[0]['time'],data[0][varname].ravel())
+        ts = timeseries(data[0]['time'],data[0][varname].squeeze())
+        
         
     if not timeinfo==None:
         print 'Interpolating station data between %s and %s\n'%(timeinfo[0],timeinfo[1])
@@ -284,10 +423,112 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
         
     if not filttype==None:
         print '%s-pass filtering output data. Cutoff period = %f [s].'%(filttype,cutoff)
-        yfilt = ts.filt(cutoff,btype=filttype)
+        yfilt = ts.filt(cutoff,btype=filttype,axis=-1)
         ts.y = yfilt.copy()
+    
+    if output_meta:
+        meta = {'longitude':data[0]['longitude'],'latitude':data[0]['latitude'],'elevation':data[0]['elevation']}
+        return ts, meta        
+    else:
+        return ts
+
+def SpeedDirPlot(t,u,v,convention='current',units='m s^{-1}',color1='b',color2='r'):
+    """
+    Plots speed and direction on the same axes
+    
+    Inputs:
+        t - time vector
+        u,v - velocity cartesian components
         
-    return ts
+    Returns:
+        ax - list of axes  handles
+        h - list of plot handles
+    
+    convention = 'current' or 'wind'
+    
+    See this example:
+        http://matplotlib.org/examples/api/two_scales.html
+    """
+    import airsea
+    
+    Dir, Spd = airsea.convertUV2SpeedDirn(u,v,convention=convention)
+    
+    
+    ax = range(2)
+    h = range(2)
+    fig = plt.gcf()
+    ax[0] = fig.gca()
+    
+    
+    # Left axes
+    h[0] = ax[0].fill_between(t, Spd, color=color1,alpha=0.7)
+    # Make the y-axis label and tick labels match the line color.
+    ax[0].set_ylabel('Speed [$%s$]'%units, color=color1)
+    for tl in ax[0].get_yticklabels():
+        tl.set_color(color1)
+
+    #Right axes
+    ax[1] = ax[0].twinx() # This sets up the second axes
+    ax[1].plot(t, Dir, '.',color=color2)
+    ax[1].set_ylabel("Dir'n [$\circ$]", color=color2)
+    ax[1].set_ylim([0,360])
+    ax[1].set_yticks([0,90,180,270])
+    ax[1].set_yticklabels(['N','E','S','W'])
+    for tl in ax[1].get_yticklabels():
+        tl.set_color(color2)
+        
+    plt.setp( ax[0].xaxis.get_majorticklabels(), rotation=17 )
+        
+    return ax, h
+
+def ProfilePlot(t,y,z,scale=86400, axis=0,color=[0.5,0.5,0.5]):
+    """
+    Plot a series of vertical profiles as a time series
+    
+    scale - Sets 1 unit = scale (seconds)
+    
+    See this page on formatting:
+        http://matplotlib.org/examples/pylab_examples/date_index_formatter.html
+    """
+    from matplotlib import collections
+    from matplotlib.ticker import Formatter
+
+    class MyFormatter(Formatter):
+        def __init__(self, dates, fmt='%b %d %Y'):
+            self.fmt = fmt
+            self.dates = dates
+
+        def __call__(self, x, pos=0):
+            'Return the label for time x s'
+            return datetime.strftime(datetime(1990,1,1)+timedelta(seconds=x),self.fmt)
+
+    tsec = othertime.SecondsSince(t)
+    formatter = MyFormatter(tsec)
+    
+    y = np.swapaxes(y,0,axis)
+    
+    lines=[]
+    line2 =[]
+    for ii, tt in enumerate(tsec):
+        #xplot = set_scale(y[:,ii],tt)
+        xplot = tt + y[:,ii]*scale
+        lines.append(np.array((xplot,z)).T)
+        line2.append(np.array([[tt,tt],[z[0],z[-1]]]).T)
+        
+    
+    LC1 = collections.LineCollection(lines,colors=color,linewidths=1.5)
+    LC2 = collections.LineCollection(line2,colors='k',linestyles='dashed') # Zero axis
+    
+    ax=plt.gca()
+    ax.add_collection(LC1)
+    ax.add_collection(LC2)
+    ax.set_ylim((z.min(),z.max()))
+    ax.xaxis.set_major_formatter(formatter)
+    ax.set_xlim((tsec[0],tsec[-1]))
+    plt.xticks(rotation=17)       
+    
+    return ax
+    
     
 def monthlyhist(t,y,ylim=0.1,xlabel='',ylabel='',title='',**kwargs):
     """
@@ -337,6 +578,8 @@ def monthlyhist(t,y,ylim=0.1,xlabel='',ylabel='',title='',**kwargs):
         plt.figtext(0.5,0.95,title,fontsize=14,horizontalalignment='center')
         
     return fig
+    
+    
     
 def window_index(serieslength,windowsize,overlap):
     """
@@ -393,3 +636,33 @@ def window_index_time(t,windowsize,overlap):
         pt2.append(othertime.findNearest(t2,t))
         
     return pt1, pt2
+    
+def pol2cart(th,rho):
+    """Convert polar coordinates to cartesian"""
+    x = rho * np.cos(th)
+    y = rho * np.sin(th)
+
+    return x, y
+    
+def cart2pol(x,y):
+    """
+    Convert cartesian to polar coordinates
+    """
+    th = np.angle(x+1j*y)
+    rho = np.abs(x+1j*y)
+    
+    return th, rho
+    
+def rms(x):
+    """
+    root mean squared
+    """
+    
+    return np.sqrt(1.0/np.size(x) * np.sum(x**2))
+    
+def crms(t,y):
+    """
+    Continous function rms
+    """
+    fac = 1.0/(t[-1]-t[0])
+    return np.sqrt(fac*np.trapz(y**2,x=t))

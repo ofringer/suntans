@@ -351,6 +351,7 @@ def lstsqfft(t,y,frq):
         
     # Solve the least square problem
     b = np.linalg.lstsq(A,y)
+    
     A = b[0][1::2]
     B = b[0][2::2]
     

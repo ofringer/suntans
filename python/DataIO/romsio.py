@@ -14,8 +14,10 @@ from netCDF4 import Dataset, MFDataset, num2date
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from scipy import interpolate
+# Private modules
 from interpXYZ import interpXYZ
 import othertime
+from timeseries import timeseries
 
 try:
     from octant.slice import isoslice
@@ -43,27 +45,131 @@ class roms_grid(object):
         except:
             nc = Dataset(self.grdfile, 'r')  
         
-        self.angle = nc.variables['angle'][:]
-        self.lon_rho =  nc.variables['lon_rho'][:]
-        self.lat_rho =  nc.variables['lat_rho'][:]
-        self.lon_psi =  nc.variables['lon_psi'][:]
-        self.lat_psi =  nc.variables['lat_psi'][:]
-        self.lon_u =  nc.variables['lon_u'][:]
-        self.lon_v =  nc.variables['lon_v'][:]
-        self.lat_u =  nc.variables['lat_u'][:]
-        self.lat_v =  nc.variables['lat_v'][:]
-        self.h = nc.variables['h'][:]
-        try:
-            self.f = nc.variables['f'][:]
-        except:
-            print 'No f'
+        varnames = ['angle','lon_rho','lat_rho','lon_psi','lat_psi','lon_u','lat_u',\
+        'lon_v','lat_v','h','f','mask_rho','mask_psi','mask_u','mask_v','pm','pn']
         
-        self.mask_rho =  nc.variables['mask_rho'][:]
-        self.mask_psi =  nc.variables['mask_psi'][:]
-        self.mask_u =  nc.variables['mask_u'][:]
-        self.mask_v =  nc.variables['mask_v'][:]
+        for vv in varnames:
+            try:
+                setattr(self,vv,nc.variables[vv][:])
+            except:
+                print 'Cannot find variable: %s'%vv
 
         nc.close()
+        
+    def Writefile(self,outfile,verbose=True):
+        """
+        Writes subsetted grid and coordinate variables to a netcdf file
+        
+        Code modified from roms.py in the Octant package
+        """
+        self.outfile = outfile
+        
+        Mp, Lp = self.lon_rho.shape
+        M, L = self.lon_psi.shape
+        
+        N = self.s_rho.shape[0] # vertical layers
+        
+        xl = self.lon_rho[self.mask_rho==1.0].ptp()
+        el = self.lat_rho[self.mask_rho==1.0].ptp()
+        
+        # Write ROMS grid to file
+        nc = Dataset(outfile, 'w', format='NETCDF3_CLASSIC')
+        nc.Description = 'ROMS subsetted history file'
+        nc.Author = ''
+        nc.Created = datetime.now().isoformat()
+        nc.type = 'ROMS HIS file'
+        
+        nc.createDimension('xi_rho', Lp)
+        nc.createDimension('xi_u', L)
+        nc.createDimension('xi_v', Lp)
+        nc.createDimension('xi_psi', L)
+        
+        nc.createDimension('eta_rho', Mp)
+        nc.createDimension('eta_u', Mp)
+        nc.createDimension('eta_v', M)
+        nc.createDimension('eta_psi', M)
+        
+        nc.createDimension('s_rho', N)
+        nc.createDimension('s_w', N+1)
+        nc.createDimension('ocean_time', None)      
+        
+        nc.createVariable('xl', 'f8', ())
+        nc.variables['xl'].units = 'meters'
+        nc.variables['xl'] = xl
+        
+        nc.createVariable('el', 'f8', ())
+        nc.variables['el'].units = 'meters'
+        nc.variables['el'] = el
+        
+        nc.createVariable('spherical', 'S1', ())
+        nc.variables['spherical'] = 'F'
+        
+        def write_nc_var(var, name, dimensions, units=None):
+            nc.createVariable(name, 'f8', dimensions)
+            if units is not None:
+                nc.variables[name].units = units
+            nc.variables[name][:] = var
+            if verbose:
+                print ' ... wrote ', name
+            
+        
+        # Grid variables
+        write_nc_var(self.angle, 'angle', ('eta_rho', 'xi_rho'))
+        write_nc_var(self.h, 'h', ('eta_rho', 'xi_rho'), 'meters')
+        write_nc_var(self.f, 'f', ('eta_rho', 'xi_rho'), 'seconds-1')
+        
+        write_nc_var(self.mask_rho, 'mask_rho', ('eta_rho', 'xi_rho'))
+        write_nc_var(self.mask_u, 'mask_u', ('eta_u', 'xi_u'))
+        write_nc_var(self.mask_v, 'mask_v', ('eta_v', 'xi_v'))
+        write_nc_var(self.mask_psi, 'mask_psi', ('eta_psi', 'xi_psi'))
+        
+        write_nc_var(self.lon_rho, 'lon_rho', ('eta_rho', 'xi_rho'), 'degrees')
+        write_nc_var(self.lat_rho, 'lat_rho', ('eta_rho', 'xi_rho'), 'degrees')
+        write_nc_var(self.lon_u, 'lon_u', ('eta_u', 'xi_u'), 'degrees')
+        write_nc_var(self.lat_u, 'lat_u', ('eta_u', 'xi_u'), 'degrees')
+        write_nc_var(self.lon_v, 'lon_v', ('eta_v', 'xi_v'), 'degrees')
+        write_nc_var(self.lat_v, 'lat_v', ('eta_v', 'xi_v'), 'degrees')
+        write_nc_var(self.lon_psi, 'lon_psi', ('eta_psi', 'xi_psi'), 'degrees')
+        write_nc_var(self.lat_psi, 'lat_psi', ('eta_psi', 'xi_psi'), 'degrees')
+        
+        write_nc_var(self.pm, 'pm', ('eta_rho', 'xi_rho'), 'degrees')
+        write_nc_var(self.pn, 'pn', ('eta_rho', 'xi_rho'), 'degrees')
+        
+        # Vertical coordinate variables
+        write_nc_var(self.s_rho, 's_rho', ('s_rho'))
+        write_nc_var(self.s_w, 's_w', ('s_w'))
+        write_nc_var(self.Cs_r, 'Cs_r', ('s_rho'))
+        write_nc_var(self.Cs_w, 'Cs_w', ('s_w'))
+
+        write_nc_var(self.hc, 'hc', ())
+        write_nc_var(self.Vstretching, 'Vstretching', ())
+        write_nc_var(self.Vtransform, 'Vtransform', ())
+        
+    def nc_add_dimension(self,outfile,name,length):
+        """
+        Add a dimension to an existing netcdf file
+        """
+        nc = Dataset(outfile, 'a')
+        nc.createDimension(name, length)
+        nc.close()
+        
+    def nc_add_var(self,outfile,data,name,dimensions,units=None,long_name=None,coordinates=None):
+        """
+        Add a new variable and write the data
+        """        
+        nc = Dataset(outfile, 'a')
+        nc.createVariable(name, 'f8', dimensions)
+        if units is not None:
+            nc.variables[name].units = units
+        if coordinates is not None:
+            nc.variables[name].coordinates = coordinates
+        if long_name is not None:
+            nc.variables[name].long_name = long_name
+        
+        nc.variables[name][:] = data
+            
+        nc.close()
+        
         
     def findNearset(self,x,y,grid='rho'):
         """
@@ -129,7 +235,11 @@ class ROMS(roms_grid):
         self._openNC()
         
         # Load the time information
-        self._loadTime()
+        try:
+            self._loadTime()
+        except:
+            print 'No time variable.'
+                
         
         # Check the spatial indices of the variable
         self._loadVarCoords()
@@ -158,6 +268,7 @@ class ROMS(roms_grid):
         
         if varname == None:
             varname=self.varname
+
             self._checkCoords(varname)
         else:
             self._checkCoords(varname)
@@ -245,6 +356,106 @@ class ROMS(roms_grid):
         """
         h = self.h[self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]].squeeze()
         return get_depth(self.S,self.C,self.hc,h,zeta=zeta, Vtransform=self.Vtransform).squeeze()
+        
+    def depthInt(self,var,grid='rho',cumulative=False):
+        """
+        Depth-integrate data in variable, var (array [Nz, Ny, Nx])
+        
+        Set cumulative = True for cumulative integration i.e. for pressure calc.
+        """
+        
+        sz = var.shape
+        if not sz[0] == self.Nz:
+            raise Exception, 'length of dimension 0 must equal %d (currently %d)'%(self.Nz,sz[0])
+        
+        if not len(sz)==3:
+            raise Exception, 'only 3-D arrays are supported.'
+          
+        if grid == 'rho':
+            h = self.h
+        elif grid == 'psi':
+            h = 0.5 * (self.h[1:,1:] + self.h[0:-1,0:-1])
+        elif grid == 'u':
+            h = 0.5 * (self.h[:,1:] + self.h[:,0:-1])
+        elif grid == 'v':
+            h = 0.5 * (self.h[1:,:] + self.h[0:-1,:])
+            
+        z_w = get_depth(self.s_w,self.Cs_w,self.hc,h,Vtransform=self.Vtransform).squeeze()
+        
+        dz = np.diff(z_w,axis=0)
+        
+        if cumulative:
+            return np.cumsum(dz*var,axis=0)
+        else:
+            return np.sum(dz*var,axis=0)
+        
+    def depthAvg(self,var,grid='rho'):
+        """
+        Depth-average data in variable, var (array [Nz, Ny, Nx])
+        """
+        
+        sz = var.shape
+        if not sz[0] == self.Nz:
+            raise Exception, 'length of dimension 0 must equal %d (currently %d)'%(self.Nz,sz[0])
+        
+        if not len(sz)==3:
+            raise Exception, 'only 3-D arrays are supported.'
+          
+        if grid == 'rho':
+            h = self.h
+        elif grid == 'psi':
+            h = 0.5 (self.h[1:,1:] + self.h[0:-1,0:-1])
+        elif grid == 'u':
+            h = 0.5 (self.h[:,1:] + self.h[:,0:-1])
+        elif grid == 'v':
+            h = 0.5 (self.h[1:,:] + self.h[0:-1,:])
+            
+        z_w = get_depth(self.s_w,self.Cs_w,self.hc,h,Vtransform=self.Vtransform).squeeze()
+        
+        dz = np.diff(z_w,axis=0)
+        
+        return np.sum(dz*var,axis=0) / h
+        
+    def gradZ(self,var,grid='rho',cumulative=False):
+        """
+        Depth-gradient of data in variable, var (array [Nz, Ny, Nx])
+        
+        """
+        
+        sz = var.shape
+        if not sz[0] == self.Nz:
+            raise Exception, 'length of dimension 0 must equal %d (currently %d)'%(self.Nz,sz[0])
+        
+#        if not len(sz)==3:
+#            raise Exception, 'only 3-D arrays are supported.'
+          
+#        if grid == 'rho':
+#            h = self.h
+#        elif grid == 'psi':
+#            h = 0.5 (self.h[1:,1:] + self.h[0:-1,0:-1])
+#        elif grid == 'u':
+#            h = 0.5 (self.h[:,1:] + self.h[:,0:-1])
+#        elif grid == 'v':
+#            h = 0.5 (self.h[1:,:] + self.h[0:-1,:])
+
+        
+        h = self.h[self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]].squeeze()            
+        z_r = get_depth(self.s_rho,self.Cs_r,self.hc,h,Vtransform=self.Vtransform).squeeze()
+                
+        dz = np.diff(z_r,axis=0)
+        dz_mid = 0.5 * (dz[1:,...] + dz[0:-1,...]) # N-2
+        
+        var_mid =  0.5 * (var[1:,...] + var[0:-1,...])
+        
+        dv_dz = np.zeros(sz)
+        # 2-nd order mid-points
+        dv_dz[1:-1,...] = (var_mid[1:,...] - var_mid[0:-1,...]) / dz_mid
+        # 1st order end points
+        dv_dz[0,...] = (var[1,...] - var[0,...]) / dz[0,...]
+        dv_dz[-1,...] = (var[-1,...] - var[-2,...]) / dz[-1,...]
+        
+        return dv_dz
+
      
     def pcolor(self,data=None,titlestr=None,**kwargs):
         """
@@ -274,7 +485,7 @@ class ROMS(roms_grid):
         
         return p1
     
-    def contourf(self, data=None, VV=20, titlestr=None,**kwargs):
+    def contourf(self, data=None, clevs=20, titlestr=None,**kwargs):
         """
         contour plot of the data in variable
         """
@@ -290,7 +501,7 @@ class ROMS(roms_grid):
         fig = plt.gcf()
         ax = fig.gca()
         
-        p1 = plt.contourf(self.X,self.Y,data,VV,vmin=clim[0],vmax=clim[1],**kwargs)
+        p1 = plt.contourf(self.X,self.Y,data,clevs,vmin=clim[0],vmax=clim[1],**kwargs)
         
         ax.set_aspect('equal')
         plt.colorbar(p1)
@@ -307,6 +518,28 @@ class ROMS(roms_grid):
         p1 = plt.contour(self.lon_rho,self.lat_rho,self.h,clevs,**kwargs)
         
         return p1
+    
+    def getTstep(self,tstart,tend,timeformat='%Y%m%d.%H%M'):
+        """
+        Returns a vector of the time indices between tstart and tend
+        
+        tstart and tend can be string with format=timeformat ['%Y%m%d.%H%M' - default]
+        
+        Else tstart and tend can be datetime objects
+        """
+        
+        try:
+            t0 = datetime.strptime(tstart,timeformat)
+            t1 = datetime.strptime(tend,timeformat)
+        except:
+            # Assume the time is already in datetime format
+            t0 = tstart
+            t1 = tend
+                        
+        n1 = othertime.findNearest(t0,self.time)
+        n2 = othertime.findNearest(t1,self.time)
+        
+        return np.arange(n1,n2)
     
     def _genTitle(self,tstep):
         """
@@ -331,33 +564,40 @@ class ROMS(roms_grid):
         self.ycoord = C[1]
           
         if self.JRANGE==None:
-            self.JRANGE = [0,self[self.xcoord].shape[0]]
+            self.JRANGE = [0,self[self.xcoord].shape[0]+1]
         if self.IRANGE==None:
-            self.IRANGE = [0,self[self.xcoord].shape[1]]
+            self.IRANGE = [0,self[self.xcoord].shape[1]+1]
             
         # Check the dimension size
-        if self.JRANGE[1] > self[self.xcoord].shape[0]:
+        if self.JRANGE[1] > self[self.xcoord].shape[0]+1:
             print 'Warning JRANGE outside of size range. Setting equal size.'
-            self.JRANGE[1] = self[self.xcoord].shape[0]
+            self.JRANGE[1] = self[self.xcoord].shape[0]+1
             
-        if self.IRANGE[1] > self[self.xcoord].shape[1]:
+        if self.IRANGE[1] > self[self.xcoord].shape[1]+1:
             print 'Warning JRANGE outside of size range. Setting equal size.'
-            self.IRANGE[1] = self[self.xcoord].shape[1]
+            self.IRANGE[1] = self[self.xcoord].shape[1]+1
             
         self.X = self[self.xcoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
         self.Y = self[self.ycoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
             
         # Load the long_name and units from the variable
-        self.long_name = self.nc.variables[varname].long_name
+        try:
+            self.long_name = self.nc.variables[varname].long_name
+        except:
+            self.long_name = varname
+            
         self.units = self.nc.variables[varname].units
         
         # Set the grid type
         if self.xcoord[-3:]=='rho':
             self.gridtype='rho'
+            self.mask=self.mask_rho
         elif self.xcoord[-3:]=='n_u':
             self.gridtype='u'
+            self.mask=self.mask_u
         elif self.xcoord[-3:]=='n_v':
             self.gridtype='v'
+            self.mask=self.mask_v
     
     def _checkVertCoords(self,varname):
         """
@@ -451,8 +691,96 @@ class ROMS(roms_grid):
             self._checkCoords(value)
         else:
             self.__dict__[key]=value
+
             
+class roms_timeseries(ROMS):
+    """
+    Class for loading a timeseries object from ROMS model output
+    """
+    
+    IJ = False
+    varname = 'u'
+    zlayer=False
+    
+    def __init__(self,ncfile,XY,z=None,**kwargs):
+        """
+        Loads a time series from point X,Y. Set z = None (default) to load all layers
+        
+        if self.IJ = True, loads index X=I, Y=J directly
+        """
+        self.__dict__.update(kwargs)
+        self.XY = XY
+        self.z = z
+        
+        # Initialise the class
+        ROMS.__init__(self,ncfile,varname=self.varname,K=[-99])
+        
+        self.tstep = range(0,self.Nt) # Load all time steps
+        
+        self.update()
+        
+    def __call__(self):
+        
+        return self.TS
+        
+    def update(self):
+        """
+        Updates the class
+        """
+        # 
+        self._checkCoords(self.varname)
+        # Load  I and J indices from the coordinates
+        self.setIJ(self.XY)
+        
+        # Load the vertical coordinates
+        if not self.z == None:
+            self.zlayer = True
             
+        if self.zlayer == False:
+            self.Z = self.calcDepth()
+        else:
+            self.Z = self.z
+            
+        # Load the data into a time series object
+        self.TS = timeseries(self.time[self.tstep],self.loadData())
+        
+    def contourf(self,clevs=20,**kwargs):
+        """
+        z-t contour plot of the time series
+        """
+        h1 = plt.contourf(self.time[self.tstep],self.Z,self.TS.y.T,clevs,**kwargs)
+        
+        plt.colorbar()
+        
+        plt.xticks(rotation=17)
+        return h1
+        
+        
+    def setIJ(self,xy):
+        if self.IJ:
+            I0 = xy[0]
+            J0 = xy[1]
+        else:
+            ind = self.findNearset(xy[0],xy[1],grid=self.gridtype)
+            J0=ind[0][0]
+            I0=ind[0][1]
+            
+        self.JRANGE = [J0,J0+1]
+        self.IRANGE = [I0,I0+1]
+        
+    def __setitem__(self,key,value):
+        
+        if key == 'varname':
+            self.varname=value
+            self.update()
+            
+        elif key == 'XY':
+            self.XY = value
+            self.update()            
+        else:
+            self.__dict__[key]=value
+
+                            
 
 class roms_subset(roms_grid):
     """

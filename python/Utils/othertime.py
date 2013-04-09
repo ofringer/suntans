@@ -130,4 +130,28 @@ def findNearest(t,timevec):
 #    idx =  np.argwhere(timevec==tclose)
     
     return int(idx[0])
+
+def monthlyVector(startyr,endyr,startmth,endmth):
+    """
+    Returns two datetime vectors with start and end dates at the start and end of months
+    """
+    month=[]
+    year=[]
+
+    m0 = startmth
+    y0 = startyr
+    while m0  <= endmth or y0 <=  endyr:
+        month.append(m0)
+        year.append(y0)
+        if m0 == 12:
+            m0 = 1
+            y0 += 1
+        else:
+            m0 += 1
+            
+    time=[]
+    for mm,yy in zip(month,year):
+        time.append(datetime(yy,mm,1))
+               
     
+    return time[0:-1],time[1:]

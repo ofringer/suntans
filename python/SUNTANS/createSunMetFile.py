@@ -50,6 +50,8 @@ import netcdfio
 from maptools import ll2utm
 from getNARR import getNARR
 
+import pdb
+
 
 def interpWeatherStations(latlon,tstart,tend,dt,utmzone,dbfile, maxgap=40, showplot=False):
     """ Temporally interpolate weather station data onto a specified time grid"""
@@ -423,14 +425,18 @@ def narr2suntans(outfile,tstart,tend,bbox,utmzone):
     # Loop through each variable and store in a dictionary
     output = {}
     coords={}
+    
+    # Get all data
+    narrvars = [vv for vv in varlookup.itervalues()]
+    data = narr(narrvars) # This stores all of the data in a dictionary    
+    
     for vv in varlookup.keys():
-        
-        data = narr(varlookup[vv])
-        
+
         # Convert the units
-        data = data*meta[vv]['scalefactor']+meta[vv]['addoffset']    
+        vnarr = varlookup[vv]
+        data[vnarr] = data[vnarr]*meta[vv]['scalefactor']+meta[vv]['addoffset']    
         
-        output[vv] = {'Data':np.reshape(data,(narr.nt,Nc))}
+        output[vv] = {'Data':np.reshape(data[vnarr],(narr.nt,Nc))}
         
         output[vv].update({'long_name':meta[vv]['long_name'],'units':meta[vv]['units']})
         

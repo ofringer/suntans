@@ -51,16 +51,15 @@ class getNARR(object):
         
         self.getArraySize()
         
-    def __call__(self,varname):
+    def __call__(self,varnames):
         """
-        Call function to extract variable, "varname"
+        Call function to extract variables in list, "varnames"
         """
-        
-        self.getDimInfo(varname)
-        
-        return self.getDataPyDap(varname)
+
+        return self.getDataPyDap(varnames)
+        #return self.getData(varnames)
     
-    def getData(self,vv):
+    def getData(self,varnames):
         """
         Downloads the variable data using the NetCDF4 module
         
@@ -69,10 +68,16 @@ class getNARR(object):
         Safer to use pydap.
         """
         
-        if self.verbose:
-            print 'Retrieving variable: %s...'%vv
         
-        data = np.zeros((self.nt,self.ny,self.nx))
+        
+        data={}
+        self.nc = Dataset(self.grbfiles[0],'r')
+        for vv in varnames:
+            if self.verbose:
+                print 'Retrieving variable: %s dimension info...'%vv        
+            self.getDimInfo(vv)
+            data.update({vv:np.zeros((self.nt,self.ny,self.nx))})
+        self.nc.close()
         
         tt=-1
         for ff in self.grbfiles:
@@ -82,26 +87,34 @@ class getNARR(object):
                 
             nc = Dataset(ff,'r')
             
-            # get the height coordinate for 4D arrays
-            if self.ndim == 4:
-                 # dimension order [time, z, y, x]
-                data[tt,:,:] = nc.variables[vv][:,0,self.y1:self.y2,self.x1:self.x2]
-            elif self.ndim == 3:
-                data[tt,:,:] = nc.variables[vv][:,self.y1:self.y2,self.x1:self.x2]
+            for vv in varnames:
+                print vv
+                # get the height coordinate for 4D arrays
+                if self.ndim == 4:
+                     # dimension order [time, z, y, x]
+                    data[vv][tt,:,:] = nc.variables[vv][:,0,self.y1:self.y2,self.x1:self.x2]
+                elif self.ndim == 3:
+                    data[vv][tt,:,:] = nc.variables[vv][:,self.y1:self.y2,self.x1:self.x2]
                 
             nc.close()    
         
         return data
         
-    def getDataPyDap(self,vv):
+    def getDataPyDap(self,varnames):
         """
         Downloads the variable data using the pydap library
         """
         
-        if self.verbose:
-            print 'Retrieving variable: %s...'%vv
-        
-        data = np.zeros((self.nt,self.ny,self.nx))
+        data={}
+        dims={}
+        self.nc = Dataset(self.grbfiles[0],'r')
+        for vv in varnames:
+            if self.verbose:
+                print 'Retrieving variable: %s dimension info...'%vv        
+            self.getDimInfo(vv)
+            data.update({vv:np.zeros((self.nt,self.ny,self.nx))})
+            dims.update({vv:self.ndim})
+        self.nc.close()
         
         tt=-1
         for ff in self.grbfiles:
@@ -110,13 +123,15 @@ class getNARR(object):
                 print '     File: %s...'%ff
                 
             nc = open_url(ff)
-            
-            # get the height coordinate for 4D arrays
-            if self.ndim == 4:
-                 # dimension order [time, z, y, x]
-                data[tt,:,:] = nc[vv][:,0,self.y1:self.y2,self.x1:self.x2]
-            elif self.ndim == 3:
-                data[tt,:,:] = nc[vv][:,self.y1:self.y2,self.x1:self.x2]
+            for vv in varnames:
+                print vv
+                self.ndim  = dims[vv]
+                # get the height coordinate for 4D arrays
+                if self.ndim == 4:
+                     # dimension order [time, z, y, x]
+                    data[vv][tt,:,:] = nc[vv][:,0,self.y1:self.y2,self.x1:self.x2]
+                elif self.ndim == 3:
+                    data[vv][tt,:,:] = nc[vv][:,self.y1:self.y2,self.x1:self.x2]
                    
         
         return data
@@ -125,7 +140,8 @@ class getNARR(object):
         """
         Gets the variable dimension data
         """
-        nc = Dataset(self.grbfiles[0],'r')
+       
+        nc = self.nc
         self.dimdata = nc.variables[vv].dimensions
         self.ndim  = nc.variables[vv].ndim
         
@@ -135,7 +151,6 @@ class getNARR(object):
             self.z = nc.variables[self.dimdata[1]][0]
         else:
             self.z=0.0
-        nc.close()
     
     def getArraySize(self):
         

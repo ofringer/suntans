@@ -21,7 +21,7 @@ import time
 import matplotlib.pyplot as plt
 
 # testing stuff
-#import pdb
+import pdb
 #import sunpy
 
 class interpXYZ(object):
@@ -220,6 +220,7 @@ class Inputs(object):
             LL,self.Zin = read_xyz_gz(self.infile)
         elif self.infile[-3:] in ['txt','dat']:
             LL,self.Zin = read_xyz(self.infile)
+            self.Zin = np.ravel(self.Zin)
         elif self.infile[-3:]=='shp':
             LL,self.Zin = readShpBathy(self.infile,FIELDNAME='contour')
         elif self.infile[-3:]=='.nc':
@@ -232,7 +233,6 @@ class Inputs(object):
             self.Zin = np.ravel(self.Zin)
         
         self.npt = len(LL)
-        
         
         if self.convert2utm:                     
             # Convert the coordinates

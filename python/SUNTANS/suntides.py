@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import netcdfio
 from sunpy import Spatial, unsurf
 import uspectra
-from timeseries import timeseries
+from timeseries import timeseries, harmonic_fit
 from suntans_ugrid import ugrid
 import othertime
 
@@ -38,66 +38,97 @@ class suntides(Spatial):
         
         self.__dict__.update(kwargs)
         
-        # Get the tidal fruequencies
-        if self.frqnames == None:
-			# This returns the default frequencies from the uspectra class
-            self.frq,self.frqnames = uspectra.getTideFreq(Fin=None)
-        else:
-            self.frq,self.frqnames = uspectra.getTideFreq(Fin=self.frqnames)
-            
-        self.Ntide = len(self.frqnames)
-        
-        self.reftime = datetime(self.baseyear,1,1)
-        
         Spatial.__init__(self,ncfile,**kwargs)
         
-        self.Nt = len(self.time)
+        if self.hasDim('Ntide'):
+            print 'Loading existing harmonic data...'
+            self._loadVars()
+            
+        else:
+            # Get the tidal fruequencies
+            if self.frqnames == None:
+    			# This returns the default frequencies from the uspectra class
+                self.frq,self.frqnames = uspectra.getTideFreq(Fin=None)
+            else:
+                self.frq,self.frqnames = uspectra.getTideFreq(Fin=self.frqnames)
+                
+            self.Ntide = len(self.frqnames)
+            
+            self.reftime = datetime(self.baseyear,1,1)
+                
+            self.Nt = len(self.time)
         
-    def __call__(self,tsteps):
+    def __call__(self,tstart,tend,varnames=['eta','u','v']):
         """
         Actually does the harmonic calculation for the model time steps in tsteps
         (or at least calls the class that does the calculation)
         
-        Set tsteps = -1 to do all steps
+        Set tstart = -1 to do all steps
         """
-        if tsteps == -1:
+        if tstart == -1:
             self.tstep=np.arange(0,self.Nt,1)
         else:
-            self.tstep=tsteps
+            self.tstep=self.getTstep(tstart,tend)
         
-        # Load all of the time steps into memory
-        self.loadData()
+        self.varnames=varnames
+        self._prepDict(varnames)
         
-        # Initialize the amplitude and phase arrays
-        self.Amp = np.zeros((self.Nc,self.Ntide))
-        self.Phs = np.zeros((self.Nc,self.Ntide))
+        for vv in varnames:
+            ndim = self._returnDim(vv)
+            self.variable=vv
+            if ndim  == 2 or self.Nkmax==1:
+                self.loadData()
+                print 'Performing harmonic fit on variable, %s...'%(self.variable)
+                self.Amp[vv], self.Phs[vv] = harmonic_fit(self.time[self.tstep],self.data,self.frq,phsbase=self.reftime)
+                
+            elif ndim == 3:
+                for k in range(self.Nkmax):
+                    self.klayer=[k]
+                    self.loadData()
+                    print 'Performing harmonic fit on variable, %s, layer = %d...'%(self.variable,self.klayer[0])
+                    self.Amp[vv][:,k,:], self.Phs[vv][:,k,:] = harmonic_fit(self.time[self.tstep],self.data,self.frq,phsbase=self.reftime)
         
-        # Initialise the harmonic object. This object does all of the work...
-        t=self.time[self.tstep]
-        U = uspectra.uspectra(t,self.data[:,0],frq=self.frq,method='lsqfast')
+    def _prepDict(self,varnames):
+        """
+        Prepare the output dictionary
+        """
+        self.Amp = {}
+        self.Phs = {}
+        for vv in varnames:
+            ndim = self._returnDim(vv)
+            if ndim == 2:
+                self.Amp.update({vv:np.zeros((self.Ntide,self.Nc))})
+                self.Phs.update({vv:np.zeros((self.Ntide,self.Nc))})
+            elif ndim == 3:
+                self.Amp.update({vv:np.zeros((self.Ntide,self.Nkmax,self.Nc))})
+                self.Phs.update({vv:np.zeros((self.Ntide,self.Nkmax,self.Nc))})
+    
+    def _returnDim(self,varname):
         
-        # Loop through all grid cells
-        print
-        printstep = 5 
-        printstep0 = 0
-        print 'Calculating tidal harmonics for variable: "%s"\nTimerange: %s to %s (%d time points)'%\
-        (self.variable,datetime.strftime(t[0],'%Y-%m-%d'),datetime.strftime(t[-1],'%Y-%m-%d'),len(self.tstep))
-        for ii in range(self.Nc):
-            perccomplete = float(ii)/float(self.Nc)*100.0
-            if perccomplete > printstep0:
-                print '%d %% complete...'%(int(perccomplete))
-                printstep0+=printstep
-				
-            # Update the 'y' data in the grid class. This invokes a harmonic fit    
-            U['y'] = self.data[:,ii]
-			
-			# Calculate the phase and amplitude. Note that the phase is offset to self.reftime
-            self.Amp[ii,:],self.Phs[ii,:] = U.phsamp(phsbase=self.reftime)
-			
-        print '100% complete.'
-
-
-    def plotAmp(self,con='M2',xlims=None,ylims=None,**kwargs):
+        return self.nc.variables[varname].ndim 
+        
+    def _loadVars(self):
+        """
+        
+        """
+        self.frq = self.nc.variables['omega'][:]
+        self.frqnames = self.nc.Constituent_Names.split()
+        
+        varlist = ['eta','u','v','w','T','S','rho']
+        self.Amp={}
+        self.Phs={}
+        for vv in varlist:
+            name = vv+'_amp'
+            if self.hasVar(name):
+                print 'Loading %s harmonic data...'%(vv)
+                self.Amp.update({vv:self.nc.variables[name][:]})
+                
+            name = vv+'_phs'
+            if self.hasVar(name):
+                self.Phs.update({vv:self.nc.variables[name][:]})
+                
+        
+    def plotAmp(self,vname='eta',k=0,con='M2',xlims=None,ylims=None,**kwargs):
         """
         Plots the amplitude of the constituent on a map
         """
@@ -111,13 +142,18 @@ class suntides(Spatial):
             xlims=self.xlims 
             ylims=self.ylims
             
-        self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.Amp[:,ii],xlim=xlims,ylim=ylims,\
+        if len(self.Amp[vname].shape)==2:
+            zA = self.Amp[vname][ii,:]
+        else:
+            zA = self.Amp[vname][ii,k,:].ravel()
+            
+        self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zA,xlim=xlims,ylim=ylims,\
                 clim=self.clim,**kwargs)
         
-        titlestr='%s Amplitude\n%s [%s]'%(self.frqnames[ii],self.long_name,self.units)
-        plt.title(titlestr)
+        #titlestr='%s Amplitude\n%s [%s]'%(self.frqnames[ii],self.long_name,self.units)
+        #plt.title(titlestr)
         
-    def plotPhs(self,con='M2',phsunits='radians',xlims=None,ylims=None,**kwargs):
+    def plotPhs(self,vname='eta',k=0,con='M2',phsunits='radians',xlims=None,ylims=None,**kwargs):
         """
         Plots the phase of the constituent on a map
         """
@@ -127,20 +163,25 @@ class suntides(Spatial):
             xlims=self.xlims 
             ylims=self.ylims
             
+        if len(self.Phs[vname].shape)==2:
+            zP = self.Phs[vname][ii,:]
+        else:
+            zP = self.Phs[vname][ii,k,:].ravel()
+            
         if phsunits=='radians':
             clim = [0,2*np.pi]
-            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.Phs[:,ii],xlim=xlims,ylim=ylims,\
+            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zP,xlim=xlims,ylim=ylims,\
                 clim=clim,**kwargs)
                 
         elif phsunits=='degrees':
             clim = [0,360.0]
-            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,self.Phs[:,ii]*180/np.pi,xlim=xlims,ylim=ylims,\
+            self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zP*180/np.pi,xlim=xlims,ylim=ylims,\
                 clim=clim,**kwargs)
         
-        titlestr='%s Phase\n%s [%s]'%(self.frqnames[ii],self.long_name,phsunits)
-        plt.title(titlestr)
+        #titlestr='%s Phase\n%s [%s]'%(self.frqnames[ii],self.long_name,phsunits)
+        #plt.title(titlestr)
         
-    def coRangePlot(self, con='M2', clevs=20, phsint=1800.0,xlims=None,ylims=None, **kwargs):
+    def coRangePlot(self,vname ='eta', k=0, con='M2', clevs=20, phsint=1800.0,xlims=None,ylims=None, **kwargs):
         """
         Contour plot of amplitude and phase on a single plot
         
@@ -154,6 +195,13 @@ class suntides(Spatial):
             
         ii = findCon(con,self.frqnames)
         
+        if len(self.Amp[vname].shape)==2:
+            zA = self.Amp[vname][ii,:]
+            zP = self.Phs[vname][ii,:]
+        else:
+            zA = self.Amp[vname][ii,k,:].ravel()
+            zP = self.Phs[vname][ii,k,:].ravel()
+        
         # Create a matplotlib triangulation to contour the data       
         t =tri.Triangulation(self.xp,self.yp,self.cells)
         
@@ -163,11 +211,11 @@ class suntides(Spatial):
         
         # Amplitude plot (note that the data must be on nodes for tricontourf)
         V = np.linspace(self.clim[0],self.clim[1],clevs)
-        camp = plt.tricontourf(t, self.cell2node(self.Amp[:,ii]), V, **kwargs)
+        camp = plt.tricontourf(t, self.cell2node(zA), V, **kwargs)
         
         # Phase Plot
         Vphs = np.arange(0,2*np.pi,self.frq[ii]*phsint) # Phase contour lines
-        cphs = plt.tricontour(t, self.cell2node(self.Phs[:,ii]), Vphs,colors='k',linewidths=2.0)
+        cphs = plt.tricontour(t, self.cell2node(zP), Vphs,colors='k',linewidths=2.0)
                 
         ax.set_aspect('equal')
         ax.set_xlim(xlims)
@@ -178,6 +226,61 @@ class suntides(Spatial):
         #titlestr='%s Amplitude\n%s [%s]\nPhase contours interval: %3.1f hr'%(self.frqnames[ii],self.long_name,self.units,phsint/3600.)
         titlestr='%s Amplitude\nPhase contour interval: %3.1f hr'%(self.frqnames[ii],phsint/3600.)
         plt.title(titlestr)
+    
+    def tides2nc(self,outfile):
+        """
+        Saves the tidal harmonic data to netcdf
+        """
+        
+        # Write the grid variables
+        self.writeNC(outfile)
+
+        nc = Dataset(outfile,'a')
+        
+        nc.Title = 'SUNTANS harmonic output'
+        nc.Constituent_Names = ' '.join(self.frqnames)
+        reftime = datetime.strftime(self.reftime,'%Y-%m-%d %H:%M:%S')
+        nc.ReferenceDate = reftime
+        nc.SimulationTime = '%s - %s'%(datetime.strftime(self.time[self.tstep[0]],'%Y-%m-%d %H:%M:%S'),datetime.strftime(self.time[self.tstep[-1]],'%Y-%m-%d %H:%M:%S'))
+        # Add another dimension
+        nc.createDimension('Ntide', self.Ntide)
+        
+        
+        nc.close()
+        
+        # Create the output variables
+        for vv in self.varnames:
+            print 'Creating variable: %s'%vv
+
+            ndim = self._returnDim(vv)
+            if ndim == 2:
+                dims = ('Ntide','Nc')
+            elif ndim == 3:
+                dims = ('Ntide','Nk','Nc')
+                
+            name = vv+'_amp'
+            longname = '%s - harmonic amplitude'%vv
+            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':self.nc.variables[vv].units},\
+                dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
+                
+            name = vv+'_phs'
+            longname = '%s - harmonic phase'%vv
+            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':'radians','reference_time':reftime},\
+                dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
+        
+        self.create_nc_var(outfile,'omega', ('Ntide',), {'long_name':'frequency','units':'rad s-1'})
+        
+        nc = Dataset(outfile,'a')
+        nc.variables['omega'][:]=self.frq
+        
+        for vv in self.varnames:
+            name = vv+'_amp'
+            nc.variables[name][:]=self.Amp[vv]
+            name = vv+'_phs'
+            nc.variables[name][:]=self.Phs[vv]
+        nc.close()        
+        
+        print 'Completed writing harmonic output to:\n   %s'%outfile
 
 class sunfilter(Spatial):
     """

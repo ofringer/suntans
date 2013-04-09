@@ -560,10 +560,12 @@ class Spatial(Grid):
             self.j=np.arange(0,self.Nc) # Grid cell number for time series
         
         # Load the time variable
-        self.loadTime()
-        
-        # Update tstep 
-        self.updateTstep()
+        try:
+            self.loadTime()
+            # Update tstep 
+            self.updateTstep()
+        except:
+            print 'No time variable.'
         
         # Check the j index
         self.j = self.checkIndex()
@@ -614,7 +616,7 @@ class Spatial(Grid):
         
         self.mask = self.data==fillval
         self.data[self.mask]=0.
-        
+        self.data = self.data.squeeze()
         return self.data
         
         
@@ -1027,6 +1029,26 @@ class Spatial(Grid):
             print 'Nearest cell: %d, xv[%d]: %6.10f, yv[%d]: %6.10f'%(j,j,self.xv[j],j,self.yv[j])
             #self.j = j.copy()
 	    return j
+     
+    def hasVar(self,varname):
+        """
+        Tests if a variable exists in the file
+        """
+        try:
+            self.nc.variables[varname][0]
+            return True
+        except:
+            return False
+
+    def hasDim(self,dimname):
+        """
+        Tests if a dimension  exists in the file
+        """
+        try:
+            self.nc.dimensions[dimname].__len__()
+            return True
+        except:
+            return False
      
     def __del__(self):
         self.nc.close()
