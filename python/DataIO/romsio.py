@@ -416,6 +416,26 @@ class ROMS(roms_grid):
         
         return np.sum(dz*var,axis=0) / h
         
+    def areaInt(self,var,grid='rho'):
+        """
+        Calculate the area integral of var
+        """
+        if grid == 'rho':
+            dx = 1.0/self.pm
+            dy = 1.0/self.pn
+        elif grid == 'psi':
+            dx = 1.0/(0.5*(self.pm[1:,1:] + self.pm[0:-1,0:-1]))
+            dy = 1.0/(0.5*(self.pn[1:,1:] + self.pn[0:-1,0:-1]))
+        elif grid == 'u':
+            dx = 1.0/(0.5 * (self.pm[:,1:] + self.pm[:,0:-1]))
+            dy = 1.0/(0.5 * (self.pn[:,1:] + self.pn[:,0:-1]))
+        elif grid == 'v':
+            dx = 0.5 * (self.pm[1:,:] + self.pm[0:-1,:])
+            dy = 0.5 * (self.pn[1:,:] + self.pn[0:-1,:])
+            
+        A = dx*dy
+        return np.sum(var*A)
+        
     def gradZ(self,var,grid='rho',cumulative=False):
         """
         Depth-gradient of data in variable, var (array [Nz, Ny, Nx])
@@ -423,6 +443,7 @@ class ROMS(roms_grid):
         """
         
         sz = var.shape
+        print sz
         if not sz[0] == self.Nz:
             raise Exception, 'length of dimension 0 must equal %d (currently %d)'%(self.Nz,sz[0])
         
@@ -456,7 +477,66 @@ class ROMS(roms_grid):
         
         return dv_dz
 
-     
+    def MLD(self,tstep,thresh=-0.006,z_max=-20.0):
+        """
+        Mixed layer depth calculation
+        
+        thresh is the density gradient threshold
+        z_max is the min mixed layer depth 
+        """
+        
+        # Load the density data
+        self.K=[-99]
+        
+        drho_dz=self.gradZ(self.loadData(varname='rho',tstep=tstep))
+        
+        # Mask drho_dz where z >= z_max
+        z = self.calcDepth()
+        mask = z >= z_max
+        
+        drho_dz[mask] = 0.0
+        #
+        
+        mld_ind = np.where(drho_dz <= thresh)
+        
+        zout = -99999.0*np.ones(z.shape)
+        zout[mld_ind[0],mld_ind[1],mld_ind[2]] = z[mld_ind[0],mld_ind[1],mld_ind[2]]
+        
+        mld = np.max(zout,axis=0)
+        
+        # Isoslice averages when there is more than one value
+        #mld = isoslice(z,drho_dz,thresh)
+        
+        mld = np.max([mld,-self.h],axis=0)
+        
+        return mld
+
+    def MLDmask(self,mld,grid='rho'):
+        """
+        Compute a 3D mask for variables beneath the mixed layer
+        """
+        if grid == 'rho':
+            h = self.h
+        elif grid == 'psi':
+            h = 0.5 * (self.h[1:,1:] + self.h[0:-1,0:-1])
+        elif grid == 'u':
+            h = 0.5 * (self.h[:,1:] + self.h[:,0:-1])
+        elif grid == 'v':
+            h = 0.5 * (self.h[1:,:] + self.h[0:-1,:])
+            
+        z = get_depth(self.s_rho,self.Cs_r,self.hc,h,Vtransform=self.Vtransform).squeeze()
+        
+        mask = np.zeros(z.shape)
+        for jj in range(mld.shape[0]):
+            for ii in range(mld.shape[1]):
+                ind = z[:,jj,ii] >= mld[jj,ii]
+                if np.size(ind)>0:
+                    mask[ind,jj,ii]=1.0
+        
+        return mask
+        
+        
+
     def pcolor(self,data=None,titlestr=None,**kwargs):
         """
         Pcolor plot of the data in variable
@@ -693,7 +773,7 @@ class ROMS(roms_grid):
             self.__dict__[key]=value
 
             
-class roms_timeseries(ROMS):
+class roms_timeseries(ROMS, timeseries):
     """
     Class for loading a timeseries object from ROMS model output
     """
@@ -719,9 +799,6 @@ class roms_timeseries(ROMS):
         
         self.update()
         
-    def __call__(self):
-        
-        return self.TS
         
     def update(self):
         """
@@ -742,7 +819,7 @@ class roms_timeseries(ROMS):
             self.Z = self.z
             
         # Load the data into a time series object
-        self.TS = timeseries(self.time[self.tstep],self.loadData())
+        timeseries.__init__(self,self.time[self.tstep],self.loadData())
         
     def contourf(self,clevs=20,**kwargs):
         """

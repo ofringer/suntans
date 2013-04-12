@@ -467,7 +467,7 @@ class Boundary(object):
         self.fig.savefig(outfile,dpi=dpi)
         print 'Boundary condition image saved to file:%s'%outfile
     
-    def roms2boundary(self,romsfile,setUV=False):
+    def roms2boundary(self,romsfile,setUV=False,seth=False):
         """
         Interpolates ROMS data onto the type-3 boundary cells
         
@@ -478,10 +478,12 @@ class Boundary(object):
         roms = romsio.roms_interp(romsfile,self.xv,self.yv,-self.z,self.time)
         
         h, T, S, uc, vc = roms.interp()
-        
-        self.h+=h
+
         self.T+=T
         self.S+=S
+        
+        if seth:
+            self.h+=h
         if setUV:
             self.uc+=uc
             self.vc+=vc
@@ -548,7 +550,7 @@ class InitialCond(Grid):
         self.S = np.zeros((1,self.Nkmax,self.Nc))
         self.h = np.zeros((1,self.Nc))
         
-    def roms2ic(self,romsfile,setUV=False):
+    def roms2ic(self,romsfile,setUV=False,seth=False):
         """
         Interpolates ROMS data onto the SUNTANS grid
         """
@@ -562,6 +564,8 @@ class InitialCond(Grid):
         if not setUV:
             self.uc *= 0 
             self.vc *= 0
+        if not seth:
+            self.h *= 0
     
     def writeNC(self,outfile):
         """

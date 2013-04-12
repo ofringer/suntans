@@ -508,6 +508,11 @@ class Grid(object):
             if self.__dict__.has_key(vv):
                 print 'Writing variables: %s'%vv
                 write_nc_var(self[vv],vv,ugrid[vv]['dimensions'],ugrid[vv]['attributes'],dtype=ugrid[vv]['dtype'])
+            
+            # Special treatment for "def"
+            if vv == 'def' and self.__dict__.has_key('DEF'):
+                print 'Writing variables: %s'%vv
+                write_nc_var(self['DEF'],vv,ugrid[vv]['dimensions'],ugrid[vv]['attributes'],dtype=ugrid[vv]['dtype'])
 
         nc.close()
 
@@ -580,7 +585,10 @@ class Spatial(Grid):
             variable=self.variable
             
         nc = self.nc
-        self.long_name = nc.variables[variable].long_name
+        try:
+            self.long_name = nc.variables[variable].long_name
+        except:
+            self.long_name = ''
         self.units= nc.variables[variable].units
         #        ndims = len(nc.variables[variable].dimensions)
         ndim = nc.variables[variable].ndim
@@ -968,7 +976,7 @@ class Spatial(Grid):
         self.variable='w'
         self.loadData()
         w=self.data.copy()
-        
+                
         self.variable=tmpvar
         # Reload the original variable data
         self.loadData()
@@ -1050,6 +1058,58 @@ class Spatial(Grid):
         except:
             return False
      
+    def strain(self):
+        """
+        Calculate the horizontal component of strain (e_12)
+        """
+        
+        u,v,w = self.getVector()
+            
+        sz = u.shape
+         
+        if len(sz)==1: # One layer
+            du_dx,du_dy = self.gradH(u,k=self.klayer[0])
+            dv_dx,dv_dy = self.gradH(v,k=self.klayer[0])
+            
+            data = du_dy + dv_dx
+            
+        else: # 3D
+            data = np.zeros(sz)
+            
+            for k in self.klayer:
+                du_dx,du_dy = self.gradH(u[:,k],k=k)
+                dv_dx,dv_dy = self.gradH(v[:,k],k=k)
+            
+                data[:,k] = du_dy + dv_dx
+                
+        return data
+        
+    def vorticity(self):
+        """
+        Calculate the vertical vorticity
+        """
+        
+        u,v,w = self.getVector()
+            
+        sz = u.shape
+         
+        if len(sz)==1: # One layer
+            du_dx,du_dy = self.gradH(u,k=self.klayer[0])
+            dv_dx,dv_dy = self.gradH(v,k=self.klayer[0])
+            
+            data = dv_dx - du_dy
+            
+        else: # 3D
+            data = np.zeros(sz)
+            
+            for k in self.klayer:
+                du_dx,du_dy = self.gradH(u[:,k],k=k)
+                dv_dx,dv_dy = self.gradH(v[:,k],k=k)
+            
+                data[:,k] = dv_dx - du_dy
+                
+        return data
+        
     def __del__(self):
         self.nc.close()
         
