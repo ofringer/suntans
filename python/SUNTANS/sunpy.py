@@ -15,6 +15,7 @@ import os, time, getopt, sys
 from scipy import spatial
 import othertime
 from suntans_ugrid import ugrid
+from timeseries import timeseries
 import operator
 
 import matplotlib.pyplot as plt
@@ -1137,6 +1138,39 @@ class Spatial(Grid):
                 
         return titlestr
 
+class TimeSeries(timeseries, Spatial):
+    """
+    Time series class for suntans output
+    """    
+    
+    def __init__(self,ncfile,XY,**kwargs):
+        
+        Spatial.__init__(self,ncfile,**kwargs)
+        
+        self.XY = XY
+        self.tstep = range(0,len(self.time)) # Load all time steps
+        
+        self.update()
+        
+    def update(self):
+        
+        dist, self.j = self.findNearest(self.XY)
+        
+        timeseries.__init__(self,self.time[self.tstep],self.loadData())
+    
+    def __setitem__(self,key,value):
+        
+        if key == 'variable':
+            self.variable=value
+            self.update()
+            
+        elif key == 'XY':
+            self.XY = value
+            self.update()            
+        else:
+            self.__dict__[key]=value
+        
+        
                   
 class Profile(object):
     """

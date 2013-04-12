@@ -427,7 +427,11 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
         ts.y = yfilt.copy()
     
     if output_meta:
-        meta = {'longitude':data[0]['longitude'],'latitude':data[0]['latitude'],'elevation':data[0]['elevation']}
+        if data[0].has_key('elevation'):
+            ele = data[0]['elevation']
+        else:
+            ele = 0.0
+        meta = {'longitude':data[0]['longitude'],'latitude':data[0]['latitude'],'elevation':ele,'StationName':query['StationName'][0]}
         return ts, meta        
     else:
         return ts
