@@ -613,6 +613,11 @@ class Spatial(Grid):
                         i+=1
                         data=nc.variables[variable][t,klayer,self.j]
                         self.data[i,:] = data[self.Nk[self.j],self.j]
+            elif self.klayer[0]==-99: # Grab all layers
+                klayer = np.arange(0,self.Nkmax) 
+                self.data=nc.variables[variable][self.tstep,klayer,self.j]
+                
+            
             else:
                 klayer = self.klayer
                 self.data=nc.variables[variable][self.tstep,klayer,self.j]
@@ -675,7 +680,7 @@ class Spatial(Grid):
              plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[0,1::subsample],v[0,1::subsample],scale=scale,scale_units='xy')
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
-    def contourf(self, clevs=20,z=None,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
+    def contourf(self, clevs=20,z=None,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,titlestr=None,**kwargs):
         """
         Filled contour plot of  unstructured grid data
         """
@@ -715,7 +720,8 @@ class Spatial(Grid):
         
         axcb = fig.colorbar(camp)
         
-        plt.title(self.__genTitle())
+        if titlestr==None:
+            plt.title(self.__genTitle())
             
         if vector_overlay:
              u,v,w = self.getVector()
@@ -864,13 +870,12 @@ class Spatial(Grid):
         """
         Save the animation object to an mp4 movie
         """
-        
-        #try:
-	print 'Building animation sequence...'
-	self.anim.save(outfile, fps=15,bitrate=3600)
-	print 'Complete - animation saved to: %s'%outfile
-        #except:
-        #    print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
+        try:
+            print 'Building animation sequence...'
+            self.anim.save(outfile, fps=15,bitrate=3600)
+            print 'Complete - animation saved to: %s'%outfile
+        except:
+            print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
             
     def animateVTK(self,figsize=(640,480),vector_overlay=False,scale=1e-3,subsample=1):
         """
@@ -1143,20 +1148,46 @@ class TimeSeries(timeseries, Spatial):
     Time series class for suntans output
     """    
     
-    def __init__(self,ncfile,XY,**kwargs):
+    def __init__(self,ncfile,XY,Z=None,**kwargs):
         
         Spatial.__init__(self,ncfile,**kwargs)
         
         self.XY = XY
+        if not Z==None:
+            self.Z = np.abs(Z)
+        else:
+            self.Z=Z
         self.tstep = range(0,len(self.time)) # Load all time steps
         
         self.update()
         
     def update(self):
         
+        # Update the j position
         dist, self.j = self.findNearest(self.XY)
         
+        # Find the klayer
+        if self.Z == None:
+            self.klayer = [-99]
+        else:
+            self.klayer = self.findNearestZ(self.Z)
+                             
         timeseries.__init__(self,self.time[self.tstep],self.loadData())
+        
+    def contourf(self,clevs=20,**kwargs):
+        """
+        Filled contour plot
+        """
+        h1=plt.contourf(self.time,-self.z_r,self.y.T,clevs,**kwargs)
+        plt.xticks(rotation=17)        
+        return h1
+        
+        
+    def findNearestZ(self,Z):
+        
+        dist = np.abs(Z-self.z_r)
+        
+        return np.where(dist == dist.min())[0].tolist()
     
     def __setitem__(self,key,value):
         
@@ -1166,7 +1197,10 @@ class TimeSeries(timeseries, Spatial):
             
         elif key == 'XY':
             self.XY = value
-            self.update()            
+            self.update()   
+        elif key == 'Z':
+            self.Z = np.abs(value)
+            self.update()
         else:
             self.__dict__[key]=value
         

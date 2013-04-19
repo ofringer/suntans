@@ -337,40 +337,49 @@ def harmonic_fit(t,X,frq,mask=None,axis=0,phsbase=None):
     else:
         mask = np.ones((lenX,))
     
-    # Resize the frequency array (this may need to go)
-    frq=np.asarray(frq) 
-    Nfrq = frq.shape[axis]
-    sz0 = frq.shape
-    if len(sz0)>1:
-        frq = frq.swapaxes(0, axis)
-        szf = frq.shape
-        lenf = np.prod(szf[1:])
-        if not lenf == lenX:
-            raise 'the size of the non-varying array X must equal the size of frq'
-        
-        frq = np.reshape(frq,(szf[0],lenf))
-    else:
-        frq = np.repeat(frq,lenX)
-        frq = np.reshape(frq,(Nfrq,lenX))
-     
+    frq = np.array(frq)
+    Nfrq = frq.shape[0]
+    
     # Initialize the amplitude and phase arrays
     Amp = np.zeros((Nfrq,lenX))
     Phs = np.zeros((Nfrq,lenX))
     
-    # Initialise the harmonic object. This object does all of the work...
-    U = uspectra(t,X[:,0],frq=frq[:,0],method='lsqfast')
-    
-    for ii in range(0,lenX):
-        
-        if mask[ii]==True:
-            # Update the 'y' data in the grid class. This invokes a harmonic fit 
+    def buildA(t,frq):
+        """
+        Construct matrix A
+        """
+        nt=t.shape[0]
+        nf=frq.shape[0]
+        nff=nf*2+1
+        A=np.ones((nt,nff))
+        for ff in range(0,nf):
+            A[:,ff*2+1]=np.cos(frq[ff]*t)
+            A[:,ff*2+2]=np.sin(frq[ff]*t)
             
-            U.frq = frq[:,ii]
-            U['y'] = X[:,ii]
-    			
-            # Calculate the phase and amplitude
-            Amp[:,ii], Phs[:,ii] = U.phsamp(phsbase=phsbase)
+        return A
+    
+    def lstsqnumpy(A,y):    
+        # Solve the least square problem
+        b = np.linalg.lstsq(A,y)
         
+        A = b[0][1::2]
+        B = b[0][2::2]
+        
+        return A+1j*B
+    
+    def phsamp(C):
+        return np.abs(C), np.angle(C)
+        
+    # Least-squares matrix approach
+    A = buildA(t,frq)
+    for ii in range(0,lenX):    
+        if mask[ii]==True: 
+            C = lstsqnumpy(A,X[:,ii])
+            # Calculate the phase and amplitude
+            am, ph= phsamp(C)
+            Amp[:,ii] = am; Phs[:,ii] = ph
+            
+    
     # reshape the array
     Amp = np.reshape(Amp,(Nfrq,)+sz[1:])
     Phs = np.reshape(Phs,(Nfrq,)+sz[1:])

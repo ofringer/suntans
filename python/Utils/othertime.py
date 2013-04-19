@@ -118,18 +118,20 @@ def findNearest(t,timevec):
     
     idx = np.argwhere(tdist == tdist.min())
     
-#    return idx, tdist[idx]
-
-#    tclose =  min (timevec, key=lambda x: abs (x-t))[0]
-#    try:
-#        tclose =  min (timevec, key=lambda x: abs (x-t))[0]
-#    except:
-#        timevec = timevec.tolist()
-#        tclose =  min (timevec, key=lambda x: abs (x-t))[0]
-        
-#    idx =  np.argwhere(timevec==tclose)
-    
     return int(idx[0])
+    
+def findGreater(t,timevec):
+    """
+    Return the index from timevec the first time step greater than t. 
+    """
+    tnow = SecondsSince(t)
+    tvec = SecondsSince(timevec)
+    
+    idx = np.where(tvec > tnow)
+    if len(idx)>0:
+        return idx[0][0]
+    else:
+        return None
 
 def monthlyVector(startyr,endyr,startmth,endmth):
     """
