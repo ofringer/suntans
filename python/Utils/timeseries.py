@@ -340,9 +340,7 @@ def harmonic_fit(t,X,frq,mask=None,axis=0,phsbase=None):
     frq = np.array(frq)
     Nfrq = frq.shape[0]
     
-    # Initialize the amplitude and phase arrays
-    Amp = np.zeros((Nfrq,lenX))
-    Phs = np.zeros((Nfrq,lenX))
+
     
     def buildA(t,frq):
         """
@@ -359,33 +357,46 @@ def harmonic_fit(t,X,frq,mask=None,axis=0,phsbase=None):
         return A
     
     def lstsqnumpy(A,y):    
-        # Solve the least square problem
-        b = np.linalg.lstsq(A,y)
+        """    
+        Solve the least square problem
         
+        Return:
+            the complex amplitude 
+            the mean
+        """
+        N=A.shape[1]
+        b = np.linalg.lstsq(A,y)
         A = b[0][1::2]
         B = b[0][2::2]
         
-        return A+1j*B
+        return A+1j*B, b[0][0::N]
     
     def phsamp(C):
         return np.abs(C), np.angle(C)
         
     # Least-squares matrix approach
     A = buildA(t,frq)
-    for ii in range(0,lenX):    
-        if mask[ii]==True: 
-            C = lstsqnumpy(A,X[:,ii])
-            # Calculate the phase and amplitude
-            am, ph= phsamp(C)
-            Amp[:,ii] = am; Phs[:,ii] = ph
+    C, C0 = lstsqnumpy(A,X) # This works on all columns of X!!
+    Amp, Phs= phsamp(C)
+    
+    # Non-vectorized method (~20x slower)
+#    Amp = np.zeros((Nfrq,lenX))
+#    Phs = np.zeros((Nfrq,lenX))
+#    for ii in range(0,lenX):    
+#        if mask[ii]==True: 
+#            C = lstsqnumpy(A,X[:,ii])
+#            # Calculate the phase and amplitude
+#            am, ph= phsamp(C)
+#            Amp[:,ii] = am; Phs[:,ii] = ph
             
     
     # reshape the array
     Amp = np.reshape(Amp,(Nfrq,)+sz[1:])
     Phs = np.reshape(Phs,(Nfrq,)+sz[1:])
+    C0 = np.reshape(C0,sz[1:])
     
     # Output back along the original axis
-    return Amp.swapaxes(axis,0), Phs.swapaxes(axis,0)
+    return Amp.swapaxes(axis,0), Phs.swapaxes(axis,0), C0.swapaxes(axis,0)
     
 def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=3600.0,output_meta=False):
     """

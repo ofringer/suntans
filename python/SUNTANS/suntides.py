@@ -58,7 +58,7 @@ class suntides(Spatial):
                 
             self.Nt = len(self.time)
         
-    def __call__(self,tstart,tend,varnames=['eta','u','v']):
+    def __call__(self,tstart,tend,varnames=['eta','uc','vc']):
         """
         Actually does the harmonic calculation for the model time steps in tsteps
         (or at least calls the class that does the calculation)
@@ -70,6 +70,8 @@ class suntides(Spatial):
         else:
             self.tstep=self.getTstep(tstart,tend)
         
+        time = othertime.SecondsSince(self.time[self.tstep])
+        
         self.varnames=varnames
         self._prepDict(varnames)
         
@@ -77,16 +79,18 @@ class suntides(Spatial):
             ndim = self._returnDim(vv)
             self.variable=vv
             if ndim  == 2 or self.Nkmax==1:
+                print 'Loading data...'
                 self.loadData()
                 print 'Performing harmonic fit on variable, %s...'%(self.variable)
-                self.Amp[vv], self.Phs[vv] = harmonic_fit(self.time[self.tstep],self.data,self.frq,phsbase=self.reftime)
+                self.Amp[vv], self.Phs[vv], self.Mean[vv] = harmonic_fit(time,self.data,self.frq,phsbase=self.reftime)
                 
             elif ndim == 3:
                 for k in range(self.Nkmax):
                     self.klayer=[k]
+                    print 'Loading data...'
                     self.loadData()
-                    print 'Performing harmonic fit on variable, %s, layer = %d...'%(self.variable,self.klayer[0])
-                    self.Amp[vv][:,k,:], self.Phs[vv][:,k,:] = harmonic_fit(self.time[self.tstep],self.data,self.frq,phsbase=self.reftime)
+                    print 'Performing harmonic fit on variable, %s, layer = %d of %d...'%(self.variable,self.klayer[0],self.Nkmax)
+                    self.Amp[vv][:,k,:], self.Phs[vv][:,k,:], self.Mean[vv][k,:] = harmonic_fit(time,self.data,self.frq,phsbase=self.reftime)
         
     def _prepDict(self,varnames):
         """
@@ -94,14 +98,17 @@ class suntides(Spatial):
         """
         self.Amp = {}
         self.Phs = {}
+        self.Mean = {}
         for vv in varnames:
             ndim = self._returnDim(vv)
             if ndim == 2:
                 self.Amp.update({vv:np.zeros((self.Ntide,self.Nc))})
                 self.Phs.update({vv:np.zeros((self.Ntide,self.Nc))})
+                self.Mean.update({vv:np.zeros((self.Nc,))})
             elif ndim == 3:
                 self.Amp.update({vv:np.zeros((self.Ntide,self.Nkmax,self.Nc))})
                 self.Phs.update({vv:np.zeros((self.Ntide,self.Nkmax,self.Nc))})
+                self.Mean.update({vv:np.zeros((self.Nkmax,self.Nc))})
     
     def _returnDim(self,varname):
         
@@ -114,9 +121,10 @@ class suntides(Spatial):
         self.frq = self.nc.variables['omega'][:]
         self.frqnames = self.nc.Constituent_Names.split()
         
-        varlist = ['eta','u','v','w','T','S','rho']
+        varlist = ['eta','uc','vc','w','temp','salt','rho']
         self.Amp={}
         self.Phs={}
+        self.Mean={}
         for vv in varlist:
             name = vv+'_amp'
             if self.hasVar(name):
@@ -126,6 +134,10 @@ class suntides(Spatial):
             name = vv+'_phs'
             if self.hasVar(name):
                 self.Phs.update({vv:self.nc.variables[name][:]})
+                
+            name = vv+'_Mean'
+            if self.hasVar(name):
+                self.Mean.update({vv:self.nc.variables[name][:]})
                 
         
     def plotAmp(self,vname='eta',k=0,con='M2',xlims=None,ylims=None,**kwargs):
@@ -180,7 +192,28 @@ class suntides(Spatial):
         
         #titlestr='%s Phase\n%s [%s]'%(self.frqnames[ii],self.long_name,phsunits)
         #plt.title(titlestr)
+
+    def plotMean(self,vname='eta',k=0,xlims=None,ylims=None,**kwargs):
+        """
+        Plots the amplitude of the constituent on a map
+        """
         
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(self.Mean))
+            self.clim.append(np.max(self.Mean))
+        if xlims==None or ylims==None:
+            xlims=self.xlims 
+            ylims=self.ylims
+            
+        if len(self.Amp[vname].shape)==2:
+            zA = self.Mean[vname]
+        else:
+            zA = self.Mean[vname][k,:].ravel()
+            
+        self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zA,xlim=xlims,ylim=ylims,\
+                clim=self.clim,**kwargs)        
+                
     def coRangePlot(self,vname ='eta', k=0, con='M2', clevs=20, phsint=1800.0,xlims=None,ylims=None, **kwargs):
         """
         Contour plot of amplitude and phase on a single plot
@@ -267,6 +300,17 @@ class suntides(Spatial):
             longname = '%s - harmonic phase'%vv
             self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':'radians','reference_time':reftime},\
                 dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
+                
+            ndim = self._returnDim(vv)
+            if ndim == 2:
+                dims = ('Nc')
+            elif ndim == 3:
+                dims = ('Nk','Nc')
+                
+            name = vv+'_Mean'
+            longname = '%s - Temporal mean'%vv
+            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':self.nc.variables[vv].units},\
+                dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
         
         self.create_nc_var(outfile,'omega', ('Ntide',), {'long_name':'frequency','units':'rad s-1'})
         
@@ -278,6 +322,8 @@ class suntides(Spatial):
             nc.variables[name][:]=self.Amp[vv]
             name = vv+'_phs'
             nc.variables[name][:]=self.Phs[vv]
+            name = vv+'_Mean'
+            nc.variables[name][:]=self.Mean[vv]
         nc.close()        
         
         print 'Completed writing harmonic output to:\n   %s'%outfile
