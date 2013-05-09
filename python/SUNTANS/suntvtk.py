@@ -31,6 +31,7 @@ class SunTvtk(Spatial):
     zscale = 500.0
     clim = None
     kstart=0 # Starting klayer - set > 0 to ignore top 'kstart' cells
+    offscreen=False
     
     def __init__(self,infile,**kwargs):
         
@@ -52,6 +53,10 @@ class SunTvtk(Spatial):
             self.data = np.zeros((self.Nc,))
             self.returnPoints()
             self.initTvtk2D()
+
+	if self.offscreen:
+	    print 'Using offscreen rendering.'
+	    mlab.options.offscreen=True
 
     def initTvtk2D(self):
         """
@@ -485,8 +490,10 @@ class SunTvtk(Spatial):
         """
 #        
         import os
-        # This works for mp4 and mov...
-        cmdstring ='ffmpeg -r %d -i ./.tmpanim%%04d.png -y -loglevel quiet -c:v libx264 -crf 23 -pix_fmt yuv420p %s'%(frate,outfile)
+        # This works for mp4 and mov on Windows...
+        #cmdstring ='ffmpeg -r %d -i ./.tmpanim%%04d.png -y -loglevel quiet -c:v libx264 -crf 23 -pix_fmt yuv420p %s'%(frate,outfile)
+	# Linux command
+        cmdstring ='ffmpeg -f image2 -r %d -y -loglevel quiet -b:v 7200k -i ./.tmpanim%%04d.png %s'%(frate,outfile)
 
         # Load one time step at a time into memory (slower run time)
         if tstep==None:

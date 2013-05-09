@@ -476,4 +476,9 @@ if __name__ == '__main__':
     #suntanspath='C:\\Projects\\GOMGalveston\\MODELLING\\GalvestonCoarse\\rundata'
     #basename = 'GalvCoarse_ROMS_Coupling.nc'      
             
+    #nsteps = 4
+    #numprocs = 64
+    #suntanspath='C:\\Projects\\GOMGalveston\\MODELLING\\GalvestonCoarse\\rundata'
+    #basename = 'GalvCoarse_ROMS_Coupling.nc'      
+            
     main(suntanspath,basename,numprocs,nsteps)

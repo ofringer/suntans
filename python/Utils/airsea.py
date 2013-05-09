@@ -40,8 +40,8 @@ def heatFluxes(Uwind,Vwind,Ta,Tw,Pa,RH,cloud):
     """
     
     # Coefficients
-    Ce = 1.5e-3 # Dalton number
-    Ch = 1.5e-3 # Stanton number
+    Ce = 1.10e-3 # Dalton number
+    Ch = 1.10e-3 # Stanton number
     
     Le = 2.5e6
     cp = 4.2e3
@@ -318,12 +318,3 @@ def pol2cart(th,rho):
     y = rho * np.sin(th)
 
     return x, y
-    
-def cart2pol(x,y):
-    """
-    Convert cartesian to polar coordinates
-    """
-    th = np.angle(x+1j*y)
-    rho = np.abs(x+1j*y)
-    
-    return th, rho

@@ -37,6 +37,9 @@ def noaaish2nc(latlon,yearrange,localdir,ncfile,shpfile):
     
     varnames = ['Tair','Pair','Uwind','Vwind','RH','rain','cloud']
     # Read in the semi-processed data
+    timestart=yearrange[0]
+    timeend=yearrange[1]
+
     data = readall(latlon,[timestart.year,timeend.year],localdir) 
     
     data = dataQC(data,varnames)
@@ -110,8 +113,12 @@ def readall(latlon,yearrange,localdir):
                 ftp.cwd(ftpdir+str(yy))
                 #ftp.retrlines('LIST')
                 print 'Downloading file: %s...' % ftpfile
-                ftp.retrbinary('RETR '+ftpfile,open(gzfile, 'wb').write)
-                print 'Completed download.'
+		try:
+		    ftp.retrbinary('RETR '+ftpfile,open(gzfile, 'wb').write)
+		    print 'Completed download.'
+		except:
+		    print '!!File not found on the ftp server!!'
+		    continue
             
            
             if kk == 1:
@@ -647,7 +654,7 @@ def getFileNames(latlon,yearrange):
     Function to retrieve station names to download from the ftp site (see ftplib.retrievefile)
     """  
     # Read the station metadata CSV file
-    csvfile = 'C:/Projects/GOMGalveston/CODE/PYTHON/NOAAWeather/ish-history.csv'
+    csvfile = '../DATA/ish-history.csv'
     data = stationMeta(csvfile)
     # Create a list of dictionaries each containing: years, filenames and station name
     stations = []

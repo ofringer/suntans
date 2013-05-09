@@ -87,7 +87,8 @@ def interpWeatherStations(latlon,tstart,tend,dt,utmzone,dbfile, maxgap=40, showp
             'and lat_start >= %3.6f '%latlon[2] + 'and lat_end <= %3.6f '%latlon[3]
         
         data, query = netcdfio.queryNC(dbfile,outvar,tablename,condition)
-           
+        #print data[0].keys()
+
         ii=0   
         for dd in data:
             ind = np.isfinite(np.ravel(dd[vv]))
@@ -176,7 +177,8 @@ def interpWeatherStations(latlon,tstart,tend,dt,utmzone,dbfile, maxgap=40, showp
             ctr+=1
             
             # Add the other info
-            output[vv].update({'long_name':dd[vv]['Longname'],'units':dd[vv]['Units']})
+            #output[vv].update({'long_name':dd[vv]['Longname'],'units':dd[vv]['Units']})
+
         
             if showplot:
                 plt.figure()
@@ -259,8 +261,8 @@ def write2NC(ncfile,coords,output,nctime):
     for vv in output.keys():
         dimname = 'N'+vv
         dimlength = np.size(coords['x_'+vv])
+        print '%s, %d' % (dimname, dimlength)
         nc.createDimension(dimname,dimlength)
-        #print '%s, %d' % (dimname, dimlength)
         
     # Create the coordinate variables
     tmpvar=nc.createVariable('Time','f8',('nt',))

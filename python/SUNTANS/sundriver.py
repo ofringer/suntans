@@ -130,6 +130,10 @@ class sundriver(object):
     romsfile = None
     otisfile = None
     dbasefile = None
+
+    # Use ROMS u,v and eta
+    useROMSuv=False
+    useROMSeta=False
     
     ############################
 
@@ -272,7 +276,7 @@ class sundriver(object):
 
             
         if self.useROMS:
-            bnd.roms2boundary(self.romsfile)
+            bnd.roms2boundary(self.romsfile,setUV=self.useROMSuv,seth=self.useROMSeta)
             
         if self.useOTIS:
             bnd.otis2boundary(self.otisfile)
@@ -326,7 +330,7 @@ class sundriver(object):
                 
         elif self.opt_ic=='ROMS':
             print 'Setting initial conditions from ROMS model output...'  
-            IC.roms2ic(self.romsfile)
+            IC.roms2ic(self.romsfile,setUV=self.useROMSuv,seth=self.useROMSeta)
             
         else:
             print 'Unknown option: opt_ic = %s. Not setting initial conditions.'%self.opt_ic

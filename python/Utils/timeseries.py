@@ -109,17 +109,28 @@ class timeseries(object):
 #        return signal.lfilter(b, a, self.y, axis=axis)
 
         
-    def interp(self,tstart,tend,dt,method='linear',timeformat='%Y%m%d.%H%M%S'):
+    def interp(self,timein,method='linear',timeformat='%Y%m%d.%H%M%S'):
         """
         Interpolate the data onto an equally spaced vector
         
-        tstart and tend - string with format 'yyyymmdd.HHMMSS'
+        timein is either:
+            (3x1 tuple) - (tstart,tend,dt)
+                tstart and tend - string with format 'yyyymmdd.HHMMSS'
+        or
+            datetime vector
         
         method - method passed to interp1d
         """
         
         # Create the time vector
-        tnew = othertime.TimeVector(tstart,tend,dt,timeformat =timeformat)
+        try:
+            tstart=timein[0]
+            tend=timein[1]
+            dt=timein[2]
+            tnew = othertime.TimeVector(tstart,tend,dt,timeformat =timeformat)
+        except:
+            tnew=timein
+            
         t = othertime.SecondsSince(tnew,basetime = self.basetime)
         
         # Don't include nan points
@@ -155,7 +166,7 @@ class timeseries(object):
         
         amp,phs = U.phsamp(phsbase=basetime)
         
-        return amp, phs, frq, U.invfft()   
+        return amp, phs, frq, frqnames, U.invfft()   
         
     def running_harmonic(self,omega,windowlength=3*86400.0,overlap=12*3600.0, plot=True):
         """
@@ -378,6 +389,13 @@ def harmonic_fit(t,X,frq,mask=None,axis=0,phsbase=None):
     A = buildA(t,frq)
     C, C0 = lstsqnumpy(A,X) # This works on all columns of X!!
     Amp, Phs= phsamp(C)
+
+    # Reference the phase to some time
+    if not phsbase == None:
+        base = othertime.SecondsSince(phsbase)
+	phsoff = phase_offset(frq,t[0],base)
+	phsoff = np.repeat(phsoff.reshape((phsoff.shape[0],1)),lenX,axis=1)
+	phs = np.mod(Phs+phsoff,2*np.pi)
     
     # Non-vectorized method (~20x slower)
 #    Amp = np.zeros((Nfrq,lenX))
@@ -398,6 +416,19 @@ def harmonic_fit(t,X,frq,mask=None,axis=0,phsbase=None):
     # Output back along the original axis
     return Amp.swapaxes(axis,0), Phs.swapaxes(axis,0), C0.swapaxes(axis,0)
     
+def phase_offset(frq,start,base):
+        """
+        Compute a phase offset for a given fruequency
+        """
+        
+        if type(start)==datetime:
+            dx = start - base
+            dx = dx.total_seconds()
+        else:
+            dx = start -base
+        
+        return np.mod(dx*np.array(frq),2*np.pi)
+ 
 def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=3600.0,output_meta=False):
     """
     Load station data from a database file
@@ -437,7 +468,7 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
         
     if not timeinfo==None:
         print 'Interpolating station data between %s and %s\n'%(timeinfo[0],timeinfo[1])
-        tnew,ynew = ts.interp(timeinfo[0],timeinfo[1],timeinfo[2])
+        tnew,ynew = ts.interp((timeinfo[0],timeinfo[1],timeinfo[2]))
         ts = timeseries(tnew,ynew)
         ts.dt = timeinfo[2] # This needs updating
         
@@ -677,6 +708,45 @@ def cart2pol(x,y):
     
     return th, rho
     
+def ap2ep(uamp,uphs,vamp,vphs):
+    """
+    Convert u/v amplitude phase information to tidal ellipses
+    
+    All angles are in radians
+    
+    Returns:
+        SEMA, SEMI, INC, PHS, ECC
+    
+    Based on the MATLAB ap2ep function:
+        https://www.mathworks.com/matlabcentral/fileexchange/347-tidalellipse/content/ap2ep.m
+    """
+    # Make complex amplitudes for u and v
+    u = uamp*np.exp(-1j*uphs)
+    v = vamp*np.exp(-1j*vphs)
+
+    #Calculate complex radius of anticlockwise and clockwise circles:
+    wp = (u+1j*v)/2.0     # for anticlockwise circles
+    wm = np.conj(u-1j*v)/2.0  # for clockwise circles
+    # and their amplitudes and angles
+    Wp = np.abs(wp)
+    Wm = np.abs(wm)
+    THETAp = np.angle(wp)
+    THETAm = np.angle(wm)
+   
+    # calculate ep-parameters (ellipse parameters)
+    SEMA = Wp+Wm              # Semi  Major Axis, or maximum speed
+    SEMI = Wp-Wm            # Semin Minor Axis, or minimum speed
+    ECC = SEMI/SEMA          # Eccentricity
+
+    PHA = (THETAm-THETAp)/2.0   # Phase angle, the time (in angle) when 
+                               # the velocity reaches the maximum
+    INC = (THETAm+THETAp)/2.0   # Inclination, the angle between the 
+                               # semi major axis and x-axis (or u-axis).
+                               
+    return SEMA, SEMI, INC, PHA, ECC
+    
+    
+    
 def rms(x):
     """
     root mean squared
@@ -690,3 +760,11 @@ def crms(t,y):
     """
     fac = 1.0/(t[-1]-t[0])
     return np.sqrt(fac*np.trapz(y**2,x=t))
+    
+def tidalrmse(Ao,Am,Go,Gm):
+    """
+    Tidal harmonic RMSE
+    Ao, Am - observed and modeled amplitude
+    Go, Gm - observed and modeled phase (radians)
+    """
+    return np.sqrt( 0.5*(Ao**2 + Am**2) - Ao*Am*np.cos(Go-Gm) )

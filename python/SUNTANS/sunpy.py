@@ -48,7 +48,10 @@ class Grid(object):
         self.xlims = [self.xp.min(),self.xp.max()]
         self.ylims = [self.yp.min(),self.yp.max()]
         
-        # Cell polygon attribute for plotting     
+        # Cell polygon attribute for plotting  
+        #self.cells[self.cells.mask]=0
+        #self.grad[self.grad.mask]=0
+        #self.face[self.face.mask]=0
         self.xy = self.cellxy()
         
     
@@ -128,12 +131,13 @@ class Grid(object):
                     setattr(self,vv,nc.variables[vv][:])
             except:
                 print 'Cannot find variable: %s'%vv
-                
-        self.Nk-=1 #These need to be zero based
-        try:
-            self.Nke-=1
-        except:
-            ''
+         
+        if self.Nk.min()==1:
+            self.Nk-=1 #These need to be zero based
+#        try:
+#            #self.Nke-=1
+#        except:
+#            ''
         
         nc.close()
              
@@ -229,13 +233,24 @@ class Grid(object):
             
         Used by spatial ploting routines 
         """
-        xynodes = []
-        for ii in range(0,self.Nc):
-            x=self.xp[self.cells[ii,:]]
-            y=self.yp[self.cells[ii,:]]
-            xynodes.append(closePoly(x,y))
-        
-        return xynodes
+        try:
+            self.cells[self.cells.mask]=0
+        except:
+            ''         
+        return [closePoly(self.xp[self.cells[ii,:]],self.yp[self.cells[ii,:]]) for ii in range(self.Nc)]
+#        xynodes = []
+#        for ii in range(0,self.Nc):
+#            x=self.xp[self.cells[ii,:]]
+#            y=self.yp[self.cells[ii,:]]
+#            xynodes.append(closePoly(x,y))
+#        return xynodes
+
+#        xnodes = np.array([self.xp[self.cells[:,0]],self.xp[self.cells[:,1]],self.xp[self.cells[:,2]],self.xp[self.cells[:,0]]]).T
+#        ynodes = np.array([self.yp[self.cells[:,0]],self.yp[self.cells[:,1]],self.yp[self.cells[:,2]],self.yp[self.cells[:,0]]]).T
+#                            
+#        xynodes = np.concatenate((xnodes,ynodes),axis=1)
+#        xynodes = xynodes.reshape((self.Nc,4,2))
+#        return [xynodes[ii,:,:] for ii in range(self.Nc)]
         
     def saveBathy(self,filename):
         """
@@ -631,7 +646,36 @@ class Spatial(Grid):
         self.mask = self.data==fillval
         self.data[self.mask]=0.
         self.data = self.data.squeeze()
+        
         return self.data
+    
+    def loadDataBar(self,variable=None):
+        """
+        Load a 3D variable and depth-average i.e. u
+        """
+        if variable==None:
+            variable=self.variable
+            
+        ndim = self.nc.variables[variable].ndim
+        if not ndim==3:
+            print 'Warning only 3D arrays can be used'
+            return -1
+        
+        # Load time step by time step
+        nt = len(self.tstep)
+        databar = np.zeros((nt,self.Nc))
+        
+        self.klayer=[-99]
+        
+        tstep = self.tstep.copy()
+        for ii,t in enumerate(tstep):
+            self.tstep=[t]
+            data = self.loadData()
+            databar[ii,:] = self.depthave(data)            
+            
+        self.tstep=tstep
+        
+        return databar
         
         
     def loadTime(self):
@@ -642,18 +686,16 @@ class Spatial(Grid):
          nc = self.nc
          t = nc.variables['time']
          self.time = num2date(t[:],t.units)
-
-
     
-    def plot(self,z=None,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
+    def plot(self,z=None,xlims=None,ylims=None,titlestr=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
         """
           Plot the unstructured grid data
         """
-        # Load the data if it's needed
-        if not self.__dict__.has_key('data'):
-            self.loadData()
             
         if z==None:
+            # Load the data if it's needed
+            if not self.__dict__.has_key('data'):
+                self.loadData() 
             z=self.data.ravel()
         
         # Find the colorbar limits if unspecified
@@ -666,14 +708,13 @@ class Spatial(Grid):
             xlims=self.xlims 
             ylims=self.ylims
         
-#        if self.__dict__.has_key('patches'):
-#             self.patches.set_array(z)
-#             self.ax.add_collection(self.patches)
-#        else:
-            #tic = time.clock()
         self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,z,xlim=xlims,ylim=ylims,\
             clim=self.clim,**kwargs)
-        plt.title(self.__genTitle())
+            
+        if titlestr==None:
+            plt.title(self.__genTitle())
+        else:
+            plt.title(titlestr)
             
         if vector_overlay:
              u,v,w = self.getVector()
@@ -1116,11 +1157,98 @@ class Spatial(Grid):
                 
         return data
         
+    def depthave(self,data):
+        """ Calculate the depth average of a variable
+        Variable should have dimension: [nz*nx] or [nt*nz*nx]
+        
+        """
+        ndim = np.ndim(data)
+        if ndim == 2:
+            return self.depthint(data) / self.dv
+        elif ndim == 3:
+            nt = np.size(data,0)
+            h = np.tile(self.dv,(nt,1))
+            return self.depthint(data) / h
+                
+    def depthint(self,data,cumulative=False):
+        """
+        Calculates the depth integral of a variable: data
+        Variable should have dimension: [nz*nx] or [nt*nz*nx]
+        
+        """
+        ndim = np.ndim(data)
+        
+        nz = np.size(self.dz)
+                
+        if ndim == 2:
+            nx = np.size(data,1)
+            dz2=np.reshape(self.dz,(nz,1))
+            dz2 = np.tile(dz2,(1,nx))
+            if cumulative:
+                return np.cumsum(data*dz2,axis=0)
+            else:
+                return np.sum(data*dz2,axis=0)
+                
+        if ndim == 3:
+            nt = np.size(data,0)
+            nx = np.size(data,2)
+            dz3 = np.reshape(self.dz,(1,nz,1))
+            dz3 = np.tile(dz3,(nt,1,nx))
+            if cumulative:
+                return np.cumsum(data*dz3,axis=0)
+            else:
+                return np.sum(data*dz3,axis=0)
+
+    def gradZ(self,data):
+        """
+        Vertical gradient calculation on an unevenly spaced grid
+        
+        Variable data should have shape: [nz], [nz*nx] or [nt*nz*nx]
+        """
+                
+        ndim = np.ndim(data)
+        nz = np.size(self.dz)
+        
+        if ndim == 1:
+            phi = np.hstack((data[0],data,data[-1])) # nz+2
+            phi_npm = (phi[1:]+phi[0:-1])*0.5 # nz+1
+            return (phi_npm[0:-1] - phi_npm[1:])/self.dz
+            
+        elif ndim == 2:
+            nx = np.size(data,1)
+            dz2=np.reshape(self.dz,(nz,1))
+            dz2 = np.tile(dz2,(1,nx))
+            phi = np.concatenate((data[[0],:],data,data[[-1],:]),axis=0) # nz+2
+            phi_npm = (phi[1:,:]+phi[0:-1,:])*0.5 # nz+1
+            dphi_dz = (phi_npm[0:-1,:] - phi_npm[1:,:])/dz2
+            
+            # Take care of the near bed gradient
+            bedbot = np.ravel_multi_index((self.Nk,range(self.Nc)),(self.Nkmax,self.Nc))
+            Nk1=self.Nk-1
+            Nk1[Nk1<0]=0
+            bedtop = np.ravel_multi_index((Nk1,range(self.Nc)),(self.Nkmax,self.Nc))
+            bedbot = np.ravel_multi_index((self.Nk,range(self.Nc)),(self.Nkmax,self.Nc))
+            dphi_dz.flat[bedbot] = (data.flat[bedtop]-data.flat[bedbot]) / dz2.flat[bedbot]
+            
+            return dphi_dz
+        
+        elif ndim == 3:
+            nt = np.size(data,0)
+            nx = np.size(data,2)
+            dz3=np.reshape(self.dz,(1,nz,1))
+            dz3 = np.tile(dz3,(nt,1,nx)) 
+            phi = np.concatenate((data[:,[0],:],data[:,:,:],data[:,[-1],:]),axis=1) # nz+2
+            phi_npm = (phi[:,1:,:]+phi[:,0:-1,:])*0.5 # nz+1
+            
+            return (phi_npm[:,0:-1,:] - phi_npm[:,1:,:])/dz3
+
+        
     def __del__(self):
         self.nc.close()
         
     def __openNc(self):
         #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+	print 'Loading: %s'%self.ncfile
         try: 
             self.nc = MFDataset(self.ncfile, 'r')
         except:
@@ -1609,73 +1737,6 @@ def closePoly(x,y):
     
     return np.hstack((x,y))
 
-def depthave(data,dz,h):
-    """ Calculate the depth average of a variable
-    Variable should have dimension: [nz*nx] or [nt*nz*nx]
-    
-    """
-    ndim = np.ndim(data)
-    if ndim == 2:
-        return depthint(data,dz) / h
-    elif ndim == 3:
-        nt = np.size(data,0)
-        h = np.tile(h,(nt,1))
-        return depthint(data,dz) / h
-            
-def depthint(data,dz):
-    """
-    Calculates the depth integral of a variable: data
-    Variable should have dimension: [nz*nx] or [nt*nz*nx]
-    
-    """
-    ndim = np.ndim(data)
-    
-    nz = np.size(dz)
-    
-    if ndim == 2:
-        nx = np.size(data,1)
-        dz2=np.reshape(dz,(nz,1))
-        dz2 = np.tile(dz2,(1,nx))
-        return np.sum(data*dz2,axis=0)
-    if ndim == 3:
-        nt = np.size(data,0)
-        nx = np.size(data,2)
-        dz3=np.reshape(dz,(1,nz,1))
-        dz3 = np.tile(dz3,(nt,1,nx))
-        return np.sum(data*dz3,axis=1)
-
-def gradZ(data,dz):
-    """
-    Vertical gradient calculation on an unevenly spaced grid
-    
-    Variable data should have shape: [nz], [nz*nx] or [nt*nz*nx]
-    """
-            
-    ndim = np.ndim(data)
-    nz = np.size(dz)
-    
-    if ndim == 1:
-        phi = np.hstack((data[0],data,data[-1])) # nz+2
-        phi_npm = (phi[1:]+phi[0:-1])*0.5 # nz+1
-        return (phi_npm[0:-1] - phi_npm[1:])/dz
-        
-    elif ndim == 2:
-        nx = np.size(data,1)
-        dz2=np.reshape(dz,(nz,1))
-        dz2 = np.tile(dz2,(1,nx))
-        phi = np.concatenate((data[[0],:],data,data[[-1],:]),axis=0) # nz+2
-        phi_npm = (phi[1:,:]+phi[0:-1,:])*0.5 # nz+1
-        return (phi_npm[0:-1,:] - phi_npm[1:,:])/dz2
-    
-    elif ndim == 3:
-        nt = np.size(data,0)
-        nx = np.size(data,2)
-        dz3=np.reshape(dz,(1,nz,1))
-        dz3 = np.tile(dz3,(nt,1,nx)) 
-        phi = np.concatenate((data[:,[0],:],data[:,:,:],data[:,[-1],:]),axis=1) # nz+2
-        phi_npm = (phi[:,1:,:]+phi[:,0:-1,:])*0.5 # nz+1
-        
-        return (phi_npm[:,0:-1,:] - phi_npm[:,1:,:])/dz3
 
 def linearEOS(S,S0=1.0271,beta=1.0,RHO0=1000.0):
     """
@@ -1876,7 +1937,7 @@ if __name__ == '__main__':
     k = [0]
     t = 0
     j = 0
-    varname = 'u'
+    varname = 'eta'
     plottype = 0
     usevtk = False
     clim = None

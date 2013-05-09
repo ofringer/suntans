@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import netcdfio
 from sunpy import Spatial, unsurf
 import uspectra
-from timeseries import timeseries, harmonic_fit
+from timeseries import timeseries, harmonic_fit, ap2ep
 from suntans_ugrid import ugrid
 import othertime
 
@@ -76,21 +76,30 @@ class suntides(Spatial):
         self._prepDict(varnames)
         
         for vv in varnames:
-            ndim = self._returnDim(vv)
-            self.variable=vv
+            if vv in ['ubar','vbar']:
+                ndim=2
+                if vv=='ubar': self.variable='uc'
+                if vv=='vbar': self.variable='vc'
+            else:
+                ndim = self._returnDim(vv)
+                self.variable=vv
+                
             if ndim  == 2 or self.Nkmax==1:
-                print 'Loading data...'
-                self.loadData()
+                print 'Loading data from %s...'%vv
+                if vv in ['ubar','vbar']:
+                    data=self.loadDataBar()
+                else:
+                    data=self.loadData()
                 print 'Performing harmonic fit on variable, %s...'%(self.variable)
-                self.Amp[vv], self.Phs[vv], self.Mean[vv] = harmonic_fit(time,self.data,self.frq,phsbase=self.reftime)
+                self.Amp[vv], self.Phs[vv], self.Mean[vv] = harmonic_fit(time,data,self.frq,phsbase=self.reftime)
                 
             elif ndim == 3:
                 for k in range(self.Nkmax):
                     self.klayer=[k]
                     print 'Loading data...'
-                    self.loadData()
+                    data = self.loadData()
                     print 'Performing harmonic fit on variable, %s, layer = %d of %d...'%(self.variable,self.klayer[0],self.Nkmax)
-                    self.Amp[vv][:,k,:], self.Phs[vv][:,k,:], self.Mean[vv][k,:] = harmonic_fit(time,self.data,self.frq,phsbase=self.reftime)
+                    self.Amp[vv][:,k,:], self.Phs[vv][:,k,:], self.Mean[vv][k,:] = harmonic_fit(time,data,self.frq,phsbase=self.reftime)
         
     def _prepDict(self,varnames):
         """
@@ -100,7 +109,11 @@ class suntides(Spatial):
         self.Phs = {}
         self.Mean = {}
         for vv in varnames:
-            ndim = self._returnDim(vv)
+            if vv in ['ubar','vbar']:
+                ndim=2
+            else:
+                ndim = self._returnDim(vv)
+                
             if ndim == 2:
                 self.Amp.update({vv:np.zeros((self.Ntide,self.Nc))})
                 self.Phs.update({vv:np.zeros((self.Ntide,self.Nc))})
@@ -112,7 +125,10 @@ class suntides(Spatial):
     
     def _returnDim(self,varname):
         
-        return self.nc.variables[varname].ndim 
+        if varname in ['ubar','vbar']:
+            return 2
+        else:
+            return self.nc.variables[varname].ndim 
         
     def _loadVars(self):
         """
@@ -121,7 +137,7 @@ class suntides(Spatial):
         self.frq = self.nc.variables['omega'][:]
         self.frqnames = self.nc.Constituent_Names.split()
         
-        varlist = ['eta','uc','vc','w','temp','salt','rho']
+        varlist = ['eta','uc','vc','w','T','S','rho','ubar','vbar']
         self.Amp={}
         self.Phs={}
         self.Mean={}
@@ -214,6 +230,78 @@ class suntides(Spatial):
         self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zA,xlim=xlims,ylim=ylims,\
                 clim=self.clim,**kwargs)        
                 
+    def plotEllipse(self,barotropic=False,k=0,con='M2',scale=1e4,subsample=4,\
+            xlims=None,ylims=None,**kwargs):
+        """
+        Plots tidal ellipses on a map
+        """
+        from matplotlib.collections import EllipseCollection
+        
+        plt.ioff()
+        fig = plt.gcf()
+        ax = fig.gca()
+        
+        ii = findCon(con,self.frqnames)
+        print ii
+        
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(self.Amp))
+            self.clim.append(np.max(self.Amp))
+        if xlims==None or ylims==None:
+            xlims=self.xlims 
+            ylims=self.ylims
+            
+        # Load the data
+        if barotropic:
+            uA = self.Amp['ubar'][ii,:]
+            uP = self.Phs['ubar'][ii,:]
+            vA = self.Amp['vbar'][ii,:]
+            vP = self.Phs['vbar'][ii,:]
+        else:
+            uA = self.Amp['uc'][ii,k,:]
+            uP = self.Phs['uc'][ii,k,:]
+            vA = self.Amp['vc'][ii,k,:]
+            vP = self.Phs['vc'][ii,k,:]
+            
+        # Calculate the ellipse parameters
+        ell = ap2ep(uA,uP,vA,vP)
+            
+        # Create the ellipse collection
+        indices = range(0,self.Nc,subsample)
+        widths = [ell[0][ii]*scale for ii in indices]
+        heights = [ell[1][ii]*scale for ii in indices]
+        angles = [ell[2][ii]*180.0/np.pi for ii in indices]
+        offsets = [(self.xv[ii],self.yv[ii]) for ii in indices]
+        
+        collection = EllipseCollection(widths,heights,angles,units='xy',\
+            offsets=offsets, transOffset=ax.transData,**kwargs)
+        
+        z=ell[0][indices]
+        collection.set_array(np.array(z))
+        collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
+        collection.set_edgecolors(collection.to_rgba(np.array(z))) 
+        
+        #pdb.set_trace()        
+        ax.set_aspect('equal')
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
+
+        
+        ax.add_collection(collection)
+
+        
+        return collection
+   
+    
+        #axcb = fig.colorbar(collection)
+        
+#        self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zA,xlim=xlims,ylim=ylims,\
+#                clim=self.clim,**kwargs)
+        
+        #titlestr='%s Amplitude\n%s [%s]'%(self.frqnames[ii],self.long_name,self.units)
+        #plt.title(titlestr)
+        
     def coRangePlot(self,vname ='eta', k=0, con='M2', clevs=20, phsint=1800.0,xlims=None,ylims=None, **kwargs):
         """
         Contour plot of amplitude and phase on a single plot
@@ -290,10 +378,15 @@ class suntides(Spatial):
                 dims = ('Ntide','Nc')
             elif ndim == 3:
                 dims = ('Ntide','Nk','Nc')
+	
+	    if vv in ['ubar','vbar']:
+	    	units='m s-1'
+	    else:
+		units = self.nc.variables[vv].units
                 
             name = vv+'_amp'
             longname = '%s - harmonic amplitude'%vv
-            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':self.nc.variables[vv].units},\
+            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':units},\
                 dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
                 
             name = vv+'_phs'
@@ -309,7 +402,7 @@ class suntides(Spatial):
                 
             name = vv+'_Mean'
             longname = '%s - Temporal mean'%vv
-            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':self.nc.variables[vv].units},\
+            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':units},\
                 dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
         
         self.create_nc_var(outfile,'omega', ('Ntide',), {'long_name':'frequency','units':'rad s-1'})
@@ -515,3 +608,50 @@ def QueryNC(dbfile,staname=None,yearrange=None,cons=None):
         
         
     return amp, phs, time, lon, lat, StationName, cons
+
+def usage():
+    print "--------------------------------------------------------------"
+    print "suntides.py   -h                 # show this help message      "
+    print "python suntides.py 'ncfilename.nc' 'outputfile.nc' [-v 'var1 var2 ...] [-f 'K1 O1 M2...']"
+    
+if __name__ == '__main__':
+    """
+    Command line call to suntides
+    """        
+    import getopt, sys
+    
+    # Defaults
+    tstart=-1
+    tend = -1
+    frqnames=None
+    varnames=['eta','ubar','vbar']
+    
+    try:
+        opts,rest = getopt.getopt(sys.argv[3:],'hv:f:')
+    except getopt.GetoptError,e:
+        print e
+        print "-"*80
+        usage()
+        exit(1)
+
+    for opt,val in opts:
+        if opt == '-h':
+            usage()
+            exit(1)
+        elif opt == '-f':
+            frqnames=val.split()
+        elif opt == '-v':
+            varnames = val.split()
+    
+    try:
+	ncfile = sys.argv[1]
+	outfile = sys.argv[2]
+    except:
+    	usage()
+	exit(1)
+    
+    print ncfile, outfile, varnames, frqnames
+    # Call the object
+    sun=suntides(ncfile,frqnames=frqnames)
+    sun(tstart,tend,varnames=varnames)
+    sun.tides2nc(outfile)
