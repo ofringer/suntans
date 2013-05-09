@@ -333,6 +333,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   // compute cellp, edgep, lcptr, leptrs and also get the reference for local cell processor
   // interprocessor send-receives
   Tic();
+  MPI_Barrier(comm);//MDR - make sure all processors are together
   MakePointers(maingrid,localgrid,myproc,comm);
   if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
@@ -2712,7 +2713,7 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
 
   // Send out the number of cells that are being received and then
   // the actual global indices being sent.
- 
+  
   // send data
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     // over each of the neighboring processors
@@ -2854,7 +2855,6 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
   }
   // use lock to make sure all communication is completed before continuing
   MPI_Barrier(comm);
-
   // store all data just sent/received
   (*localgrid)->cell_send=cell_send;
   (*localgrid)->cell_recv=cell_recv;
