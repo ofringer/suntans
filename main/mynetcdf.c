@@ -19,6 +19,8 @@ static void nc_addattr(int ncid, int varid, char *attname, char *attvalue);
 
 void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray);
 void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc);
+void nc_write_double(int ncid, char *vname, REAL *tmparray, int myproc);
+void nc_write_int(int ncid, char *vname, REAL *tmparray, int myproc);
 
 /*########################################################
 *
@@ -103,6 +105,40 @@ void nc_read_2D(int ncid, char *vname, size_t start[2], size_t count[2], REAL **
     }
     //printf(" Done\n");
 }// End function
+
+/*
+ * Function: nc_write_double()
+ * --------------------------
+ *
+ * Wrapper function for writing a double variable
+ *
+ */
+void nc_write_double(int ncid, char *vname, REAL *tmparray, int myproc){
+    int varid, retval;
+
+    if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	ERR(retval);
+    if ((retval = nc_put_var_double(ncid, varid, tmparray)))
+      ERR(retval);
+
+} //end function
+
+/*
+ * Function: nc_write_int()
+ * --------------------------
+ *
+ * Wrapper function for writing a double variable
+ *
+ */
+void nc_write_int(int ncid, char *vname, REAL *tmparray, int myproc){
+    int varid, retval;
+
+    if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	ERR(retval);
+    if ((retval = nc_put_var_int(ncid, varid, tmparray)))
+      ERR(retval);
+
+} //end function
 
 /*
 * Function: getTimeRec()
@@ -431,8 +467,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"cf_role","face_node_connectivity");
     nc_addattr(ncid, varid,"long_name","Maps every face to its corner nodes");
-    if ((retval = nc_put_var_int(ncid,varid, grid->cells)))
-      ERR(retval);
+    //if ((retval = nc_put_var_int(ncid,varid, grid->cells)))
+    //  ERR(retval);
 
     //face
     dimidtwo[0] = dimid_Nc;
@@ -441,8 +477,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"cf_role","face_edge_connectivity");
     nc_addattr(ncid, varid,"long_name","Maps every face to its edges");
-    if ((retval = nc_put_var_int(ncid,varid, grid->face)))
-      ERR(retval);
+    //if ((retval = nc_put_var_int(ncid,varid, grid->face)))
+    //  ERR(retval);
 
     //edges
     dimidtwo[0] = dimid_Ne;
@@ -451,18 +487,18 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"cf_role","edge_node_connectivity");
     nc_addattr(ncid, varid,"long_name","Maps every edge to the two nodes it connects");
-    if ((retval = nc_put_var_int(ncid,varid, grid->edges)))
-      ERR(retval);
+    //if ((retval = nc_put_var_int(ncid,varid, grid->edges)))
+    //  ERR(retval);
 
     //neigh
     dimidtwo[0] = dimid_Nc;
-    dimidtwo[1] = dimid_Two;
+    dimidtwo[1] = dimid_numsides;
     if ((retval = nc_def_var(ncid,"neigh",NC_INT,2,dimidtwo,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"cf_role","face_face_connectivity");
     nc_addattr(ncid, varid,"long_name","Maps every face to its neighbouring faces");
-    if ((retval = nc_put_var_int(ncid,varid, grid->neigh)))
-      ERR(retval);
+    //if ((retval = nc_put_var_int(ncid,varid, grid->neigh)))
+    //  ERR(retval);
 
     //grad
     dimidtwo[0] = dimid_Ne;
@@ -471,24 +507,24 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"cf_role","edge_face_connectivity");
     nc_addattr(ncid, varid,"long_name","Maps every edge to the two faces it connects ");
-    if ((retval = nc_put_var_int(ncid,varid, grid->grad)))
-      ERR(retval);
+    //if ((retval = nc_put_var_int(ncid,varid, grid->grad)))
+    //  ERR(retval);
 
     //mnptr
     dimidone[0] = dimid_Nc;
     if ((retval = nc_def_var(ncid,"mnptr",NC_INT,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Maps face indices between partitioned and unpartioned grid");
-    if ((retval = nc_put_var_int(ncid,varid, grid->mnptr)))
-      ERR(retval);
+    //if ((retval = nc_put_var_int(ncid,varid, grid->mnptr)))
+    //  ERR(retval);
 
     //eptr
     dimidone[0] = dimid_Ne;
     if ((retval = nc_def_var(ncid,"eptr",NC_INT,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Maps edge indices between partitioned and unpartioned grid");
-    if ((retval = nc_put_var_int(ncid,varid, grid->eptr)))
-      ERR(retval);
+    //if ((retval = nc_put_var_int(ncid,varid, grid->eptr)))
+    //  ERR(retval);
 
    /********************************************************************** 
     *
@@ -502,8 +538,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
        ERR(retval);
     nc_addattr(ncid, varid,"standard_name","Easting");
     nc_addattr(ncid, varid,"long_name","Easting of 2D mesh face");
-    if ((retval = nc_put_var_double(ncid,varid, grid->xv)))
-       ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->xv)))
+    //   ERR(retval);
       
     //yv
     dimidone[0] = dimid_Nc;
@@ -511,8 +547,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
        ERR(retval);
     nc_addattr(ncid, varid,"standard_name","Northing");
     nc_addattr(ncid, varid,"long_name","Northing of 2D mesh face");
-    if ((retval = nc_put_var_double(ncid,varid, grid->yv)))
-       ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->yv)))
+    //   ERR(retval);
        
     //xp
     dimidone[0] = dimid_Np;
@@ -520,8 +556,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
        ERR(retval);
     nc_addattr(ncid, varid,"standard_name","Easting");
     nc_addattr(ncid, varid,"long_name","Easting of 2D mesh node");
-    if ((retval = nc_put_var_double(ncid,varid, grid->xp)))
-       ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->xp)))
+    //   ERR(retval);
         
     //yp
     dimidone[0] = dimid_Np;
@@ -529,8 +565,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
        ERR(retval);
     nc_addattr(ncid, varid,"standard_name","Northing");
     nc_addattr(ncid, varid,"long_name","Northing of 2D mesh node");
-    if ((retval = nc_put_var_double(ncid,varid, grid->yp)))
-       ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->yp)))
+    //   ERR(retval);
          
     //xe
     dimidone[0] = dimid_Ne;
@@ -538,8 +574,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
        ERR(retval);
     nc_addattr(ncid, varid,"standard_name","Easting");
     nc_addattr(ncid, varid,"long_name","Easting of 2D mesh edge");
-    if ((retval = nc_put_var_double(ncid,varid, grid->xe)))
-       ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->xe)))
+    //   ERR(retval);
           
     //ye
     dimidone[0] = dimid_Ne;
@@ -547,8 +583,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
        ERR(retval);
     nc_addattr(ncid, varid,"standard_name","Northing");
     nc_addattr(ncid, varid,"long_name","Northing of 2D mesh edge");
-    if ((retval = nc_put_var_double(ncid,varid, grid->ye)))
-       ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->ye)))
+    //   ERR(retval);
         
     /********************************************************************** 
     *
@@ -562,24 +598,24 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     if ((retval = nc_def_var(ncid,"normal",NC_INT,2,dimidtwo,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Dot product of unique normal with outward normal of each edge");
-    if ((retval = nc_put_var_int(ncid,varid, grid->normal)))
-      ERR(retval);
+    //if ((retval = nc_put_var_int(ncid,varid, grid->normal)))
+    //  ERR(retval);
 
     //n1
     dimidone[0] = dimid_Ne;
     if ((retval = nc_def_var(ncid,"n1",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","x-component of the edge normal");
-    if ((retval = nc_put_var_double(ncid,varid, grid->n1)))
-      ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->n1)))
+    //  ERR(retval);
 
     //n2
     dimidone[0] = dimid_Ne;
     if ((retval = nc_def_var(ncid,"n2",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","y-component of the edge normal");
-    if ((retval = nc_put_var_double(ncid,varid, grid->n2)))
-      ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->n2)))
+    //  ERR(retval);
 
     //df
     dimidone[0] = dimid_Ne;
@@ -587,8 +623,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","edge length");
     nc_addattr(ncid, varid,"units","m");
-    if ((retval = nc_put_var_double(ncid,varid, grid->df)))
-      ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->df)))
+    //  ERR(retval);
 
     //dg
     dimidone[0] = dimid_Ne;
@@ -596,8 +632,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","distance between faces on either side of edge");
     nc_addattr(ncid, varid,"units","m");
-    if ((retval = nc_put_var_double(ncid,varid, grid->dg)))
-      ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->dg)))
+    //  ERR(retval);
 
     //def
     dimidtwo[0] = dimid_Nc;
@@ -606,8 +642,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Distance between faces and edges");
     nc_addattr(ncid, varid,"units","m");
-    if ((retval = nc_put_var_double(ncid,varid, grid->def)))
-      ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->def)))
+    //  ERR(retval);
 
     //Ac
     dimidone[0] = dimid_Nc;
@@ -618,8 +654,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
     nc_addattr(ncid, varid,"coordinates","xv yv");
-    if ((retval = nc_put_var_double(ncid,varid, grid->Ac)))
-      ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->Ac)))
+    //  ERR(retval);
 
     /********************************************************************** 
     *
@@ -632,8 +668,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
    nc_addattr(ncid, varid,"long_name","z layer spacing");
    nc_addattr(ncid, varid,"units","m");
-   if ((retval = nc_put_var_double(ncid,varid, grid->dz)))
-     ERR(retval);
+   //if ((retval = nc_put_var_double(ncid,varid, grid->dz)))
+   //  ERR(retval);
 
    // Calculate and write the vertical coordinate z levels 
    z_w[0]=0.0;
@@ -653,8 +689,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
    nc_addattr(ncid, varid,"long_name","depth at layer mid points");
    nc_addattr(ncid, varid,"units","m");  
    nc_addattr(ncid, varid,"positive","up");  
-   if ((retval = nc_put_var_double(ncid,varid, z_r)))
-     ERR(retval);
+   //if ((retval = nc_put_var_double(ncid,varid, z_r)))
+   //  ERR(retval);
 
    //z_w
    dimidone[0] = dimid_Nkw;   
@@ -664,24 +700,24 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
    nc_addattr(ncid, varid,"long_name","depth at layer edges");
    nc_addattr(ncid, varid,"units","m");  
    nc_addattr(ncid, varid,"positive","up");  
-   if ((retval = nc_put_var_double(ncid,varid, z_w)))
-     ERR(retval);
+   //if ((retval = nc_put_var_double(ncid,varid, z_w)))
+   //  ERR(retval);
 
    //Nk
    dimidone[0] = dimid_Nc;   
    if ((retval = nc_def_var(ncid,"Nk",NC_INT,1,dimidone,&varid)))
       ERR(retval);
    nc_addattr(ncid, varid,"long_name","Number of layers at face"); 
-   if ((retval = nc_put_var_int(ncid,varid, grid->Nk)))
-     ERR(retval);
+   //if ((retval = nc_put_var_int(ncid,varid, grid->Nk)))
+   //  ERR(retval);
 
    //Nke
    dimidone[0] = dimid_Ne;   
    if ((retval = nc_def_var(ncid,"Nke",NC_INT,1,dimidone,&varid)))
       ERR(retval);
    nc_addattr(ncid, varid,"long_name","Number of layers at edge");
-   if ((retval = nc_put_var_int(ncid,varid, grid->Nke)))
-     ERR(retval);
+   //if ((retval = nc_put_var_int(ncid,varid, grid->Nke)))
+   //  ERR(retval);
 
     //dv
     dimidone[0] = dimid_Nc;
@@ -693,8 +729,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
     nc_addattr(ncid, varid,"coordinates","xv yv");
-    if ((retval = nc_put_var_double(ncid,varid, grid->dv)))
-      ERR(retval);
+    //if ((retval = nc_put_var_double(ncid,varid, grid->dv)))
+    //  ERR(retval);
 
     //dzz
     dimidthree[0] = dimid_time;
@@ -1008,6 +1044,43 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
    //End file definition mode
    if ((retval = nc_enddef(ncid)))
 	ERR(retval);
+
+   
+   /**********************************************************
+   *
+   * Write data (needs to be done out of definition mode for classic model)
+   *
+   ****************************************************************/
+   nc_write_int(ncid,"cells",grid->cells,myproc);
+   nc_write_int(ncid,"face",grid->face,myproc);
+   nc_write_int(ncid,"edges",grid->edges,myproc);
+   nc_write_int(ncid,"neigh",grid->neigh,myproc);
+   nc_write_int(ncid,"grad",grid->grad,myproc);
+   nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
+   nc_write_int(ncid,"eptr",grid->eptr,myproc);
+   
+   nc_write_double(ncid,"xv",grid->xv,myproc);
+   nc_write_double(ncid,"yv",grid->yv,myproc);
+   nc_write_double(ncid,"xe",grid->xe,myproc);
+   nc_write_double(ncid,"ye",grid->ye,myproc);
+   nc_write_double(ncid,"xp",grid->xp,myproc);
+   nc_write_double(ncid,"yp",grid->yp,myproc);
+
+   nc_write_int(ncid,"normal",grid->xp,myproc);
+   nc_write_double(ncid,"n1",grid->n1,myproc);
+   nc_write_double(ncid,"n2",grid->n2,myproc);
+   nc_write_double(ncid,"df",grid->df,myproc);
+   nc_write_double(ncid,"dg",grid->dg,myproc);
+   nc_write_double(ncid,"def",grid->def,myproc);
+   nc_write_double(ncid,"Ac",grid->Ac,myproc);
+
+   nc_write_double(ncid,"dz",grid->dz,myproc);
+   nc_write_double(ncid,"z_r",z_r,myproc);
+   nc_write_double(ncid,"z_w",z_w,myproc);
+   nc_write_int(ncid,"Nk",grid->Nk,myproc);
+   nc_write_int(ncid,"Nke",grid->Nke,myproc);
+   nc_write_double(ncid,"dv",grid->dv,myproc);
+
 
    // Free the temporary vectors
    //SunFree(z_r,grid->Nkmax*sizeof(REAL),"InitialiseOutputNCugrid");

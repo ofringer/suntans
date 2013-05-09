@@ -82,6 +82,7 @@ CFLAGS = $(OPTFLAGS) $(INCLUDES) $(DEFINES)
 
 EXEC = sun
 PEXEC = sunplot
+JEXEC = sunjoin
 
 DEPFLAGS = -Y
 
@@ -93,6 +94,11 @@ OBJS = $(SRCS:.c=.o)
 PLOTSRCS = sunplot.c fileio.c
 PLOTOBJS = $(PLOTSRCS:.c=.o)
 
+JOINSRCS = sunjoin.c mympi.c grid.c report.c util.c fileio.c phys.c initialization.c memory.c \
+	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c tides.c \
+	sources.c diffusion.c met.c no-mpi.c $(TRIANGLESRC) $(PARMETISSRC) $(NETCDFSRC)
+JOINOBJS = $(JOINSRCS:.c=.o)
+
 all:	$(EXEC)
 
 .c.o:	
@@ -103,6 +109,9 @@ $(EXEC): $(OBJS)
 
 $(PEXEC): $(PLOTOBJS)
 	$(LD) -o sunplot $(PLOTOBJS) $(XLDFLAGS) -L$(XLIBDIR)
+
+$(JEXEC): $(JOINOBJS)
+	$(LD) -o sunjoin $(JOINOBJS) $(LDFLAGS)
 
 depend: 
 	makedepend $(DEPFLAGS) -- $(SRCS) $(PLOTSRCS) &> /dev/null

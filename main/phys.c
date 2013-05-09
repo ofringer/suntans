@@ -1365,11 +1365,13 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
       // u now contains velocity on all edges at the new time step
       ComputeUC(phys->uc, phys->vc, phys,grid, myproc, prop->interp);
+      //printf("Done (%d).\n",myproc);
       
       // now send interprocessor data
       ISendRecvCellData3D(phys->uc,grid,myproc,comm);
       ISendRecvCellData3D(phys->vc,grid,myproc,comm);
     }
+
 
     // Adjust the velocity field in the new cells if the newcells variable is set 
     // to 1 in suntans.dat.  Once this is done, send the interprocessor 
@@ -4397,7 +4399,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->TVDmomentum = MPI_GetValue(DATAFILE,"TVDmomentum","ReadProperties",myproc); 
   (*prop)->conserveMomentum = MPI_GetValue(DATAFILE,"conserveMomentum","ReadProperties",myproc); 
   (*prop)->thetaM = MPI_GetValue(DATAFILE,"thetaM","ReadProperties",myproc); 
-  (*prop)->wetdry = MPI_GetValue(DATAFILE,"wetdry","ReadProperties",myproc); 
+  (*prop)->newcells = MPI_GetValue(DATAFILE,"newcells","ReadProperties",myproc); 
 
   // When wetting and drying is desired:
   // -Do nonconservative momentum advection (conserveMomentum=0)
