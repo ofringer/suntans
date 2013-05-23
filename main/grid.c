@@ -1794,7 +1794,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   if(VERBOSE>2) printf("Outputting %s...\n",str);
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(j=0;j<grid->Nc;j++) {
-    fprintf(ofile,"%e %e ",grid->xv[j],grid->yv[j]);
+    fprintf(ofile,"%.14e %.14e ",grid->xv[j],grid->yv[j]);
     for(nf=0;nf<NFACES;nf++)
       fprintf(ofile,"%d ",grid->cells[j*NFACES+nf]);
     for(nf=0;nf<NFACES;nf++)
@@ -1822,7 +1822,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(n=0;n<Nc;n++) {
-    fprintf(ofile,"%e %e %e %e %d ",grid->xv[n],grid->yv[n],
+    fprintf(ofile,"%.14e %.14e %e %e %d ",grid->xv[n],grid->yv[n],
 	    grid->Ac[n],grid->dv[n],grid->Nk[n]);
     for(nf=0;nf<NFACES;nf++)
       fprintf(ofile,"%d ",grid->face[NFACES*n+nf]);
