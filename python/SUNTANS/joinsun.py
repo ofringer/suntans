@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 """
 Script for joining suntans netcdf processor-based output into one file
 
@@ -365,10 +367,15 @@ def nc_info(ncfile):
         hasNe = ('Ne' in dimdata)
         hasTime = ('time' in dimdata)
         
+        try:
+            isFilled = nc.variables[vv].zlib
+        except:
+            isFilled = False
+        
         
         variables.append({'Name':vv,'dtype':nc.variables[vv].dtype.type,\
         'ndims':nc.variables[vv].ndim,'Attributes':attdata,'Dimensions':dimdata,\
-        'isCell':hasNc,'isEdge':hasNe,'isTime':hasTime})
+        'isCell':hasNc,'isEdge':hasNe,'isTime':hasTime,'isFilled':isFilled})
     
     # Get the global attributes
     globalatts={}
@@ -396,7 +403,10 @@ def init_nc(outfile,variables,dims,globalatts):
     
     # Create the variables
     for vv in variables:
-        tmpvar=nc.createVariable(vv['Name'],vv['dtype'],vv['Dimensions'],zlib=True,complevel=1,fill_value=99999)
+        if vv['isFilled']:
+            tmpvar=nc.createVariable(vv['Name'],vv['dtype'],vv['Dimensions'],zlib=True,complevel=1,fill_value=99999.0)
+        else:
+            tmpvar=nc.createVariable(vv['Name'],vv['dtype'],vv['Dimensions'])
     
         # Create the attributes
         for aa in vv['Attributes'].keys():

@@ -13,6 +13,8 @@ import numpy as np
 import airsea
 import netcdfio
 
+import pdb
+
 def main(vartype,bbox,timestart,timeend,ncfile,dbfile=None):
     varlookup ={'CurrentsActive':'currents','WaterLevelActive':'water_surface_height_above_reference_datum',\
     'Salinity':'sea_water_salinity','Conductivity':'sea_water_electrical_conductivity'}
@@ -210,7 +212,7 @@ def parseADCPdata(data,staInfo,ID):
     # Find the number of bins
     nz = maxList(data['"bin (count)"'])
     nt = len(data['"bin (count)"'])/nz
-    
+        
     # Get the depth data
     ele = -np.array(data['"bin_distance (m)"\n'][0:nz])
     # Load in the data
@@ -260,7 +262,7 @@ def parseADCPdata(data,staInfo,ID):
     'coordinates':'time, elevation, latitude, longitude','long_name':'Sea Water Temperature',\
     'units':'degrees C','coords':coords} 
     ncdict.append({'watertemp':attribs})
-
+    
     return ncdict
     
 def parseWaterLev(data,staInfo,ID):

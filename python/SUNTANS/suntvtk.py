@@ -54,9 +54,9 @@ class SunTvtk(Spatial):
             self.returnPoints()
             self.initTvtk2D()
 
-	if self.offscreen:
-	    print 'Using offscreen rendering.'
-	    mlab.options.offscreen=True
+        if self.offscreen:
+            print 'Using offscreen rendering.'
+            mlab.options.offscreen=True
 
     def initTvtk2D(self):
         """
@@ -324,20 +324,23 @@ class SunTvtk(Spatial):
         if not self.__dict__.has_key('title'):
             self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15) 
             
-    def vector(self,color=(0,0,0),subsample=1,scale=1e-3,line_width=1.0,**kwargs):
+    def vector(self,color=(1,1,1),subsample=1,scale=1e-3,line_width=1.0,**kwargs):
         """
         Overlay vectors onto the current scence
         """
-        
-        self.vector_overlay=True
         
         # Create a new scene if there isn't one
         if not self.__dict__.has_key('fig'):
             self.newscene()
         
-        self.loadVectorVTK()
-        src = mlab.pipeline.cell_to_point_data(self.ug)
+        if not self.vector_overlay:
+            self.loadVectorVTK()
+
+        #src = mlab.pipeline.cell_to_point_data(self.ug)
+        src = mlab.pipeline.add_dataset(self.ug)
         self.h=mlab.pipeline.vectors(src,color=color,mask_points=subsample,scale_factor=1./scale,scale_mode='vector',line_width=line_width,**kwargs)
+        #self.h=mlab.pipeline.vectors(src)
+
         
     def streamline(self,**kwargs):
         
@@ -364,21 +367,23 @@ class SunTvtk(Spatial):
         self.h.stream_tracer.maximum_propagation=10000.0
         self.h.stream_tracer.integration_direction = 'both'
         
-    def streammesh(self,nx=30,ny=30,**kwargs):
+    def streammesh(self,nx=30,ny=30,color=False,**kwargs):
         """
         Plots streamlines originating from points on a mesh
         """
-        
-        
-        self.vector_overlay=True
+
         
         # Create a new scene if there isn't one
         if not self.__dict__.has_key('fig'):
             self.newscene()
         
-        self.loadVectorVTK()
-        src = mlab.pipeline.add_dataset(self.ug)
-#        src = mlab.pipeline.cell_to_point_data(self.ug) # This colours the streamlines by the scalar field
+        if not self.vector_overlay:
+            self.loadVectorVTK()
+            
+        if color:
+            src = mlab.pipeline.cell_to_point_data(self.ug) # This colours the streamlines by the scalar field
+        else:
+            src = mlab.pipeline.add_dataset(self.ug)
              
         X = np.linspace(self.xv.min(),self.xv.max(),nx)
         y0 =self.yv.min()
@@ -397,6 +402,15 @@ class SunTvtk(Spatial):
         # Go back through and turn them off
         for stream in streams:
             stream.seed.widget.enabled = False
+            
+        # Add a colorbar if the isn't one
+        if not self.__dict__.has_key('cb'):
+            self.h=stream
+            self.colorbar() 
+            
+        # Add a title if there isn't one
+        if not self.__dict__.has_key('title'):
+            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
          
         return streams
 
@@ -405,7 +419,9 @@ class SunTvtk(Spatial):
 #        stream=mlab.pipeline.streamline(src,seedtype='plane')
 #        stream.seed.widget.point1 = [self.xv.min(),self.yv.min(),0.0]
 #        stream.seed.widget.point2 = [self.xv.max(),self.yv.max(),0.0]
+#        stream.seed.widget.resolution = nx
 #        stream.seed.widget.normal_to_z_axis=True
+#        return stream
 #        pdb.set_trace()
         
         
@@ -425,8 +441,39 @@ class SunTvtk(Spatial):
 #            h.stream_tracer.integration_direction = 'both'
 #            stream.append(h)
             
-                    
+    def windplot(self,nx=10,ny=10,scale=1e-3,**kwargs):
+        """
+        Overlay wind vectors on the current plots
+        """  
         
+        X,Y,uw,vw = self.getWind(nx=nx,ny=ny)
+        
+        Z = X*0+1000.0
+        
+        # Create a new scene if there isn't one
+        if not self.__dict__.has_key('fig'):
+            self.newscene()
+        
+        self.windobj = mlab.quiver3d(X,Y,Z,uw,vw,uw*0,scale_factor=1./scale,scale_mode='vector',\
+            mode='2dthick_arrow',**kwargs)
+        
+        self.windobj.glyph.glyph_source.glyph_source.filled=True
+        
+        self._nxwind=nx
+        self._nywind=ny
+    
+    def windupdate(self):
+        """
+        
+        """
+        if not self.__dict__.has_key('windobj'):
+            return
+        else:
+            X,Y,uw,vw = self.getWind(nx=self._nxwind,ny=self._nywind)
+            self.windobj.mlab_source.u=uw.ravel()
+            self.windobj.mlab_source.v=vw.ravel()
+            self.windobj.update_pipeline()
+            
     def animate(self,tstep=None):
         """
         Animates the current scene through all time steps (Interactive)
@@ -475,7 +522,7 @@ class SunTvtk(Spatial):
         
         anim() # Starts the animation.
     
-    def saveanimation(self,outfile,tstep=None,frate=10):
+    def saveanimation(self,outfile,tstep=None,frate=10,deltmp=True):
         """
         Saves an animation of the current scene to a file (non-interative)
         
@@ -490,10 +537,12 @@ class SunTvtk(Spatial):
         """
 #        
         import os
+        
+        outpath = os.path.dirname(outfile)
         # This works for mp4 and mov on Windows...
         #cmdstring ='ffmpeg -r %d -i ./.tmpanim%%04d.png -y -loglevel quiet -c:v libx264 -crf 23 -pix_fmt yuv420p %s'%(frate,outfile)
 	# Linux command
-        cmdstring ='ffmpeg -f image2 -r %d -y -loglevel quiet -b:v 7200k -i ./.tmpanim%%04d.png %s'%(frate,outfile)
+        cmdstring ='ffmpeg -f image2 -r %d -y -loglevel quiet -qscale 1 -b 7200 -i %s/.tmpanim_%s_%%04d.png %s'%(frate,outpath,self.variable,outfile)
 
         # Load one time step at a time into memory (slower run time)
         if tstep==None:
@@ -508,6 +557,9 @@ class SunTvtk(Spatial):
             
             if self.vector_overlay==True:
                 self.loadVectorVTK()
+                
+            if self.__dict__.has_key('windobj'):
+                self.windupdate()
                     
             self.loadData()
             self.ug.cell_data.scalars = self.data
@@ -519,7 +571,8 @@ class SunTvtk(Spatial):
             self.fig.scene.render()
             
             # This bit saves each img
-            outimg='./.tmpanim%04d.png'%ii
+            
+            outimg='%s/.tmpanim_%s_%04d.png'%(outpath,self.variable,ii)
             png_list.append(outimg)
 #            self.fig.scene.save_png(outimg)
             mlab.savefig(outimg,figure=self.fig)
@@ -531,9 +584,10 @@ class SunTvtk(Spatial):
         
         print '####\n Animation saved to: \n %s\n####' % outfile
         # Delete the images
-        print 'Cleaning up temporary images...'
-        for ff in png_list:
-            os.remove(ff)
+        if deltmp:
+            print 'Cleaning up temporary images...'
+            for ff in png_list:
+                os.remove(ff)
         print 'Complete.'
             
 #    def savefig(self,outfile):
@@ -553,7 +607,7 @@ class SunTvtk(Spatial):
             self.newscene()
             
         depth = -self.dv
-        if self.clim==None:
+        if clims==None:
             clim = [depth.min(), depth.max()]
             
         #  Create an unstructured grid object to interpolate cells onto points
@@ -601,8 +655,9 @@ class SunTvtk(Spatial):
         Loads vector data into the unstructured grid object
         """
         u,v,w = self.getVector() # This seems to do the masking (sub-classing??)
-        
-       
+        self._updateVectorVTK(u,v,w)
+    
+    def _updateVectorVTK(self,u,v,w):
         if self.is3D==False:
             # Point data
             up = self.cell2node(u)
@@ -620,6 +675,7 @@ class SunTvtk(Spatial):
             self.ug.cell_data.vectors.name = 'suntans_vector' 
         
         self.ug.modified()  
+        self.vector_overlay=True
         
     def __setitem__(self,key,value):
         """

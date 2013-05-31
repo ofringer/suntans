@@ -302,3 +302,22 @@ dtype = 'f8'
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':True,'complevel':1,'fill_value':fillval}})
 
 ### Atmospheric Flux Variables ###
+vname = 'Uwind'
+dimensions = ('time','Nc')
+attributes = {'long_name':'Eastward wind velocity component',\
+		'units':'m s-1',\
+		'mesh':'suntans_mesh',\
+		'location':'face',\
+		'coordinates':'time yv xv'}
+dtype = 'f8'		
+ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False,'complevel':1,'fill_value':fillval}})
+
+vname = 'Vwind'
+dimensions = ('time','Nc')
+attributes = {'long_name':'Northward wind velocity component',\
+		'units':'m s-1',\
+		'mesh':'suntans_mesh',\
+		'location':'face',\
+		'coordinates':'time yv xv'}
+dtype = 'f8'		
+ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False,'complevel':1,'fill_value':fillval}})

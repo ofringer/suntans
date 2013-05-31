@@ -132,8 +132,8 @@ class Grid(object):
             except:
                 print 'Cannot find variable: %s'%vv
          
-        if self.Nk.min()==1:
-            self.Nk-=1 #These need to be zero based
+        #if self.Nk.max()==self.Nkmax:
+        self.Nk-=1 #These need to be zero based
 #        try:
 #            #self.Nke-=1
 #        except:
@@ -233,10 +233,10 @@ class Grid(object):
             
         Used by spatial ploting routines 
         """
-        try:
-            self.cells[self.cells.mask]=0
-        except:
-            ''         
+#        try:
+#            self.cells[self.cells.mask]=0
+#        except:
+#            ''         
         return [closePoly(self.xp[self.cells[ii,:]],self.yp[self.cells[ii,:]]) for ii in range(self.Nc)]
 #        xynodes = []
 #        for ii in range(0,self.Nc):
@@ -519,6 +519,7 @@ class Grid(object):
         gridvars = ['suntans_mesh','cells','face','edges','neigh','grad','xp','yp','xv','yv','xe','ye',\
             'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
         
+        self.Nk += 1
         self.suntans_mesh=[0]  
         for vv in gridvars:
             if self.__dict__.has_key(vv):
@@ -591,8 +592,35 @@ class Spatial(Grid):
         # Check the j index
         self.j = self.checkIndex()
 
-     
-    def loadData(self,variable=None):
+    def loadData(self, variable=None):
+        """
+        High-level wrapper to load different variables into the 'data' attribute
+        
+        """
+        
+        if variable==None:
+            variable=self.variable
+            
+        if variable=='speed':
+            return self.loadSpeed()
+        elif variable=='vorticity':
+            self.data = self.vorticity()
+            self.long_name = 'Vertical vorticity'
+            self.units = 's-1'
+            return
+        elif variable=='strain':
+            self.data = self.strain()
+            self.long_name = 'Horizontal strain'
+            self.units = 's-1'
+            return
+        elif variable=='PEanom':
+            self.data = self.PEanom()
+            
+        else:
+            return self.loadDataRaw()
+        
+    
+    def loadDataRaw(self,variable=None):
         """ 
             Load the specified suntans variable data as a vector
             
@@ -677,6 +705,20 @@ class Spatial(Grid):
         
         return databar
         
+    def loadSpeed(self):
+        """
+        Load the velocity magnitude into the data variable
+        """
+        u,v,w = self.getVector()
+        
+        self.long_name = 'Current speed'
+        self.units = 'm s-1'
+        
+        speed = np.sqrt(u**2 + v**2 + w**2)
+        
+        self.data = speed
+        
+        return speed
         
     def loadTime(self):
          """
@@ -686,6 +728,8 @@ class Spatial(Grid):
          nc = self.nc
          t = nc.variables['time']
          self.time = num2date(t[:],t.units)
+         
+         self.Nt = self.time.shape[0]
     
     def plot(self,z=None,xlims=None,ylims=None,titlestr=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
         """
@@ -763,6 +807,8 @@ class Spatial(Grid):
         
         if titlestr==None:
             plt.title(self.__genTitle())
+        else:
+            plt.title(titlestr)
             
         if vector_overlay:
              u,v,w = self.getVector()
@@ -1013,20 +1059,23 @@ class Spatial(Grid):
         tmpvar = self.variable
         
         self.variable='uc'
-        self.loadData()
+        self.loadDataRaw()
         u=self.data.copy()
         
         self.variable='vc'
-        self.loadData()
+        self.loadDataRaw()
         v=self.data.copy()
         
-        self.variable='w'
-        self.loadData()
-        w=self.data.copy()
-                
+        try:
+            self.variable='w'
+            self.loadDataRaw()
+            w=self.data.copy()
+        except:
+            w=u*0.0
+                               
         self.variable=tmpvar
         # Reload the original variable data
-        self.loadData()
+        #self.loadData()
         
         return u,v,w
         
@@ -1157,20 +1206,86 @@ class Spatial(Grid):
                 
         return data
         
-    def depthave(self,data):
+    def PEanom(self):
+        """
+        Calculate the potential energy anomaly as defined by Simpson et al., 1990
+        """
+        self.klayer=[-99]
+        
+        # Load the base data
+        #self.loadDataRaw(variable='eta')
+        #eta=self.data.copy()
+        self.loadDataRaw(variable='rho')
+        rho=self.data.copy()*1000.0+1000.0
+        mask =rho>1500.0
+      
+        try:
+            self.loadDataRaw(variable='dzz')
+            dzz=self.data.copy()
+            mask = dzz.mask.copy()
+            dzz[mask]=0.
+            h=np.sum(dzz,axis=0)
+            #h = self.dv+eta
+        except: # No dzz variable
+            dz2=np.reshape(self.dz,(self.dz.shape[0],1))
+            dzz = np.tile(dz2,(1,rho.shape[1]))
+            h=self.dv
+                
+        rho[mask]=0.
+
+        rho_bar = self.depthave(rho,dz=dzz,h=h)
+        rho_bar = np.tile(rho_bar,(self.Nkmax,1))
+        
+        z = -1.0*np.cumsum(dzz,axis=0) 
+        
+        rho_pr = rho_bar - rho
+        rho_pr[mask]=0.
+        
+        self.long_name='Potential Energy Anomaly'
+        self.units = 'J m-2'
+        
+        return self.depthint(rho_pr*z*9.81,dz=dzz) 
+#        return self.depthave(rho_pr*z*9.81,dz=dzz,h=h) 
+    
+    def getWind(self,nx=10,ny=10):
+        """
+        Interpolates the wind data onto a regular grid
+        """
+        from interpXYZ import interpXYZ
+        
+        x = np.linspace(self.xv.min(),self.xv.max(),nx)  
+        y = np.linspace(self.yv.min(),self.yv.max(),ny) 
+        
+        X,Y = np.meshgrid(x,y)
+        
+        Uwind = self.loadDataRaw(variable='Uwind')
+        Vwind = self.loadDataRaw(variable='Vwind')
+        
+        XYout = np.array((X.ravel(),Y.ravel())).T
+        
+        F = interpXYZ(np.array((self.xv,self.yv)).T, XYout, method='idw')
+        
+        return X,Y,F(Uwind).reshape((nx,ny)),F(Vwind).reshape((nx,ny))
+        
+        
+    def depthave(self,data,dz=None, h=None):
         """ Calculate the depth average of a variable
         Variable should have dimension: [nz*nx] or [nt*nz*nx]
         
         """
         ndim = np.ndim(data)
+        
+        if h==None:
+            h = self.dv
+            
         if ndim == 2:
-            return self.depthint(data) / self.dv
+            return self.depthint(data,dz) / h
         elif ndim == 3:
             nt = np.size(data,0)
-            h = np.tile(self.dv,(nt,1))
-            return self.depthint(data) / h
+            h = np.tile(h,(nt,1))
+            return self.depthint(data,dz) / h
                 
-    def depthint(self,data,cumulative=False):
+    def depthint(self,data,dz=None,cumulative=False):
         """
         Calculates the depth integral of a variable: data
         Variable should have dimension: [nz*nx] or [nt*nz*nx]
@@ -1182,8 +1297,12 @@ class Spatial(Grid):
                 
         if ndim == 2:
             nx = np.size(data,1)
-            dz2=np.reshape(self.dz,(nz,1))
-            dz2 = np.tile(dz2,(1,nx))
+            if dz==None:
+                dz2=np.reshape(self.dz,(nz,1))
+                dz2 = np.tile(dz2,(1,nx))
+            else:
+                dz2=dz
+                
             if cumulative:
                 return np.cumsum(data*dz2,axis=0)
             else:
@@ -1192,8 +1311,11 @@ class Spatial(Grid):
         if ndim == 3:
             nt = np.size(data,0)
             nx = np.size(data,2)
-            dz3 = np.reshape(self.dz,(1,nz,1))
-            dz3 = np.tile(dz3,(nt,1,nx))
+            if dz==None:
+                dz3 = np.reshape(self.dz,(1,nz,1))
+                dz3 = np.tile(dz3,(nt,1,nx))
+            else:
+                dz3=dz
             if cumulative:
                 return np.cumsum(data*dz3,axis=0)
             else:
@@ -1266,6 +1388,9 @@ class Spatial(Grid):
             zlayer = '%3.1f [m]'%self.z_r[self.klayer[0]]
         elif self.klayer[0]==-1:
             zlayer = 'seabed'
+        elif self.klayer[0]==-99:
+            zlayer = 'depth-averaged'
+            
         titlestr='%s [%s]\n z: %s, Time: %s'%(self.long_name,self.units,zlayer,\
                 datetime.strftime(self.time[tt],'%d-%b-%Y %H:%M:%S'))
                 

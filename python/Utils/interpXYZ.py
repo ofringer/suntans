@@ -415,7 +415,6 @@ def tile_vector(count,chunks):
     
 
     
-    
 ################
 # Testing sections
 

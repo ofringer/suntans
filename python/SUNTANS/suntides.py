@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
 Classes and tools for handling tidal harmonic data
@@ -231,7 +232,7 @@ class suntides(Spatial):
                 clim=self.clim,**kwargs)        
                 
     def plotEllipse(self,barotropic=False,k=0,con='M2',scale=1e4,subsample=4,\
-            xlims=None,ylims=None,**kwargs):
+            xlims=None,ylims=None,cbarpos=[0.15, 0.15, 0.03, 0.3],**kwargs):
         """
         Plots tidal ellipses on a map
         """
@@ -241,8 +242,7 @@ class suntides(Spatial):
         fig = plt.gcf()
         ax = fig.gca()
         
-        ii = findCon(con,self.frqnames)
-        print ii
+        iicon = findCon(con,self.frqnames)
         
         if self.clim==None:
             self.clim=[]
@@ -254,15 +254,15 @@ class suntides(Spatial):
             
         # Load the data
         if barotropic:
-            uA = self.Amp['ubar'][ii,:]
-            uP = self.Phs['ubar'][ii,:]
-            vA = self.Amp['vbar'][ii,:]
-            vP = self.Phs['vbar'][ii,:]
+            uA = self.Amp['ubar'][iicon,:]
+            uP = self.Phs['ubar'][iicon,:]
+            vA = self.Amp['vbar'][iicon,:]
+            vP = self.Phs['vbar'][iicon,:]
         else:
-            uA = self.Amp['uc'][ii,k,:]
-            uP = self.Phs['uc'][ii,k,:]
-            vA = self.Amp['vc'][ii,k,:]
-            vP = self.Phs['vc'][ii,k,:]
+            uA = self.Amp['uc'][iicon,k,:]
+            uP = self.Phs['uc'][iicon,k,:]
+            vA = self.Amp['vc'][iicon,k,:]
+            vP = self.Phs['vc'][iicon,k,:]
             
         # Calculate the ellipse parameters
         ell = ap2ep(uA,uP,vA,vP)
@@ -287,20 +287,22 @@ class suntides(Spatial):
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
 
+        titlestr='%s - Semi-major Ellipse Amplitude'%(self.frqnames[iicon])
+        plt.title(titlestr)
         
         ax.add_collection(collection)
-
+        # Add a decent looking colorbar
+        cbaxes = fig.add_axes(cbarpos) 
+        cb = fig.colorbar(collection,cax = cbaxes,orientation='vertical')  
+        cb.ax.set_title('[$m s^{-1}$]')
+        
+    
+        plt.sca(ax)
+        
+        #axcb = fig.colorbar(collection)
         
         return collection
    
-    
-        #axcb = fig.colorbar(collection)
-        
-#        self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zA,xlim=xlims,ylim=ylims,\
-#                clim=self.clim,**kwargs)
-        
-        #titlestr='%s Amplitude\n%s [%s]'%(self.frqnames[ii],self.long_name,self.units)
-        #plt.title(titlestr)
         
     def coRangePlot(self,vname ='eta', k=0, con='M2', clevs=20, phsint=1800.0,xlims=None,ylims=None, **kwargs):
         """
@@ -348,6 +350,34 @@ class suntides(Spatial):
         titlestr='%s Amplitude\nPhase contour interval: %3.1f hr'%(self.frqnames[ii],phsint/3600.)
         plt.title(titlestr)
     
+    def ustokes(self,barotropic=False,k=0,con='M2'):
+        """
+        Calculate the Stokes' velocity
+        """
+        iicon = findCon(con,self.frqnames)
+             
+        # Load the data
+        if barotropic:
+            uA = self.Amp['ubar'][iicon,:]
+            uP = self.Phs['ubar'][iicon,:]
+            vA = self.Amp['vbar'][iicon,:]
+            vP = self.Phs['vbar'][iicon,:]
+        else:
+            uA = self.Amp['uc'][iicon,k,:]
+            uP = self.Phs['uc'][iicon,k,:]
+            vA = self.Amp['vc'][iicon,k,:]
+            vP = self.Phs['vc'][iicon,k,:]
+            
+        # Calculate the phse gradient
+        phiu_x,phiu_y = self.gradH(uP,k=k)
+        phiv_x,phiv_y = self.gradH(vP,k=k)
+        
+        cff = 1.0/(2.0*self.frq[iicon])
+        us = phiu_x*uA**2*cff
+        vs = phiv_y*vA**2*cff
+        
+        return us, vs
+        
     def tides2nc(self,outfile):
         """
         Saves the tidal harmonic data to netcdf
@@ -421,91 +451,7 @@ class suntides(Spatial):
         
         print 'Completed writing harmonic output to:\n   %s'%outfile
 
-class sunfilter(Spatial):
-    """
-    Class for temporally filtering suntans model output
-    """
-    
-    ftype='low'
-    order=3
-    cutoff_dt = 34.0*3600.0 # Cutoff time period in hours
-    
-    def __init__(self,ncfile,**kwargs):
-        """
-        Initialise the suntides class 
-        
-        See sunpy.Spatial class for list of kwargs
-        """
-        
-        self.__dict__.update(kwargs)
-        
-        Spatial.__init__(self,ncfile,**kwargs)
-            
-    def __call__(self,tstart,tend,varname=None):
-        """
-        Calls the filter class
-        """
-        self.tstep=self.getTstep(tstart,tend)
-        
-        if not varname == None:
-            self.variable = varname
-        
-        self.loadData()
-        
-        # Load the data into a time series object (this has a filter method)
-        T = timeseries(self.time[self.tstep],np.swapaxes(self.data,0,-1)) # Time dimension needs to be last (filtfilt may have a bug)
-                
-        dataout = T.filt(self.cutoff_dt,btype=self.ftype,axis=-1,order=self.order)  
-        
-        return np.swapaxes(dataout,-1,0) # Return with the dimensions in the right order
-        
-    def filter2nc(self,outfile,tstart,tend,substep=12,varlist=None,**kwargs):
-        """
-        Filters the variables in the list, varlist, and outputs the results to netcdf
-        
-        """
-        self.__dict__.update(kwargs)
-        
-        if varlist == None:
-            varlist = ['eta','uc','vc','w']
-            
-        # Create the output file 
-        self.writeNC(outfile)
-        
-        # Create the output variables
-        for vv in varlist:
-            print 'Creating variable: %s'%vv
-            self.create_nc_var(outfile, vv, ugrid[vv]['dimensions'], ugrid[vv]['attributes'],\
-                dtype=ugrid[vv]['dtype'],zlib=ugrid[vv]['zlib'],complevel=ugrid[vv]['complevel'],fill_value=ugrid[vv]['fill_value'])
-        
-        self.create_nc_var(outfile,'time', ugrid['time']['dimensions'], ugrid['time']['attributes'])
-        
-        # Loop through and filter each variable (do layer by layer on 3D variables for sake of memory)        
-        nc = Dataset(outfile,'a')
-        
-        # Create the time variable first
-        tstep=self.getTstep(tstart,tend)
-        nctime = othertime.SecondsSince(self.time[tstep[0]:tstep[-1]:substep])
 
-        nc.variables['time'][:] = nctime
-        
-        for vv in varlist:
-            print 'Filtering variable: %s'%vv
-            
-            if len(ugrid[vv]['dimensions']) == 2:
-                dataf = self.__call__(tstart,tend,varname=vv)
-                nc.variables[vv][:] = dataf[::substep,:].copy()
-            elif len(ugrid[vv]['dimensions']) == 3:
-                for kk in range(0,self.Nkmax):
-                    print '   layer: %d'%kk
-                    self.klayer = [kk]
-                    dataf = self.__call__(tstart,tend,varname=vv)
-                    nc.variables[vv][:,kk,:] = dataf[::substep,:].copy()
-
-
-        nc.close()
-        print '#####\nComplete - Filtered data written to: \n%s \n#####'%outfile
-        
     
 def findCon(name,conList):
     """
