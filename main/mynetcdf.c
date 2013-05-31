@@ -20,7 +20,7 @@ static void nc_addattr(int ncid, int varid, char *attname, char *attvalue);
 void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmparray);
 void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc);
 void nc_write_double(int ncid, char *vname, REAL *tmparray, int myproc);
-void nc_write_int(int ncid, char *vname, REAL *tmparray, int myproc);
+void nc_write_int(int ncid, char *vname, int *tmparray, int myproc);
 
 /*########################################################
 *
@@ -130,7 +130,7 @@ void nc_write_double(int ncid, char *vname, REAL *tmparray, int myproc){
  * Wrapper function for writing a double variable
  *
  */
-void nc_write_int(int ncid, char *vname, REAL *tmparray, int myproc){
+void nc_write_int(int ncid, char *vname, int *tmparray, int myproc){
     int varid, retval;
 
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
@@ -1066,7 +1066,7 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
    nc_write_double(ncid,"xp",grid->xp,myproc);
    nc_write_double(ncid,"yp",grid->yp,myproc);
 
-   nc_write_int(ncid,"normal",grid->xp,myproc);
+   nc_write_int(ncid,"normal",grid->normal,myproc);
    nc_write_double(ncid,"n1",grid->n1,myproc);
    nc_write_double(ncid,"n2",grid->n2,myproc);
    nc_write_double(ncid,"df",grid->df,myproc);
@@ -1732,11 +1732,11 @@ void ReturnFreeSurfaceNC(propT *prop, physT *phys, gridT *grid, int Nci, int T0,
  * Reads the salinity from the initial condition netcdf array
  *
  */
-void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki, int T0, int myproc){
-   int i,k;
+void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc){
+   int i,k,ind;
    size_t start[] = {T0, 0, 0};
    size_t count[] = {1, Nki, Nci};
-   REAL htmp[Nki][Nci];
+   //REAL htmp[Nki][Nci];
 
    int varid, retval;
    int ncid = prop->initialNCfileID;
@@ -1744,13 +1744,17 @@ void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki, i
    if(VERBOSE>1 && myproc==0) printf("Reading salinity initial condition from netcdf file...");
     if ((retval = nc_inq_varid(ncid, "S", &varid)))
 	ERR(retval);
-    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0][0]))) 
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
 	ERR(retval); 
 
    for(i=0;i<grid->Nc;i++) {
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-	 phys->s[i][k]=htmp[k][grid->mnptr[i]];
-	 phys->s0[i][k]=htmp[k][grid->mnptr[i]];
+         //ind = grid->mnptr[i]*grid->Nkmax + k;
+	 ind = k*Nci + grid->mnptr[i]; 
+	 phys->s[i][k]=htmp[ind];
+	 phys->s0[i][k]=htmp[ind];
+	 //phys->s[i][k]=htmp[k][grid->mnptr[i]];
+	 //phys->s0[i][k]=htmp[k][grid->mnptr[i]];
       }
   }
 } // End function
@@ -1762,11 +1766,11 @@ void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki, i
  * Reads the salinity from the initial condition netcdf array
  *
  */
-void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki, int T0, int myproc){
-   int i,k;
+void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc){
+   int i,k,ind;
    size_t start[] = {T0, 0, 0};
    size_t count[] = {1, Nki, Nci};
-   REAL htmp[Nki][Nci];
+   //REAL htmp[Nki][Nci];
 
    int varid, retval;
    int ncid = prop->initialNCfileID;
@@ -1774,12 +1778,16 @@ void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki
    if(VERBOSE>1 && myproc==0) printf("Reading temperature initial condition from netcdf file...");
     if ((retval = nc_inq_varid(ncid, "T", &varid)))
 	ERR(retval);
-    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0][0]))) 
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
 	ERR(retval); 
 
    for(i=0;i<grid->Nc;i++) {
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-	 phys->T[i][k]=htmp[k][grid->mnptr[i]];
+         //ind = grid->mnptr[i]*grid->Nkmax + k;
+	 ind = k*Nci + grid->mnptr[i]; 
+	 phys->T[i][k]=htmp[ind];
+	
+	 //phys->T[i][k]=htmp[k][grid->mnptr[i]];
       }
   }
 } // End function

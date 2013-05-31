@@ -36,6 +36,6 @@ int getTimeRecBnd(REAL nctime, REAL *time, int nt);
 void ReadInitialNCcoord(propT *prop, gridT *grid, int *Nci, int *Nki, int *T0, int myproc);
 int getICtime(propT *prop, int Nt, int myproc);
 void ReturnFreeSurfaceNC(propT *prop, physT *phys, gridT *grid, int Nci, int T0, int myproc);
-void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki, int T0, int myproc);
-void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, int Nci, int Nki, int T0, int myproc);
+void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
+void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
 #endif

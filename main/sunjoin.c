@@ -26,6 +26,7 @@ void read_cell_int_2D(int ncproc, int Nrows, int Ndim, char *vname, ptrT *ptr, g
 void read_edge_int_2D(int ncproc, int Nrows, int Ndim, char *vname, ptrT *ptr, gridT *grid, int *tmp2d, int myproc);
 void read_edge_1D(int ncproc, int Nrows,  char *vname, ptrT *ptr, gridT *grid, REAL *tmp2d, int myproc);
 void read_cell_1D(int ncproc, int Nrows,  char *vname, ptrT *ptr, gridT *grid, REAL *tmp2d, int myproc);
+void read_cell_int_1D(int ncproc, int nrows, char *vname, ptrT *ptr, gridT *grid, int *tmp2d, int myproc);
 void read_cell_2Dall(int ncproc, int Nc, int Ndim, char *vname, ptrT *ptr, gridT *grid, REAL *tmp2d, int myproc);
 
 main(int argc, char *argv[])
@@ -109,9 +110,11 @@ void JoinNetcdf(propT *prop, gridT *grid, physT *phys, metT *met){
 	read_cell_int_2D(ncid[myproc], Nc[myproc], NFACES, "face", ptr, grid, grid->face, myproc);
 	read_cell_int_2D(ncid[myproc], Nc[myproc], NFACES, "neigh", ptr, grid, grid->neigh, myproc);
 	read_cell_int_2D(ncid[myproc], Nc[myproc], NFACES, "normal", ptr, grid, grid->normal, myproc);
+	read_cell_int_1D(ncid[myproc], Nc[myproc], "Nk",ptr, grid, grid->Nk, myproc);
 
 	read_edge_int_2D(ncid[myproc], Ne[myproc], 2, "edges", ptr, grid, grid->edges, myproc);
 	read_edge_int_2D(ncid[myproc], Ne[myproc], 2, "grad", ptr, grid, grid->grad, myproc);
+	read_edge_int_2D(ncid[myproc], Ne[myproc], 1, "Nke", ptr, grid, grid->Nke, myproc);
 
 	read_cell_1D(ncid[myproc], Nc[myproc], "xv", ptr, grid, grid->xv, myproc);
 	read_cell_1D(ncid[myproc], Nc[myproc], "yv", ptr, grid, grid->yv, myproc);
@@ -254,13 +257,15 @@ void read_cell_3D(int ncproc, int Nc, int tstep, char *vname, ptrT *ptr, gridT *
     if ((retval = nc_inq_varid(ncproc, vname, &varid)))
 	ERR(retval);
     if ((retval = nc_get_vara_double(ncproc, varid, start, count, &ptr->ncscratch[0] )))
+    //if ((retval = nc_get_vara_double(ncproc, varid, start, count, &tmpvar[0][0][0] )))
 	ERR(retval);
 
     for(i=0;i<Nc;i++){
     	iloc=ptr->mnptr[myproc][i];
-	for(k=0;k<grid->Nk[iloc];k++){
+	for(k=0;k<grid->Nkmax;k++){
 	    ind = k*Nc+i;
-	    tmp3d[iloc][k]=ptr->ncscratch[ind];
+	    if(k < grid->Nk[iloc])
+		tmp3d[iloc][k]=ptr->ncscratch[ind];
 	    //tmp3d[iloc][k]=tmpvar[0][k][i];
 	}
     }
@@ -395,56 +400,81 @@ void read_cell_2Dall(int ncproc, int Nc, int Ndim, char *vname, ptrT *ptr, gridT
 }//End function
 
 /*
- * Function: read_cell_int_2D()
+ * function: read_cell_int_2d()
  * -------------------------
- * Read a 2D cell based double array onto the phys variable
+ * read a 2d cell based double array onto the phys variable
  */
-void read_cell_int_2D(int ncproc, int Nrows, int Ndim, char *vname, ptrT *ptr, gridT *grid, int *tmp2d, int myproc){
+void read_cell_int_2D(int ncproc, int nrows, int ndim, char *vname, ptrT *ptr, gridT *grid, int *tmp2d, int myproc){
     int i, iloc, k, ind, retval, varid;
-    //REAL tmpvar[1][Nc];
+    //real tmpvar[1][nc];
     size_t start[]={0,0};
-    size_t count[]={Nrows,Ndim};
+    size_t count[]={nrows,ndim};
 
-    //printf("Reading variable: %s on processor: %d...\n",vname,myproc);
+    //printf("reading variable: %s on processor: %d...\n",vname,myproc);
     if ((retval = nc_inq_varid(ncproc, vname, &varid)))
-	ERR(retval);
+	err(retval);
     if ((retval = nc_get_vara_int(ncproc, varid, start, count, &ptr->nctmpint[0] )))
-	ERR(retval);
+	err(retval);
 
-    for(i=0;i<Nrows;i++){
+    for(i=0;i<nrows;i++){
     	iloc=ptr->mnptr[myproc][i];
-	for(k=0;k<Ndim;k++){
-	     tmp2d[iloc*Ndim+k]=ptr->nctmpint[i*Ndim+k];
+	for(k=0;k<ndim;k++){
+	     tmp2d[iloc*ndim+k]=ptr->nctmpint[i*ndim+k];
 	 }
     }
 
-}//End function
+}//end function
 
 /*
- * Function: read_edge_int_2D()
+ * function: read_cell_int_1d()
  * -------------------------
- * Read a 2D cell based double array onto the phys variable
+ * read a 2d cell based double array onto the phys variable
  */
-void read_edge_int_2D(int ncproc, int Nrows, int Ndim, char *vname, ptrT *ptr, gridT *grid, int *tmp2d, int myproc){
+void read_cell_int_1D(int ncproc, int nrows, char *vname, ptrT *ptr, gridT *grid, int *tmp2d, int myproc){
     int i, iloc, k, ind, retval, varid;
-    //REAL tmpvar[1][Nc];
-    size_t start[]={0,0};
-    size_t count[]={Nrows,Ndim};
+    //real tmpvar[1][nc];
+    size_t start[]={0};
+    size_t count[]={nrows};
 
-    //printf("Reading variable: %s on processor: %d...\n",vname,myproc);
+    //printf("reading variable: %s on processor: %d...\n",vname,myproc);
     if ((retval = nc_inq_varid(ncproc, vname, &varid)))
-	ERR(retval);
+	err(retval);
     if ((retval = nc_get_vara_int(ncproc, varid, start, count, &ptr->nctmpint[0] )))
-	ERR(retval);
+	err(retval);
 
-    for(i=0;i<Nrows;i++){
+    for(i=0;i<nrows;i++){
+    	iloc=ptr->mnptr[myproc][i];
+	tmp2d[iloc]=ptr->nctmpint[i];
+    }
+
+}//end function
+
+
+/*
+ * function: read_edge_int_2d()
+ * -------------------------
+ * read a 2d cell based double array onto the phys variable
+ */
+void read_edge_int_2D(int ncproc, int nrows, int ndim, char *vname, ptrT *ptr, gridT *grid, int *tmp2d, int myproc){
+    int i, iloc, k, ind, retval, varid;
+    //real tmpvar[1][nc];
+    size_t start[]={0,0};
+    size_t count[]={nrows,ndim};
+
+    //printf("reading variable: %s on processor: %d...\n",vname,myproc);
+    if ((retval = nc_inq_varid(ncproc, vname, &varid)))
+	err(retval);
+    if ((retval = nc_get_vara_int(ncproc, varid, start, count, &ptr->nctmpint[0] )))
+	err(retval);
+
+    for(i=0;i<nrows;i++){
     	iloc=ptr->eptr[myproc][i];
-	for(k=0;k<Ndim;k++){
-	     tmp2d[iloc*Ndim+k]=ptr->nctmpint[i*Ndim+k];
+	for(k=0;k<ndim;k++){
+	     tmp2d[iloc*ndim+k]=ptr->nctmpint[i*ndim+k];
 	 }
     }
 
-}//End function
+}//end function
 
 
 
