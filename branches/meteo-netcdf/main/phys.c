@@ -610,6 +610,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
 {
   int i, j, k, ktop, Nc=grid->Nc;
   REAL z, *stmp;
+  REAL *ncscratch;
   int Nci, Nki, T0;
 
 
@@ -621,14 +622,14 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
 
   if (prop->readinitialnc>0){
 #ifdef USENETCDF
-
     ReadInitialNCcoord(prop,grid,&Nci,&Nki,&T0,myproc);
+    // Initialise a scratch variable for reading arrays
+    ncscratch = (REAL *)SunMalloc(Nki*Nci*sizeof(REAL),"InitializePhysicalVariables");
 
     //size_t count2[] = {1,Nci};
     //size_t start2[] = {T0,0};
     //size_t count3[] = {1,Nki,Nci};
     //size_t start3[] = {T0,0,0};
-
 #endif
   }
   // Need to update the vertical grid and fix any cells in which
@@ -691,7 +692,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       }
     SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
   } else if(prop->readinitialnc){
-     ReturnSalinityNC(prop,phys,grid,Nci,Nki,T0,myproc);
+     ReturnSalinityNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
   } else {
     for(i=0;i<Nc;i++) {
       z = 0;
@@ -716,7 +717,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
 
     SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
    } else if(prop->readinitialnc){
-        ReturnTemperatureNC(prop,phys,grid,Nci,Nki,T0,myproc);
+        ReturnTemperatureNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
   } else {  
     for(i=0;i<Nc;i++) {
       z = 0;
@@ -794,6 +795,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       }
     }
   }
+  // Free the scratch array
+  if (prop->readinitialnc>0)
+      SunFree(ncscratch,Nki*Nci*sizeof(REAL),"InitializePhyiscalVariables");
 }
 
 /*
