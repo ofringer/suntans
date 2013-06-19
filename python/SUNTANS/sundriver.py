@@ -78,7 +78,7 @@ class sundriver(object):
     ####
     opt_bcseg = 'constant' # Segment boundary condition option: 'constant' or 'file'
     opt_bctype2 = 'constant' # Type 2 boundary condition option: 'constant'
-    opt_bctype3 = 'constant' # Type 3 boundary condition option: 'constant', ,'file','OTIS', 'ROMS', 'ROMSOTIS','ROMSFILE'
+    opt_bctype3 = 'constant' # Type 3 boundary condition option: 'constant', ,'file','OTIS', 'ROMS', 'ROMSOTIS','ROMSFILE', 'OTISFILE', 'ROMSOTISFILE'
 
     modifyedges = False # Option to modify the boundary edges
     bcpolygonfile = None # Shape file with fields 'marker' and 'edge_id'
@@ -240,6 +240,8 @@ class sundriver(object):
         self.useROMS = False
         self.useOTIS = False
         self.useFILE = False
+	self.useOTISFILE = False
+
         if self.opt_bctype3=='constant':
             print 'Setting constant type-3 boundary conditions...'  
             print 'Setting salinity = %f, temperature = %f'%(self.S0,self.T0)
@@ -270,7 +272,14 @@ class sundriver(object):
         elif self.opt_bctype3 in ('ROMSFILE'):
             self.useROMS = True
             self.useFILE = True
-            
+        
+	elif self.opt_bctype3 in ('OTISFILE'):
+	    self.useOTISFILE = True
+
+	elif self.opt_bctype3 in ('ROMSOTISFILE'):
+	    self.useOTISFILE = True
+	    self.useROMS = True
+
         else:
             print 'Unknown option: opt_bctype3 = %s. Not setting type-3 boundaries.'%self.opt_bctype3
 
@@ -280,6 +289,9 @@ class sundriver(object):
             
         if self.useOTIS:
             bnd.otis2boundary(self.otisfile)
+
+	if self.useOTISFILE:
+	    bnd.otisfile2boundary(self.otisfile,self.dbasefile,self.waterlevelstationID)
             
         if self.useFILE:
             ID = self.waterlevelstationID

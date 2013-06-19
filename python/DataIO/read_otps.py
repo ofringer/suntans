@@ -77,6 +77,72 @@ def tide_pred(modfile,lon,lat,time,z=None,conlist=None):
     szo = (nt,)+sz
     return h.reshape(szo), u.reshape(szo), v.reshape(szo)
     
+def tide_pred_correc(modfile,lon,lat,time,dbfile,ID,z=None,conlist=None):
+    """
+    Performs a tidal prediction at all points in [lon,lat] at times in vector [time]
+    
+    Applies an amplitude and phase correction based on a time series
+    """
+    from timeseries import timeseries, loadDBstation
+    
+    print 'Calculating tidal correction factors from time series...'
+    # Load using the timeseries module
+    t0 = datetime.strftime(time[0],'%Y%m%d.%H%M%S')
+    t1 = datetime.strftime(time[-1],'%Y%m%d.%H%M%S')
+    dt = time[1]-time[0]
+    
+    print t0, t1, dt.total_seconds()
+    timeinfo = (t0,t1,dt.total_seconds())
+    TS,meta = loadDBstation(dbfile,ID,'waterlevel',timeinfo=timeinfo,filttype='low',cutoff=2*3600,output_meta=True)
+    lonpt=meta['longitude']
+    latpt=meta['latitude']
+    print lonpt,latpt
+    
+    # Extract the OTIS tide prediction
+    u_re, u_im, v_re, v_im, h_re, h_im, omega, conlist = extract_HC(modfile,lonpt,latpt)
+    h_amp = np.abs(h_re+1j*h_im)[:,0]
+    h_phs = np.angle(h_re+1j*h_im)[:,0]
+    
+    # Harmonic analysis of observation time series
+    amp, phs, frq, frqnames, htide = TS.tidefit(frqnames=conlist)
+    TS_harm = timeseries(time,htide)
+    residual = TS.y - htide
+    
+    # Calculate the amp and phase corrections
+    dphs = phs - h_phs + np.pi
+    damp = amp/h_amp
+    
+    # Extract the data along the specified points
+    u_re, u_im, v_re, v_im, h_re, h_im, omega, conlist = extract_HC(modfile,lon,lat,z=z,conlist=conlist)
+    
+    h_amp = np.abs(h_re+1j*h_im)
+    h_phs = np.angle(h_re+1j*h_im)
+    u_amp = np.abs(u_re+1j*u_im)
+    u_phs = np.angle(u_re+1j*u_im)
+    v_amp = np.abs(v_re+1j*v_im)
+    v_phs = np.angle(v_re+1j*v_im)
+        
+    # Initialise the output arrays
+    sz = lon.shape
+    nx = np.prod(sz)
+    nt = time.shape[0]
+
+    h=np.zeros((nt,nx))
+    u=np.zeros((nt,nx))
+    v=np.zeros((nt,nx))
+    
+    # Rebuild the time series
+    #tsec=TS_harm.tsec - TS_harm.tsec[0]
+    tsec = othertime.SecondsSince(time,basetime=time[0])
+    print tsec[0]
+    for nn,om in enumerate(omega):
+        for ii in range(0,nx):
+            h[:,ii] += damp[nn]*h_amp[nn,ii] * np.cos(om*tsec - (h_phs[nn,ii] + dphs[nn]))
+            u[:,ii] += damp[nn]*u_amp[nn,ii] * np.cos(om*tsec - (u_phs[nn,ii] + dphs[nn]))
+            v[:,ii] += damp[nn]*v_amp[nn,ii] * np.cos(om*tsec - (v_phs[nn,ii] + dphs[nn]))
+            
+    szo = (nt,)+sz
+    return h.reshape(szo), u.reshape(szo), v.reshape(szo), residual
 
 def tide_pred_old(modfile,lon,lat,time,z=None,conlist=None):
     """

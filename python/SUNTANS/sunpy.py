@@ -1364,6 +1364,22 @@ class Spatial(Grid):
             
             return (phi_npm[:,0:-1,:] - phi_npm[:,1:,:])/dz3
 
+    def areaint(self,phi,xypoly):
+        """
+        Calculate the area-integral of data at phi points 
+        """
+        try:
+            mask = nxutils.points_inside_poly(np.array((self.xv,self.yv)).T, xypoly)
+        except:
+            import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
+            mask = nxutils.points_inside_poly(np.array((self.xv,self.yv)).T, xypoly)
+  
+        mask = nxutils.points_inside_poly(np.array((self.xv,self.yv)).T, xypoly)
+        
+        phiA = np.sum(phi[mask]*self.Ac[mask])
+        area = np.sum(self.Ac[mask])
+        
+        return phiA, area
         
     def __del__(self):
         self.nc.close()

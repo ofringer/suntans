@@ -348,6 +348,7 @@ def nc_info(ncfile):
     """
     Returns the metadata of all variables, attribute and dimensions
     """
+    print 'Reading: %s...'%ncfile
     nc = Dataset(ncfile, 'r')
     
     # Create a dictionary with the dimensions and their values

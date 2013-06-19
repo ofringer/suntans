@@ -516,6 +516,41 @@ class Boundary(object):
             
         print 'Finished interpolating OTIS tidal data onto boundary arrays.'
        
+    def otisfile2boundary(self,otisfile,dbfile,stationID,conlist=None):
+        """
+        Interpolates the OTIS tidal data onto all type-3 boundary cells
+        
+        Note that the values are added to the existing arrays (h, uc, vc)
+
+	Applies an amplitude and phase correction based on a time series. 
+	Also adds the residual (low-frequency) water level variability.
+        """
+        from maptools import utm2ll
+        import read_otps
+        
+        xy = np.hstack((self.xv,self.yv))
+        ll = utm2ll(xy,self.utmzone,north=self.isnorth)
+        
+        if self.__dict__.has_key('dv'):
+            z=self.dv
+        else:
+            print 'Using OTIS depths to calculate velocity. Set self.dv to change this.'
+            z=None
+            
+        h,U,V,residual = read_otps.tide_pred_correc(otisfile,ll[:,0],ll[:,1],np.array(self.time),dbfile,stationID,z=z,conlist=conlist)
+        
+        # Update the arrays - note that the values are added to the existing arrays
+        self.h += h
+        for k in range(self.Nk):
+            self.uc[:,k,:] += U
+            self.vc[:,k,:] += V
+        
+	# Add the residual
+	for ii in range(self.N3):
+	    self.h[:,ii] += residual
+
+        print 'Finished interpolating OTIS tidal data onto boundary arrays.'
+ 
         
     def __getitem__(self,y):
         x = self.__dict__.__getitem__(y)

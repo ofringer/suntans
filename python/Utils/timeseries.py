@@ -159,7 +159,7 @@ class timeseries(object):
 			# This returns the default frequencies from the uspectra class
             frq,frqnames = getTideFreq(Fin=None)
         else:
-            frq,frqnames = getTideFreq(Fin=self.frqnames)
+            frq,frqnames = getTideFreq(Fin=frqnames)
             
         # Call the uspectra method
         U = uspectra(self.tsec,self.y,frq=frq,method='lsqfast')
