@@ -36,7 +36,7 @@ REAL Max(REAL x1, REAL x2);
 REAL Min(REAL x, REAL y);
 void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction);
 void PrintVectorToFile(enum Type etype, void *Vector, int M, char *filename, int myproc);
-inline int max(int a, int b);
-inline int SharedListValue(int *list1, int *list2, int listsize);
+int max(int a, int b);
+int SharedListValue(int *list1, int *list2, int listsize);
 
 #endif

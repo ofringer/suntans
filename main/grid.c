@@ -1551,7 +1551,7 @@ static inline void CreateMomentumCV(gridT *grid)
 // may have to be changed to incorporate full row of 
 // interprocessor cells for the interpolation, generalized
 // halo region
-inline int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
+int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
 {
   int nf, nei;
 

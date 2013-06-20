@@ -27,7 +27,7 @@ REAL t_start, t_source, t_predictor, t_nonhydro, t_turb, t_transport, t_io, t_co
  *
  */
 extern REAL Timer(void);
-inline void Tic(void);
-inline REAL Toc(void);
+void Tic(void);
+REAL Toc(void);
 
 #endif
