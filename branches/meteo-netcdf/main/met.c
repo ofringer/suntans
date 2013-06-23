@@ -193,7 +193,7 @@ void AllocateMet(propT *prop, gridT *grid, metT **met , int myproc){
   (*met)->qstar = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
   (*met)->EP = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
   (*met)->Htmp = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateMet");
-  (*met)->xtmp = (REAL *)SunMalloc(19*sizeof(REAL),"updateAirSeaFluxes"); 
+  (*met)->xtmp = (REAL *)SunMalloc(19*sizeof(REAL),"AllocateMet"); 
 
   (*met)->Uwind_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
   (*met)->Vwind_t = (REAL **)SunMalloc(NTmet*sizeof(REAL *),"AllocateMet");
