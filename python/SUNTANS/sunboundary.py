@@ -27,7 +27,6 @@ from sunpy import Grid
 from netCDF4 import Dataset, num2date
 import numpy as np
 import matplotlib.pyplot as plt
-from maptools import readShpPoly
 import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
 from datetime import datetime, timedelta
 import othertime
@@ -516,7 +515,7 @@ class Boundary(object):
             
         print 'Finished interpolating OTIS tidal data onto boundary arrays.'
        
-    def otisfile2boundary(self,otisfile,dbfile,stationID,conlist=None):
+    def otisfile2boundary(self,otisfile,dbfile,stationID,setUV=False,conlist=None):
         """
         Interpolates the OTIS tidal data onto all type-3 boundary cells
         
@@ -541,9 +540,10 @@ class Boundary(object):
         
         # Update the arrays - note that the values are added to the existing arrays
         self.h += h
-        for k in range(self.Nk):
-            self.uc[:,k,:] += U
-            self.vc[:,k,:] += V
+	if setUV:
+	    for k in range(self.Nk):
+		self.uc[:,k,:] += U
+		self.vc[:,k,:] += V
         
 	# Add the residual
 	for ii in range(self.N3):
@@ -625,8 +625,8 @@ class InitialCond(Grid):
         self.create_nc_var(outfile,'eta',('time','Nc'),{'long_name':'Sea surface elevation','units':'metres'})
         self.create_nc_var(outfile,'uc',('time','Nk','Nc'),{'long_name':'Eastward water velocity component','units':'metre second-1'})
         self.create_nc_var(outfile,'vc',('time','Nk','Nc'),{'long_name':'Northward water velocity component','units':'metre second-1'})
-        self.create_nc_var(outfile,'S',('time','Nk','Nc'),{'long_name':'Salinity','units':'ppt'})
-        self.create_nc_var(outfile,'T',('time','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C'})
+        self.create_nc_var(outfile,'salt',('time','Nk','Nc'),{'long_name':'Salinity','units':'ppt'})
+        self.create_nc_var(outfile,'temp',('time','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C'})
         
         # now write the variables...
         nc = Dataset(outfile,'a')
@@ -634,8 +634,8 @@ class InitialCond(Grid):
         nc.variables['eta'][:]=self.h
         nc.variables['uc'][:]=self.uc
         nc.variables['vc'][:]=self.vc
-        nc.variables['S'][:]=self.S
-        nc.variables['T'][:]=self.T
+        nc.variables['salt'][:]=self.S
+        nc.variables['temp'][:]=self.T
         nc.close()
                 
         print 'Initial condition file written to: %s'%outfile
@@ -647,6 +647,7 @@ def modifyBCmarker(suntanspath,bcfile):
 
     The shapefile must contain polygons with the integer-type field "marker"
     """
+    from maptools import readShpPoly
     
     print '#######################################################'
     print '     Modifying the boundary markers for grid in folder:'

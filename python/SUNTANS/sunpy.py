@@ -617,7 +617,7 @@ class Spatial(Grid):
             self.data = self.PEanom()
             
         else:
-            return self.loadDataRaw()
+            return self.loadDataRaw(variable=variable)
         
     
     def loadDataRaw(self,variable=None):
