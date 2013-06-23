@@ -1198,7 +1198,7 @@ void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc){
     int ncid = prop->metncid;
 
     if(metin->t0==-1){
-	metin->t1 = getTimeRec(prop->nctime,metin->time,metin->nt);
+	metin->t1 = getTimeRec(prop->nctime,metin->time,(int)metin->nt);
 	metin->t0 = metin->t1-1;
 	metin->t2 = metin->t1+1;
     }
@@ -1375,10 +1375,12 @@ void ReadMetNCcoord(propT *prop, gridT *grid, metinT *metin, int myproc){
     vname = "Time";
     if(VERBOSE>2 && myproc==0) printf("Reading variable: %s...\n",vname);
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
-	ERR(retval);
+        ERR(retval);
     if ((retval = nc_get_var_double(ncid, varid,metin->time))) 
       ERR(retval); 
     
+    if(VERBOSE>2 && myproc==0) printf("Finished Reading met netcdf coordinates.\n");
+
 }// End function
 
 /*
@@ -1663,8 +1665,10 @@ size_t returndimlenBC(int ncid, char *dimname){
     }
 
     // Find the index of the closest time point, T0
-    Nt = (int)returndimlenBC(prop->initialNCfileID,"Nt");
+    Nt = (int)returndimlenBC(prop->initialNCfileID,"time");
     *T0 = getICtime(prop,Nt, myproc);
+    if (*T0>=Nt) *T0 = Nt-1;
+    //*T0=0;
     return;
 
  } // End function
@@ -1679,18 +1683,21 @@ int getICtime(propT *prop, int Nt, int myproc){
 
    int retval, varid;
    int ncid = prop->initialNCfileID;
-   REAL time[Nt]; 
+   //REAL time[Nt]; 
+   REAL *ictime;
    char *vname;
+
+   ictime = (REAL *)SunMalloc(Nt*sizeof(REAL),"getICtime");
 
    vname = "time";
     if(VERBOSE>2 && myproc==0) printf("Reading initial condition %s...",vname);
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
 	ERR(retval);
-    if ((retval = nc_get_var_double(ncid, varid, time))) 
+    if ((retval = nc_get_var_double(ncid, varid, &ictime[0] ))) 
       ERR(retval); 
     if(VERBOSE>2 && myproc==0) printf("done.\n");
 
-    return getTimeRecBnd(prop->nctime, time, (int)Nt);
+    return getTimeRecBnd(prop->nctime, ictime, (int)Nt);
 
 } // End function
 
@@ -1700,11 +1707,11 @@ int getICtime(propT *prop, int Nt, int myproc){
  * Reads the free surface from the initial condition netcdf array
  *
  */
-void ReturnFreeSurfaceNC(propT *prop, physT *phys, gridT *grid, int Nci, int T0, int myproc){
+void ReturnFreeSurfaceNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int T0, int myproc){
    int i;
    size_t start[] = {T0, 0};
    size_t count[] = {1,Nci};
-   REAL htmp[Nci];
+   //REAL htmp[Nci];
 
    int varid, retval;
    int ncid = prop->initialNCfileID;
@@ -1742,19 +1749,17 @@ void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci
    int ncid = prop->initialNCfileID;
 
    if(VERBOSE>1 && myproc==0) printf("Reading salinity initial condition from netcdf file...");
-    if ((retval = nc_inq_varid(ncid, "S", &varid)))
+    if ((retval = nc_inq_varid(ncid, "salt", &varid)))
 	ERR(retval);
     if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
 	ERR(retval); 
 
    for(i=0;i<grid->Nc;i++) {
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-         //ind = grid->mnptr[i]*grid->Nkmax + k;
+      //for(k=0;k<grid->Nk[i];k++) {
 	 ind = k*Nci + grid->mnptr[i]; 
 	 phys->s[i][k]=htmp[ind];
 	 phys->s0[i][k]=htmp[ind];
-	 //phys->s[i][k]=htmp[k][grid->mnptr[i]];
-	 //phys->s0[i][k]=htmp[k][grid->mnptr[i]];
       }
   }
 } // End function
@@ -1776,18 +1781,17 @@ void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int 
    int ncid = prop->initialNCfileID;
 
    if(VERBOSE>1 && myproc==0) printf("Reading temperature initial condition from netcdf file...");
-    if ((retval = nc_inq_varid(ncid, "T", &varid)))
+    if ((retval = nc_inq_varid(ncid, "temp", &varid)))
 	ERR(retval);
     if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
 	ERR(retval); 
 
    for(i=0;i<grid->Nc;i++) {
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-         //ind = grid->mnptr[i]*grid->Nkmax + k;
+      //for(k=0;k<grid->Nk[i];k++) {
 	 ind = k*Nci + grid->mnptr[i]; 
 	 phys->T[i][k]=htmp[ind];
 	
-	 //phys->T[i][k]=htmp[k][grid->mnptr[i]];
       }
   }
 } // End function

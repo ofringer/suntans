@@ -623,13 +623,12 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   if (prop->readinitialnc>0){
 #ifdef USENETCDF
     ReadInitialNCcoord(prop,grid,&Nci,&Nki,&T0,myproc);
+
+    printf("myproc: %d, Nci: %d, Nki: %d, T0: %d\n",myproc,Nci,Nki,T0);
+
     // Initialise a scratch variable for reading arrays
     ncscratch = (REAL *)SunMalloc(Nki*Nci*sizeof(REAL),"InitializePhysicalVariables");
 
-    //size_t count2[] = {1,Nci};
-    //size_t start2[] = {T0,0};
-    //size_t count3[] = {1,Nki,Nci};
-    //size_t start3[] = {T0,0,0};
 #endif
   }
   // Need to update the vertical grid and fix any cells in which
@@ -651,7 +650,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
 
   // Initialize the free surface
   if (prop->readinitialnc){
-     ReturnFreeSurfaceNC(prop,phys,grid,Nci,T0,myproc);
+     ReturnFreeSurfaceNC(prop,phys,grid,ncscratch,Nci,T0,myproc);
   }else{
     for(i=0;i<Nc;i++) {
       phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
@@ -690,7 +689,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->s[i][k]=stmp[k];
         phys->s0[i][k]=stmp[k];
       }
-    SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
+    SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
   } else if(prop->readinitialnc){
      ReturnSalinityNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
   } else {
@@ -715,7 +714,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       for(k=grid->ctop[i];k<grid->Nk[i];k++) 
         phys->T[i][k]=stmp[k];
 
-    SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
+    SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
    } else if(prop->readinitialnc){
         ReturnTemperatureNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
   } else {  
@@ -798,6 +797,8 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   // Free the scratch array
   if (prop->readinitialnc>0)
       SunFree(ncscratch,Nki*Nci*sizeof(REAL),"InitializePhyiscalVariables");
+      //Close the initial condition netcdf file
+      //MPI_NCClose(prop->initialNCfileID );
 }
 
 /*
@@ -4487,6 +4488,17 @@ void OpenFiles(propT *prop, int myproc)
     MPI_GetFile(filename,DATAFILE,"InitTemperatureFile","OpenFiles",myproc);
     prop->InitTemperatureFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
   }
+  if(prop->readinitialnc>0){
+    MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
+#ifdef USENETCDF
+    prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+#else
+   // Attempting to use heat flux model without netcdf libraries
+      printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+#endif
+  }
   if(prop->netcdfBdy>0){
     MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
 #ifdef USENETCDF
@@ -4512,17 +4524,7 @@ if(prop->metmodel>0){
 #endif
   }
 
-  if(prop->readinitialnc>0){
-    MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
-#ifdef USENETCDF
-    prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-#else
-   // Attempting to use heat flux model without netcdf libraries
-      printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
-      MPI_Finalize();
-      exit(EXIT_FAILURE);
-#endif
-  }
+  
 
   if(prop->outputNetcdf==0) {
   MPI_GetFile(filename,DATAFILE,"FreeSurfaceFile","OpenFiles",myproc);
