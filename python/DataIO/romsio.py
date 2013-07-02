@@ -1252,21 +1252,22 @@ class roms_interp(roms_grid):
         
         # Interpolate temporally
         if self.Nt_roms > 1:
+	    print 'Temporally interpolating ROMS variables...'
             troms = othertime.SecondsSince(self.time)
             tout = othertime.SecondsSince(self.timei)
-            
+            print '\tzeta...'
             Ft = interpolate.interp1d(troms,zetaroms,axis=0,kind=tinterp,bounds_error=False)
             zetaout = Ft(tout)
-            
+            print '\ttemp...'
             Ft = interpolate.interp1d(troms,temproms,axis=0,kind=tinterp,bounds_error=False)
             tempout = Ft(tout)
-            
+            print '\tsalt...'
             Ft = interpolate.interp1d(troms,saltroms,axis=0,kind=tinterp,bounds_error=False)
             saltout = Ft(tout)
-            
+            print '\tu...'
             Ft = interpolate.interp1d(troms,uroms,axis=0,kind=tinterp,bounds_error=False)
             uout = Ft(tout)
-            
+            print '\tv...'
             Ft = interpolate.interp1d(troms,vroms,axis=0,kind=tinterp,bounds_error=False)
             vout = Ft(tout)
         else:

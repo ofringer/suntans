@@ -77,7 +77,7 @@ class sundriver(object):
     # Open boundary options
     ####
     opt_bcseg = 'constant' # Segment boundary condition option: 'constant' or 'file'
-    opt_bctype2 = 'constant' # Type 2 boundary condition option: 'constant'
+    opt_bctype2 = 'constant' # Type 2 boundary condition option: 'constant' or 'file'
     opt_bctype3 = 'constant' # Type 3 boundary condition option: 'constant', ,'file','OTIS', 'ROMS', 'ROMSOTIS','ROMSFILE', 'OTISFILE', 'ROMSOTISFILE'
 
     modifyedges = False # Option to modify the boundary edges
@@ -91,17 +91,24 @@ class sundriver(object):
     T0 = 30 # Open boundary and initial condition background temperature
     S0 = 34 # Open boundary and initial condition background salinity
     
-    # IF opt_bctype2 = 'file' or 'ROMSFILE'
+    # IF opt_bctype3 = 'file' or 'ROMSFILE'
     waterlevelstationID = None
     
-    # IF opt_bctype2 = 'harmonic'
+    # IF opt_bctype3 = 'harmonic'
     amp = 0.25
     omega = 2*PI/(24.0*3600.0)
 
-    # Filter type    
+    # IF opt_bctype2 = 'file'
+    TairstatationID = None
+
+    # Filter type (waterlevel)   
     filttype='low'
     cutoff=3600.0
     
+    # Air temp cuttoff (bctype2 = file)
+    tairfilttype = 'low'
+    taircutoff = 14.0*24.0*3600.0
+
     ####
     # Atmospheric input options
     ####
@@ -305,15 +312,31 @@ class sundriver(object):
         ###
         # Type-2 boundaries
         ###
-        
+        self.useFILE2 = False
+
         if self.opt_bctype2 == 'constant':
             print 'Setting constant type-2 boundary conditions...'  
             print 'Setting salinity = %f, temperature = %f'%(self.S0,self.T0)
             bnd.boundary_S[:]=self.S0
             bnd.boundary_T[:]=self.T0
+	elif self.opt_bctype2 == 'file':
+	    print 'Using file for type-2 boundary condition (temperature only)'
+            print 'Setting salinity = %f'%(self.S0)
+	    bnd.boundary_S[:]=self.S0
+	    self.useFILE2 = True
         else:
             print 'Unknown option: opt_bctype2 = %s. Not setting type-2 boundaries.'%self.opt_bctype3
             
+            
+	if self.useFILE2:
+	    ID = self.TairstationID
+            print 'Loading air temperature onto all type-2 points from stationID: %s...'%(ID)
+            ts = timeseries.loadDBstation(self.dbasefile,ID,'Tair',timeinfo=(self.starttime,self.endtime,self.dt),\
+                    filttype=self.tairfilttype,cutoff=self.taircutoff)
+                    
+            for ii in range(bnd.N2):
+		for kk in range(bnd.Nk):
+		    bnd.boundary_T[:,kk,ii] += ts.y.copy()
             
         # Write to netcdf
         bnd.write2NC(self.suntanspath+'/'+self.bcfile)
@@ -477,7 +500,7 @@ class dumpinputs(object):
             - seabed plot
         """
         
-        varnames = ['uc','vc','T','S','eta']
+        varnames = ['uc','vc','temp','salt','eta']
         
         sun = Spatial(self.suntanspath+'/'+self.icfile,klayer=[0])
         
