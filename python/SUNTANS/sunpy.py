@@ -13,6 +13,7 @@ import numpy as np
 from datetime import datetime
 import os, time, getopt, sys
 from scipy import spatial
+from scipy import sparse
 import othertime
 from suntans_ugrid import ugrid
 from timeseries import timeseries
@@ -184,7 +185,7 @@ class Grid(object):
         plt.legend(('Node','Edge','Marker=1','Marker=2','Marker=3','Marker=4'))
         plt.axis('equal')
     
-    def plotmesh(self):
+    def plotmesh(self,**kwargs):
         """
         Plots the outline of the grid mesh
         """
@@ -193,17 +194,18 @@ class Grid(object):
     
         xlim=self.xlims
         ylim=self.ylims
-        collection = PolyCollection(self.xy)
+        collection = PolyCollection(self.xy,**kwargs)
         #collection.set_array(np.array(self.dv))
         #collection.set_linewidth(0)
         #collection.set_edgecolors(collection.to_rgba(np.array(z))) 
-        collection.set_facecolors('w')
+        
+        #collection.set_facecolors('w')
         
         ax.add_collection(collection)
     
         ax.set_aspect('equal')
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
+        #ax.set_xlim(xlim)
+        #ax.set_ylim(ylim)
 
         return ax, collection
     
@@ -416,18 +418,171 @@ class Grid(object):
         node_scalar = [np.sum(cell_scalar[self.pnt2cells(ii)]*self.Ac[self.pnt2cells(ii)])\
             / np.sum( self.Ac[self.pnt2cells(ii)]) for ii in range(self.Np)]
         return np.array(node_scalar)
+
+
+    def interpLinear(self,cell_scalar,xpt,ypt,cellind,k=0):
+        """
+        Linearly interpolates onto the coordinates 'xpt' and 'ypt'
+        located at cell index: 'cellind'.capitalize
         
-    def gradH(self,phi,k=0):
+        Use trisearch to get the cell index of xpt/ypt.
+        """
+        
+        # Find the spatial shift
+        dx = xpt - self.xv[cellind]
+        dy = ypt - self.yv[cellind]
+        
+        # Find the gradient at the cell centres
+        dphi_dx, dphi_dy = self.gradH(cell_scalar,cellind=cellind,k=k)
+        
+        return cell_scalar[cellind] + dphi_dx*dx + dphi_dy*dy
+        
+    def gradH(self,cell_scalar,k=0,cellind=None):
+        """
+        Compute the horizontal gradient of a cell-centred quantity
+        
+        Finds the equation for the plane of the 3 points then takes the gradient
+        of this equation
+        
+        Returns: d(phi)/dx, d(phi)/dy
+        
+        Derived from Phil's C code (diffusion.c):
+          //PJW get corresponding points
+          REAL xA = grid->xp[pA];
+          REAL yA = grid->yp[pA];
+          REAL xB = grid->xp[pB];
+          REAL yB = grid->yp[pB];
+          REAL xC = grid->xp[pC];
+          REAL yC = grid->yp[pC];
+        
+          //PJW form the vectors
+          //PJW first we need to get the points to build the vectors
+          REAL ABx = xB - xA;
+          REAL ABy = yB - yA;
+          REAL ABz = z[pB][alevel] - z[pA][alevel];
+        
+          REAL ACx = xC - xA;
+          REAL ACy = yC - yA;
+          REAL ACz = z[pC][alevel] - z[pA][alevel];
+        
+          //PJW now we can take the cross product
+          REAL mx = ABy*ACz - ABz*ACy;
+          REAL my = ABz*ACx - ABx*ACz;
+          REAL mz = ABx*ACy - ACx*ABy;
+        
+        //  printf("mx = %.3e my = %.3e mz = %.3e\n",mx,my,mz);
+          //PJW now we can get the slopes and return them
+          duv_over_dxj[0] = -mx/mz;
+          duv_over_dxj[1] = -my/mz;
+        """
+        if cellind == None:
+            cellind = np.arange(self.Nc,dtype=np.int)
+            
+        node_scalar = self.cell2nodekind(cell_scalar,cellind,k=k)
+        
+        xA = self.xp[self.cells[cellind,0]]
+        yA = self.yp[self.cells[cellind,0]]
+        xB = self.xp[self.cells[cellind,1]]
+        yB = self.yp[self.cells[cellind,1]]
+        xC = self.xp[self.cells[cellind,2]]
+        yC = self.yp[self.cells[cellind,2]]
+        
+        zA = node_scalar[self.cells[cellind,0]]
+        zB = node_scalar[self.cells[cellind,1]]
+        zC = node_scalar[self.cells[cellind,2]]
+        
+        ABx = xB - xA
+        ABy = yB - yA
+        ABz = zB - zA
+        
+        ACx = xC - xA
+        ACy = yC - yA
+        ACz = zC - zA
+        
+        mx = ABy*ACz - ABz*ACy
+        my = ABz*ACx - ABx*ACz
+        mz = ABx*ACy - ACx*ABy
+        
+        return -mx/mz, -my/mz
+
+        
+    def cell2nodekind(self,cell_scalar,cellind,k=0):
+        """
+        Map a cell-based scalar onto a node
+        
+        Only does it for nodes connected to cells in: 'cellind'. This is faster and more generic.
+        
+        The node_scalar array still has size(Np) although nodes that aren't connected
+        to cells in 'cellind' are simply zero.
+        
+        Uses sparse matrices to do the heavy lifting
+        """
+        
+        Nc = cellind.shape[0]
+        
+        if not self.__dict__.has_key('_datasparse'):
+            self._datasparse=[]
+            self._Asparse=[]
+            for kk in range(self.Nkmax):
+                self._datasparse.append(sparse.dok_matrix((self.Np,self.Nc),dtype=np.double))
+                self._Asparse.append(sparse.dok_matrix((self.Np,self.Nc),dtype=np.double))
+                
+                for ii in range(Nc):
+                    i = cellind[ii]
+                    for j in range(3):
+                        if kk <= self.Nk[i]:
+                            self._Asparse[kk][self.cells[i,j],i] = self.Ac[i]
+                
+                self._Asparse[kk]=self._Asparse[kk].tocoo() # COO sparse format is faster for multiplication
+
+        for ii in range(Nc):
+            i = cellind[ii]
+            for j in range(3):
+                if k <= self.Nk[i]:
+                    self._datasparse[k][self.cells[i,j],i] = cell_scalar[i]
+                
+        node_scalar = self._datasparse[k].tocoo().multiply(self._Asparse[k]).sum(axis=1) / self._Asparse[k].sum(axis=1)
+        
+        return np.array(node_scalar).squeeze()
+                                            
+    
+    def gradHdiv(self,phi,k=0):
         """
         Computes the horizontal gradient of variable, phi, along layer, k.
+        
+        Uses divergence (Green's) theorem to compute the gradient. This can be noisy 
+        for triangular control volumes.
         
         Returns: d(phi)/dx, d(phi)/dy
         
         Based on MATLAB code sungradient.m
         """
+        def _GradientAtFace(self,phi,jj,k):
+            
+            grad1 = self.grad[:,0]
+            grad2 = self.grad[:,1]
+            nc1 = grad1[jj]
+            nc2 = grad2[jj]
+                    
+            # check for edges (use logical indexing)
+            ind1 = nc1==-1
+            nc1[ind1]=nc2[ind1]
+            ind2 = nc2==-1
+            nc2[ind2]=nc1[ind2]
+            
+            # check depths (walls)
+            indk = operator.or_(k>=self.Nk[nc1], k>=self.Nk[nc2])
+            ind3 = operator.and_(indk, self.Nk[nc2]>self.Nk[nc1])
+            nc1[ind3]=nc2[ind3]
+            ind4 = operator.and_(indk, self.Nk[nc1]>self.Nk[nc2])
+            nc2[ind4]=nc1[ind4]
+            
+            # Calculate gradient across face            
+            return (phi[nc1]-phi[nc2]) / self.dg[jj]
+            
         ne = self.face #edge-indices
         
-        Gn_phi = self.GradientAtFace(phi,ne,k)
+        Gn_phi = self._GradientAtFace(phi,ne,k)
         
         Gx_phi = Gn_phi * self.n1[ne] * self.DEF * self.df[ne]
         Gy_phi = Gn_phi * self.n2[ne] * self.DEF * self.df[ne]
@@ -435,58 +590,7 @@ class Grid(object):
         dY = np.sum(Gy_phi,axis=1)/self.Ac;
         
         return dX, dY
-
-        
-    def GradientAtFace(self,phi,jj,k):
-            
-        grad1 = self.grad[:,0]
-        grad2 = self.grad[:,1]
-        nc1 = grad1[jj]
-        nc2 = grad2[jj]
-                
-        # check for edges (use logical indexing)
-        ind1 = nc1==-1
-        nc1[ind1]=nc2[ind1]
-        ind2 = nc2==-1
-        nc2[ind2]=nc1[ind2]
-        
-        # check depths (walls)
-        indk = operator.or_(k>=self.Nk[nc1], k>=self.Nk[nc2])
-        ind3 = operator.and_(indk, self.Nk[nc2]>self.Nk[nc1])
-        nc1[ind3]=nc2[ind3]
-        ind4 = operator.and_(indk, self.Nk[nc1]>self.Nk[nc2])
-        nc2[ind4]=nc1[ind4]
-        
-        # Calculate gradient across face            
-        return (phi[nc1]-phi[nc2]) / self.dg[jj]
-            
-#        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#        function [data] = GradientAtFace(jj,phi,grd,k)
-#        
-#        grad1 = grd.grad(:,1);
-#        grad2 = grd.grad(:,2);
-#        nc1 = grad1(jj);
-#        nc2 = grad2(jj);
-#        
-#        % check for edges (use logical indexing)
-#        ind1 = nc1==-1; 
-#        nc1(ind1)=nc2(ind1);
-#        ind2 = nc2==-1;
-#        nc2(ind2)=nc1(ind2);
-#        clear ind1 ind2
-#        
-#        % check depths (walls)
-#        indk = ( k>=grd.Nk(nc1)) | (k>=grd.Nk(nc2) );
-#        ind3 = indk & (grd.Nk(nc2)>grd.Nk(nc1));
-#        nc1(ind3)=nc2(ind3);
-#        ind4 = indk & (grd.Nk(nc1)>grd.Nk(nc2));
-#        nc2(ind4)=nc1(ind4);
-#        
-#        % Calculate gradient across face
-#        Dj = grd.dg(jj);
-#        data = (phi(nc1)-phi(nc2)) ./ Dj;
-
-        
+    
     def writeNC(self,outfile):
         """
         Export the grid variables to a netcdf file
@@ -1182,7 +1286,7 @@ class Spatial(Grid):
         
     def vorticity(self):
         """
-        Calculate the vertical vorticity
+        Calculate the vertical vorticity component
         """
         
         u,v,w = self.getVector()

@@ -212,12 +212,12 @@ class metdata(object):
         
         nc.close()
     
-    def plot(self,site=0,rangeplot=True):
+    def plot(self,site=0,rangeplot=True,**kwargs):
         """ 
         Time-series plotting method
         """        
         self.fig = plt.gcf()        
-        plt.plot(self.time,self.data[:,site])
+        plt.plot(self.time,self.data[:,site],**kwargs)
         if rangeplot:
             upper = np.max(self.data,1)
             lower = np.min(self.data,1)

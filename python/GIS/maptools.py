@@ -17,6 +17,7 @@ import gdal
 from gdalconst import * 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.nxutils as nxutils
 
 
 import pdb
@@ -222,6 +223,28 @@ def readShpPoly(shpfile,FIELDNAME = 'marker'):
     shp=None
     return XY,field
 
+def maskShpPoly(X,Y,shpfile,FIELDNAME = 'marker'):
+    """
+    Return a mask array of size(X/Y) 
+    """
+    
+    # Read the polygon from the shape file
+    XY,edge_id = readShpPoly(shpfile,FIELDNAME=FIELDNAME)
+    
+    # Reshape the input array
+    sz = X.shape
+    X = X.ravel()
+    Y = Y.ravel()
+        
+    ind = nxutils.points_inside_poly(np.vstack((X,Y)).T,XY[0])
+    
+    mask = np.zeros(sz,dtype=np.int)
+    ind = ind.reshape(sz)
+    mask[ind]=1
+    
+    return mask,XY[0]
+    
+    
 def readraster(infile):
     """ Loads the data from any raster-type file
         eg. *.dem, *.grd,...    

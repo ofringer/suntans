@@ -11,11 +11,13 @@ import numpy as np
 import sunpy
 import matplotlib.pyplot as plt
 
+from sunpy import Grid
+from trisearch import TriSearch
 
+import time
 # Example inputs
 #infile = 'C:/Projects/GOMGalveston/DATA/Bathymetry/DEMs/NOAA_25m_UTM_DEM.nc'
 #suntanspath = 'C:/Projects/GOMGalveston/MODELLING/GRIDS/GalvestonFine'
-
 class DepthDriver(object):
     """
     Driver class for interpolating depth data onto a suntans grid
@@ -160,5 +162,39 @@ class DepthDriver(object):
         #mlab.show()
 
 
+class AverageDepth(Grid):
+    """
+    Returns the average of all depths inside each cells
+    """
+    # Projection conversion info for input data
+    convert2utm=False
+    CS='NAD83'
+    utmzone=15
+    isnorth=True
+    vdatum = 'MSL'
 
-
+    def __init__(self,suntanspath,**kwargs):
+        
+        self.__dict__.update(kwargs)
+        Grid.__init__(self,suntanspath)
+        
+        # Initialise the trisearch object
+        self.tsearch =  TriSearch(self.xp,self.yp,self.cells)
+        
+    def __call__(self,depthfile,**kwargs):
+        
+        self.__dict__.update(kwargs)
+        
+        # Parse the depth data into an object
+        self.indata = Inputs(depthfile,convert2utm=False,CS=self.CS,utmzone=self.utmzone,\
+            isnorth=self.isnorth,vdatum=self.vdatum)
+            
+        tic = time.clock()
+        print 'Performing triangle search...'
+        cells = self.tsearch(self.indata.XY[:,0],self.indata.XY[:,1])
+        
+        toc = time.clock()
+        print 'Search time: %f seconds.'%(toc-tic)
+            
+        
+            

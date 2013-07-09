@@ -40,6 +40,11 @@ class TriSearch(Triangulation):
         return self.cellind
     
     def tsearchold(self,xin,yin):
+        """
+        DEPRECATED
+        
+        non-vectorised version of tsearch
+        """
         
         xyin  = np.vstack((xin,yin)).T
         node =  self.findnearest(xyin)
@@ -61,7 +66,7 @@ class TriSearch(Triangulation):
         
     def tsearch(self,xin,yin,MAXNODES=8):
         """
-        Vectorized version
+        Vectorized version of tseach
         
         """
         xyin  = np.vstack((xin,yin)).T
@@ -198,24 +203,6 @@ class TriSearch(Triangulation):
         
         # Check if particle is actually in new cell
         innewcell[changedcell] = self.inCellVec(newcell[changedcell],xnew[changedcell],ynew[changedcell])
-        
-#        if self.verbose:
-#            print 'Checking which particles have changed cells...'
-#        for ii in range(0,self.Nx):
-##            changedcell[ii], neigh = self.checkEdgeCrossing(self.cellind[ii],xnew[ii],ynew[ii],\
-##                self.xpt[ii],self.ypt[ii])
-#            if changedcell[ii]:
-#                if self.verbose:
-#                    print '\tParticle %d has shifted cell.'%ii
-#                newcell[ii] = self.neighbors[self.cellind[ii],neigh[ii]]
-#                
-#                # Check if particle is actually in new cell
-#                innewcell[ii] = self.inCell(newcell[ii],np.array([xnew[ii],ynew[ii]]))
-#                if not innewcell[ii] and self.verbose:
-#                    print '\t  Particle %d has shifted multiple cells. (need to re-search it)'%ii
-#        
-#        if self.verbose:        
-#            print 'Re-searching for cells without a home...'
             
         cellind2 = self.tsearch(xnew[innewcell==False],ynew[innewcell==False])
         newcell[innewcell==False] = cellind2

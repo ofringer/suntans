@@ -31,7 +31,7 @@ class interpXYZ(object):
    
     
     # Interpolation options
-    method = 'nn' # One of 'nn', 'idw', 'kriging', 'griddata'
+    method = 'nn' # One of 'nn', 'idw', 'kriging' 
     maxdist=np.inf
     NNear = 3 # Number of points to include in interpolation (only applicable to idw and kriging)
     p = 1.0 # power for inverse distance weighting
@@ -41,6 +41,7 @@ class interpXYZ(object):
     nugget = 0.1
     sill = 0.8
     vrange = 250.0
+
     
     def __init__(self,XY,XYout,**kwargs):
         

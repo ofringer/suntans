@@ -170,6 +170,22 @@ class roms_grid(object):
             
         nc.close()
         
+    def nc_add_varnodata(self,outfile,name,dimensions,units=None,long_name=None,coordinates=None):
+        """
+        Add a new variable and doesn't write the data
+        """        
+        nc = Dataset(outfile, 'a')
+        nc.createVariable(name, 'f8', dimensions)
+        if units is not None:
+            nc.variables[name].units = units
+        if coordinates is not None:
+            nc.variables[name].coordinates = coordinates
+        if long_name is not None:
+            nc.variables[name].long_name = long_name
+        
+            
+        nc.close()
+        
         
     def findNearset(self,x,y,grid='rho'):
         """
@@ -279,8 +295,9 @@ class ROMS(roms_grid):
         if tstep == None:
             tstep = self.tstep
             
-            
-        if self.ndim == 2:
+        if self.ndim==1:
+            data = self.nc.variables[varname][tstep]
+        elif self.ndim == 2:
             data = self.nc.variables[varname][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
         elif self.ndim == 3:
             data = self.nc.variables[varname][tstep,self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
@@ -443,7 +460,7 @@ class ROMS(roms_grid):
         """
         
         sz = var.shape
-        print sz
+        #print sz
         if not sz[0] == self.Nz:
             raise Exception, 'length of dimension 0 must equal %d (currently %d)'%(self.Nz,sz[0])
         
@@ -640,6 +657,9 @@ class ROMS(roms_grid):
         C = self.varcoords[varname].split()        
         self.ndim = len(C)
         
+        if self.ndim==1:
+            return
+            
         self.xcoord = C[0]
         self.ycoord = C[1]
           

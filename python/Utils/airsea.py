@@ -318,3 +318,12 @@ def pol2cart(th,rho):
     y = rho * np.sin(th)
 
     return x, y
+
+def cart2pol(x,y):
+    """
+    Convert cartesian to polar coordinates
+    """
+    th = np.angle(x+1j*y)
+    rho = np.abs(x+1j*y)
+    
+    return th, rho

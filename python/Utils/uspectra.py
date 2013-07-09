@@ -592,6 +592,8 @@ def getTideFreq(Fin=None):
     if Fin==None:
         #Fin=tidedict.keys()
         Fin = ['M2','S2','N2','K2','K1','O1','P1','Q1','M4']
+    elif Fin=='all':
+        Fin=tidedict.keys()
         
     frq = []
     Fout = Fin[:]

@@ -15,7 +15,7 @@ from datetime import datetime,timedelta
 from scipy import spatial
 import numpy as np
 import matplotlib.pyplot as plt
-
+from netCDF4 import Dataset, num2date
 
 from time import clock
 import pdb
@@ -140,7 +140,56 @@ class SunTrack(Spatial):
             plt.show()
         else:
             self.saveanim(outfile)
+    
+    def animateNC(self,ncfile,xlims=None,ylims=None,outfile=None):
+        """
+        Animate the particles from a previously generated netcdf file
+        """
+        import matplotlib.animation as animation
+        
+        # Set the xy limits
+        if xlims==None or ylims==None:
+            xlims=self.xlims 
+            ylims=self.ylims
             
+        # Open the netcdf file
+        nc = Dataset(ncfile,'r')
+        
+        # Read the time data into 
+        t = nc.variables['tp']
+        self.time_track = num2date(t[:],t.units)
+        
+        # Plot a map of the bathymetry
+        self.fig = plt.figure(figsize=(10,8))
+        ax=plt.gca()
+        self.contourf(z=-self.dv,clevs=30,titlestr='',xlims=xlims,ylims=ylims,cmap='bone')
+        
+        # Plot the particles at the first time step
+        h1 = plt.plot([],[],'y.',markersize=1.0)
+        h1 = h1[0]
+        
+        title=ax.set_title("")
+        
+        def init():
+            h1.set_xdata(nc.variables['xp'][0,:])
+            h1.set_ydata(nc.variables['yp'][0,:])
+            title=ax.set_title(self.genTitle(0))
+            return (h1,title)
+
+        def updateLocation(ii):
+            h1.set_xdata(nc.variables['xp'][ii,:])
+            h1.set_ydata(nc.variables['yp'][ii,:])
+            title.set_text(self.genTitle(ii))
+            return (h1,title)
+        
+        self.anim = animation.FuncAnimation(self.fig, updateLocation, frames=len(self.time_track), interval=50, blit=True)
+        
+        if outfile==None:
+            plt.show()
+        else:
+            self.saveanim(outfile) 
+        
+        nc.close()
     def animate3D(self,x,y,z,timeinfo,outfile=None):
         """
         3D animation of the particles using mayavi
@@ -269,6 +318,7 @@ class SunTrack(Spatial):
         u = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.u)
         v = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.v)
         w = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.w)
+        #u,v,w = self.timeInterpUVWxyz(tsec,self.particles['X'],self.particles['Y'],self.particles['Z'])
         
         self.particles['X'] += u*self.dt
         self.particles['Y'] += v*self.dt
@@ -288,6 +338,7 @@ class SunTrack(Spatial):
         u = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.u)
         v = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.v)
         w = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.w)
+        #u,v,w = self.timeInterpUVWxyz(tsec,self.particles['X'],self.particles['Y'],self.particles['Z'])
 
         x1 = self.particles['X'] + 0.5*self.dt*u
         y1 = self.particles['Y'] + 0.5*self.dt*v
@@ -302,6 +353,7 @@ class SunTrack(Spatial):
         u = self.UVWinterp(x1,y1,z1,self.u)
         v = self.UVWinterp(x1,y1,z1,self.v)
         w = self.UVWinterp(x1,y1,z1,self.w)
+        #u,v,w = self.timeInterpUVWxyz(tsec,x1,y1,x1)
         
         self.particles['X'] += u*self.dt
         self.particles['Y'] += v*self.dt
@@ -369,7 +421,8 @@ class SunTrack(Spatial):
         tindex = othertime.findGreater(timenow,self.time)
         
         if not tindex == self.time_index:
-            print 'Reading SUNTANS currents at time: ',timenow
+            if self.verbose:
+                print 'Reading SUNTANS currents at time: ',timenow
             self.uT[:,0]=self.uT[:,1]
             self.vT[:,0]=self.vT[:,1]
             self.wT[:,0]=self.wT[:,1]
@@ -400,6 +453,35 @@ class SunTrack(Spatial):
         self.w = self.wT[:,0]*w1 + self.wT[:,1]*w2 
         self.eta = self.etaT[:,0]*w1 + self.etaT[:,1]*w2 
         
+    def timeInterpUVWxyz(self,tsec,x,y,z):
+        """
+        Temporally interpolate the currents  onto the particle time step, tsec.
+        
+        Linear interpolation used.
+        """
+        tindex=self.time_index
+        
+        t0 = self.time_sec[tindex-1]
+        t1 = self.time_sec[tindex]
+        dt = t1 - t0
+        
+        w1 = (tsec-t0)/dt
+        w2 = 1.0-w1
+        
+        uT0 = self.UVWinterp(x,y,z,self.uT[:,0],update=True)
+        vT0 = self.UVWinterp(x,y,z,self.vT[:,0],update=False) # Locations of the particles are not checked for updates
+        wT0 = self.UVWinterp(x,y,z,self.wT[:,0],update=False)
+        
+        uT1 = self.UVWinterp(x,y,z,self.uT[:,1],update=False)
+        vT1 = self.UVWinterp(x,y,z,self.vT[:,1],update=False)
+        wT1 = self.UVWinterp(x,y,z,self.wT[:,1],update=False)
+        
+        u = uT0*w1 + uT1*w2 
+        v = vT0*w1 + vT1*w2 
+        w = wT0*w1 + wT1*w2 
+        
+        return u,v,w
+        
     def getUVWh(self,tstep):
         """
         Load the velocity arrays
@@ -419,7 +501,7 @@ class SunTrack(Spatial):
         """
         self.dt = timeinfo[2]
         
-        self.time_track = othertime.TimeVector(timeinfo[0],timeinfo[1],timeinfo[2])
+        self.time_track = othertime.TimeVector(timeinfo[0],timeinfo[1],timeinfo[2],timeformat ='%Y%m%d.%H%M%S')
         
         self.time_track_sec = othertime.SecondsSince(self.time_track)
         self.time_sec = othertime.SecondsSince(self.time)
@@ -487,6 +569,50 @@ class SunTrack(Spatial):
                 Nk = self.Nk[i]+1
             self.mask3D[Nk:self.Nkmax,i]=False
             
+    def initParticleNC(self,outfile,Np):
+        """
+        Export the grid variables to a netcdf file
+        """
+        if self.verbose:
+            print '\nInitialising particle netcdf file: %s...\n'%outfile
+            
+        nc = Dataset(outfile, 'w', format='NETCDF4_CLASSIC')
+        nc.Description = 'Particle trajectory file'
+        nc.Author = ''
+        nc.Created = datetime.now().isoformat()
+
+        nc.createDimension('ntrac', Np)
+        nc.createDimension('nt', 0) # Unlimited
+        
+        # Create variables
+        def create_nc_var( name, dimensions, attdict, dtype='f8'):
+            tmp=nc.createVariable(name, dtype, dimensions)
+            for aa in attdict.keys():
+                tmp.setncattr(aa,attdict[aa])
+          
+        create_nc_var('tp',('nt'),{'units':'seconds since 1990-01-01 00:00:00','long_name':"time at drifter locations"},dtype='f8')
+        create_nc_var('xp',('nt','ntrac'),{'units':'m','long_name':"Easting coordinate of drifter",'time':'tp'},dtype='f8')
+        create_nc_var('yp',('nt','ntrac'),{'units':'m','long_name':"Northing coordinate of drifter",'time':'tp'},dtype='f8')
+        create_nc_var('zp',('nt','ntrac'),{'units':'m','long_name':"vertical position of drifter (negative is downward from surface)",'time':'tp'},dtype='f8')
+
+        nc.close()
+    
+    def writeParticleNC(self,outfile,x,y,z,t,tstep):
+        """
+        Writes the particle locations at the output time step, 'tstep'
+        """
+        if self.verbose:
+            print 'Writing netcdf output at tstep: %d...\n'%tstep
+            
+        nc = Dataset(outfile, 'a')
+        
+        nc.variables['tp'][tstep]=t
+        nc.variables['xp'][tstep,:]=x
+        nc.variables['yp'][tstep,:]=y
+        nc.variables['zp'][tstep,:]=z
+
+        nc.close()
+    
 
 class interp3Dmesh(TriSearch):
     """
@@ -514,16 +640,17 @@ class interp3Dmesh(TriSearch):
                     self.maskindex[ii,jj]=rr
                     rr+=1
                   
-    def __call__(self,X,Y,Z,data):
+    def __call__(self,X,Y,Z,data,update=True):
         
-        # The Update the cell index using TriSearch class
-        if not self.__dict__.has_key('cellind'):
-            print ' Finding initial particle index...'
-            TriSearch.__call__(self,X,Y)
-        else:
-            if np.sum(np.abs(X-self.xpt))>0+1e-8:
-                #print ' updating location index...'
-                self.updatexy(X,Y)
+        if update:
+            # The Update the cell index using TriSearch class
+            if not self.__dict__.has_key('cellind'):
+                #print ' Finding initial particle index...'
+                TriSearch.__call__(self,X,Y)
+            else:
+                if np.sum(np.abs(X-self.xpt))>0+1e-8:
+                    #print ' updating location index...'
+                    self.updatexy(X,Y)
                         
         # Find the k-index
         kind=self.z.searchsorted(Z)

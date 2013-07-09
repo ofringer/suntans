@@ -102,7 +102,11 @@ class timeseries(object):
         if self.isequal==False and self.VERBOSE:
             print 'Warning - time series is unequally spaced. Use self.interp to interpolate onto an equal grid'
         
-        Wn = self.dt/cutoff_dt
+        if not btype == 'band':
+            Wn = self.dt/cutoff_dt
+        else:
+            Wn = [self.dt/co for co in cutoff_dt]
+            
         (b, a) = signal.butter(order, Wn, btype=btype, analog=0, output='ba')
         
         return signal.filtfilt(b, a, self.y, axis=axis)
