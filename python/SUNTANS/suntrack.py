@@ -16,6 +16,8 @@ from scipy import spatial
 import numpy as np
 import matplotlib.pyplot as plt
 from netCDF4 import Dataset, num2date
+import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
+import operator
 
 from time import clock
 import pdb
@@ -30,6 +32,8 @@ class SunTrack(Spatial):
     
     # Interpolation method
     interp_method = 'idw' # 'idw' or 'nearest' or 'mesh'
+    # IF interp_method == 'mesh'
+    interp_meshmethod = 'linear' # 'linear' or 'nearest'
     
     advect_method = 'rk2' # 'euler' or 'rk2'
     
@@ -56,18 +60,25 @@ class SunTrack(Spatial):
             self.Hinterp = interp3D(self.xv,self.yv,0*self.xv,method='nearest')
             
         elif self.interp_method == 'mesh':
-            self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D)
-            
+	    if self.interp_meshmethod == 'nearest':
+		self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D,method='nearest')
+	    elif self.interp_meshmethod == 'linear':
+            	self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D,method='linear',grdfile=self.ncfile)
 
 
 
-    def __call__(self,x,y,z, timeinfo, runmodel=True, **kwargs):
+    def __call__(self,x,y,z, timeinfo,agepoly=None,age=None,agemax=None,runmodel=True, **kwargs):
         """
         Run the particle model 
         
         Inputs:
-            xyz - release locations of particles [n_parts x 3]
+            x, y, z - release locations of particles [n_parts x 3]
             timeinfo - tuple (starttime,endtime,dt) 
+
+	    (optional)
+	    agepoly - x/y coordinates of a polygon which ages particles
+	    age, agemax - vectors of length n_parts containing the initial age and agemax. (leave
+	    	as None to set to zero)
         """
 
         self.__dict__.update(kwargs)
@@ -76,6 +87,18 @@ class SunTrack(Spatial):
         
         # Initialise the particle dictionary
         self.particles={'X':x,'Y':y,'Z':z}
+	
+	# Initialise the age calculation
+	self._calcage = False
+	if not agepoly == None:
+	    self._calcage = True
+	    self.agepoly = agepoly
+	    if age==None:
+	    	age=np.zeros_like(x)
+	    if agemax==None:
+	    	agemax=np.zeros_like(x)
+	    
+	    self.particles.update({'age':age,'agemax':agemax})
         
         if self.verbose:
             print '#######################################################'
@@ -94,7 +117,7 @@ class SunTrack(Spatial):
                 self.advectParticles(time,self.time_track_sec[ii])
                 # Step 2) Check bounds
                 
-    def animate(self,x,y,z,timeinfo,xlims=None,ylims=None,outfile=None):
+    def animate(self,x,y,z,timeinfo,agepoly=None,agemax=86400.0,xlims=None,ylims=None,outfile=None):
         """
         Animate the particles on the fly using matplotlib plotting routines
         """
@@ -105,15 +128,23 @@ class SunTrack(Spatial):
             xlims=self.xlims 
             ylims=self.ylims
             
-        self.__call__(x,y,z,timeinfo,runmodel=False)
+        self.__call__(x,y,z,timeinfo,agepoly=agepoly,runmodel=False)
         # Plot a map of the bathymetry
         self.fig = plt.figure(figsize=(10,8))
         ax=plt.gca()
         self.contourf(z=-self.dv,clevs=30,titlestr='',xlims=xlims,ylims=ylims,cmap='bone')
+	
         
+	plotage=self._calcage
+
         # Plot the particles at the first time step
-        h1 = plt.plot([],[],'y.',markersize=1.0)
-        h1 = h1[0]
+	if not plotage:
+	    h1 = plt.plot([],[],'y.',markersize=1.0)
+	    h1 = h1[0]
+
+	else:
+	    h1 = plt.scatter(self.particles['X'],self.particles['Y'],s=1.0,c=self.particles['age'],vmin=0,vmax=agemax,edgecolors=None)
+	    self.fig.colorbar(h1)
         
         title=ax.set_title("")
         
@@ -127,10 +158,19 @@ class SunTrack(Spatial):
             if ii==0:
                 # Re-initialise the particle location
                 self.particles={'X':x,'Y':y,'Z':z}
+		if self._calcage:
+		    self.particles.update({'age':np.zeros_like(x),'agemax':np.zeros_like(x)})
                 
             self.advectParticles(self.time_track[ii],self.time_track_sec[ii])
-            h1.set_xdata(self.particles['X'])
-            h1.set_ydata(self.particles['Y'])
+	    if plotage:
+		# Update the scatter object
+		h1.set_offsets(np.vstack([self.particles['X'],self.particles['Y']]).T)
+		h1.set_array(self.particles['age'])
+		h1.set_edgecolors(h1.to_rgba(np.array(self.particles['age'])))    
+	    else:
+		h1.set_xdata(self.particles['X'])
+		h1.set_ydata(self.particles['Y'])
+
             title.set_text(self.genTitle(ii))
             return (h1,title)
         
@@ -141,7 +181,7 @@ class SunTrack(Spatial):
         else:
             self.saveanim(outfile)
     
-    def animateNC(self,ncfile,xlims=None,ylims=None,outfile=None):
+    def animateNC(self,ncfile,plotage=False,agemax=86400.0,xlims=None,ylims=None,outfile=None):
         """
         Animate the particles from a previously generated netcdf file
         """
@@ -165,20 +205,29 @@ class SunTrack(Spatial):
         self.contourf(z=-self.dv,clevs=30,titlestr='',xlims=xlims,ylims=ylims,cmap='bone')
         
         # Plot the particles at the first time step
-        h1 = plt.plot([],[],'y.',markersize=1.0)
-        h1 = h1[0]
+        if not plotage:
+	    h1 = plt.plot([],[],'y.',markersize=1.0)
+	    h1 = h1[0]
+
+	else:
+	    h1 = plt.scatter(nc.variables['xp'][0,:],nc.variables['yp'][0,:],s=1.0,c=nc.variables['age'][0,:],vmin=0,vmax=agemax,edgecolors=None)
+	    self.fig.colorbar(h1)
         
         title=ax.set_title("")
         
-        def init():
-            h1.set_xdata(nc.variables['xp'][0,:])
-            h1.set_ydata(nc.variables['yp'][0,:])
-            title=ax.set_title(self.genTitle(0))
-            return (h1,title)
+	def updateLocation(ii):
+	    xp = nc.variables['xp'][ii,:]
+	    yp = nc.variables['yp'][ii,:]
+	    if plotage:
+		# Update the scatter object
+		h1.set_offsets(np.vstack([xp,yp]).T)
+		age=nc.variables['age'][ii,:]
+		h1.set_array(age)
+		h1.set_edgecolors(h1.to_rgba(np.array(age)))    
+	    else:
+		h1.set_xdata(xp)
+		h1.set_ydata(yp)
 
-        def updateLocation(ii):
-            h1.set_xdata(nc.variables['xp'][ii,:])
-            h1.set_ydata(nc.variables['yp'][ii,:])
             title.set_text(self.genTitle(ii))
             return (h1,title)
         
@@ -190,6 +239,7 @@ class SunTrack(Spatial):
             self.saveanim(outfile) 
         
         nc.close()
+
     def animate3D(self,x,y,z,timeinfo,outfile=None):
         """
         3D animation of the particles using mayavi
@@ -302,6 +352,10 @@ class SunTrack(Spatial):
             
         else:
             raise Exception, 'unknown advection scheme: %s. Must be "euler" or "rk2"'%self.advect_method
+
+	# Call the age calculation
+	if self._calcage:
+	   self.CalcAge()
             
         
         t1 = clock()
@@ -366,24 +420,32 @@ class SunTrack(Spatial):
         """
         Checks that particles are not above the surface or below the seabed
         
+	(Artificially moves them to the surface or bed if they are).
         """
         SMALL = 0.001
+	#zbed = -self.dv
+	zbed = -self.z_w[self.Nk] # Set the bottom one layer above the seabed
         
         # find the free surface and seabed at the particle locations
         if not self.interp_method == 'mesh':
             eta_P = self.Hinterp(x,y,z,self.eta)
-            h_P = self.Hinterp(x,y,z,-self.dv)
+            h_P = self.Hinterp(x,y,z,zbed)
         else:
             ind = self.UVWinterp.cellind
             mask=ind==-1
             ind[mask]=0.0
             eta_P = self.eta[ind]
-            h_P = -self.dv[ind]
+            h_P = zbed[ind]
             eta_P[mask]=0.0
             h_P[mask]=0.0
         
-        np.where(z > eta_P, eta_P-SMALL, z)
-        np.where(z < h_P, h_P+SMALL, z)
+	indtop = np.where(z>eta_P)
+	indbot = np.where(z<h_P)
+	z[indtop[0]] = eta_P[indtop[0]]-SMALL
+	z[indbot[0]] = h_P[indbot[0]]+SMALL
+
+        #np.where(z > eta_P, eta_P-SMALL, z)
+        #np.where(z < h_P, h_P+SMALL, z)
         
         return z
         
@@ -455,6 +517,8 @@ class SunTrack(Spatial):
         
     def timeInterpUVWxyz(self,tsec,x,y,z):
         """
+	NOT USED AT THIS STAGE
+
         Temporally interpolate the currents  onto the particle time step, tsec.
         
         Linear interpolation used.
@@ -568,17 +632,34 @@ class SunTrack(Spatial):
             else:
                 Nk = self.Nk[i]+1
             self.mask3D[Nk:self.Nkmax,i]=False
-            
-    def initParticleNC(self,outfile,Np):
+
+    def CalcAge(self):
+        """     
+	Calculate the age of a particle inside of the age polygon
+	"""
+	#print '\t\tCalculating the particle age...'
+	inpoly = nxutils.points_inside_poly(np.vstack((self.particles['X'],self.particles['Y'])).T,self.agepoly)
+
+	self.particles['age'][inpoly] = self.particles['age'][inpoly] + self.dt
+	self.particles['age'][inpoly==False]=0.0
+
+	# Update the agemax attribute
+	self.particles['agemax'] = np.max([self.particles['age'],self.particles['agemax']],axis=0)
+
+
+
+    def initParticleNC(self,outfile,Np,age=False):
         """
         Export the grid variables to a netcdf file
         """
+	import os
+
         if self.verbose:
             print '\nInitialising particle netcdf file: %s...\n'%outfile
             
         nc = Dataset(outfile, 'w', format='NETCDF4_CLASSIC')
         nc.Description = 'Particle trajectory file'
-        nc.Author = ''
+        nc.Author = os.getenv('USER')
         nc.Created = datetime.now().isoformat()
 
         nc.createDimension('ntrac', Np)
@@ -594,10 +675,13 @@ class SunTrack(Spatial):
         create_nc_var('xp',('nt','ntrac'),{'units':'m','long_name':"Easting coordinate of drifter",'time':'tp'},dtype='f8')
         create_nc_var('yp',('nt','ntrac'),{'units':'m','long_name':"Northing coordinate of drifter",'time':'tp'},dtype='f8')
         create_nc_var('zp',('nt','ntrac'),{'units':'m','long_name':"vertical position of drifter (negative is downward from surface)",'time':'tp'},dtype='f8')
+	if age:
+	    create_nc_var('age',('nt','ntrac'),{'units':'seconds','long_name':"Particle age",'time':'tp'},dtype='f8')
+	    create_nc_var('agemax',('nt','ntrac'),{'units':'seconds','long_name':"Maximum particle age",'time':'tp'},dtype='f8')
 
         nc.close()
     
-    def writeParticleNC(self,outfile,x,y,z,t,tstep):
+    def writeParticleNC(self,outfile,x,y,z,t,tstep,age=None,agemax=None):
         """
         Writes the particle locations at the output time step, 'tstep'
         """
@@ -611,24 +695,35 @@ class SunTrack(Spatial):
         nc.variables['yp'][tstep,:]=y
         nc.variables['zp'][tstep,:]=z
 
+	if not age==None:
+	    nc.variables['age'][tstep,:]=age
+	if not agemax==None:
+	    nc.variables['agemax'][tstep,:]=agemax
+
         nc.close()
     
 
-class interp3Dmesh(TriSearch):
+class interp3Dmesh(TriSearch,Grid):
     """
     3D interpolation class for an unstructured grid
     
     Uses knowledge of the mesh to efficiently update the velocities based on 
     the particle location.
     """
-    
-    def __init__(self,x,y,z,cells,mask):
+
+
+    def __init__(self,x,y,z,cells,mask,method='nearest',grdfile=None):
         
+	self.method=method
         # Initialise the trisearch array
         TriSearch.__init__(self,x,y,cells)
+
+	if self.method == 'linear':
+	    Grid.__init__(self,grdfile)
+	    self.datatmp = np.zeros_like(mask)
         
         self.z = np.sort(z)
-        self.Nk = z.size-1
+        self.Nkmax = z.size-1
         
         self.mask3d = mask
         
@@ -654,9 +749,9 @@ class interp3Dmesh(TriSearch):
                         
         # Find the k-index
         kind=self.z.searchsorted(Z)
-        kind = self.Nk - kind 
+        kind = self.Nkmax - kind 
         
-        kind[kind>=self.Nk-1] = self.Nk-1
+        kind[kind>=self.Nkmax-1] = self.Nkmax-1
                 
         # Calculate the linear index
         #ind = kind*self.mask.shape[1]+self.cellind
@@ -667,14 +762,35 @@ class interp3Dmesh(TriSearch):
         ind[maskpts == False] = 0
         
         # Return the nearest data point (... for now)
-        dataout = data[ind]
+	if self.method == 'nearest':
+	    dataout = data[ind]
+	if self.method == 'linear':
+	    dataout = self.lininterp(X,Y,Z,data,kind)
                 
         # Mask bogey points
         dataout[maskpts==False]=0.0
         dataout[self.cellind==-1]=0.0
                 
         return dataout
-    
+
+    def lininterp(self,X,Y,Z,data,k):
+    	"""
+	Wrapper for linear interpolation
+
+	interpLinear method in sunpy needs to be called layer by layer
+	"""
+	# Put the input data back into a 2D array (Nz,Nc)
+	self.datatmp[self.mask3d]=data
+
+	# Loop through layer by layer
+	dataout = np.zeros_like(X)
+	for kk in range(k.min(),k.max()):
+	    ind = operator.and_(k == kk,self.cellind!=-1)
+	    if any(ind):
+		dataout[ind] = self.interpLinear(self.datatmp[kk,:],X[ind],Y[ind],self.cellind[ind],k=kk)
+
+	return dataout
+
 
 class interp3D(object):
     """
@@ -783,9 +899,15 @@ class nearest(object):
         
         return Z            
 
-def GridParticles(grdfile,dx,dy,nz):
+def GridParticles(grdfile,dx,dy,nz,xypoly=None,splitvec=1):
     """
     Returns the locations of particles on a regular grid inside of suntans grid
+
+    Inputs:
+    	grdfile - netcdf filename containing the suntans grid
+	dx,dy - resolution in x and y component respectively.
+	nz - number of particles in the vertical. Particles are arranged in sigma layers.
+	xypoly - [optional] coordinates of an additional bounding polygon [Nx2 array]
     """
     
     # Load the suntans grid
@@ -804,8 +926,13 @@ def GridParticles(grdfile,dx,dy,nz):
     Y=Y.ravel()
     # Check which particles are inside the grid 
     cellind = tri(X,Y)
-    
     mask = cellind!=-1
+
+    # Check which particles are also inside of the polygon
+    if not xypoly == None:
+	inpoly = nxutils.points_inside_poly(np.vstack((X,Y)).T,xypoly)
+	mask = operator.and_(mask,inpoly)
+
     xout = X[mask]
     yout = Y[mask]
     
@@ -821,10 +948,23 @@ def GridParticles(grdfile,dx,dy,nz):
     zout *= -sun.dv[cellind[mask]]
     zout = zout.T
     
-    return xout.ravel(), yout.ravel(), zout.ravel()
+    xout = xout.ravel()
+    yout = yout.ravel()
+    zout = zout.ravel()
+
+    # Rearrange the vectors to avoid clustering (this helps even the MPI workload)
+    #xout_split=[]
+    #yout_split=[]
+    #zout_split=[]
+    #for start in range(splitvec):
+    #    xout_split.append(xout[start::splitvec])
+    #    yout_split.append(yout[start::splitvec])
+    #    zout_split.append(zout[start::splitvec])
+
+    #xout = np.hstack(xout_split)
+    #yout = np.hstack(yout_split)
+    #zout = np.hstack(zout_split)
     
-    
-    
-    
-    
+
+    return xout, yout, zout
     

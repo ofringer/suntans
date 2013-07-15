@@ -22,10 +22,11 @@ comm = MPI.COMM_WORLD
 size=comm.size
 
 
-def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z):
+def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z,agepoly=None,method='nearest'):
 
     # Generate a list of tuples for the time info
     timevec = othertime.TimeVector(tstart,tend,dtout,timeformat ='%Y%m%d.%H%M%S')
+    timevec_sec = othertime.SecondsSince(timevec)
     timeinfos=[]
     for ii in range(timevec.shape[0]-1):
         if ii == 0:
@@ -38,8 +39,16 @@ def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z):
     
     # Initialise the particle tracking object    
     #print 'Initialising the particle tracking object on processor: %d...'%(comm.rank)
-    sun = SunTrack(ncfile,interp_method='mesh')
+    sun = SunTrack(ncfile,interp_method='mesh',interp_meshmethod=method)
     
+    # Initialise the age values
+    if not agepoly==None:
+	calcage=True
+    else:
+	calcage=False
+	age=None
+	agemax=None
+
     # On rank = 0 only
     if comm.rank == 0:
         n = int(x.shape[0])
@@ -61,15 +70,22 @@ def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z):
             local_n = np.array([n/size])
         
         print 'Size of original vector = %d\nSize of split vector = %d'%(n,local_n)
+
+	if calcage:
+	    age = np.zeros_like(x)
+	    agemax = np.zeros_like(x)
         
         # Initialise the output netcdf file
-        sun.initParticleNC(outfile,n)
+        sun.initParticleNC(outfile,n,age=calcage)
          
     else:
         x=None
         y=None
         z=None
         local_n = np.array([0])
+	if calcage:
+	    age=None
+	    agemax=None
         
     comm.Barrier()
     t_start = MPI.Wtime()
@@ -84,19 +100,45 @@ def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z):
     x_local = np.zeros(local_n)
     y_local = np.zeros(local_n)
     z_local = np.zeros(local_n)
-    
+    if calcage:
+    	age_local = np.zeros(local_n)
+    	agemax_local = np.zeros(local_n)
+
+   
     #divide up vectors
     comm.Scatter(x, x_local, root=0)
     comm.Scatter(y, y_local, root=0)
     comm.Scatter(z, z_local, root=0)
-    
+    if calcage:
+	comm.Scatter(age, age_local, root=0)
+	comm.Scatter(agemax, agemax_local, root=0)
+    else:
+	age_local=None
+	agemax_local=None
+
+    ###
+    # Testing plot of particle positions
+    ###
+    #if comm.rank ==0:
+    #	import matplotlib.pyplot as plt
+    #    plt.figure
+    #    plt.plot(x_local,y_local,'.')
+    #    plt.show()
+    #comm.Barrier()
+
+    ###
+    # Write out the initial location to netcdf
+    if comm.rank==0:
+	sun.writeParticleNC(outfile,x,y,z,timevec_sec[0],0,age=age,agemax=agemax)
+    comm.Barrier()
+
     ###
     # ... Call the particle tracking module on each processor
     for ii,timeinfo in enumerate(timeinfos):
         if comm.rank == 0:
-            sun(x_local,y_local,z_local,timeinfo,verbose=True)    
+            sun(x_local,y_local,z_local,timeinfo,agepoly=agepoly,age=age_local,agemax=agemax_local,verbose=True)    
         else:
-            sun(x_local,y_local,z_local,timeinfo,verbose=False) 
+            sun(x_local,y_local,z_local,timeinfo,agepoly=agepoly,age=age_local,agemax=agemax_local,verbose=False) 
             
         # Send the particles back to their main array    
         comm.Barrier()
@@ -104,10 +146,13 @@ def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z):
         comm.Gather(sun.particles['X'],x,root=0)
         comm.Gather(sun.particles['Y'],y,root=0)
         comm.Gather(sun.particles['Z'],z,root=0)
+	if calcage:
+	    comm.Gather(sun.particles['age'],age,root=0)
+	    comm.Gather(sun.particles['agemax'],agemax,root=0)
         
         # Write the output to a netcdf file
         if comm.rank==0:
-            sun.writeParticleNC(outfile,x,y,z,sun.time_track_sec[-1],ii)
+            sun.writeParticleNC(outfile,x,y,z,sun.time_track_sec[-1],ii+1,age=age,agemax=agemax)
         
         comm.Barrier()
     
@@ -119,12 +164,12 @@ def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z):
 
 
 if __name__ == '__main__':
-	"""
-	Example script
-	
-	run via:
-		mpirun -np 4 python suntrack_mpi.py
-	"""
+    """
+    Example script
+    
+    run via:
+	    mpirun -np 4 python suntrack_mpi.py
+    """
     from suntrack import GridParticles
 
     ####

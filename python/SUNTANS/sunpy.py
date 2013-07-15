@@ -518,6 +518,44 @@ class Grid(object):
         Uses sparse matrices to do the heavy lifting
         """
         
+
+        Nc = cellind.shape[0]
+	ii = np.arange(0,Nc)
+	i = cellind[ii]
+
+	# Find the row and column indices of the sparse matrix
+	rowindex = self.cells[i,:] 
+	colindex = np.repeat(i.reshape((Nc,1)),3,axis=1)
+
+	mask = k <= self.Nk[colindex]
+	
+	cell_scalar3d = np.repeat(cell_scalar[i].reshape((Nc,1)),3,axis=1)
+	area = np.repeat(self.Ac[i].reshape((Nc,1)),3,axis=1)
+	
+	#Build the sparse matrices
+	Asparse = sparse.coo_matrix((area[mask],(rowindex[mask],colindex[mask])),shape=(self.Np,self.Nc),dtype=np.double)
+	datasparse = sparse.coo_matrix((cell_scalar3d[mask],(rowindex[mask],colindex[mask])),shape=(self.Np,self.Nc),dtype=np.double)
+
+	# This step is necessary to avoid summing duplicate elements
+	datasparse=sparse.dok_matrix(datasparse).tocoo()
+	Asparse=sparse.dok_matrix(Asparse).tocoo()
+
+	node_scalar = datasparse.multiply(Asparse).sum(axis=1) / Asparse.sum(axis=1)
+       
+        return np.array(node_scalar).squeeze()
+ 
+    def cell2nodekindold(self,cell_scalar,cellind,k=0):
+        """
+        Map a cell-based scalar onto a node
+        
+        Only does it for nodes connected to cells in: 'cellind'. This is faster and more generic.
+        
+        The node_scalar array still has size(Np) although nodes that aren't connected
+        to cells in 'cellind' are simply zero.
+        
+        Uses sparse matrices to do the heavy lifting
+        """
+        
         Nc = cellind.shape[0]
         
         if not self.__dict__.has_key('_datasparse'):

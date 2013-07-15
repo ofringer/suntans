@@ -55,7 +55,7 @@ class Slice(Spatial):
         return self.data.squeeze()
         
         
-    def pcolorslice(self,t=0,xaxis='xslice',titlestr=None,**kwargs):
+    def pcolorslice(self,t=0,xaxis='xslice',titlestr=None,bathyoverlay=True,**kwargs):
         """
         Pcolor plot of the slice
         
@@ -72,10 +72,11 @@ class Slice(Spatial):
             self.clim.append(np.min(am))
             self.clim.append(np.max(am))
         
-        h1 = plt.pcolor(self[xaxis],self.zslice,am,**kwargs)
+        h1 = plt.pcolor(self[xaxis],self.zslice,am,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
         
         #Overlay the bed
-        self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
+	if bathyoverlay:
+	    self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
         
         # Set labels etc
         plt.xlabel(self._getXlabel(xaxis))
@@ -94,7 +95,7 @@ class Slice(Spatial):
         
         return h1, axcb
             
-    def contourslice(self,t=0,xaxis='xslice',clevs=20,titlestr=None,**kwargs):
+    def contourslice(self,t=0,xaxis='xslice',clevs=20,titlestr=None,bathyoverlay=True,**kwargs):
         """
         Filled-contour plot of the slice
         
@@ -111,10 +112,11 @@ class Slice(Spatial):
             self.clim.append(np.max(am))
         
         V = np.linspace(self.clim[0],self.clim[1],clevs)
-        h1 = plt.contourf(self[xaxis],self.zslice,am,V,**kwargs)
+        h1 = plt.contourf(self[xaxis],self.zslice,am,V,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
         
         #Overlay the bed
-        self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
+	if bathyoverlay:
+	    self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
         
         # Set labels etc
         plt.xlabel(self._getXlabel(xaxis))
@@ -144,13 +146,15 @@ class Slice(Spatial):
                        
         """
         
+	#kbed = np.max(self.Nk[self.cellind]-1,0)
+	kbed = self.Nk[self.cellind]
         if zlayer == 'seabed':
-            a= self.data[:,self.Nk[self.cellind],range(0,self.Npt)]
+            a= self.data[:,kbed,range(0,self.Npt)]
             zstring = 'seabed'
             
         elif zlayer == 'diff':
             atop = self.data[:,0,:]    
-            abot = self.data[:,self.Nk[self.cellind],range(0,self.Npt)]
+            abot = self.data[:,kbed,range(0,self.Npt)]
             a = atop - abot
             zstring = 'Surface value - seabed value'
             
@@ -167,7 +171,7 @@ class Slice(Spatial):
         
         V = np.linspace(self.clim[0],self.clim[1],clevs)
         
-        h1 = plt.contourf(self[xaxis][0,:],self.time[self.tstep],am,V,**kwargs)
+        h1 = plt.contourf(self[xaxis][0,:],self.time[self.tstep],am,V,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
         
         plt.xlabel(self._getXlabel(xaxis))
         plt.ylabel('Time')
@@ -214,13 +218,27 @@ class Slice(Spatial):
         """
         tstep = self.tstep
         slicedata = np.zeros((self.Ntslice,self.Nkmax,self.Npt))
+
+	#if method=='linear':
+	#    cellind3d = np.repeat(self.cellind.reshape((1,self.Npt)),self.Nkmax,axis=0)
+	#    k3d = np.arange(0,self.Nkmax)
+	#    k3d = np.repeat(k3d.reshape((self.Nkmax,1)),self.Npt,axis=1)
+
         for tt in range(self.Ntslice):
             if self.Ntslice>1:
-                print 'Slicing data at time-step: %d...'%tt
+                print 'Slicing data at time-step: %d of %d...'%(tt,self.Ntslice)
             
             self.tstep=[tt]
             rawdata = self.loadData(variable=variable)
 
+#	    if method == 'nearest':
+#		for kk in range(self.Nkmax):
+#                    slicedata[tt,kk,:] = rawdata[kk,self.cellind]
+#	    elif method == 'linear':
+#		slicedata[tt,:] = self.interpLinear(rawdata.ravel(),self.xslice.ravel(),self.yslice.ravel(),cellind3d.ravel(),k=k3d.ravel()).reshape((self.Nkmax,self.Npt))
+#	    else:
+#		raise Exception, ' unknown interpolation method: %s. Must be "nearest" or "linear"'%method
+ 
             for kk in range(self.Nkmax):
                 if method == 'nearest':
                     slicedata[tt,kk,:] = rawdata[kk,self.cellind]

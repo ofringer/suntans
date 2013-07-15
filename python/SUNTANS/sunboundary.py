@@ -100,6 +100,7 @@ class Boundary(object):
         self.N3 = len(self.cellp)
         
         # Store the coordinates of the type 2 and 3 boundaries
+	self.cellp = np.array(self.cellp)
         self.xv = self.grd.xv[self.cellp]
         self.yv = self.grd.yv[self.cellp]
         
