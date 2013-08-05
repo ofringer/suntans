@@ -13,13 +13,18 @@ from matplotlib.nxutils import points_inside_poly
 import numpy as np
 import operator as op
 
+import matplotlib.pyplot as plt
 import pdb
 
 class TriSearch(Triangulation):
     
     verbose=False
+    force_inside=False # Force the points to move inside of the polyggon
     
     def __init__(self, x, y, cells,**kwargs):
+        
+	self.__dict__.update(kwargs)
+
         Triangulation.__init__(self,x,y,cells)
         
         self.Nc = cells.shape[0]
@@ -38,7 +43,135 @@ class TriSearch(Triangulation):
         self.cellind=self.tsearch(self.xpt,self.ypt)
         
         return self.cellind
-    
+
+    def updatexy(self,xnew,ynew):
+        """
+        Finds the triangle index when x and y are updated
+        
+        Attempt at being faster than raw search performed during __call__
+        """
+        
+        # Check that size of the arrrays match
+        assert xnew.size == self.xpt.size, ' size of xnew must be the same as xin'        
+        
+        self.Nx = xnew.size
+        
+        # Check if the particle has crossed any edges (ie is it in the same cell)
+        innewcell = np.zeros(xnew.shape,dtype=np.bool)
+        innewcell[:]=True
+        newcell = self.cellind.copy()
+        
+        # Check if the particle has crossed any edges (ie is it in the same cell)
+        changedcell, neigh = self.checkEdgeCrossingVec(self.cellind,xnew,ynew,self.xpt,self.ypt)
+        newcell[changedcell] = self.neighbors[self.cellind[changedcell],neigh[changedcell]]
+        
+        # Check if particle is actually in new cell
+        innewcell[changedcell] = self.inCellVec(newcell[changedcell],xnew[changedcell],ynew[changedcell])
+            
+        cellind2 = self.tsearch(xnew[innewcell==False],ynew[innewcell==False])
+        newcell[innewcell==False] = cellind2
+
+	# Force cells outside of the mesh into the domain
+	if self.force_inside:
+	    xnew,ynew,cellnew = self.move_inside(newcell,xnew,ynew)
+	    
+        # Update the class attributes
+        self.xpt=xnew
+        self.ypt=ynew
+        self.cellind=newcell
+
+        return newcell
+            
+  
+    def move_inside(self,cell,x,y,DINSIDE=5.0):
+    	"""
+	Moves a point inside a grid by finding the closest point along an edge
+	"""
+
+	ind = cell==-1
+	if not ind.any():
+	    return x,y,cell
+	
+#	print 'Moving %d particles inside the domain...'%(np.sum(ind))
+
+	# Find the two nearest points to the cell (this makes up the edge)
+	xy = np.vstack((x[ind],y[ind])).T
+	nodes = self.findnearest(xy,NNear=2)
+
+	# Find the position where this point intersects the line
+	P1 = Point(self.x[nodes[:,0]],self.y[nodes[:,0]])
+	P2 = Point(self.x[nodes[:,1]],self.y[nodes[:,1]])
+	P3 = Point(xy[:,0],xy[:,1])
+
+	def magnitude(P1,P2):
+	    """
+	    Distance between two points
+	    """
+	    return np.sqrt((P2.x-P1.x)**2.0 + (P2.y-P1.y)**2.0)
+
+	def closest_point(P1,P2,P3):
+	    """
+	    Location of the intersection between a line between P1 and P2
+	    """
+
+	    norm_p1p2 = magnitude(P1,P2)
+
+	    ind = norm_p1p2 < 1e-6 # both points are the same
+
+	    u = ((P3.x-P1.x)*(P2.x-P1.x) + (P3.y-P1.y)*(P2.y-P1.y)) / (norm_p1p2*norm_p1p2)
+
+	    x = P1.x + u*(P2.x-P1.x )
+	    y = P1.y + u*(P2.y-P1.y )
+
+	    x[ind]=P1.x[ind]+0.1 # Give these a small kick
+	    y[ind]=P1.y[ind]+0.1
+
+	#    ind2 = norm_p1p2>=1e-6
+	#    if any(ind2) and sum(ind2) > 100:
+	#        pdb.set_trace()
+	#	plt.figure()
+	#	plt.plot(P1.x,P1.y,'bo')
+	#	plt.plot(P2.x,P2.y,'bo')
+	#	plt.plot(P3.x,P3.y,'go')
+	#	plt.plot(x,y,'rx')
+	#	plt.show()
+
+	    return x,y
+
+	# This gives the coordinates to the closest point along the edge
+	xc,yc = closest_point(P1,P2,P3)
+	
+	# Find the distance 
+	P4 = Point(xc,yc)
+	dist = magnitude(P3,P4)
+	# Find when distance = 0 i.e., particle is on the line
+	ind2 = dist==0
+
+	# Extrapolate along the line to find the coords of the new point
+	dnorm = (dist+DINSIDE)/dist
+	xnew = P3.x + dnorm * (P4.x-P3.x)
+	ynew = P3.y + dnorm * (P4.y-P3.y)
+	xnew[ind2]=P3.x[ind2]+0.1 # Add small perturbation (nudge) for particles on the line
+	ynew[ind2]=P3.y[ind2]+0.1
+
+
+#	plt.figure()
+#	plt.plot(P1.x,P1.y,'bo')
+#	plt.plot(P2.x,P2.y,'bo')
+#	plt.plot(P3.x,P3.y,'go')
+#	plt.plot(xnew,ynew,'rx')
+#	plt.show()
+#	pdb.set_trace()
+
+	cellnew = self.tsearch(xnew,ynew)
+
+	x[ind]=xnew
+	y[ind]=ynew
+	cell[ind]=cellnew
+
+	return x,y,cell
+
+
     def tsearchold(self,xin,yin):
         """
         DEPRECATED
@@ -75,8 +208,8 @@ class TriSearch(Triangulation):
 
         cell = -1*np.ones((Np,MAXNODES),dtype=np.int32)
         for nn in range(Np):
-            p2c = self.pnt2cells(node[nn])
-            cell[nn,0:len(p2c)]=p2c
+	    p2c = self.pnt2cells(node[nn])
+	    cell[nn,0:len(p2c)]=p2c
             
         cellind = -1*np.ones((Np,),dtype=np.int32)
         for ii in range(MAXNODES):
@@ -106,7 +239,11 @@ class TriSearch(Triangulation):
                         self._pnt2cells[self.triangles[i,j]] = []
                     #self._pnt2cells[self.cells[i,j]].add(i)
                     self._pnt2cells[self.triangles[i,j]].append(i)
-        return self._pnt2cells[pnt_i]
+
+	if self._pnt2cells.has_key(pnt_i):
+	    return self._pnt2cells[pnt_i]
+	else:
+	    return [-1]
         
 
     def findnearest(self,xy,NNear=1):
@@ -180,41 +317,7 @@ class TriSearch(Triangulation):
         
         return inpoly
         
-    def updatexy(self,xnew,ynew):
-        """
-        Finds the triangle index when x and y are updated
-        
-        Attempt at being faster than raw search performed during __call__
-        """
-        
-        # Check that size of the arrrays match
-        assert xnew.size == self.xpt.size, ' size of xnew must be the same as xin'        
-        
-        self.Nx = xnew.size
-        
-        # Check if the particle has crossed any edges (ie is it in the same cell)
-        innewcell = np.zeros(xnew.shape,dtype=np.bool)
-        innewcell[:]=True
-        newcell = self.cellind.copy()
-        
-        # Check if the particle has crossed any edges (ie is it in the same cell)
-        changedcell, neigh = self.checkEdgeCrossingVec(self.cellind,xnew,ynew,self.xpt,self.ypt)
-        newcell[changedcell] = self.neighbors[self.cellind[changedcell],neigh[changedcell]]
-        
-        # Check if particle is actually in new cell
-        innewcell[changedcell] = self.inCellVec(newcell[changedcell],xnew[changedcell],ynew[changedcell])
-            
-        cellind2 = self.tsearch(xnew[innewcell==False],ynew[innewcell==False])
-        newcell[innewcell==False] = cellind2
-        
-        # Update the class attributes
-        self.xpt=xnew
-        self.ypt=ynew
-        self.cellind=newcell
-
-        return newcell
-            
-        
+       
     def checkEdgeCrossing(self,cell_i,xnew, ynew, xold, yold):
         """
         Check to see if a particle has crossed any edge of a cell

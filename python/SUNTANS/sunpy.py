@@ -34,8 +34,13 @@ class Grid(object):
     def __init__(self,infile ,**kwargs):
                
         self.__dict__.update(kwargs)
+
+	if isinstance(infile,list):
+	    infile2=infile[0]
+	else:
+	    infile2=infile
         
-        if os.path.isdir(infile):
+        if os.path.isdir(infile2):
             # Load ascii grid file
             self.infile = infile
             self.__loadascii()            
@@ -204,8 +209,8 @@ class Grid(object):
         ax.add_collection(collection)
     
         ax.set_aspect('equal')
-        #ax.set_xlim(xlim)
-        #ax.set_ylim(ylim)
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
 
         return ax, collection
     
@@ -537,8 +542,8 @@ class Grid(object):
 	datasparse = sparse.coo_matrix((cell_scalar3d[mask],(rowindex[mask],colindex[mask])),shape=(self.Np,self.Nc),dtype=np.double)
 
 	# This step is necessary to avoid summing duplicate elements
-	datasparse=sparse.dok_matrix(datasparse).tocoo()
-	Asparse=sparse.dok_matrix(Asparse).tocoo()
+	datasparse=sparse.csr_matrix(datasparse).tocoo()
+	Asparse=sparse.csr_matrix(Asparse).tocoo()
 
 	node_scalar = datasparse.multiply(Asparse).sum(axis=1) / Asparse.sum(axis=1)
        
@@ -907,7 +912,7 @@ class Spatial(Grid):
              plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[0,1::subsample],v[0,1::subsample],scale=scale,scale_units='xy')
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
-    def contourf(self, clevs=20,z=None,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,titlestr=None,**kwargs):
+    def contourf(self, clevs=20,z=None,xlims=None,ylims=None,filled=True,vector_overlay=False,scale=1e-4,subsample=10,titlestr=None,**kwargs):
         """
         Filled contour plot of  unstructured grid data
         """
@@ -938,14 +943,17 @@ class Spatial(Grid):
         
         # Amplitude plot (note that the data must be on nodes for tricontourf)
         V = np.linspace(self.clim[0],self.clim[1],clevs)
-        camp = plt.tricontourf(t, self.cell2node(z), V, **kwargs)
-        
+	if filled:
+	    camp = plt.tricontourf(t, self.cell2node(z), V, **kwargs)
+	else:
+            camp = plt.tricontour(t, self.cell2node(z), V, **kwargs)
                 
         ax.set_aspect('equal')
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
         
-        axcb = fig.colorbar(camp)
+	if filled:
+	    self.cb = fig.colorbar(camp)
         
         if titlestr==None:
             plt.title(self.__genTitle())
@@ -1530,7 +1538,7 @@ class Spatial(Grid):
         #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
 	print 'Loading: %s'%self.ncfile
         try: 
-            self.nc = MFDataset(self.ncfile, 'r')
+	    self.nc = MFDataset(self.ncfile, 'r')
         except:
             self.nc = Dataset(self.ncfile, 'r')
         
