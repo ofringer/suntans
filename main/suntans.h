@@ -23,6 +23,7 @@
 #define BREAK printf("%d\n",*((int *)0));
 #define PI 3.141592654
 #define RHO0 1000.0
+#define GRAV 9.81
 #define INFTY 1e20
 #define CONSERVED 1e-5
 #define EMPTY 999999

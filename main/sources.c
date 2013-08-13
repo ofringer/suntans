@@ -387,11 +387,12 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      H0[i] = ( met->Hs[i] + met->Hl[i] + met->Hlw[i] );
      
      // Calculate T+dt array
-    if(phys->dT[i]<=0.0){
-       phys->dT[i]=Min(-1e-4,phys->dT[i]);
-     }else{
-       phys->dT[i]=Max(1e-4,phys->dT[i]);
-     }
+    //if(phys->dT[i]<=0.0){
+    //   phys->dT[i]=Min(-1e-4,phys->dT[i]);
+    // }else{
+    //   phys->dT[i]=Max(1e-4,phys->dT[i]);
+    // }
+    phys->dT[i] = 0.01; //Hard-wire for stability 
     
 	
      phys->Ttmp[i][ktop] = phys->T[i][ktop] + phys->dT[i];
@@ -410,7 +411,7 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      ktop = grid->ctop[i];
      
      // Put the temperature gradient flux terms into B
-     dHdT = ( (met->Hs[i] + met->Hl[i] + met->Hlw[i]) - H0[i]) /(phys->dT[i] + eps);
+     dHdT = ( (met->Hs[i] + met->Hl[i] + met->Hlw[i]) - H0[i]) /(phys->dT[i] + SMALL);
 	   
      A[i][ktop] = H0[i] - dHdT * phys->T[i][ktop];
      B[i][ktop] = -dHdT;

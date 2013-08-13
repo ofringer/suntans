@@ -370,6 +370,10 @@ double GetDefaultValue(char *str, int *status) {
     
    return readinitialnc_DEFAULT;   
 
+} else if(!strcmp(str,"calcage")) {
+    
+   return calcage_DEFAULT;   
+
 }else {
     *status=0;
     return 0;

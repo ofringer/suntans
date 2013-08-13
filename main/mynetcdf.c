@@ -258,6 +258,20 @@ void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, 
 	  ERR(retval);
      }
 
+     if(prop->calcage){ 
+	if ((retval = nc_inq_varid(ncid, "agec", &varid)))
+	  ERR(retval);
+	ravel(phys->agec, phys->tmpvar, grid);
+	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
+	  ERR(retval);
+
+	if ((retval = nc_inq_varid(ncid, "agealpha", &varid)))
+	  ERR(retval);
+	ravel(phys->agealpha, phys->tmpvar, grid);
+	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
+	  ERR(retval);
+     }
+
      // Vertical grid spacing
      if ((retval = nc_inq_varid(ncid, "dzz", &varid)))
        ERR(retval);
@@ -889,6 +903,33 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
    }
    
+   //age
+   if(prop->calcage){
+     if ((retval = nc_def_var(ncid,"agec",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval);
+     if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+     if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Age concentration");
+    nc_addattr(ncid, varid,"units","");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+    
+    if ((retval = nc_def_var(ncid,"agealpha",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval);
+    if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+    if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Age alpha parameter");
+    nc_addattr(ncid, varid,"units","seconds");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+   }
+
    //U
    dimidthree[2] = dimid_Ne;
    if ((retval = nc_def_var(ncid,"U",NC_DOUBLE,3,dimidthree,&varid)))
@@ -1795,6 +1836,52 @@ void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int 
       }
   }
 } // End function
+
+/*
+ * Function: ReturnAgeNC()
+ * -------------------------------
+ * Reads the age variables (agec & agealpha) from the initial condition netcdf array
+ *
+ */
+void ReturnAgeNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc){
+   int i,k,ind;
+   size_t start[] = {T0, 0, 0};
+   size_t count[] = {1, Nki, Nci};
+   //REAL htmp[Nki][Nci];
+
+   int varid, retval;
+   int ncid = prop->initialNCfileID;
+
+   if(VERBOSE>1 && myproc==0) printf("Reading agec initial condition from netcdf file...");
+    if ((retval = nc_inq_varid(ncid, "agec", &varid)))
+	ERR(retval);
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      //for(k=0;k<grid->Nk[i];k++) {
+	 ind = k*Nci + grid->mnptr[i]; 
+	 phys->agec[i][k]=htmp[ind];
+      }
+  }
+
+   if(VERBOSE>1 && myproc==0) printf("Reading agealpha initial condition from netcdf file...");
+    if ((retval = nc_inq_varid(ncid, "agealpha", &varid)))
+	ERR(retval);
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      //for(k=0;k<grid->Nk[i];k++) {
+	 ind = k*Nci + grid->mnptr[i]; 
+	 phys->agealpha[i][k]=htmp[ind];
+      }
+  }
+
+} // End function
+
 
 /*
 * Function: GetTimeRecBnd()

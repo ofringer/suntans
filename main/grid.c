@@ -195,6 +195,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   // most important and complicated function to ensure parallelism for grid
   // takes the main grid and redistributes to local grids on each processor
   Partition(maingrid,localgrid,comm);
+
   if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
 
   // functions to check to make sure all the communications are set up properly
@@ -1412,10 +1413,11 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
   }
 
   //  printf("Finished computing nodal array information\n");
-  //printf("Freeing neighs...\n");
+  /*
+  printf("Freeing neighs...\n");
   for(in=0;in<Np;in++) 
     SunFree(tempppneighs[in],Np*sizeof(int *),"CreateNodeArray");
-  //printf("Freeing edges...\n");
+  printf("Freeing edges...\n");
   for(in=0;in<Np;in++) 
     SunFree(temppeneighs[in],Np*sizeof(int *),"CreateNodeArray");
   printf("Freeing cells...\n");
@@ -1429,6 +1431,7 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
   printf("Cells\n");
   SunFree(temppcneighs,maxcellneighs*sizeof(int),"CreateNodeArray");
   printf("Done!\n");
+  */
 }
 
 /*
