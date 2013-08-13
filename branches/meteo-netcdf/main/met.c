@@ -310,15 +310,15 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
   nt = (*metin)->nt;
   
   if (VERBOSE>3){
-      printf("NUwind = %d\n",NUwind);
-      printf("NVwind = %d\n",NVwind); 
-      printf("NTair = %d\n",NTair);
-      printf("NPair = %d\n",NPair);
-      printf("Nrain = %d\n",Nrain);
-      printf("NRH = %d\n",NRH);
-      printf("Ncloud = %d\n",Ncloud);
-      printf("nt = %d\n",nt);
-      printf("Nc = %d\n",Nc);
+      printf("NUwind = %d\n",(int)NUwind);
+      printf("NVwind = %d\n",(int)NVwind); 
+      printf("NTair = %d\n",(int)NTair);
+      printf("NPair = %d\n",(int)NPair);
+      printf("Nrain = %d\n",(int)Nrain);
+      printf("NRH = %d\n",(int)NRH);
+      printf("Ncloud = %d\n",(int)Ncloud);
+      printf("nt = %d\n",(int)nt);
+      printf("Nc = %d\n",(int)Nc);
   }
   /* Allocate the coordinate vectors*/
   //printf("Allocating coordinates...\n");
@@ -383,7 +383,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
   
   /* Initialises all of the input meteorological arrays with zeros*/ 
   // Need to allocate variable by variable as the lengths are different
-  if(VERBOSE>2 && myproc==0) printf("Uwind, nj = %d, Nc = %d...\n",(*metin)->NUwind,grid->Nc);
+  if(VERBOSE>2 && myproc==0) printf("Uwind, nj = %d, Nc = %d...\n",(int)(*metin)->NUwind,grid->Nc);
   for(j=0;j<(*metin)->NUwind;j++){
       (*metin)->x_Uwind[j]=0.0;
       (*metin)->y_Uwind[j]=0.0;
@@ -395,7 +395,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 	 (*metin)->Uwind[n][j]=0.0;
       }
   }  
-  if(VERBOSE>2 && myproc==0) printf("Vwind, nj = %d, Nc = %d...\n",(*metin)->NVwind,grid->Nc);
+  if(VERBOSE>2 && myproc==0) printf("Vwind, nj = %d, Nc = %d...\n",(int)(*metin)->NVwind,grid->Nc);
   for(j=0;j<(*metin)->NVwind;j++){
       (*metin)->x_Vwind[j]=0.0;
       (*metin)->y_Vwind[j]=0.0;
@@ -407,7 +407,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 	 (*metin)->Vwind[n][j]=0.0;
       }
   }  
-  if(VERBOSE>2 && myproc==0) printf("Tair, nj = %d, Nc = %d...\n",(*metin)->NTair,grid->Nc);
+  if(VERBOSE>2 && myproc==0) printf("Tair, nj = %d, Nc = %d...\n",(int)(*metin)->NTair,grid->Nc);
   for(j=0;j<(*metin)->NTair;j++){
       (*metin)->x_Tair[j]=0.0;
       (*metin)->y_Tair[j]=0.0;
@@ -419,7 +419,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 	 (*metin)->Tair[n][j]=0.0;
       }
   }  
-  if(VERBOSE>2 && myproc==0) printf("Pair, nj = %d, Nc = %d...\n",(*metin)->NPair,grid->Nc);
+  if(VERBOSE>2 && myproc==0) printf("Pair, nj = %d, Nc = %d...\n",(int)(*metin)->NPair,grid->Nc);
   for(j=0;j<(*metin)->NPair;j++){
       (*metin)->x_Pair[j]=0.0;
       (*metin)->y_Pair[j]=0.0;
@@ -430,7 +430,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 	 (*metin)->Pair[n][j]=0.0;
       }
   }  
-  if(VERBOSE>2 && myproc==0) printf("rain, nj = %d, Nc = %d...\n",(*metin)->Nrain,grid->Nc);
+  if(VERBOSE>2 && myproc==0) printf("rain, nj = %d, Nc = %d...\n",(int)(*metin)->Nrain,grid->Nc);
   for(j=0;j<(*metin)->Nrain;j++){
       (*metin)->x_rain[j]=0.0;
       (*metin)->y_rain[j]=0.0;
@@ -441,7 +441,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 	 (*metin)->rain[n][j]=0.0;
       }
   }  
-  if(VERBOSE>2 && myproc==0) printf("RH, nj = %d, Nc = %d...\n",(*metin)->NRH,grid->Nc);
+  if(VERBOSE>2 && myproc==0) printf("RH, nj = %d, Nc = %d...\n",(int)(*metin)->NRH,grid->Nc);
   for(j=0;j<(*metin)->NRH;j++){
       (*metin)->x_RH[j]=0.0;
       (*metin)->y_RH[j]=0.0;
@@ -453,7 +453,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 	 (*metin)->RH[n][j]=0.0;
       }
   }  
-  if(VERBOSE>2 && myproc==0) printf("cloud, nj = %d, Nc = %d...\n",(*metin)->Ncloud,grid->Nc);
+  if(VERBOSE>2 && myproc==0) printf("cloud, nj = %d, Nc = %d...\n",(int)(*metin)->Ncloud,grid->Nc);
   for(j=0;j<(*metin)->Ncloud;j++){
       (*metin)->x_cloud[j]=0.0;
       (*metin)->y_cloud[j]=0.0;
@@ -464,7 +464,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 	 (*metin)->cloud[n][j]=0.0;
       }
   }
-  if(VERBOSE>2 && myproc==0) printf("time, nt = %d ...\n",(*metin)->nt);
+  if(VERBOSE>2 && myproc==0) printf("time, nt = %d ...\n",(int)(*metin)->nt);
   for(j=0;j<nt;j++){
       (*metin)->time[j]=0.0;
   }
@@ -895,17 +895,17 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair){
  
  REAL cff;
- REAL eps=1e-10;
+ //REAL eps=1e-8;
  /*
   * Compute air saturation vapor pressure (mb), using Teten formula.
   */
-  cff=(1.0007+3.46E-6*Pair)*6.1121*exp(17.502*Ta/(240.97+Ta+eps));
+  cff=(1.0007+3.46E-6*Pair)*6.1121*exp(17.502*Ta/(240.97+Ta+SMALL));
   
   /*
   *  Compute specific humidity at Saturation, Qair (kg/kg).
   */
   cff=cff*RH/100;                    // Vapor pres (mb)
-  return (0.62197*(cff/(Pair-0.378*cff+eps))); // Spec hum (kg/kg)
+  return (0.62197*(cff/(Pair-0.378*cff+SMALL))); // Spec hum (kg/kg)
 } // End specifichumidity
 
 
@@ -916,14 +916,14 @@ static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair){
 */
 static REAL qsat(REAL Tw, REAL Pair){
  REAL cff;
- REAL eps=1e-10;
+ //REAL eps=1e-10;
 
- cff=(1.0007+3.46E-6*Pair)*6.1121* exp(17.502*Tw/(240.97+Tw+eps));
+ cff=(1.0007+3.46E-6*Pair)*6.1121* exp(17.502*Tw/(240.97+Tw+SMALL));
 
   //  Vapor Pressure reduced for salinity (Kraus & Businger, 1994, pp 42).
   cff=cff*0.98;
  
-  return (0.62197*(cff/(Pair-0.378*cff+eps)));
+  return (0.62197*(cff/(Pair-0.378*cff+SMALL)));
 } // End qsat
 
 /*

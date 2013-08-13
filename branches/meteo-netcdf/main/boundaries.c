@@ -294,13 +294,15 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 	// Moved to phys.c
 
     // Step 2) Read in the coordinate info
-    if(VERBOSE>2 && myproc==0) printf("Reading netcdf boundary coordinate data...\n");
+    if(VERBOSE>1 && myproc==0) printf("Reading netcdf boundary coordinate data...\n");
     ReadBndNCcoord(prop->netcdfBdyFileID, prop, grid, myproc);
 
     // Step 3) Match each boundary point with its local grid point
+    if(VERBOSE>1 && myproc==0) printf("Matching boundary points...\n");
     MatchBndPoints(prop, grid, myproc);
 
     // Step 4) Read in the forward and backward time steps into the boundary arrays
+    if(VERBOSE>1 && myproc==0) printf("Reading netcdf boundary initial data...\n");
     ReadBdyNC(prop, grid, myproc);
    
     
@@ -514,13 +516,17 @@ int isGhostEdge(int j, gridT *grid, int myproc){
  static void MatchBndPoints(propT *prop, gridT *grid, int myproc){
  int iptr, jptr, jj, ii, ne, nc1, nc2, nc, j, ib;
 
+
+
     if(myproc==0) printf("Boundary NetCDF file grid # type 2 points = %d\n",(int)bound->Ntype2);
     if(myproc==0) printf("Boundary NetCDF file grid # type 3 points = %d\n",(int)bound->Ntype3);
 
+    if(myproc==0) printf("Matching type-2 points...\n");
      //Type-2
      ii=-1;
      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
 	 ii+=1;
+
 	 // Match suntans edge cell with the type-2 boundary file point
 	 for(jj=0;jj<bound->Ntype2;jj++){
 	     if(grid->eptr[grid->edgep[jptr]]==bound->edgep[jj]){
@@ -530,6 +536,7 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 	     }
 	 }	 
      }
+    if(myproc==0) printf("Matching type-3 points...\n");
      // Type-3
      ii=-1;
      for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
@@ -542,6 +549,7 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 	 }
 	 //printf("Type 3 : Processor = %d, jptr = %d, cellp[jptr]=%d, bound->ind3[ii]=%d\n",myproc,jptr,grid->cellp[jptr],bound->ind3[ii]);
      }
+    if(myproc==0) printf("Matching type-2 edges...\n");
      //Type-3 edges
      ii=-1;
      for(jptr=grid->edgedist[3];jptr<grid->edgedist[4];jptr++) {
@@ -559,7 +567,7 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 
      // Check that the number of vertical grid points match
     if(bound->Nk != grid->Nkmax){
-	printf("Error! Number of layers in open boundary file (%d) not equal to Nkmax (%d).\n",bound->Nk,grid->Nkmax); 
+	printf("Error! Number of layers in open boundary file (%d) not equal to Nkmax (%d).\n",(int)bound->Nk,grid->Nkmax); 
 	MPI_Finalize();
         exit(EXIT_FAILURE);
     }

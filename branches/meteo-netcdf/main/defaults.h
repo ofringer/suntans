@@ -162,3 +162,6 @@ const int netcdfBdy_DEFAULT = 0;
 
 // Read initial condition netcdf
 const int readinitialnc_DEFAULT = 0;
+
+// Calculate Age variables
+const int calcage_DEFAULT = 0;

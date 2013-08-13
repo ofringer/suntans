@@ -78,6 +78,8 @@ typedef struct _physT {
   REAL **boundary_T;
   REAL **boundary_tmp;
   REAL **boundary_rho;
+  REAL **boundary_age;
+  REAL **boundary_agealpha;
   REAL *boundary_h;
   REAL *boundary_flag;
 
@@ -129,6 +131,15 @@ typedef struct _physT {
   REAL **wtmp;
   REAL **wtmp2;
   REAL **qtmp;
+  //GLS Turbulence variables
+  REAL **TP;
+  REAL **TB;
+  REAL **TD;
+  // Age variables
+  REAL **agec;
+  REAL **agealpha;
+  REAL **Cn_Ac;
+  REAL **Cn_Aa;
 
   REAL *ap;
   REAL *am;
@@ -183,7 +194,7 @@ typedef struct _propT {
        *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,    
        *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID; 
   interpolation interp; int prettyplot;
-  int metmodel,  varmodel, outputNetcdf,  metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID;
+  int metmodel,  varmodel, outputNetcdf,  metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID, calcage;
   int outputNetcdfFileID;
   REAL nctime, toffSet;
   int nctimectr;
