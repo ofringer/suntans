@@ -41,7 +41,7 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, R
   // Pointer Variables for TVD scheme
   sumQ = phys->gradSx;
   sumQC = phys->gradSy;
-
+  
   for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
 
@@ -102,8 +102,8 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, R
     }
   }
 
-  // Type 2 boundary specifies flux at faces
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+  // Type 2/3 boundary specifies flux at faces
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[4];jptr++) {
     j = grid->edgep[jptr];
     
     ib = grid->grad[2*j];
