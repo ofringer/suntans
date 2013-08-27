@@ -366,7 +366,7 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
    REAL rhocp = RHO0*c_p;
    REAL dHdT;
    REAL eps = 1e-14;
-   REAL dzmin_heatflux = 0.1;  // Minimum allowable depth of top cell for computation of   
+   REAL dzmin_heatflux = 0.01;  // Minimum allowable depth of top cell for computation of   
    // shortwave constants
    REAL ksw1; // light extinction coefficient
    REAL depth, z, topface, botface;
@@ -414,6 +414,7 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      dHdT = ( (met->Hs[i] + met->Hl[i] + met->Hlw[i]) - H0[i]) /(phys->dT[i] + SMALL);
 	   
      A[i][ktop] = H0[i] - dHdT * phys->T[i][ktop];
+     //A[i][ktop] = -(H0[i] - dHdT * phys->T[i][ktop]);//Testing
      B[i][ktop] = -dHdT;
 
      dztop = Max(dzmin_heatflux,grid->dzz[i][ktop]);

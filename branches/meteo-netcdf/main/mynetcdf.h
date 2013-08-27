@@ -13,6 +13,7 @@
 #include "grid.h"
 #include "met.h"
 #include "boundaries.h"
+#include "averages.h"
 
 /* Netcdf error */
 #define ERRCODE 2
@@ -25,6 +26,8 @@ size_t returndimlen(int ncid, char *dimname);
 void InitialiseOutputNC(propT *prop, gridT *grid, physT *phys, metT *met, int myproc);
 void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, int myproc);
 void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met,int blowup, int myproc);
+void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int myproc);
+void WriteAverageNC(propT *prop, gridT *grid, averageT *average, physT *phys, metT *met, int blowup, int myproc);
 void ReadMetNCcoord(propT *prop, gridT *grid, metinT *metin,int myproc);
 void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc);
 

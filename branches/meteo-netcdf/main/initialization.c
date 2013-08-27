@@ -76,16 +76,17 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
 REAL ReturnDepth(REAL x, REAL y) {
   REAL length, xmid, shelfdepth, depth;
 
-  length = 10000;
-  xmid = 65000;
-  shelfdepth = 500;
-  depth = 3000;
-  if(x<=xmid-length/2)
-    return depth;
-  else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
-    return depth-(depth-shelfdepth)*(x-xmid+length/2)/length;
-  else
-    return shelfdepth;
+//  length = 10000;
+//  xmid = 65000;
+//  shelfdepth = 500;
+//  depth = 3000;
+//  if(x<=xmid-length/2)
+//    return depth;
+//  else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
+//    return depth-(depth-shelfdepth)*(x-xmid+length/2)/length;
+//  else
+//    return shelfdepth;
+    return 1;
 }
 
  /*

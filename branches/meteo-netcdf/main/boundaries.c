@@ -14,8 +14,8 @@
 #include "mynetcdf.h"
 
 // Local functions
-static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp);
-static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag);
+//static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp);
+//static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag);
 
 static void MatchBndPoints(propT *prop, gridT *grid, int myproc);
 static void FluxtoUV(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
@@ -81,32 +81,56 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm
   */
 
   // Type-2
-  ii=-1;
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-    jind = jptr-grid->edgedist[2];
-    j = grid->edgep[jptr];
-    ib=grid->grad[2*j];
-    ii+=1;
+  if(prop->netcdfBdy){
+      ii=-1;
+      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+	jind = jptr-grid->edgedist[2];
+	j = grid->edgep[jptr];
+	ib=grid->grad[2*j];
+	ii+=1;
 
-    for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
-      phys->boundary_T[jind][k]=bound->boundary_T[k][bound->ind2[ii]];
-      phys->boundary_s[jind][k]=bound->boundary_S[k][bound->ind2[ii]];
-    }
+	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+	//for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	  phys->boundary_T[jind][k]=bound->boundary_T[k][bound->ind2[ii]];
+	  phys->boundary_s[jind][k]=bound->boundary_S[k][bound->ind2[ii]];
+	  //printf("edge: %d, k : %d, boundary_s = %f\n",jind,k,phys->boundary_s[jind][k]);
+	}
+      }
+  }else{//No NetCDF
+      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+	jind = jptr-grid->edgedist[2];
+	j = grid->edgep[jptr];
+	ib=grid->grad[2*j];
+
+	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+	  phys->boundary_T[jind][k]=0;
+	  phys->boundary_s[jind][k]=0;
+	}
+      }
   }
 
   //Type-3 
   // ???? (NEEDS TESTING)
   // Set boundary cell to value in the boundary structure
-
-  ii=-1;
-  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    i = grid->cellp[iptr];
-    ii+=1;
-    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-//    for(k=0;k<grid->Nk[i];k++){//Go from the very top
-	 phys->T[i][k] = bound->T[k][bound->ind3[ii]];
-	 phys->s[i][k] = bound->S[k][bound->ind3[ii]];
-    }
+  if(prop->netcdfBdy){
+      ii=-1;
+      for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+	i = grid->cellp[iptr];
+	ii+=1;
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+       	// for(k=0;k<grid->Nk[i];k++){//Go from the very top
+	     phys->T[i][k] = bound->T[k][bound->ind3[ii]];
+	     phys->s[i][k] = bound->S[k][bound->ind3[ii]];
+	}
+       }
+   }else{
+      for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+	    i = grid->cellp[iptr];
+	    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+		 phys->T[i][k] = 0;
+		 phys->s[i][k] = 0;
+	    }
+       }
    }
   // Need to communicate the cell data for type 3 boundaries
   ISendRecvCellData3D(phys->T,grid,myproc,comm);
@@ -125,7 +149,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm
       phys->boundary_s[jind][k]=bound->S[bound->ind3edge[ii]][k];
     }
   }
-  /*
+  */
     // Find the edge index of the boundary cell
     /*
     for(nf=0;nf<NFACES;nf++){ 
@@ -153,7 +177,8 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
   REAL u,v,w,h;
 
    //printf("#####\nUpdating boundary velocities on processor: %d\n#####\n",myproc);
-  REAL rampfac = 1-exp(-prop->rtime/prop->thetaramptime);//Tidal rampup factor 
+  //REAL rampfac = 1-exp(-prop->rtime/prop->thetaramptime);//Tidal rampup factor 
+  REAL rampfac = 1.0;
 
    // Test
    REAL amp = 0.25;
@@ -167,6 +192,7 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
    }
 
   // Type-2
+  if(prop->netcdfBdy){
   ii=-1;
   for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     jind = jptr-grid->edgedist[2];
@@ -178,62 +204,65 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
      phys->boundary_u[jind][k]=bound->boundary_u[k][bound->ind2[ii]]*rampfac;
      phys->boundary_v[jind][k]=bound->boundary_v[k][bound->ind2[ii]]*rampfac;
      phys->boundary_w[jind][k]=bound->boundary_w[k][bound->ind2[ii]]*rampfac;
+     // printf("edge: %d,j: %d, k : %d, boundary_u = %f\n",jind,j,k,phys->boundary_u[jind][k]);
+     // printf("bound->boundary_u[k][bound->ind2[ii]]=%f\n",bound->boundary_u[k][bound->ind2[ii]]);
     }
+  }
+  }else{ // No NetCDF
+      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+	jind = jptr-grid->edgedist[2];
+	j = grid->edgep[jptr];
+	for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	    phys->boundary_u[jind][k]=0;
+	    phys->boundary_v[jind][k]=0;
+	    phys->boundary_w[jind][k]=0;
+	}
+      }
   }
  
   // Type-3
-/*
-  // Flather condition. This updates the boundary velocity values
-  REAL dh, Umod, Ubc, gfac; 
-  int ne, nf, neigh;
-  ii=-1;
-  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    i = grid->cellp[iptr];
-    ii+=1;
-    gfac = sqrt(9.81/grid->dv[i]);
-    dh = phys->h[i] - bound->h[bound->ind3[ii]]*rampfac;
-    for(nf=0;nf<NFACES;nf++){ 
-      if((neigh=grid->neigh[i*NFACES+nf])==-1) {
-        ne = grid->face[i*NFACES+nf];
-	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-	    Ubc = bound->uc[k][bound->ind3[ii]]*rampfac*grid->n1[ne] + bound->vc[k][bound->ind3[ii]]*rampfac*grid->n2[ne]; 
-	    Umod = Ubc - gfac*dh;
-	    bound->uc[k][bound->ind3[ii]]=Umod*grid->n1[ne]; 
-	    bound->vc[k][bound->ind3[ii]]=Umod*grid->n2[ne]; 
-	}
+  if(prop->netcdfBdy){
+      ii=-1;
+      for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+	i = grid->cellp[iptr];
+	ii+=1;
+	phys->h[i]=bound->h[bound->ind3[ii]]*rampfac;
       }
-    }
-  }//End Flather condition. Everything should be the same after here...
-*/
-  ii=-1;
-  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    i = grid->cellp[iptr];
-    ii+=1;
-
-    phys->h[i]=bound->h[bound->ind3[ii]]*rampfac;
-    //    phys->h[i]=bound->h[bound->ind3[ii]]*sin(omega*prop->rtime)*rampfac;// Test harmonic netcdf type bc
-    //    phys->h[i]=amp*sin(omega*prop->rtime)*rampfac; // Test analytical BC
+  }else{ // No NetCDF
+     for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+	i = grid->cellp[iptr];
+	phys->h[i]=0;
+     }
   }
 
+// Set velocities in type-3 cells
   // Try recalculating the cell tops here
   ISendRecvCellData2D(phys->h,grid,myproc,comm);
   UpdateDZ(grid,phys,prop,0);
-
-  ii=-1;
-  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    i = grid->cellp[iptr];
-    ii+=1;
-    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      phys->uc[i][k]=bound->uc[k][bound->ind3[ii]]*rampfac;
-      phys->vc[i][k]=bound->vc[k][bound->ind3[ii]]*rampfac;
-      //phys->wc[i][k]=bound->wc[k][bound->ind3[ii]]*rampfac;
-    }
+  if(prop->netcdfBdy){
+      ii=-1;
+      for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+	i = grid->cellp[iptr];
+	ii+=1;
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	  phys->uc[i][k]=bound->uc[k][bound->ind3[ii]]*rampfac;
+	  phys->vc[i][k]=bound->vc[k][bound->ind3[ii]]*rampfac;
+	  //phys->wc[i][k]=bound->wc[k][bound->ind3[ii]]*rampfac;
+	}
+      }
+  }else{//No NetCDF
+      for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+	i = grid->cellp[iptr];
+	for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	  phys->uc[i][k]=0;
+	  phys->vc[i][k]=0;
+	}
+      }
   }
   // Need to communicate the cell data for type 3 boundaries
   ISendRecvCellData3D(phys->uc,grid,myproc,comm);
   ISendRecvCellData3D(phys->vc,grid,myproc,comm);
-  ISendRecvCellData3D(phys->wc,grid,myproc,comm);
-
+  //ISendRecvCellData3D(phys->wc,grid,myproc,comm);
 }
 	
 /*
@@ -678,7 +707,7 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
 	}
 	// Allocate the pointer arrays for each processor's grid
 	n2 = grid->edgedist[3]-grid->edgedist[2];
-	(*bound)->ind2 = (int *)SunMalloc(n2*sizeof(REAL),"AllocateBoundaryData");
+	(*bound)->ind2 = (int *)SunMalloc(n2*sizeof(int),"AllocateBoundaryData");
     }//endif
 
     // Allocate the segment arrays (subset of type2)
@@ -739,8 +768,8 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
 	}
 	// Allocate the pointer arrays for each processor's grid
 	n3 = grid->celldist[2]-grid->celldist[1];
-	(*bound)->ind3 = (int *)SunMalloc(n3*sizeof(REAL),"AllocateBoundaryData");
-	(*bound)->ind3edge = (int *)SunMalloc(n3*sizeof(REAL),"AllocateBoundaryData");
+	(*bound)->ind3 = (int *)SunMalloc(n3*sizeof(int),"AllocateBoundaryData");
+	(*bound)->ind3edge = (int *)SunMalloc(n3*sizeof(int),"AllocateBoundaryData");
 
     }//endif
 

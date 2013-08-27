@@ -66,13 +66,13 @@ const int TVDturb_DEFAULT=0;
    1: Set eddy-viscosity values when using nonlinear=2 to those dictated by the lax-wendroff
    scheme.
 */
-const int laxWendroff_DEFAULT = 1;
+const int laxWendroff_DEFAULT = 0;
    
 /* laxWendroff_Vertical: 
    0: Do not employ Lax-Wendroff coefficient for vertical advection.
    1: Employ it.
 */
-const REAL laxWendroff_Vertical_DEFAULT = 1;
+const REAL laxWendroff_Vertical_DEFAULT = 0;
 
 /* hprecond:
    0: No preconditioner for free-surface solver
@@ -165,3 +165,6 @@ const int readinitialnc_DEFAULT = 0;
 
 // Calculate Age variables
 const int calcage_DEFAULT = 0;
+
+// Calculate average quantities
+const int calcaverage_DEFAULT;
