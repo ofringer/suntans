@@ -88,7 +88,7 @@ DEPFLAGS = -Y
 
 SRCS = 	mympi.c grid.c report.c util.c fileio.c phys.c suntans.c initialization.c memory.c \
 	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c tides.c \
-	sources.c diffusion.c met.c $(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE) $(NETCDFSRC)
+	sources.c diffusion.c met.c averages.c $(TRIANGLESRC) $(PARMETISSRC) $(MPIFILE) $(NETCDFSRC)
 OBJS = $(SRCS:.c=.o)
 
 PLOTSRCS = sunplot.c fileio.c
@@ -96,7 +96,7 @@ PLOTOBJS = $(PLOTSRCS:.c=.o)
 
 JOINSRCS = sunjoin.c mympi.c grid.c report.c util.c fileio.c phys.c initialization.c memory.c \
 	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c tides.c \
-	sources.c diffusion.c met.c no-mpi.c $(TRIANGLESRC) $(PARMETISSRC) $(NETCDFSRC)
+	sources.c diffusion.c met.c averages no-mpi.c $(TRIANGLESRC) $(PARMETISSRC) $(NETCDFSRC)
 JOINOBJS = $(JOINSRCS:.c=.o)
 
 all:	$(EXEC)
@@ -157,3 +157,4 @@ sunplot.o: suntans.h fileio.h
 fileio.o: fileio.h defaults.h suntans.h
 met.o: met.h suntans.h fileio.h memory.h grid.h phys.h util.h mynetcdf.h
 mynetcdf.o: mynetcdf.h suntans.h phys.h grid.h met.h boundaries.h
+averages.o: averages.h phys.h grid.h met.h

@@ -374,6 +374,10 @@ double GetDefaultValue(char *str, int *status) {
     
    return calcage_DEFAULT;   
 
+} else if(!strcmp(str,"calcaverage")) {
+    
+   return calcaverage_DEFAULT;   
+
 }else {
     *status=0;
     return 0;

@@ -119,7 +119,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
 {
   int flag=0, i, j, jptr, ib, Nc=grid->Nc, Ne=grid->Ne, Np=grid->Np, nf, k;
 
-
   // allocate physical structure
   *phys = (physT *)SunMalloc(sizeof(physT),"AllocatePhysicalVariables");
 
@@ -173,7 +172,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     MPI_Finalize();
     exit(0);
   }
-
   // cell-centered physical variables in plan (no vertical direction)
   (*phys)->h = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->hcorr = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
@@ -216,17 +214,13 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->lT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
     (*phys)->Cn_q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
     (*phys)->Cn_l = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-    //GLS variables
-    (*phys)->TP = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-    (*phys)->TB = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-    (*phys)->TD = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   }
   (*phys)->tau_T = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->tau_B = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->CdT = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->CdB = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   // Age variables
-  if(prop->calcage){
+  if(prop->calcage>0){
     (*phys)->agec = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
     (*phys)->agealpha = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
     (*phys)->Cn_Ac = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -259,7 +253,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->tmpvarE = (REAL *)SunMalloc(grid->Ne*grid->Nkmax*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->tmpvarW = (REAL *)SunMalloc(grid->Nc*(grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
-
+ 
   // for each cell allocate memory for the number of layers at that location
   for(i=0;i<Nc;i++) {
     (*phys)->uc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -289,12 +283,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
       (*phys)->Cn_l[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->qT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->lT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-      //GLS Variables
-      (*phys)->TP[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-      (*phys)->TB[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-      (*phys)->TD[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     }
-    if(prop->calcage){
+    if(prop->calcage>0){
       (*phys)->agec[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->agealpha[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->Cn_Ac[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -307,7 +297,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->kappa_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->nu_lax[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
   }
-
+ 
   // allocate boundary value memory
   (*phys)->boundary_u = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_v = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -316,7 +306,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->boundary_T = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_rho = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_tmp = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  if(prop->calcage){
+  if(prop->calcage>0){
       (*phys)->boundary_age = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
       (*phys)->boundary_agealpha = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   }
@@ -333,8 +323,10 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->boundary_T[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_tmp[jptr-grid->edgedist[2]] = (REAL *)SunMalloc((grid->Nke[j]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_rho[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
-    (*phys)->boundary_age[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
-    (*phys)->boundary_agealpha[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    if(prop->calcage>0){
+	(*phys)->boundary_age[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
+	(*phys)->boundary_agealpha[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    }
   }
 
   // allocate coefficients
@@ -650,7 +642,6 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
 
   if (prop->readinitialnc>0){
-#ifdef USENETCDF
     ReadInitialNCcoord(prop,grid,&Nci,&Nki,&T0,myproc);
 
     printf("myproc: %d, Nci: %d, Nki: %d, T0: %d\n",myproc,Nci,Nki,T0);
@@ -658,7 +649,6 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     // Initialise a scratch variable for reading arrays
     ncscratch = (REAL *)SunMalloc(Nki*Nci*sizeof(REAL),"InitializePhysicalVariables");
 
-#endif
   }
   // Need to update the vertical grid and fix any cells in which
   // dzz is too small when h=0.
@@ -701,7 +691,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       phys->s[i][k]=0;
       phys->T[i][k]=0;
       phys->s0[i][k]=0;
-      if(prop->calcage){
+      if(prop->calcage>0){
       	phys->agec[i][k]=0;
 	phys->agealpha[i][k]=0;
       }
@@ -784,8 +774,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   }
 
   // Initialise the age arrays (netcdf only)
+  // (Leave as zero for now)
   //if (prop->calcage && prop->readinitialnc)
-  //  ReturnAgeNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
+  //     ReturnAgeNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
 
 
   // Need to compute the velocity vectors at the cell centers based
@@ -828,10 +819,6 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       for(k=0;k<grid->Nk[i];k++) {
         phys->qT[i][k]=0;
         phys->lT[i][k]=0;
-	//GLS variables
-	phys->TP[i][k]=0;
-	phys->TB[i][k]=0;
-	phys->TD[i][k]=0;
       }
     }
   }
@@ -1136,6 +1123,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   REAL t0;
   metinT *metin;
   metT *met;
+  averageT *average;
   
 
   // Compute the initial quantities for comparison to determine conservative properties
@@ -1219,10 +1207,17 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     if(prop->outputNetcdf==1){
       InitialiseOutputNCugrid(prop, grid, phys, met, myproc);
     }
+
+  // Initialise the average arrays and netcdf file
+  if(prop->calcaverage>0){
+    AllocateAverageVariables(grid,&average,prop);
+    ZeroAverageVariables(grid,average,prop);
+    InitialiseAverageNCugrid(prop, grid, average, myproc);
+  }
   
   // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
   WindStress(grid,phys,prop,met,myproc);
- 
+
   // main time loop
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
 
@@ -1304,7 +1299,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       }
       
      // Update the age (passive) tracers
-      //printf("prop->calcage=%d\n",prop->calcage);
       if(prop->calcage>0){
         //t0=Timer();
         //printf("Entering age...\n");
@@ -1361,15 +1355,16 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 		prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
 		NULL,NULL,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
 	}
-        ISendRecvCellData3D(phys->s,grid,myproc,comm);
+    ISendRecvCellData3D(phys->s,grid,myproc,comm);
 
-	if(prop->metmodel>=0){
+	if(prop->metmodel>0){
 	  //Communicate across processors
 	  ISendRecvCellData2D(met->EP,grid,myproc,comm);
 	}
 
         t_transport+=Timer()-t0;
       }
+
 
       
       // Compute vertical momentum and the nonhydrostatic pressure
@@ -1444,6 +1439,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       NewCells(grid,phys,prop);
       ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
     }
+    // Compute average
+    if(prop->calcaverage){
+	UpdateAverageVariables(grid,average,phys,met,prop,comm,myproc);	
+    }
 
     // Check whether or not run is blowing up
     t0=Timer();
@@ -1458,7 +1457,12 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // Output data to netcdf
       WriteOuputNC(prop, grid, phys, met, blowup, myproc);
     }
+    // Output the average arrays
+    if(prop->calcaverage){
+	WriteAverageNC(prop,grid,average,phys,met,blowup,myproc);
+    }
     InterpData(grid,phys,prop,comm,numprocs,myproc);
+
     t_io+=Timer()-t0;
     // Output progress
     Progress(prop,myproc,numprocs);
@@ -1553,6 +1557,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 
  // Adams Bashforth coefficients
   if(prop->n==1 || prop->wetdry) {
+//  if(prop->n==1){
     fab1=1;
     fab2=fab3=0;
 
@@ -2642,8 +2647,6 @@ static void EddyViscosity(gridT *grid, physT *phys, propT *prop, REAL **wnew, MP
 {
   if(prop->turbmodel>=1) 
     my25(grid,phys,prop,wnew,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv,comm,myproc);
-    //GLS version
-    //my25(grid,phys,prop,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv,comm,myproc);
 }
 
 /*
@@ -2964,7 +2967,6 @@ static void UPredictor(gridT *grid, physT *phys,
       }	  
 
       // Now add on implicit terms for vertical momentum advection, only if there is more than one layer
-      /*
       if(prop->nonlinear && prop->thetaM>=0 && grid->Nke[j]-grid->etop[j]>1) {
 	for(k=grid->etop[j]+1;k<grid->Nke[j]-1;k++) {
 	  a[k]+=prop->dt*prop->thetaM*a0[k];
@@ -2980,7 +2982,6 @@ static void UPredictor(gridT *grid, physT *phys,
 	a[grid->Nke[j]-1]+=prop->dt*prop->thetaM*a0[grid->Nke[j]-1];
 	b[grid->Nke[j]-1]+=prop->dt*prop->thetaM*(b0[grid->Nke[j]-1]+c0[grid->Nke[j]-1]);
       }
-      */
 
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
         if(grid->dzz[nc1][k]==0 && grid->dzz[nc2][k]==0) {
@@ -4483,6 +4484,9 @@ void ReadProperties(propT **prop, int myproc)
   }
   
   (*prop)->calcage = MPI_GetValue(DATAFILE,"calcage","ReadProperties",myproc);
+  (*prop)->calcaverage = MPI_GetValue(DATAFILE,"calcaverage","ReadProperties",myproc);
+  if ((*prop)->calcaverage)
+      (*prop)->ntaverage = (int)MPI_GetValue(DATAFILE,"ntaverage","ReadProperties",myproc);
   (*prop)->latitude = MPI_GetValue(DATAFILE,"latitude","ReadProperties",myproc);
   (*prop)->metmodel = (int)MPI_GetValue(DATAFILE,"metmodel","ReadProperties",myproc);
   (*prop)->varmodel = (int)MPI_GetValue(DATAFILE,"varmodel","ReadProperties",myproc);
@@ -4591,6 +4595,17 @@ if(prop->metmodel>0){
 #endif
   }
 
+if(prop->calcaverage){
+    MPI_GetFile(filename,DATAFILE,"averageNetcdfFile","OpenFiles",myproc);
+#ifdef USENETCDF
+    sprintf(str,"%s.%d",filename,myproc);
+    prop->averageNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+#else
+      printf("Error: NetCDF Libraries required for prop->calcaverages > 1\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+#endif
+  }
   
 
   if(prop->outputNetcdf==0) {

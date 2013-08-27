@@ -194,10 +194,10 @@ typedef struct _propT {
        *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,    
        *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID; 
   interpolation interp; int prettyplot;
-  int metmodel,  varmodel, outputNetcdf,  metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID, calcage;
-  int outputNetcdfFileID;
+  int metmodel,  varmodel, outputNetcdf,  metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID, calcage, calcaverage;
+  int outputNetcdfFileID, averageNetcdfFileID;
   REAL nctime, toffSet;
-  int nctimectr;
+  int nctimectr, avgtimectr, avgctr, ntaverage;
   REAL nugget, sill, range, Lsw, Cda, Ce, Ch;
   char  starttime[15], basetime[15]; 
 } propT;
