@@ -301,6 +301,28 @@ attributes = {'long_name':'Edge normal velocity',\
 dtype = 'f8'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':True,'complevel':1,'fill_value':fillval}})
 
+vname = 'agec'
+dimensions = ('time','Nk','Nc')
+attributes = {'long_name':'Age concentration',\
+		'units':'',\
+		'mesh':'suntans_mesh',\
+		'location':'face',\
+		'coordinates':'time z_r yv xv'}
+dtype = 'f8'		
+ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':True,'complevel':1,'fill_value':fillval}})
+
+vname = 'agealpha'
+dimensions = ('time','Nk','Nc')
+attributes = {'long_name':'Age alpha parameter',\
+		'units':'seconds',\
+		'mesh':'suntans_mesh',\
+		'location':'face',\
+		'coordinates':'time z_r yv xv'}
+dtype = 'f8'		
+ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':True,'complevel':1,'fill_value':fillval}})
+
+
+
 ### Atmospheric Flux Variables ###
 vname = 'Uwind'
 dimensions = ('time','Nc')

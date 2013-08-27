@@ -68,7 +68,7 @@ class SunTrack(Spatial):
 
 
     def __call__(self,x,y,z, timeinfo,outfile=None,dtout=3600.0,\
-    	agepoly=None,age=None,agemax=None,runmodel=True, **kwargs):
+    	tstart=None,agepoly=None,age=None,agemax=None,runmodel=True, **kwargs):
         """
         Run the particle model 
         
@@ -77,6 +77,8 @@ class SunTrack(Spatial):
             timeinfo - tuple (starttime,endtime,dt) 
 
 	    (optional)
+	    tstart - start time of each particle (format seconds since 1990-01-01)
+	    	if None defaults to starting all particles from starttime.
 	    agepoly - x/y coordinates of a polygon which ages particles
 	    age, agemax - vectors of length n_parts containing the initial age and agemax. (leave
 	    	as None to set to zero)
@@ -87,7 +89,7 @@ class SunTrack(Spatial):
         self.getTime(timeinfo)
         
         # Initialise the particle dictionary
-        self.particles={'X':x,'Y':y,'Z':z}
+        self.particles={'X':x,'Y':y,'Z':z,'X0':x,'Y0':y,'Z0':z}
 	
 	# Initialise the age calculation
 	self._calcage = False
@@ -100,6 +102,9 @@ class SunTrack(Spatial):
 	    	agemax=np.zeros_like(x)
 	    
 	self.particles.update({'age':age,'agemax':agemax})
+
+	# Set the particle time start and activate if necessary
+	self.initParticleTime(tstart)
 
 	# Initialse the outut netcdf file
 	if not outfile==None:
@@ -429,7 +434,10 @@ class SunTrack(Spatial):
         if self.verbose:
             print '\tTime step: ',timenow
          
-        
+	# Activate particles for current time step
+	self.activateParticles(tsec)
+
+        # Advection step 
         if self.advect_method=='euler':
             self.euler(timenow,tsec)
             
@@ -438,6 +446,9 @@ class SunTrack(Spatial):
             
         else:
             raise Exception, 'unknown advection scheme: %s. Must be "euler" or "rk2"'%self.advect_method
+
+	# Reset inactive particles
+	self.resetInactiveParticles()
 
 	# Call the age calculation
 	if self._calcage:
@@ -696,7 +707,40 @@ class SunTrack(Spatial):
         self.time_sec = othertime.SecondsSince(self.time)
         
         self.time_index = -9999
-        
+
+    def initParticleTime(self,tstart):
+    	"""
+	Initialise the particle start time
+	"""
+	if tstart==None:
+	    self.particles['tstart'] = self.time_track_sec[0]*np.ones_like(self.particles['X'])
+	else:
+	    self.particles['tstart'] = tstart
+
+	# Set all particles as inactive to start
+	self.particles['isActive'] = np.zeros_like(self.particles['X'])
+
+    def activateParticles(self,tsec):
+	"""
+	Activate the particles that start past the present time
+
+	Note that inactive particles are still advected - their positions
+	are simply reset after each time step
+	"""
+	ind = self.particles['tstart'] <= tsec
+
+	self.particles['isActive'][ind]=True
+	print '\t%d Active particles'%(np.sum(self.particles['isActive']))
+
+    def resetInactiveParticles(self):
+	"""
+	Reset the positions of inactive particles to x0. 
+	"""
+	ind = self.particles['isActive']==False
+	self.particles['X'][ind]=self.particles['X0'][ind]
+	self.particles['Y'][ind]=self.particles['Y0'][ind]
+	self.particles['Z'][ind]=self.particles['Z0'][ind]
+
         
     def init3Dgrid(self):
         """

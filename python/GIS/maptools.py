@@ -226,25 +226,31 @@ def readShpPoly(shpfile,FIELDNAME = 'marker'):
 
 def maskShpPoly(X,Y,shpfile,FIELDNAME = 'marker'):
     """
-    Return a mask array of size(X/Y) 
+    Return a mask array of size(X/Y) from polygon in shapefile
     """
-    
     # Read the polygon from the shape file
     XY,edge_id = readShpPoly(shpfile,FIELDNAME=FIELDNAME)
+
+    mask = maskPoly(X,Y,XY[0])
     
+    return mask,XY[0]
+
+def maskPoly(X,Y,XYpoly):
+    """
+    Mask a region based on a polygon
+    """
     # Reshape the input array
     sz = X.shape
     X = X.ravel()
     Y = Y.ravel()
         
-    ind = nxutils.points_inside_poly(np.vstack((X,Y)).T,XY[0])
+    ind = nxutils.points_inside_poly(np.vstack((X,Y)).T,XYpoly)
     
     mask = np.zeros(sz,dtype=np.int)
     ind = ind.reshape(sz)
     mask[ind]=1
-    
-    return mask,XY[0]
-    
+
+    return mask
     
 def readraster(infile):
     """ Loads the data from any raster-type file

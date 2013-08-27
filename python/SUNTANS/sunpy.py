@@ -30,15 +30,14 @@ import pdb
 class Grid(object):
     
     """ Class for handling SUNTANS grid data"""
-    
     def __init__(self,infile ,**kwargs):
                
         self.__dict__.update(kwargs)
 
-	if isinstance(infile,list):
-	    infile2=infile[0]
-	else:
-	    infile2=infile
+        if isinstance(infile,list):
+            infile2=infile[0]
+        else:
+            infile2=infile
         
         if os.path.isdir(infile2):
             # Load ascii grid file
@@ -48,7 +47,7 @@ class Grid(object):
         else:
             # Load the grid fromm a netcdf file
             self.infile = infile
-            self.__loadnc()
+            self.__loadGrdNc()
 
         # Find the grid limits
         self.xlims = [self.xp.min(),self.xp.max()]
@@ -96,8 +95,7 @@ class Grid(object):
             vertspace=0.0
             
         self.setDepth(vertspace)
-        
-    def __loadnc(self):
+    def __loadGrdNc(self):
         
         """
         Load the grid variables into the object from a netcdf file
@@ -109,12 +107,12 @@ class Grid(object):
         'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke'
         """
         
-        #print self.infile
-        
-        try: 
-            nc = MFDataset(self.infile, 'r')
-        except:
-            nc = Dataset(self.infile, 'r')     
+        #try: 
+        #    nc = MFDataset(self.infile, 'r')
+        #except:
+        #    nc = Dataset(self.infile, 'r')     
+        self.__openNc()
+        nc=self.nc
         
         # Get the dimension sizes
         self.Nc = nc.dimensions['Nc'].__len__()
@@ -145,7 +143,7 @@ class Grid(object):
 #        except:
 #            ''
         
-        nc.close()
+        #nc.close()
              
     def plot(self,**kwargs):
         """
@@ -689,6 +687,17 @@ class Grid(object):
         #nc.variables[name][:] = var	
         nc.close()
         
+    def __del__(self):
+        self.nc.close()
+        
+    def __openNc(self):
+        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
+        print 'Loading: %s'%self.ncfile
+        try: 
+            self.nc = MFDataset(self.ncfile)
+        except:
+            self.nc = Dataset(self.ncfile, 'r')
+ 
     def __getitem__(self,y):
         x = self.__dict__.__getitem__(y)
         return x
@@ -705,12 +714,13 @@ class Spatial(Grid):
     tstep=0
     klayer=[0] # -1 get seabed
     # Note that if j is an Nx2 array of floats the nearest cell will be found 
+    j=None
 
     variable='eta'
     
     # Plotting parmaters
     clim=None
-        
+    
     def __init__(self,ncfile, **kwargs):
         
         self.ncfile = ncfile
@@ -719,14 +729,12 @@ class Spatial(Grid):
         self.__dict__.update(kwargs)
 
         # Open the netcdf file
-        self.__openNc()
+        #self.__openNc()
         
         # Load the grid (superclass)
         Grid.__init__(self, ncfile)  
         
         #self.xy = self.cellxy()
-        if not self.__dict__.has_key('j'):
-            self.j=np.arange(0,self.Nc) # Grid cell number for time series
         
         # Load the time variable
         try:
@@ -736,8 +744,9 @@ class Spatial(Grid):
         except:
             print 'No time variable.'
         
-        # Check the j index
-        self.j = self.checkIndex()
+	# Load the global attributes
+	self.loadGlobals()
+
 
     def loadData(self, variable=None):
         """
@@ -762,7 +771,13 @@ class Spatial(Grid):
             return
         elif variable=='PEanom':
             self.data = self.PEanom()
-            
+        elif variable=='agemean':
+        
+            self.data = self.agemean()
+            self.long_name = 'Mean age'
+            self.units = 'days'
+            return self.data
+                
         else:
             return self.loadDataRaw(variable=variable)
         
@@ -774,6 +789,13 @@ class Spatial(Grid):
         """
         if variable==None:
             variable=self.variable
+	
+        if self.hasDim('Ne') and self.j==None:
+            j=range(self.Ne)
+        elif self.hasDim('Nc') and self.j==None:
+            j=range(self.Nc)
+        else:
+            j = self.j
             
         nc = self.nc
         try:
@@ -784,33 +806,33 @@ class Spatial(Grid):
         #        ndims = len(nc.variables[variable].dimensions)
         ndim = nc.variables[variable].ndim
         if ndim==1:
-            self.data=nc.variables[variable][self.j]
+            self.data=nc.variables[variable][j]
         elif ndim==2:
             #print self.j
-            self.data=nc.variables[variable][self.tstep,self.j]
+            self.data=nc.variables[variable][self.tstep,j]
         else:
             if self.klayer[0]==-1: # grab the seabed values
                 klayer = np.arange(0,self.Nkmax)
 
                 #if type(self.tstep)==int:
                 if isinstance(self.tstep,(int,long)):
-                    data=nc.variables[variable][self.tstep,klayer,self.j]
-                    self.data = data[self.Nk[self.j],self.j]
+                    data=nc.variables[variable][self.tstep,klayer,j]
+                    self.data = data[self.Nk[j],j]
                 else: # need to extract timestep by timestep for animations to save memory
-                    self.data=np.zeros((len(self.tstep),len(self.j)))
+                    self.data=np.zeros((len(self.tstep),len(j)))
                     i=-1
                     for t in self.tstep:
                         i+=1
-                        data=nc.variables[variable][t,klayer,self.j]
-                        self.data[i,:] = data[self.Nk[self.j],self.j]
+                        data=nc.variables[variable][t,klayer,j]
+                        self.data[i,:] = data[self.Nk[j],j]
             elif self.klayer[0]==-99: # Grab all layers
                 klayer = np.arange(0,self.Nkmax) 
-                self.data=nc.variables[variable][self.tstep,klayer,self.j]
+                self.data=nc.variables[variable][self.tstep,klayer,j]
                 
             
             else:
                 klayer = self.klayer
-                self.data=nc.variables[variable][self.tstep,klayer,self.j]
+                self.data=nc.variables[variable][self.tstep,klayer,j]
         
         # Mask the data
 #        try:
@@ -877,6 +899,16 @@ class Spatial(Grid):
          self.time = num2date(t[:],t.units)
          
          self.Nt = self.time.shape[0]
+
+    def loadGlobals(self):
+        """
+	Loads the global attributes into a dictionary
+	"""
+	nc=self.nc
+	self.globalatts={}
+	for name in nc.ncattrs():
+	    self.globalatts.update({name:getattr(nc,name)})
+
     
     def plot(self,z=None,xlims=None,ylims=None,titlestr=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
         """
@@ -1356,6 +1388,35 @@ class Spatial(Grid):
                 
         return data
         
+    def agemean(self):
+        """
+        Calculates the mean age of a tracer
+
+        This is already calculated in the time-averaged output files
+        """
+        sec2day = 1.0/86400.0
+
+        if self.hasVar('agemean'):
+            agemean = self.loadDataRaw(variable='agemean')
+            return agemean*sec2day
+
+        elif self.hasVar('agec') and self.hasVar('agealpha'):
+            agec=self.loadDataRaw(variable='agec')
+            agealpha=self.loadDataRaw(variable='agealpha')
+
+        else:
+            raise Exception ,"variables: 'agec' and 'agealpha' are not present in file."
+
+
+        mask = agec>=1e-10
+
+        agemean = np.zeros_like(agec)
+
+        agemean[mask] = agealpha[mask]/agec[mask]
+            
+        # Returns the mean age in days
+        return agemean*sec2day
+
     def PEanom(self):
         """
         Calculate the potential energy anomaly as defined by Simpson et al., 1990
@@ -1514,7 +1575,19 @@ class Spatial(Grid):
             
             return (phi_npm[:,0:-1,:] - phi_npm[:,1:,:])/dz3
 
-    def areaint(self,phi,xypoly):
+    def areaint(self,phi,mask=None):
+        """
+        Calculate the area-integral of data at phi points 
+        """
+        if mask==None:#no mask
+            mask = np.ones_like(phi)
+
+        phiA = np.sum(phi*self.Ac*mask)
+        area = np.sum(self.Ac*mask)
+        
+        return phiA, area
+ 
+    def areaintold(self,phi,xypoly):
         """
         Calculate the area-integral of data at phi points 
         """
@@ -1531,17 +1604,7 @@ class Spatial(Grid):
         
         return phiA, area
         
-    def __del__(self):
-        self.nc.close()
-        
-    def __openNc(self):
-        #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
-	print 'Loading: %s'%self.ncfile
-        try: 
-	    self.nc = MFDataset(self.ncfile, 'r')
-        except:
-            self.nc = Dataset(self.ncfile, 'r')
-        
+       
     def __genTitle(self,tt=None):
         
         if tt ==None:

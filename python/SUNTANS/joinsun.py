@@ -14,7 +14,7 @@ import numpy as np
 
 import pdb
 
-def main(suntanspath,basename,numprocs,nstep=-1):
+def main(suntanspath,basename,numprocs,nstep=-1,outvars=None):
     
     tic=time.clock()
     
@@ -32,7 +32,14 @@ def main(suntanspath,basename,numprocs,nstep=-1):
     
     
     variables, dims, globalatts = nc_info(ncfile)
-        
+
+    # If outvars have been set only write those variables and the grid variables
+    if not outvars==None:
+        gridvars=['suntans_mesh','cells','face','edges','neigh','grad','mnptr','eptr','xv','yv','xp','yp','xe','ye','normal','n1','n2','df','dg','def','Ac','dz','z_r','z_w','Nk','Nke','dv','time']	
+    	outvars=gridvars+outvars
+	newvariables = [vv for vv in variables if vv['Name'] in outvars]
+	variables = newvariables
+
     # Step 3) Set the dimension sizes based on the original grid
     dims['Nc']=grd.Nc
     dims['Np']=grd.xp.shape[0]
@@ -216,10 +223,11 @@ def main(suntanspath,basename,numprocs,nstep=-1):
                         nc.variables[vname][:,:,:]=outvar
                         
                     
-                    t1=t+1
+                    #t1=t+1
+                    t1=t
                     
                     # Create a new file
-                    tf=0
+                    tf=-1
                     ctr+=1
                     if makenewfile:
                         outfile = '%s/%s_%03d.nc'%(suntanspath,basename[:-3],ctr)
@@ -447,6 +455,7 @@ def usage():
     print "         -p pathname          # Path to SUNTANS output folder      "
     print "         -n  N                # Number of processors"
     print "         -t  N                # Number of time steps to output (-1 all steps in one file)"
+    print " 	    -v  'var1 var2 ...'  # List of variales to write (default: all)"
     print "\n\n Example Usage:"
     print "-----------"
     print " python sunjoin.py -f suntans.nc -p ./rundata -n 16 -t 48"
@@ -459,9 +468,10 @@ if __name__ == '__main__':
     """
     nsteps = -1
     numprocs = 2
+    outvars=None
     
     try:
-            opts,rest = getopt.getopt(sys.argv[1:],'hf:p:n:t:')
+            opts,rest = getopt.getopt(sys.argv[1:],'hf:p:n:t:v:')
     except getopt.GetoptError,e:
         print e
         print "-"*80
@@ -480,6 +490,8 @@ if __name__ == '__main__':
             nsteps=int(val)
         elif opt == '-n':
             numprocs=int(val)
+	elif opt == '-v':
+	     outvars=val.split(' ')
      
 	# Testing only	
     #nsteps = 4
@@ -492,4 +504,4 @@ if __name__ == '__main__':
     #suntanspath='C:\\Projects\\GOMGalveston\\MODELLING\\GalvestonCoarse\\rundata'
     #basename = 'GalvCoarse_ROMS_Coupling.nc'      
             
-    main(suntanspath,basename,numprocs,nsteps)
+    main(suntanspath,basename,numprocs,nsteps,outvars=outvars)

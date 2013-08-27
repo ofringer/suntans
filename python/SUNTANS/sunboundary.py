@@ -100,34 +100,38 @@ class Boundary(object):
         self.N3 = len(self.cellp)
         
         # Store the coordinates of the type 2 and 3 boundaries
-	self.cellp = np.array(self.cellp)
-        self.xv = self.grd.xv[self.cellp]
-        self.yv = self.grd.yv[self.cellp]
+        if self.N3>0:
+            self.cellp = np.array(self.cellp)
+            self.xv = self.grd.xv[self.cellp]
+            self.yv = self.grd.yv[self.cellp]
         
         # Find the edge points
-        xe = np.mean(self.grd.xp[self.grd.edges],axis=1)
-        ye = np.mean(self.grd.yp[self.grd.edges],axis=1)
-        self.xe = xe[self.edgep]
-        self.ye = ye[self.edgep]
-        
-        # Determine the unique flux segments (these are a subset of Type-2 boundaries)
-        indseg = np.argwhere(self.grd.edgeflag>0)
-        segID = self.grd.edgeflag[indseg]
-        self.segp = np.unique(segID)
-        self.Nseg = np.size(self.segp)
+        if self.N2>0:
+            xe = np.mean(self.grd.xp[self.grd.edges],axis=1)
+            ye = np.mean(self.grd.yp[self.grd.edges],axis=1)
+            self.xe = xe[self.edgep]
+            self.ye = ye[self.edgep]
+            
+            # Determine the unique flux segments (these are a subset of Type-2 boundaries)
+            indseg = np.argwhere(self.grd.edgeflag>0)
+            segID = self.grd.edgeflag[indseg]
+            self.segp = np.unique(segID)
+            self.Nseg = np.size(self.segp)
 
-        # This is the pointer for the edge to the segment
-        self.segedgep=self.edgep*0
-        n=-1            
-        for ii in self.edgep:
-            n+=1
-            if self.grd.edgeflag[ii]>0:
-                self.segedgep[n]=self.grd.edgeflag[ii]
+            # This is the pointer for the edge to the segment
+            self.segedgep=self.edgep*0
+            n=-1            
+            for ii in self.edgep:
+                n+=1
+                if self.grd.edgeflag[ii]>0:
+                    self.segedgep[n]=self.grd.edgeflag[ii]
+        else:
+            self.Nseg=0
                      
         # Get the depth info
         self.Nk = self.grd.Nkmax
         self.z = self.grd.z_r
-    
+   
     def getTime(self):
         """
         Load the timeinfo into a list of datetime objects
@@ -586,6 +590,10 @@ class InitialCond(Grid):
         self.S = np.zeros((1,self.Nkmax,self.Nc))
         self.h = np.zeros((1,self.Nc))
         
+	# Age variables
+        self.agec = np.zeros((1,self.Nkmax,self.Nc))
+        self.agealpha = np.zeros((1,self.Nkmax,self.Nc))
+
     def roms2ic(self,romsfile,setUV=False,seth=False):
         """
         Interpolates ROMS data onto the SUNTANS grid
@@ -628,6 +636,8 @@ class InitialCond(Grid):
         self.create_nc_var(outfile,'vc',('time','Nk','Nc'),{'long_name':'Northward water velocity component','units':'metre second-1'})
         self.create_nc_var(outfile,'salt',('time','Nk','Nc'),{'long_name':'Salinity','units':'ppt'})
         self.create_nc_var(outfile,'temp',('time','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C'})
+        self.create_nc_var(outfile,'agec',('time','Nk','Nc'),{'long_name':'Age concentration','units':''})
+        self.create_nc_var(outfile,'agealpha',('time','Nk','Nc'),{'long_name':'Age alpha parameter','units':'seconds'})
         
         # now write the variables...
         nc = Dataset(outfile,'a')
@@ -637,6 +647,8 @@ class InitialCond(Grid):
         nc.variables['vc'][:]=self.vc
         nc.variables['salt'][:]=self.S
         nc.variables['temp'][:]=self.T
+        nc.variables['agec'][:]=self.agec
+        nc.variables['agealpha'][:]=self.agealpha
         nc.close()
                 
         print 'Initial condition file written to: %s'%outfile
@@ -662,15 +674,20 @@ def modifyBCmarker(suntanspath,bcfile):
     ye = np.mean(grd.yp[grd.edges],axis=1)
     
     # Read the shapefile
-    XY,newmarker = readShpPoly(bcfile,FIELDNAME='marker')
-    if len(XY)<1:
-        print 'Error - could not find any polygons with the field name "marker" in shapefile: %s'%bcfile
-        return
-    
-    XY,edge_id = readShpPoly(bcfile,FIELDNAME='edge_id')
-    if len(XY)<1:
-        print 'Error - could not find any polygons with the field name "edge_id" in shapefile: %s'%bcfile
-        return
+    if not bcfile==None:
+        XY,newmarker = readShpPoly(bcfile,FIELDNAME='marker')
+        if len(XY)<1:
+            print 'Error - could not find any polygons with the field name "marker" in shapefile: %s'%bcfile
+            return
+        
+        XY,edge_id = readShpPoly(bcfile,FIELDNAME='edge_id')
+        if len(XY)<1:
+            print 'Error - could not find any polygons with the field name "edge_id" in shapefile: %s'%bcfile
+            return
+    else:
+        XY=[]
+        newmarker=[]
+        edge_id=[]
     
     # Plot before updates
     #plt.figure()
@@ -706,7 +723,8 @@ def modifyBCmarker(suntanspath,bcfile):
     # Plot the markers
     plt.figure()
     grd.plotBC()
-    plt.plot(XY[0][:,0],XY[0][:,1],'m',linewidth=2)
+    if len(XY)>0:
+        plt.plot(XY[0][:,0],XY[0][:,1],'m',linewidth=2)
     figfile = suntanspath+'/BoundaryMarkerTypes.pdf'
     plt.savefig(figfile)
     

@@ -16,6 +16,47 @@ import numpy as np
 import operator
 import pdb
 
+def buoyancyFlux(SSS,SST,Q,EP,dz):
+    """
+    Calculate the surface buoyancy flux
+    
+    Inputs:
+    	SSS - sea surface salinity (psu)
+	SST - sea surface temperater (celsius)
+	Q - net heat flux (W m-2)
+	EP - evaporation minus precipitation (m s-1)
+	dz - grid cell height [m]
+    Returns:
+    	B_heat - heat buoyancy flux [W m-2]
+	B_salt - salt buoyancy flux [W m-2]
+    Ref:
+    	Gill, 1982
+    """
+    try:
+    	import seawater # CSIRO seawater toolbox
+    except:
+    	raise Exception, ' need to install CSIRO seawater toolbox'
+
+    # Constants
+    Cpinv = 1./4200.0 # Specific heat capacity [J kg-1 K-1]
+    g = 9.81
+    RHO0 = 1000.0
+
+    # Convert EP from [m s-1] -> [kg m-2 s-1]
+    EP = EP*RHO0
+
+    # Calculate thermal expansion and saline contraction coefficient
+    alpha = seawater.alpha(SSS,SST,0*SST)
+    beta = seawater.beta(SSS,SST,0*SST)
+
+    # Buoyancy flux equation (see Gill eq 2.7.1, p36)
+    #  Note that units are [kg m s-3] or [W m-1]
+    B_heat = Cpinv * g * alpha * Q
+    B_salt = g*beta*EP*SSS
+
+    # returns the fluxes in units [W m-2]
+    return B_heat/dz, B_salt/dz
+
 def heatFluxes(Uwind,Vwind,Ta,Tw,Pa,RH,cloud):
     """ 
     Calculate the non-penetrative radiative and turbulent heat flux terms:

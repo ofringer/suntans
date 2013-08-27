@@ -43,11 +43,11 @@ def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z,agepoly=None,method='neares
     
     # Initialise the age values
     if not agepoly==None:
-	calcage=True
+        calcage=True
     else:
-	calcage=False
-	age=None
-	agemax=None
+        calcage=False
+        age=None
+        agemax=None
 
     # On rank = 0 only
     if comm.rank == 0:
