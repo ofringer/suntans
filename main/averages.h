@@ -68,5 +68,6 @@ void AllocateAverageVariables(gridT *grid, averageT **average, propT *prop);
 void ZeroAverageVariables(gridT *grid, averageT *average, propT *prop);
 void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *met, propT *prop, MPI_Comm comm, int myproc);
 void ComputeAverageVariables(gridT *grid, averageT *average, physT *phys, metT *met, int netaverage, propT *prop);
+void SendRecvAverages(propT *prop, gridT *grid, averageT *average, MPI_Comm comm, int myproc);
 
 #endif

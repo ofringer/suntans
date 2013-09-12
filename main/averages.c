@@ -299,7 +299,7 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
 void ComputeAverageVariables(gridT *grid, averageT *average, physT *phys, metT *met, int ntaverage, propT *prop){
 
     int i,j,k,Nc=grid->Nc,Ne=grid->Ne;
-    REAL nt = 1.0/(REAL)ntaverage;
+    REAL nt = 1.0/((REAL)ntaverage);
 
   for(i=0;i<Nc;i++) {
     average->w[i][grid->Nk[i]]+=phys->w[i][grid->Nk[i]];
@@ -348,4 +348,50 @@ void ComputeAverageVariables(gridT *grid, averageT *average, physT *phys, metT *
 
 }//End of function
 
+/*
+ * Function: SendRecvAverages()
+ * ----------------------------
+ *  Communicate the average values amongst processors
+ *  Only really necessary for writing
+ *
+ */
+void SendRecvAverages(propT *prop, gridT *grid, averageT *average, MPI_Comm comm, int myproc){
+    // Communicate 2D variables
+    ISendRecvCellData2D(average->h,grid,myproc,comm);
+    ISendRecvCellData2D(average->s_dz,grid,myproc,comm);
+    ISendRecvCellData2D(average->T_dz,grid,myproc,comm);
+    if(prop->metmodel>0){
+	ISendRecvCellData2D(average->Uwind,grid,myproc,comm);
+	ISendRecvCellData2D(average->Vwind,grid,myproc,comm);
+	ISendRecvCellData2D(average->Tair,grid,myproc,comm);
+	ISendRecvCellData2D(average->Pair,grid,myproc,comm);
+	ISendRecvCellData2D(average->rain,grid,myproc,comm);
+	ISendRecvCellData2D(average->RH,grid,myproc,comm);
+	ISendRecvCellData2D(average->cloud,grid,myproc,comm);
+	ISendRecvCellData2D(average->Hs,grid,myproc,comm);
+	ISendRecvCellData2D(average->Hl,grid,myproc,comm);
+	ISendRecvCellData2D(average->Hlw,grid,myproc,comm);
+	ISendRecvCellData2D(average->Hsw,grid,myproc,comm);
+	ISendRecvCellData2D(average->tau_x,grid,myproc,comm);
+	ISendRecvCellData2D(average->tau_y,grid,myproc,comm);
+	ISendRecvCellData2D(average->EP,grid,myproc,comm);
+    }
 
+    // Communicate the 3D cell data
+    ISendRecvCellData3D(average->uc,grid,myproc,comm);
+    ISendRecvCellData3D(average->vc,grid,myproc,comm);
+    ISendRecvCellData3D(average->s,grid,myproc,comm);
+    ISendRecvCellData3D(average->T,grid,myproc,comm);
+    ISendRecvCellData3D(average->rho,grid,myproc,comm);
+    ISendRecvCellData3D(average->nu_v,grid,myproc,comm);
+    if(prop->calcage)
+	ISendRecvCellData3D(average->agemean,grid,myproc,comm);
+
+    ISendRecvWData(average->w,grid,myproc,comm);
+
+    // Communicate the 3D edge data
+    ISendRecvEdgeData3D(average->U_F,grid,myproc,comm);
+    ISendRecvEdgeData3D(average->s_F,grid,myproc,comm);
+    ISendRecvEdgeData3D(average->T_F,grid,myproc,comm);
+     
+}//End of function
