@@ -1906,7 +1906,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
 * Main function for writing SUNTANS output to netcdf file/s
 * 
 */
-void WriteAverageNC(propT *prop, gridT *grid, averageT *average, physT *phys, metT *met, int blowup, int myproc){
+void WriteAverageNC(propT *prop, gridT *grid, averageT *average, physT *phys, metT *met, int blowup, MPI_Comm comm, int myproc){
    int ncid = prop->averageNetcdfFileID;
    int varid, retval, k;
    // Start and count vectors for one, two and three dimensional arrays
@@ -1940,6 +1940,10 @@ void WriteAverageNC(propT *prop, gridT *grid, averageT *average, physT *phys, me
     //printf("prop->avgctr=%d\n",prop->avgctr);
      //if(!(prop->n%ntaverage)) 
     ComputeAverageVariables(grid,average,phys,met,prop->avgctr,prop);
+
+    //Communicate the values
+    SendRecvAverages(prop,grid,average,comm,myproc); 
+
     //Reset the counter
     prop->avgctr=0;
 
@@ -2929,7 +2933,8 @@ int getTimeRecBnd(REAL nctime, REAL *time, int nt){
 
     for(j=0;j<nt;j++){
        if (time[j]>=nctime)
-	 return j-1;
+	 //return j-1;
+	 return j;
     }
     return nt;
 }

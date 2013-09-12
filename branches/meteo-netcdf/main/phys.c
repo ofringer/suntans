@@ -774,9 +774,8 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   }
 
   // Initialise the age arrays (netcdf only)
-  // (Leave as zero for now)
-  //if (prop->calcage && prop->readinitialnc)
-  //     ReturnAgeNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
+  if (prop->calcage && prop->readinitialnc)
+       ReturnAgeNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
 
 
   // Need to compute the velocity vectors at the cell centers based
@@ -1459,7 +1458,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     }
     // Output the average arrays
     if(prop->calcaverage){
-	WriteAverageNC(prop,grid,average,phys,met,blowup,myproc);
+	WriteAverageNC(prop,grid,average,phys,met,blowup,comm,myproc);
     }
     InterpData(grid,phys,prop,comm,numprocs,myproc);
 
