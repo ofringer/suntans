@@ -1,0 +1,31 @@
+How to run this example.  For details please see the user guide.
+----------------------------------------------------------------
+1) Edit ../../Makefile.in
+
+2) Make sure the paths in the first three lines of setup_tides.m are correct.
+Also make sure the suntides data is uncompressed by entering the suntides
+directory and typing "make".
+
+3) Run suntans and create the tidexy.dat files. 
+
+make test
+
+Error will result, complaining of lack of tidecomponent.dat.* files.
+tidexy.dat.* files are created instead, these contain locations needed by tides.m
+to create tidecomponent.dat.* files.
+
+4) Run tides.m in matlab, i.e.
+
+matlab < tides.m
+
+If matlab is installed locally then you can type "make tides"
+
+5) Run the example again with
+
+make test
+
+6) Compare the output to OTIS with compare_to_otis.m
+
+Note that the edges-3.dat file in rundata/ contains edges of type 3.  This
+can be used to test tidal boundaries of type 3.
+
