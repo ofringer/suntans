@@ -1,0 +1,55 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% SUNTANS user guide.
+%
+% Oliver Fringer
+% Stanford University
+% 10 June 2004
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[12pt,oneside]{article}
+%\usepackage{amsfonts,graphics,/usr/share/texmf/tex/latex/misc/authordate1-4}
+\usepackage{amsfonts,graphics,graphicx}
+
+%\newif\ifpdf\ifx\pdfoutput\undefined\pdffalse\else\pdfoutput=1\pdftrue\fi
+%\newcommand{\pdfgraphics}{\ifpdf\DeclareGraphicsExtensions{.pdf,.jpg}\else\fi}
+
+\textheight 9.0in
+\textwidth 6.5in
+\oddsidemargin 0.0in
+
+\include{newcommands}
+
+\begin{document}
+%\pdfgraphics
+
+\title{SUNTANS User Guide\\
+{\large Stanford Unstructured Nonhydrostatic 
+Terrain-following Adaptive Navier-Stokes Simulator}}
+\author{O. B. Fringer\\
+\small
+Environmental Fluid Mechanics Laboratory,  \\
+Stanford University\\
+Stanford, CA 94305-4020
+\normalsize}
+\date{\today}
+
+\maketitle
+
+\tableofcontents
+\clearpage
+
+\include{download}
+\include{running}
+\include{grids}
+\include{initial}
+\include{restart}
+\include{examples}
+\include{parameters}
+\include{sunplot}
+
+\bibliographystyle{plain}
+\bibliography{bibliography}
+
+\end{document}
