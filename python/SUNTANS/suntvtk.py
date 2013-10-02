@@ -250,8 +250,8 @@ class SunTvtk(Spatial):
         """
         3D isosurfaces of scalar data
         """
-        if self.clim==None:
-            self.clim = [self.data.min(), self.data.max()]
+        if clim==None:
+            clim = [self.data.min(), self.data.max()]
         
         # Create a new scene if there isn't one
         if not self.__dict__.has_key('fig'):
@@ -262,7 +262,7 @@ class SunTvtk(Spatial):
         src = mlab.pipeline.cell_to_point_data(self.ug)
         
         # Add the iso_surface module to the scene
-        self.h=mlab.pipeline.iso_surface(src,contours=vv,line_width=1.0,**kwargs)
+        self.h=mlab.pipeline.iso_surface(src,contours=vv,line_width=1.0,vmin=clim[0],vmax=clim[1],**kwargs)
         
         # Add a colorbar if the isn't one
         if not self.__dict__.has_key('cb'):

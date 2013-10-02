@@ -321,6 +321,130 @@ class timeseries(object):
         except:
             self.dt = 0.0
 
+class ModVsObs(object):
+    """
+    Class for handling and comparing two time series i.e. model vs observations
+    """
+
+    units=''
+    long_name=''
+    stationid = ''
+    varname = ''
+    Z=0.0
+
+    def __init__(self,tmod,ymod,tobs,yobs,**kwargs):
+        """
+        Inputs:
+            tmod,tobs - vector of datetime object
+            ymod,yobs - vector of values
+
+        Keywords:
+            long_name: string containing variable's name (used for plotting)
+            units: string containing variable's units (used for plotting)
+
+        Note that tmod and tobs don't need to be the same length. yobs is
+        linearly interpolated onto tmod.
+        """
+        self.__dict__.update(kwargs)
+
+        # Load the data into timeseries objects
+        self.TSmod = timeseries(tmod,ymod)
+        TSobs = timeseries(tobs,yobs)
+
+        # Interpolate the observed value onto the model
+        tobs_i, yobs_i = TSobs.interp(tmod)
+        self.TSobs = timeseries(tobs_i, yobs_i.T)
+
+        self.N = self.TSmod.t.shape[0]
+
+        self.calcStats()
+
+    def plot(self,colormod='r',colorobs='b',legend=True,**kwargs):
+        """
+        Time-series plots of both data sets with labels
+        """
+
+        h1 = self.TSmod.plot(color=colormod,**kwargs)
+
+        h2 = plt.plot(self.TSobs.t,self.TSobs.y,color=colorobs,**kwargs)
+
+        plt.ylabel(r'%s [$%s$]'%(self.long_name,self.units)) # Latex formatting
+
+        plt.grid(b=True)
+
+        plt.title('StationID: %s'%self.stationid)
+
+        if legend:
+            plt.legend(('Model','Observation'))
+
+        return h1, h2
+
+    def calcStats(self):
+        """
+        Calculates statistics including:
+            moments, RMS, CC, skill, ...
+        """
+        self.meanObs = np.mean(self.TSobs.y,axis=0)
+        self.meanMod = np.mean(self.TSmod.y,axis=0)
+        self.stdObs = np.std(self.TSobs.y,axis=0)
+        self.stdMod = np.std(self.TSmod.y,axis=0)
+
+        # RMSE
+        self.rmse = rms(self.TSobs.y-self.TSmod.y,axis=0)
+
+        # skill
+        self.skill = 1.0 - np.sum( (self.TSobs.y-self.TSmod.y)**2.,axis=0) / \
+            np.sum( (self.TSobs.y - self.meanObs)**2.,axis=0)
+
+        # Correlation coefficient
+        self.cc = 1.0/float(self.N) * np.sum( (self.TSobs.y-self.meanObs) * \
+            (self.TSmod.y - self.meanMod) ,axis=0) / (self.stdObs * self.stdMod) 
+
+    def printStats(self,f=None,header=True):
+        """
+        Prints the statistics to a markdown language style table
+        """
+        outstr=''
+
+        if header:
+            outstr += "|      | Mean Model | Mean Obs. | Std. Mod. | Std Obs | RMSE |   CC   | skill |\n"
+            
+            outstr += "|------| ---------- | --------- | --------- | ------- | --- | ----- | ------| \n"
+
+        outstr += "| %s [%s] | %6.3f | %6.3f | %6.3f | %6.3f | %6.3f | %6.3f | %6.3f | \n"%\
+            (self.stationid,self.units, self.meanMod, self.meanObs, self.stdMod, self.stdObs,\
+            self.rmse,self.cc,self.skill)
+
+        if f == None:
+            print outstr
+        else:
+            f.write(outstr)
+
+
+    def printStatsZ(self,f=None,header=True):
+        """
+        Prints the statistics to a markdown language style table
+        """
+        outstr=''
+
+        if header:
+            outstr += "| Depth | Mean Model | Mean Obs. | Std. Mod. | Std Obs | RMSE |   CC   | skill |\n"
+            
+            outstr += "|------| ---------- | --------- | --------- | ------- | --- | ----- | ------| \n"
+
+        for ii,zz in enumerate(self.Z.tolist()):
+
+            outstr += "| %3.1f [m] | %6.3f | %6.3f | %6.3f | %6.3f | %6.3f | %6.3f | %6.3f | \n"%\
+            (zz, self.meanMod[ii], self.meanObs[ii], self.stdMod[ii],\
+                self.stdObs[ii], self.rmse[ii],self.cc[ii],self.skill[ii])
+
+        if f == None:
+            print outstr
+        else:
+            f.write(outstr)
+
+
+
 
 def harmonic_fit(t,X,frq,mask=None,axis=0,phsbase=None):
     """
@@ -462,12 +586,16 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
     print 'Querying database...'
     print condition
     data, query = queryNC(dbfile,outvar,tablename,condition)  
+
+    yout = data[0][varname].squeeze()
+    # Zero nan
+    yout[np.isnan(yout)] = 0.0
     
     if len(data)==0:
         print '!!! Warning - Did not find any stations matching query. Returning -1 !!!'
         return -1
     else:
-        ts = timeseries(data[0]['time'],data[0][varname].squeeze())
+        ts = timeseries(data[0]['time'],yout)
         
         
     if not timeinfo==None:
@@ -485,7 +613,7 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
         if data[0].has_key('elevation'):
             ele = data[0]['elevation']
         else:
-            ele = 0.0
+            ele = np.array([0.0])
         meta = {'longitude':data[0]['longitude'],'latitude':data[0]['latitude'],'elevation':ele,'StationName':query['StationName'][0]}
         return ts, meta        
     else:
@@ -664,7 +792,7 @@ def window_index(serieslength,windowsize,overlap):
         
     return pt1, pt2
     
-def window_index_time(t,windowsize,overlap):
+def window_index_time_slow(t,windowsize,overlap):
     """
     Determines the indices for window start and end points of a time vector
     
@@ -693,6 +821,35 @@ def window_index_time(t,windowsize,overlap):
 
         pt1.append(othertime.findNearest(t1,t))
         pt2.append(othertime.findNearest(t2,t))
+        
+    return pt1, pt2
+    
+def window_index_time(t,windowsize,overlap):
+    """
+    Determines the indices for window start and end points of a time vector
+    
+    The window does not need to be evenly spaced
+    
+    Inputs:
+        t - list or array of datetime objects
+        windowsize - length of the window [seconds]
+        overlap - number of overlap points [seconds]
+        
+    Returns: pt1,pt2 the start and end indices of each window
+    """
+    
+    tsec = othertime.SecondsSince(t)
+        
+    t1=tsec[0]
+    t2=t1 + windowsize
+    pt1=[0]
+    pt2=[np.searchsorted(tsec,t2)]
+    while t2 < tsec[-1]:
+        t1 = t2 - overlap
+        t2 = t1 + windowsize
+
+        pt1.append(np.searchsorted(tsec,t1))
+        pt2.append(np.searchsorted(tsec,t2))
         
     return pt1, pt2
     
@@ -751,12 +908,12 @@ def ap2ep(uamp,uphs,vamp,vphs):
     
     
     
-def rms(x):
+def rms(x,axis=None):
     """
     root mean squared
     """
     
-    return np.sqrt(1.0/np.size(x) * np.sum(x**2))
+    return np.sqrt(1.0/np.size(x) * np.sum(x**2,axis=axis))
     
 def crms(t,y):
     """
@@ -772,3 +929,35 @@ def tidalrmse(Ao,Am,Go,Gm):
     Go, Gm - observed and modeled phase (radians)
     """
     return np.sqrt( 0.5*(Ao**2 + Am**2) - Ao*Am*np.cos(Go-Gm) )
+
+def eofsvd(M):
+    """
+    Compute empirical orthogonal function using singular
+    value decomposition technique
+    
+    Inputs:
+        - M : matrix with time along first axis and observation points along
+          second
+    Returns:
+        - PC : The principal component amplitude
+        - s : the eigenvalues
+        - E : the eigenvectors in each column (EOFs)
+    """
+    # Remove the mean from the columns
+    M = M - M.mean(axis=0)
+
+    # 
+    U,s,V = np.linalg.svd(M,full_matrices=False)
+
+    # The principal components are U*s
+    PC = U*s
+
+    # Each row of V are the eigenvectors (EOFs) so transpose them so that
+    # columns are
+    E = V.T
+
+    # Note that the values of s from the svd are the eigenvalues ^0.5
+
+    return PC,s*s,E
+
+

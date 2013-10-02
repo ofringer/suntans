@@ -47,6 +47,7 @@ class Grid(object):
         else:
             # Load the grid fromm a netcdf file
             self.infile = infile
+            self.ncfile = infile
             self.__loadGrdNc()
 
         # Find the grid limits
@@ -688,7 +689,8 @@ class Grid(object):
         nc.close()
         
     def __del__(self):
-        self.nc.close()
+        if self.__dict__.has_key('nc'):
+            self.nc.close()
         
     def __openNc(self):
         #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
@@ -777,6 +779,13 @@ class Spatial(Grid):
             self.long_name = 'Mean age'
             self.units = 'days'
             return self.data
+        elif variable=='dzz':
+            if self.hasVar('dzz'):
+                return self.loadDataRaw(variable='dzz')
+            else:
+                # Calculate dzz internally
+                eta = self.loadDataRaw(variable='eta')
+                return self.getdzz(eta)
                 
         else:
             return self.loadDataRaw(variable=variable)
@@ -1604,7 +1613,31 @@ class Spatial(Grid):
         
         return phiA, area
         
-       
+    def getdzz(self,eta):
+        """
+        Calculate the cell-centred vertical grid spacing based
+        on the free surface height only
+        """
+
+        # Find the layer of the top cell
+        ctop = np.searchsorted(self.z_w,-eta)
+        ctop[ctop>0] -= 1
+
+        # Find dzz of the top cell
+        dztop = self.z_r[ctop]+eta
+
+        dzz = np.repeat(self.dz[:,np.newaxis],self.Nc,axis=1)
+
+        dzz[ctop,range(self.Nc)]=dztop
+
+        # Mask the cells
+        for ii in range(self.Nc):
+            dzz[0:ctop[ii],ii]=0.0
+            dzz[self.Nk[ii]::,ii]=0.0
+
+        return dzz
+        
+
     def __genTitle(self,tt=None):
         
         if tt ==None:
@@ -1630,11 +1663,12 @@ class TimeSeries(timeseries, Spatial):
     Time series class for suntans output
     """    
     
-    def __init__(self,ncfile,XY,Z=None,**kwargs):
+    def __init__(self,ncfile,XY,Z=None,klayer=None,**kwargs):
         
         Spatial.__init__(self,ncfile,**kwargs)
         
         self.XY = XY
+        self.klayer = klayer
         if not Z==None:
             self.Z = np.abs(Z)
         else:
@@ -1649,18 +1683,33 @@ class TimeSeries(timeseries, Spatial):
         dist, self.j = self.findNearest(self.XY)
         
         # Find the klayer
-        if self.Z == None:
-            self.klayer = [-99]
+        if isinstance(self.Z,type(np.array(()))):
+            self.klayer=[]
+            for zz in self.Z.tolist():
+                k0=self.findNearestZ(zz)
+                self.klayer.append(k0[0])
+
         else:
-            self.klayer = self.findNearestZ(self.Z)
-                             
+            if self.Z == None and self.klayer== None:
+                self.klayer = [-99]
+            elif not self.Z == None and self.klayer == None:
+                self.klayer = self.findNearestZ(self.Z)
+            else:
+                self.klayer=self.klayer
+
+        # Loads in a time series object                     
         timeseries.__init__(self,self.time[self.tstep],self.loadData())
         
     def contourf(self,clevs=20,**kwargs):
         """
         Filled contour plot
         """
-        h1=plt.contourf(self.time,-self.z_r,self.y.T,clevs,**kwargs)
+        if self.klayer[0]==-99:
+            z = -self.z_r
+        else:
+            z = -self.z_r[self.klayer]
+
+        h1=plt.contourf(self.time,z,self.y.T,clevs,**kwargs)
         plt.xticks(rotation=17)        
         return h1
         

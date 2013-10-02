@@ -730,7 +730,7 @@ class SunTrack(Spatial):
 	ind = self.particles['tstart'] <= tsec
 
 	self.particles['isActive'][ind]=True
-	print '\t%d Active particles'%(np.sum(self.particles['isActive']))
+	#print '\t%d Active particles'%(np.sum(self.particles['isActive']))
 
     def resetInactiveParticles(self):
 	"""

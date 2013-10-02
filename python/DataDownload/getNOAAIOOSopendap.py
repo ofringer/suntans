@@ -35,12 +35,15 @@ import numpy as np
 import scipy.io as io
 import time
 from datetime import datetime, timedelta
+from othertime import MinutesSince
 import urllib2
 from xml.dom import minidom
 import netcdfio
 
 from netCDF4 import Dataset
 import shapefile
+
+import pdb
 
 
 def extractIOOS(varlist,startt,endt,latlon):
@@ -57,7 +60,7 @@ def extractIOOS(varlist,startt,endt,latlon):
         for lon,lat,ID,nn in zip(x,y,stationID,name):
             coords = [{'Name':'longitude','Value':lon,'units':'degrees East'},\
             {'Name':'latitude','Value':lat,'units':'degrees North'},\
-            {'Name':'time','Value':[],'units':'days since 0000-00-00 00:00:00'}]
+            {'Name':'time','Value':[],'units':'minutes since 1970-01-01 00:00:00'}]
             attribs = {'StationID':str(ID),'StationName':nn,'Data':[],'coordinates':'time, longitude, latitude','coords':coords} 
             
             meta.append(attribs)
@@ -306,7 +309,7 @@ def getStartEndDates(startt,endt):
     return starttime, endtime
 
     
-def parseDate(tstr):
+def parseDateOld(tstr):
     """ Parse a date represented by a string to a decimal number.
     The time/datetime functions do not seem to support the format spat out by 
     database
@@ -314,6 +317,7 @@ def parseDate(tstr):
     # convert the string to a list so that it can be modified
     tlst = list(tstr)
     
+    pdb.set_trace()
     
     day = tstr[4:6]
     hour = tstr[12:14]
@@ -344,6 +348,17 @@ def parseDate(tstr):
     tout = datetime2matlabdn(t2)
     
     return tout
+    
+def parseDate(tstr):
+    tcmps = tstr.split()
+    # Convert this to a "nicely" formatted string
+    timestr = '%s%02d%04d %s'%(tcmps[0],int(tcmps[1]),int(tcmps[2]),tcmps[3])
+    
+    # Convert to datetime object
+    t = datetime.strptime(timestr, '%b%d%Y %I:%M%p')
+    
+    # Return as minutes since 1970-01-01
+    return MinutesSince(t)[0]
     
 def datetime2matlabdn(dt):
    ord = dt.toordinal()

@@ -135,7 +135,7 @@ def latentBulk(qs, q, S, rhoa=1.2, Ce=1.5e-3, Le=2.5e6):
     
     return -rhoa*Le*Ce*S*(qs-q)
     
-def sensibleBulk(Tw,Ta,S,rhoa=1.2,Ch=1.5e-3,cp=4200.0):
+def sensibleBulk(Tw,Ta,S,rhoa=1.2,Ch=1.5e-3,cpa=1004.67):
     """
     Sensible heat flux from water using the bulk exchange formulation
     
@@ -145,9 +145,9 @@ def sensibleBulk(Tw,Ta,S,rhoa=1.2,Ch=1.5e-3,cp=4200.0):
         S - Wind speed magnitude [m s^-1]
         rhoa - air density [kg m^-3]
         Ch - Stanton number
-        cp - Specific heat of water [J kg-1 K-1]
+        cpa - Specific heat of air [J kg-1 K-1]
     """    
-    return -rhoa*cp*Ch*S*(Tw-Ta)    
+    return -rhoa*cpa*Ch*S*(Tw-Ta)    
 
 def stressBulk(u,S,rhoa=1.2,Cd=1.1e-3):
     """

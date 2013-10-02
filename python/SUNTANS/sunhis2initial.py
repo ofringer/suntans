@@ -32,6 +32,11 @@ def sunhis2initial(hisfile,icfile):
     print sunic.h.shape
     print sunic.T.shape
 
+    # Load the age
+    if sunhis.hasVar('agec'):
+        sunic.agec = sunhis.loadData(variable='agec').reshape((1,)+sunic.agec.shape)       
+        sunic.agealpha = sunhis.loadData(variable='agealpha').reshape((1,)+sunic.agealpha.shape)       
+
     # Write to the output file
     sunic.writeNC(icfile)
 

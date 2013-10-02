@@ -766,7 +766,7 @@ class ROMS(roms_grid):
         Load the netcdf object
         """
         try: 
-            self.nc = MFDataset(self.romsfile, 'r')
+            self.nc = MFDataset(self.romsfile)
         except:
             self.nc = Dataset(self.romsfile, 'r')
             
