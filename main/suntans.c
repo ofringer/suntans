@@ -38,6 +38,7 @@ main(int argc, char *argv[])
     GetGrid(&grid,myproc,numprocs,comm);
   else
     ReadGrid(&grid,myproc,numprocs,comm);
+  
 
   if(SOLVE) {
     ReadProperties(&prop,myproc);

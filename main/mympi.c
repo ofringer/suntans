@@ -11,6 +11,7 @@
  */
 #include <errno.h>
 #include "mympi.h"
+#include "mynetcdf.h"
 
 /*
  * Function: StartMpi
@@ -128,6 +129,60 @@ FILE *MPI_FOpen(char *file, char *perms, char *caller, int myproc) {
     return fid;
 }
 
+/*
+ * Function: MPI_NCOpen
+ * Usage: fid = MPI_NCOpen(string,NC_NOWRITE,"GetValue",myproc);
+ * -----------------------------------------------------
+ * Exits if the requested file does not exist and closes
+ * MPI cleanly. The third string is useful for determining which
+ * function the function was called from.  When two processes
+ * are trying to read the same file at the same time, an error
+ * code of EAGAIN results.  This is ommitted as a possible error
+ * code.
+ *
+ */
+#ifdef USENETCDF
+  int MPI_NCOpen(char *file, int perms, char *caller, int myproc) {
+    extern int errno;
+    int ncid;
+    int retval;
+    char str[BUFFERLENGTH];
+    
+    if (perms==NC_NOWRITE){
+      // Just open the file for read access
+      if ( (VERBOSE>1) && (myproc==0) ) printf("Opening netcdf file: %s\n",file) ;
+       if ((retval = nc_open(file,perms, &ncid)))
+		ERR(retval);
+    } else {
+      // Create a new netcdf dataset
+      if (VERBOSE>1) printf("Creating netcdf file: %s\n",file) ;
+	if ((retval = nc_create(file,perms, &ncid)))
+		ERR(retval);
+    }
+    if (retval){
+      sprintf(str,"Error in Function %s while trying to open %s ",caller,file);
+      sprintf("Error: %s\n", nc_strerror(retval));
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+    } else {
+	//if ( (VERBOSE>1) ) printf("Successfully opened file: %s on processor %d \n",file,myproc) ;
+      return ncid;
+    }
+  }
+/*
+ * Function: MPI_NCClose(int ncid)
+ * -------------------------------
+ * Wrapper function for nc_close()
+ */
+int MPI_NCClose(int ncid){
+    int retval;
+    if ((retval = nc_close(ncid)))
+	ERR(retval);
+    return retval;
+}
+
+
+#endif
 /*
  * Function: MPI_GetSize
  * Usage: N = MPI_GetSize(filename,"ReadMainGrid",myproc);

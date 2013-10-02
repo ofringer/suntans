@@ -53,6 +53,7 @@ typedef struct _gridT {
   int *grad;
   int *gradf;
   int *mark;
+  int *edge_id;
   int *normal;
 
   // new deinitions for nodal neighbor data structure

@@ -195,6 +195,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   // most important and complicated function to ensure parallelism for grid
   // takes the main grid and redistributes to local grids on each processor
   Partition(maingrid,localgrid,comm);
+
   if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
 
   // functions to check to make sure all the communications are set up properly
@@ -333,6 +334,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   // compute cellp, edgep, lcptr, leptrs and also get the reference for local cell processor
   // interprocessor send-receives
   Tic();
+  MPI_Barrier(comm);//MDR - make sure all processors are together
   MakePointers(maingrid,localgrid,myproc,comm);
   if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
@@ -840,6 +842,8 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc)
   (*grid)->order = (int *)SunMalloc((*grid)->Ne*sizeof(int),"InitMainGrid");
   // Edge markers
   (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"InitMainGrid");
+  // Boundary segment ID
+  (*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"InitMainGrid");
   // Stores the indices to the start and end points of the adjncy array
   (*grid)->xadj = (int *)SunMalloc(((*grid)->Nc+1)*sizeof(int),"InitMainGrid");
   (*grid)->vtxdist = (int *)SunMalloc(VTXDISTMAX*sizeof(int),"InitMainGrid");
@@ -859,6 +863,7 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc)
  * CELLSFILE voronoi_x voronoi_y cell_pt1 cell_pt2 cell_pt3 neigh_pt1 neigh_pt2 neigh_pt3
  * EDGEFILE list of indices to points in POINTSFILE (always 2 columns + edge marker + 2 pointers to
  * neighboring cells (grad) = 5 columns)
+ * **MR** EDGEFILE now has 6 columns. Last column contains the edge_id for boundary segments. **MR**
  *
  */
 void ReadMainGrid(gridT *grid, int myproc)
@@ -882,6 +887,7 @@ void ReadMainGrid(gridT *grid, int myproc)
     grid->mark[n]=(int)getfield(ifile,str);
     for(j=0;j<2;j++) 
       grid->grad[2*n+j]=(int)getfield(ifile,str);
+    grid->edge_id[n]=(int)getfield(ifile,str);
   }
   fclose(ifile);
 
@@ -1407,10 +1413,11 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
   }
 
   //  printf("Finished computing nodal array information\n");
-  //printf("Freeing neighs...\n");
+  /*
+  printf("Freeing neighs...\n");
   for(in=0;in<Np;in++) 
     SunFree(tempppneighs[in],Np*sizeof(int *),"CreateNodeArray");
-  //printf("Freeing edges...\n");
+  printf("Freeing edges...\n");
   for(in=0;in<Np;in++) 
     SunFree(temppeneighs[in],Np*sizeof(int *),"CreateNodeArray");
   printf("Freeing cells...\n");
@@ -1424,6 +1431,7 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
   printf("Cells\n");
   SunFree(temppcneighs,maxcellneighs*sizeof(int),"CreateNodeArray");
   printf("Done!\n");
+  */
 }
 
 /*
@@ -1551,7 +1559,7 @@ static inline void CreateMomentumCV(gridT *grid)
 // may have to be changed to incorporate full row of 
 // interprocessor cells for the interpolation, generalized
 // halo region
-int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
+inline int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
 {
   int nf, nei;
 
@@ -1794,7 +1802,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   if(VERBOSE>2) printf("Outputting %s...\n",str);
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(j=0;j<grid->Nc;j++) {
-    fprintf(ofile,"%.14e %.14e ",grid->xv[j],grid->yv[j]);
+    fprintf(ofile,"%e %e ",grid->xv[j],grid->yv[j]);
     for(nf=0;nf<NFACES;nf++)
       fprintf(ofile,"%d ",grid->cells[j*NFACES+nf]);
     for(nf=0;nf<NFACES;nf++)
@@ -1813,6 +1821,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     fprintf(ofile,"%d ",grid->mark[j]);
     for(nf=0;nf<2;nf++)
       fprintf(ofile,"%d ",grid->grad[2*j+nf]);
+    fprintf(ofile,"%d ",grid->edge_id[j]);
     fprintf(ofile,"\n");
   }
   fclose(ofile);
@@ -1822,7 +1831,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(n=0;n<Nc;n++) {
-    fprintf(ofile,"%.14e %.14e %e %e %d ",grid->xv[n],grid->yv[n],
+    fprintf(ofile,"%e %e %e %e %d ",grid->xv[n],grid->yv[n],
 	    grid->Ac[n],grid->dv[n],grid->Nk[n]);
     for(nf=0;nf<NFACES;nf++)
       fprintf(ofile,"%d ",grid->face[NFACES*n+nf]);
@@ -2128,6 +2137,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->grad = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->gradf = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
+  (*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->edges = (int *)SunMalloc((*grid)->Ne*NUMEDGECOLUMNS*sizeof(int),"ReadGrid");
 
   sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
@@ -2303,6 +2313,7 @@ static void FreeGrid(gridT *grid, int numprocs)
   SunFree(grid->face,NFACES*grid->Nc*sizeof(int),"FreeGrid");
   SunFree(grid->grad,2*grid->Ne*sizeof(int),"FreeGrid");
   SunFree(grid->mark,grid->Ne*sizeof(int),"FreeGrid");
+  SunFree(grid->edge_id,grid->Ne*sizeof(int),"FreeGrid");
 
   SunFree(grid->normal,NFACES*grid->Nc*sizeof(int),"FreeGrid");
   SunFree(grid->xadj,(grid->Nc+1)*sizeof(int),"FreeGrid");
@@ -2705,7 +2716,7 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
 
   // Send out the number of cells that are being received and then
   // the actual global indices being sent.
- 
+  
   // send data
   for(neigh=0;neigh<(*localgrid)->Nneighs;neigh++) {
     // over each of the neighboring processors
@@ -2847,7 +2858,6 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
   }
   // use lock to make sure all communication is completed before continuing
   MPI_Barrier(comm);
-
   // store all data just sent/received
   (*localgrid)->cell_send=cell_send;
   (*localgrid)->cell_recv=cell_recv;
@@ -2932,6 +2942,7 @@ static void ReOrder(gridT *grid)
   ReOrderIntArray(grid->eneigh,eorder,(int *)tmp,grid->Ne,2*(NFACES-1));
   ReOrderIntArray(grid->edges,eorder,(int *)tmp,grid->Ne,NUMEDGECOLUMNS);
   ReOrderIntArray(grid->mark,eorder,(int *)tmp,grid->Ne,1);
+  ReOrderIntArray(grid->edge_id,eorder,(int *)tmp,grid->Ne,1);
   ReOrderIntArray(grid->eptr,eorder,(int *)tmp,grid->Ne,1);
   ReOrderIntArray(grid->Nke,eorder,(int *)tmp,grid->Ne,1);
   ReOrderIntArray(grid->Nkc,eorder,(int *)tmp,grid->Ne,1);
@@ -3716,6 +3727,8 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
       "TransferData");
   (*localgrid)->mark = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),
       "TransferData");
+  (*localgrid)->edge_id = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),
+      "TransferData");
   (*localgrid)->eptr = (int *)SunMalloc((*localgrid)->Ne*sizeof(int),
       "TransferData");
   (*localgrid)->eneigh = (int *)SunMalloc(2*(NFACES-1)*(*localgrid)->Ne*sizeof(int),
@@ -3755,6 +3768,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
         leptr[iface]=k;
         //point from local edge index to global one
         (*localgrid)->eptr[k++]=iface;
+        //(*localgrid)->edge_id[k]=maingrid->edge_id[iface];
       }
     }
   }

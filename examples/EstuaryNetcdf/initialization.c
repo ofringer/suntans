@@ -1,3 +1,15 @@
+/*
+ * File: initialization.c
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Contains the functions that are used
+ * to initialize the depth, free-surface, and salinity.
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
+ *
+ */
 #include "math.h"
 #include "fileio.h"
 #include "suntans.h"
@@ -12,31 +24,44 @@
  *
  */
 int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
-  int k, status, ktop=15;
-  REAL z=0, dz0, r = GetValue(DATAFILE,"rstretch",&status), dztop=2, d0;
+  int k, status;
+  REAL z=0, dz0, r = GetValue(DATAFILE,"rstretch",&status);
 
-  if(Nkmax==1) {
-    dz[0]=depth;
-  } else {
-    dz[0]=5;
-    for(k=1;k<ktop+1;k++)
-      dz[k]=dztop;
-    if(r==1)
-      dz[ktop+1] = (depth-ktop*dztop-dz[0])/(Nkmax-ktop-1);
-    else
-      dz[ktop+1] = (depth-ktop*dztop-dz[0])*(r-1)/(pow(r,(Nkmax-ktop-1))-1);
-    for(k=ktop+2;k<Nkmax;k++) 
-      dz[k]=r*dz[k-1];
-    
-    d0=0;
-    for(k=0;k<Nkmax;k++) {
-      printf("dz[%d]=%f\n",k,dz[k]);
-      d0+=dz[k];
+  if(dz!=NULL) {
+    if(r==1) 
+      for(k=0;k<Nkmax;k++)
+	dz[k]=depth/Nkmax;
+    else if(r>1 && r<=1.1) {    
+      dz[0] = depth*(r-1)/(pow(r,Nkmax)-1);
+      if(VERBOSE>2) printf("Minimum vertical grid spacing is %.2f\n",dz[0]);
+      for(k=1;k<Nkmax;k++) 
+	dz[k]=r*dz[k-1];
+    } else if(r>-1.1 && r<-1) {    
+      r=fabs(r);
+      dz[Nkmax-1] = depth*(r-1)/(pow(r,Nkmax)-1);
+      if(VERBOSE>2) printf("Minimum vertical grid spacing is %.2f\n",dz[Nkmax-1]);
+      for(k=Nkmax-2;k>=0;k--) 
+	dz[k]=r*dz[k+1];
+    } else {
+      printf("Error in GetDZ when trying to create vertical grid:\n");
+      printf("Absolute value of stretching parameter rstretch must  be in the range (1,1.1).\n");
+      exit(1);
     }
-    printf("dz sum = %f\n",d0);
+  } else {
+    r=fabs(r);
+    if(r!=1)
+      dz0 = depth*(r-1)/(pow(r,Nkmax)-1);
+    else
+      dz0 = depth/Nkmax;
+    z = dz0;
+    for(k=1;k<Nkmax;k++) {
+      dz0*=r;
+      z+=dz0;
+      if(z>=localdepth) {
+	return k;
+      }
+    }
   }
-
-  return 0;
 }
   
 /*
@@ -50,7 +75,16 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
 REAL ReturnDepth(REAL x, REAL y) {
   REAL length, xmid, shelfdepth, depth;
 
-  return 10;
+  length = 10000;
+  xmid = 65000;
+  shelfdepth = 500;
+  depth = 3000;
+  if(x<=xmid-length/2)
+    return depth;
+  else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
+    return depth-(depth-shelfdepth)*(x-xmid+length/2)/length;
+  else
+    return shelfdepth;
 }
 
  /*
@@ -62,7 +96,7 @@ REAL ReturnDepth(REAL x, REAL y) {
   *
   */
 REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
-  return -5;
+  return 0;
 }
 
 /*
@@ -74,10 +108,13 @@ REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
  *
  */
 REAL ReturnSalinity(REAL x, REAL y, REAL z) {
-  REAL x0 = 5.7e5;
-  if(y>4.2e6)
-    return 32*0.5*(1+tanh(-(x-x0)/10000));
-  return 32;
+  REAL thermocline_depth=20;
+
+/*  if(z>-thermocline_depth)
+    return 3.4286*pow(fabs(thermocline_depth),0.0187)-3.6;
+  return 3.4286*pow(fabs(z),0.0187)-3.6;
+*/
+ return 32.0;	
 }
 
 /*
@@ -89,10 +126,7 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
  *
  */
 REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
-  REAL x0 = 545691, y0 = 4185552, R=1000;
-  if(pow(x-x0,2)+pow(y-y0,2)<R*R)
-    return 1;
-  return 0;
+  return 30.0;
 }
 
 /*

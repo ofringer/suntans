@@ -86,7 +86,7 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
  * Set the wind stress.
  *
  */
-void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
+void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
   int j, jptr;
 
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {

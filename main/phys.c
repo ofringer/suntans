@@ -24,11 +24,14 @@
 #include "state.h"
 #include "diffusion.h"
 #include "sources.h"
+#include "mynetcdf.h"
+#include "met.h"
+
+
 /*
  * Private Function declarations.
  *
  */
-static void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option);
 static void UPredictor(gridT *grid, physT *phys, 
     propT *prop, int myproc, int numprocs, MPI_Comm comm);
 static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int myproc, 
@@ -75,7 +78,7 @@ static void StoreVariables(gridT *grid, physT *phys);
 static void NewCells(gridT *grid, physT *phys, propT *prop);
 static void WPredictor(gridT *grid, physT *phys, propT *prop,
     int myproc, int numprocs, MPI_Comm comm);
-void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
+inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
 static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid);
 inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc);
 static void ComputeNodalVelocity(physT *phys, gridT *grid, interpolation interp, int myproc);
@@ -99,9 +102,11 @@ static REAL HFaceFlux(int j, int k, REAL *phi, REAL **u, gridT *grid, REAL dt,
 static void SetDensity(gridT *grid, physT *phys, propT *prop);
 //static void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
 void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
-static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop,
-				  MPI_Comm comm, int myproc, int nonlinear);
-
+static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc, int nonlinear);
+static void getTsurf(gridT *grid, physT *phys);
+static void getchangeT(gridT *grid, physT *phys);
+static REAL getToffSet(char starttime[15], char basetime[15]);
+static void UpdateAge(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc);
 /*
  * Function: AllocatePhysicalVariables
  * Usage: AllocatePhysicalVariables(grid,phys,prop);
@@ -167,7 +172,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     MPI_Finalize();
     exit(0);
   }
-
   // cell-centered physical variables in plan (no vertical direction)
   (*phys)->h = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->hcorr = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
@@ -178,6 +182,9 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->htmp3 = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->hcoef = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->hfcoef = (REAL *)SunMalloc(NFACES*Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  
+  (*phys)->Tsurf = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->dT = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
 
   // cell-centered values that are also depth-varying
   (*phys)->w = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -191,6 +198,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->qtmp = (REAL **)SunMalloc(NFACES*Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Ttmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s0 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->rho = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_R = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -201,7 +209,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->nu_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->kappa_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->nu_lax = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-  if(prop->turbmodel==1) {
+  if(prop->turbmodel>=1) {
     (*phys)->qT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
     (*phys)->lT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
     (*phys)->Cn_q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -211,6 +219,13 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->tau_B = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->CdT = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->CdB = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
+  // Age variables
+  if(prop->calcage>0){
+    (*phys)->agec = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+    (*phys)->agealpha = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+    (*phys)->Cn_Ac = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+    (*phys)->Cn_Aa = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  }
 
   /* new interpolation variables */
   // loop over the nodes
@@ -234,7 +249,11 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->nRT2v[i] = (REAL *)SunMalloc(grid->Nkp[i]*sizeof(REAL),
         "AllocatePhysicalVariables");
   }
-
+  // Netcdf write variables
+  (*phys)->tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->tmpvarE = (REAL *)SunMalloc(grid->Ne*grid->Nkmax*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->tmpvarW = (REAL *)SunMalloc(grid->Nc*(grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+ 
   // for each cell allocate memory for the number of layers at that location
   for(i=0;i<Nc;i++) {
     (*phys)->uc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -254,15 +273,22 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
       (*phys)->qtmp[i*NFACES+nf] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->Ttmp[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s0[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->rho[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_R[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-    if(prop->turbmodel==1) {
+    if(prop->turbmodel>=1) {
       (*phys)->Cn_q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->Cn_l[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->qT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->lT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    }
+    if(prop->calcage>0){
+      (*phys)->agec[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+      (*phys)->agealpha[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+      (*phys)->Cn_Ac[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+      (*phys)->Cn_Aa[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     }
     (*phys)->stmp[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->stmp2[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -271,7 +297,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->kappa_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->nu_lax[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
   }
-
+ 
   // allocate boundary value memory
   (*phys)->boundary_u = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_v = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -280,6 +306,10 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->boundary_T = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_rho = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_tmp = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  if(prop->calcage>0){
+      (*phys)->boundary_age = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+      (*phys)->boundary_agealpha = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  }
   (*phys)->boundary_h = (REAL *)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->boundary_flag = (REAL *)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
   // allocate over vertical layers
@@ -293,6 +323,10 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->boundary_T[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_tmp[jptr-grid->edgedist[2]] = (REAL *)SunMalloc((grid->Nke[j]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_rho[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    if(prop->calcage>0){
+	(*phys)->boundary_age[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
+	(*phys)->boundary_agealpha[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
+    }
   }
 
   // allocate coefficients
@@ -393,7 +427,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     free(phys->rho[i]);
     free(phys->Cn_R[i]);
     free(phys->Cn_T[i]);
-    if(prop->turbmodel==1) {
+    if(prop->turbmodel>=1) {
       free(phys->Cn_q[i]);
       free(phys->Cn_l[i]);
       free(phys->qT[i]);
@@ -432,7 +466,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   free(phys->rho);
   free(phys->Cn_R);
   free(phys->Cn_T);
-  if(prop->turbmodel==1) {
+  if(prop->turbmodel>=1) {
     free(phys->Cn_q);
     free(phys->Cn_l);
     free(phys->qT);
@@ -526,7 +560,7 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
     if(fread(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
       printf("Error reading phys->Cn_T[i]\n");
 
-  if(prop->turbmodel==1) {
+  if(prop->turbmodel>=1) {
     for(i=0;i<grid->Nc;i++) 
       if(fread(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
         printf("Error reading phys->Cn_q[i]\n");
@@ -595,11 +629,27 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
  */
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm)
 {
-  int i, j, k, Nc=grid->Nc;
+  int i, j, k, ktop, Nc=grid->Nc;
   REAL z, *stmp;
+  REAL *ncscratch;
+  int Nci, Nki, T0;
+
 
   prop->nstart=0;
+  
+  // Initialise the netcdf time
+  prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+  prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
 
+  if (prop->readinitialnc>0){
+    ReadInitialNCcoord(prop,grid,&Nci,&Nki,&T0,myproc);
+
+    printf("myproc: %d, Nci: %d, Nki: %d, T0: %d\n",myproc,Nci,Nki,T0);
+
+    // Initialise a scratch variable for reading arrays
+    ncscratch = (REAL *)SunMalloc(Nki*Nci*sizeof(REAL),"InitializePhysicalVariables");
+
+  }
   // Need to update the vertical grid and fix any cells in which
   // dzz is too small when h=0.
    UpdateDZ(grid,phys,prop, -1);
@@ -618,10 +668,14 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   */
 
   // Initialize the free surface
-  for(i=0;i<Nc;i++) {
-    phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
-    if(phys->h[i]<-grid->dv[i] + DRYCELLHEIGHT) 
-      phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
+  if (prop->readinitialnc){
+     ReturnFreeSurfaceNC(prop,phys,grid,ncscratch,Nci,T0,myproc);
+  }else{
+    for(i=0;i<Nc;i++) {
+      phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
+      if(phys->h[i]<-grid->dv[i] + DRYCELLHEIGHT) 
+        phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
+    }
   }
 
   // Need to update the vertical grid after updating the free surface.
@@ -637,13 +691,17 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       phys->s[i][k]=0;
       phys->T[i][k]=0;
       phys->s0[i][k]=0;
+      if(prop->calcage>0){
+      	phys->agec[i][k]=0;
+	phys->agealpha[i][k]=0;
+      }
     }
   }
 
   // Initialize the temperature, salinity, and background salinity
   // distributions.  Since z is not stored, need to use dz[k] to get
   // z[k].
-  if(prop->readSalinity) {
+  if(prop->readSalinity && prop->readinitialnc == 0) {
     stmp = (REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
     if(fread(stmp,sizeof(REAL),grid->Nkmax,prop->InitSalinityFID) != grid->Nkmax)
       printf("Error reading stmp first\n");
@@ -654,9 +712,10 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->s[i][k]=stmp[k];
         phys->s0[i][k]=stmp[k];
       }
-    SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
-  } 
-  else {
+    SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
+  } else if(prop->readinitialnc){
+     ReturnSalinityNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
+  } else {
     for(i=0;i<Nc;i++) {
       z = 0;
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -668,7 +727,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     }
   }
 
-  if(prop->readTemperature) {
+  if(prop->readTemperature && prop->readinitialnc == 0) {
     stmp = (REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
     if(fread(stmp,sizeof(REAL),grid->Nkmax,prop->InitTemperatureFID) != grid->Nkmax)
       printf("Error reading stmp second\n");
@@ -678,9 +737,10 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       for(k=grid->ctop[i];k<grid->Nk[i];k++) 
         phys->T[i][k]=stmp[k];
 
-    SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
-  } 
-  else {
+    SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
+   } else if(prop->readinitialnc){
+        ReturnTemperatureNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
+  } else {  
     for(i=0;i<Nc;i++) {
       z = 0;
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -690,7 +750,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       }
     }
   }
-
+ 
   // Initialize the velocity field 
   for(j=0;j<grid->Ne;j++) {
     z = 0;
@@ -701,6 +761,22 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       z-=grid->dz[k]/2;
     }
   }
+  
+  // Initialise the heat flux arrays
+  for(i=0;i<Nc;i++) {
+    ktop = grid->ctop[i];
+    phys->Tsurf[i] = phys->T[i][ktop];
+    phys->dT[i] = 0.001; // Needs to be != 0
+    
+    for(k=0;k<grid->Nk[i];k++){
+	phys->Ttmp[i][k]=phys->T[i][k];
+    }
+  }
+
+  // Initialise the age arrays (netcdf only)
+  if (prop->calcage && prop->readinitialnc)
+       ReturnAgeNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
+
 
   // Need to compute the velocity vectors at the cell centers based
   // on the initialized velocities at the faces.
@@ -737,7 +813,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     }
   }
 
-  if(prop->turbmodel==1) {
+  if(prop->turbmodel>=1) {
     for(i=0;i<grid->Nc;i++) {
       for(k=0;k<grid->Nk[i];k++) {
         phys->qT[i][k]=0;
@@ -745,6 +821,11 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       }
     }
   }
+  // Free the scratch array
+  if (prop->readinitialnc>0)
+      SunFree(ncscratch,Nki*Nci*sizeof(REAL),"InitializePhyiscalVariables");
+      //Close the initial condition netcdf file
+      //MPI_NCClose(prop->initialNCfileID );
 }
 
 /*
@@ -768,8 +849,12 @@ void SetDragCoefficients(gridT *grid, physT *phys, propT *prop) {
     for(j=0;j<grid->Ne;j++) 
       phys->CdB[j]=prop->CdB;
   else
-    for(j=0;j<grid->Ne;j++) 
+    for(j=0;j<grid->Ne;j++) {
       phys->CdB[j]=pow(log(0.5*grid->dzf[j][grid->Nke[j]-1]/prop->z0B)/KAPPA_VK,-2);
+      //printf("phys->CdB[%d]=%f, dzf = %f, z0B = %f\n",j,phys->CdB[j],grid->dzf[j][grid->Nke[j]-1],prop->z0B);
+    }
+
+
 
   for(j=0;j<grid->Ne;j++)
     if(grid->dzf[j][grid->Nke[j]-1]<BUFFERHEIGHT && grid->etop[j]==grid->Nke[j]-1){
@@ -841,7 +926,7 @@ void InitializeVerticalGrid(gridT **grid,int myproc)
  *   thereafter.
  *
  */
-static void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option)
+void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option)
 {
   int i, j, k, ne1, ne2, Nc=grid->Nc, Ne=grid->Ne, flag, nc1, nc2;
   REAL z, dzz1, dzz2;
@@ -1035,6 +1120,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 {
   int i, k, n, blowup=0;
   REAL t0;
+  metinT *metin;
+  metT *met;
+  averageT *average;
+  
 
   // Compute the initial quantities for comparison to determine conservative properties
   prop->n=0;
@@ -1055,15 +1144,26 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   prop->n=prop->nstart;
   // initialize the time (often used for boundary/initial conditions)
   prop->rtime=prop->nstart*prop->dt;
+ 
+  // Initialise the netcdf time (moved to InitializePhysicalVariables)
+  // Get the toffSet property
+  //printf("myproc: %d, starttime: %s\n",prop->starttime);
+  //prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+  //prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
+  //printf("myproc: %d, toffSet = %f (%s, %s)\n",myproc,prop->toffSet,&prop->basetime,&prop->starttime);
+
+  // Initialise the boundary data from a netcdf file
+  if(prop->netcdfBdy==1){
+    AllocateBoundaryData(prop, grid, &bound, myproc);
+    InitBoundaryData(prop, grid, myproc);
+  }
 
   // get the boundary velocities (boundaries.c)
-  BoundaryVelocities(grid,phys,prop,myproc); 
+  BoundaryVelocities(grid,phys,prop,myproc, comm); 
   // get the openboundary flux (boundaries.c)
   OpenBoundaryFluxes(NULL,phys->u,NULL,grid,phys,prop);
   // get the boundary scalars (boundaries.c)
-  BoundaryScalars(grid,phys,prop);
-  // get the windstress (boundaries.c)
-  WindStress(grid,phys,prop,myproc);
+  BoundaryScalars(grid,phys,prop,myproc,comm);
   // set the height of the face bewteen cells to compute the flux
   SetFluxHeight(grid,phys,prop);
   // set the drag coefficients for bottom friction
@@ -1075,12 +1175,59 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   // Initialize the Sponge Layer
   InitSponge(grid,myproc);
 
+  
+  // Initialise the meteorological forcing input fields
+    if(prop->metmodel>0){
+      if (prop->gamma==0.0){
+	if(myproc==0) printf("Warning gamma must be > 1 for heat flux model.\n");
+      }else{
+	if(myproc==0) printf("Initial temperature = %f.\n",phys->T[0][0]);
+      }
+      AllocateMetIn(prop,grid,&metin,myproc);
+      AllocateMet(prop,grid,&met,myproc);
+      InitialiseMetFields(prop, grid, metin, met,myproc);
+      
+      // Initialise the heat flux variables
+      updateMetData(prop, grid, metin, met, myproc, comm); 
+     if(prop->metmodel>=2) {      
+	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
+
+	//Communicate across processors
+	ISendRecvCellData2D(met->Hs,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hl,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hsw,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
+    }
+  }
+
+  // Initialise the output netcdf file metadata
+    if(prop->outputNetcdf==1){
+      InitialiseOutputNCugrid(prop, grid, phys, met, myproc);
+    }
+
+  // Initialise the average arrays and netcdf file
+  if(prop->calcaverage>0){
+    AllocateAverageVariables(grid,&average,prop);
+    ZeroAverageVariables(grid,average,prop);
+    InitialiseAverageNCugrid(prop, grid, average, myproc);
+  }
+  
+  // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
+  WindStress(grid,phys,prop,met,myproc);
+
   // main time loop
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
 
     prop->n = n;
     // compute the runtime 
     prop->rtime = n*prop->dt;
+    
+    // netcdf file time
+    prop->nctime = prop->toffSet*86400.0 + n*prop->dt;
+    //prop->nctime +=  n*prop->dt;
+    //prop->nctime += prop->rtime;
 
     if(prop->nsteps>0) {
 
@@ -1104,6 +1251,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // laxWendroff central differencing
       if(prop->laxWendroff && prop->nonlinear==2) 
         LaxWendroff(grid,phys,prop,myproc,comm);
+    
       // compute the horizontal source terms (like 
       /* 
        * 1) Old nonhydrostatic pressure gradient with theta method
@@ -1141,29 +1289,83 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       EddyViscosity(grid,phys,prop,phys->wnew,comm,myproc);
       t_turb+=Timer()-t0;
 
-      // Update the salinity only if beta is nonzero in suntans.dat
-      if(prop->beta) {
-        t0=Timer();
-        UpdateScalars(grid,phys,prop,phys->wnew,phys->s,phys->boundary_s,phys->Cn_R,
-            prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
-            NULL,NULL,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
-        ISendRecvCellData3D(phys->s,grid,myproc,comm);
-        t_transport+=Timer()-t0;
+      // Update the meteorological data
+      if(prop->metmodel>0){
+	updateMetData(prop, grid, metin, met, myproc, comm);
+	//if(prop->metmodel==2){
+	//    updateAirSeaFluxes(prop, grid, phys, met, phys->T);
+        //}
       }
-
+      
+     // Update the age (passive) tracers
+      if(prop->calcage>0){
+        //t0=Timer();
+        //printf("Entering age...\n");
+        UpdateAge(grid,phys,prop,comm,myproc);
+        //t_transport+=Timer()-t0;
+      }
+     
       // Update the temperature only if gamma is nonzero in suntans.dat
       if(prop->gamma) {
         t0=Timer();
-
-        HeatSource(phys->wtmp,phys->uold,grid,phys,prop);
-
+	
+	getTsurf(grid,phys); // Find the surface temperature
+	
+        HeatSource(phys->wtmp,phys->uold,grid,phys,prop,met, myproc, comm);
         UpdateScalars(grid,phys,prop,phys->wnew,phys->T,phys->boundary_T,phys->Cn_T,
             prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->theta,
             phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDtemp);
+	
+	getchangeT(grid,phys); // Get the change in surface temp
         ISendRecvCellData3D(phys->T,grid,myproc,comm);
+	
+	ISendRecvCellData3D(phys->Ttmp,grid,myproc,comm);
+        ISendRecvCellData2D(phys->dT,grid,myproc,comm);
+        ISendRecvCellData2D(phys->Tsurf,grid,myproc,comm);
+
         t_transport+=Timer()-t0;
       }
 
+      // Update the air-sea fluxes --> these are used for the previous time step source term and for the salt flux implicit term (salt tracer solver therefore needs to go next)
+      if(prop->metmodel>=2){
+	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
+
+	//Communicate across processors
+	
+	ISendRecvCellData2D(met->Hs,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hl,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hsw,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
+
+      }
+      
+      // Update the salinity only if beta is nonzero in suntans.dat
+      if(prop->beta) {
+        t0=Timer();
+	if(prop->metmodel>0){
+	    SaltSource(phys->wtmp,phys->uold,grid,phys,prop,met);
+	    UpdateScalars(grid,phys,prop,phys->wnew,phys->s,phys->boundary_s,phys->Cn_R,
+		prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
+		phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
+	}else{ 
+	     UpdateScalars(grid,phys,prop,phys->wnew,phys->s,phys->boundary_s,phys->Cn_R,
+		prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
+		NULL,NULL,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
+	}
+    ISendRecvCellData3D(phys->s,grid,myproc,comm);
+
+	if(prop->metmodel>0){
+	  //Communicate across processors
+	  ISendRecvCellData2D(met->EP,grid,myproc,comm);
+	}
+
+        t_transport+=Timer()-t0;
+      }
+
+
+      
       // Compute vertical momentum and the nonhydrostatic pressure
       t0=Timer();
       if(prop->nonhydrostatic && !blowup) {
@@ -1212,8 +1414,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // BoundaryVelocities and OpenBoundaryFluxes were called in UPredictor to set the
       // boundary velocities to the new time step values for use in the 
       // free surface calculation.
-      BoundaryScalars(grid,phys,prop);
-      WindStress(grid,phys,prop,myproc);
+      BoundaryScalars(grid,phys,prop,myproc,comm);
+      WindStress(grid,phys,prop,met,myproc);
       SetDragCoefficients(grid,phys,prop);
 
       if(prop->beta || prop->gamma)
@@ -1221,11 +1423,13 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
       // u now contains velocity on all edges at the new time step
       ComputeUC(phys->uc, phys->vc, phys,grid, myproc, prop->interp);
+      //printf("Done (%d).\n",myproc);
       
       // now send interprocessor data
       ISendRecvCellData3D(phys->uc,grid,myproc,comm);
       ISendRecvCellData3D(phys->vc,grid,myproc,comm);
     }
+
 
     // Adjust the velocity field in the new cells if the newcells variable is set 
     // to 1 in suntans.dat.  Once this is done, send the interprocessor 
@@ -1234,6 +1438,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       NewCells(grid,phys,prop);
       ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
     }
+    // Compute average
+    if(prop->calcaverage){
+	UpdateAverageVariables(grid,average,phys,met,prop,comm,myproc);	
+    }
 
     // Check whether or not run is blowing up
     t0=Timer();
@@ -1241,14 +1449,47 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     t_check+=Timer()-t0;
     // Output data based on ntout specified in suntans.dat
     t0=Timer();
-    OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
+    if (prop->outputNetcdf==0){
+      // Write to binary
+      OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
+    }else {
+      // Output data to netcdf
+      WriteOuputNC(prop, grid, phys, met, blowup, myproc);
+    }
+    // Output the average arrays
+    if(prop->calcaverage){
+	WriteAverageNC(prop,grid,average,phys,met,blowup,comm,myproc);
+    }
     InterpData(grid,phys,prop,comm,numprocs,myproc);
+
     t_io+=Timer()-t0;
     // Output progress
     Progress(prop,myproc,numprocs);
 
     if(blowup)
       break;
+
+    //Close all open netcdf file
+    /*
+    if(prop->n==prop->nsteps+prop->nstart) {
+      if(prop->outputNetcdf==1){
+	//printf("Closing output netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->outputNetcdfFileID);
+      }
+      if(prop->netcdfBdy==1){
+	//printf("Closing boundary netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->netcdfBdyFileID);
+      }
+      if(prop->readinitialnc==1){
+	//printf("Closing initial netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->initialNCfileID );
+      }
+      if(prop->metmodel>0){
+	//printf("Closing met netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->metncid);
+      }
+    }
+    */
   }
 }
 
@@ -1315,6 +1556,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 
  // Adams Bashforth coefficients
   if(prop->n==1 || prop->wetdry) {
+//  if(prop->n==1){
     fab1=1;
     fab2=fab3=0;
 
@@ -2402,7 +2644,7 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
  */
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop, REAL **wnew, MPI_Comm comm, int myproc)
 {
-  if(prop->turbmodel==1) 
+  if(prop->turbmodel>=1) 
     my25(grid,phys,prop,wnew,phys->qT,phys->lT,phys->Cn_q,phys->Cn_l,phys->nu_tv,phys->kappa_tv,comm,myproc);
 }
 
@@ -2483,6 +2725,8 @@ static void UPredictor(gridT *grid, physT *phys,
   // alpha=0 is second-order central.  Always do first-order upwind when doing
   // vertically-implicit momentum advection
   alpha=1;
+  //alpha=0;
+
 
   // for each of the computational edges
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
@@ -2790,7 +3034,7 @@ static void UPredictor(gridT *grid, physT *phys,
   // will comprise the source term for the free-surface solver.  Before we
   // do this we need to set the new velocity at the open boundary faces and
   // place them into utmp.  
-  BoundaryVelocities(grid,phys,prop,myproc);
+  BoundaryVelocities(grid,phys,prop,myproc,comm);
   OpenBoundaryFluxes(NULL,phys->utmp,NULL,grid,phys,prop);
 
   // for computational cells
@@ -4112,7 +4356,7 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
     for(i=0;i<grid->Nc;i++) 
       fwrite(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
 
-    if(prop->turbmodel==1) {
+    if(prop->turbmodel>=1) {
       for(i=0;i<grid->Nc;i++) 
         fwrite(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
       for(i=0;i<grid->Nc;i++) 
@@ -4225,7 +4469,7 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->TVDmomentum = MPI_GetValue(DATAFILE,"TVDmomentum","ReadProperties",myproc); 
   (*prop)->conserveMomentum = MPI_GetValue(DATAFILE,"conserveMomentum","ReadProperties",myproc); 
   (*prop)->thetaM = MPI_GetValue(DATAFILE,"thetaM","ReadProperties",myproc); 
-  (*prop)->wetdry = MPI_GetValue(DATAFILE,"wetdry","ReadProperties",myproc); 
+  (*prop)->newcells = MPI_GetValue(DATAFILE,"newcells","ReadProperties",myproc); 
 
   // When wetting and drying is desired:
   // -Do nonconservative momentum advection (conserveMomentum=0)
@@ -4233,10 +4477,32 @@ void ReadProperties(propT **prop, int myproc)
   // -Update new cells (newcells=1)
   if((*prop)->wetdry) {
     (*prop)->conserveMomentum = 0;
-    (*prop)->thetaM = 1;
+    (*prop)->thetaM = 1;//Fully implicit
+    //(*prop)->thetaM = 0.5;
     (*prop)->newcells = 1;
   }
-
+  
+  (*prop)->calcage = MPI_GetValue(DATAFILE,"calcage","ReadProperties",myproc);
+  (*prop)->calcaverage = MPI_GetValue(DATAFILE,"calcaverage","ReadProperties",myproc);
+  if ((*prop)->calcaverage)
+      (*prop)->ntaverage = (int)MPI_GetValue(DATAFILE,"ntaverage","ReadProperties",myproc);
+  (*prop)->latitude = MPI_GetValue(DATAFILE,"latitude","ReadProperties",myproc);
+  (*prop)->metmodel = (int)MPI_GetValue(DATAFILE,"metmodel","ReadProperties",myproc);
+  (*prop)->varmodel = (int)MPI_GetValue(DATAFILE,"varmodel","ReadProperties",myproc);
+  (*prop)->nugget = MPI_GetValue(DATAFILE,"nugget","ReadProperties",myproc);
+  (*prop)->sill = MPI_GetValue(DATAFILE,"sill","ReadProperties",myproc);
+  (*prop)->range = MPI_GetValue(DATAFILE,"range","ReadProperties",myproc);
+  (*prop)->outputNetcdf = (int)MPI_GetValue(DATAFILE,"outputNetcdf","ReadProperties",myproc);
+  (*prop)->netcdfBdy = (int)MPI_GetValue(DATAFILE,"netcdfBdy","ReadProperties",myproc);
+  (*prop)->readinitialnc = (int)MPI_GetValue(DATAFILE,"readinitialnc","ReadProperties",myproc);
+  (*prop)->Lsw = MPI_GetValue(DATAFILE,"Lsw","ReadProperties",myproc);
+  (*prop)->Cda = MPI_GetValue(DATAFILE,"Cda","ReadProperties",myproc);
+  (*prop)->Ce = MPI_GetValue(DATAFILE,"Ce","ReadProperties",myproc);
+  (*prop)->Ch = MPI_GetValue(DATAFILE,"Ch","ReadProperties",myproc);
+#ifdef USENETCDF   
+  MPI_GetString((*prop)->starttime,DATAFILE,"starttime","ReadProperties",myproc);
+  MPI_GetString((*prop)->basetime,DATAFILE,"basetime","ReadProperties",myproc);
+#endif
   if((*prop)->nonlinear==2) {
     (*prop)->laxWendroff = MPI_GetValue(DATAFILE,"laxWendroff","ReadProperties",myproc);
     if((*prop)->laxWendroff!=0)
@@ -4284,15 +4550,64 @@ void OpenFiles(propT *prop, int myproc)
 {
   char str[BUFFERLENGTH], filename[BUFFERLENGTH];
 
-  if(prop->readSalinity) {
+  if(prop->readSalinity && prop->readinitialnc == 0) {
     MPI_GetFile(filename,DATAFILE,"InitSalinityFile","OpenFiles",myproc);
     prop->InitSalinityFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
   }
-  if(prop->readTemperature) {
+  if(prop->readTemperature && prop->readinitialnc == 0) {
     MPI_GetFile(filename,DATAFILE,"InitTemperatureFile","OpenFiles",myproc);
     prop->InitTemperatureFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
   }
+  if(prop->readinitialnc>0){
+    MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
+#ifdef USENETCDF
+    prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+#else
+   // Attempting to use heat flux model without netcdf libraries
+      printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+#endif
+  }
+  if(prop->netcdfBdy>0){
+    MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
+#ifdef USENETCDF
+    prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+	//if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
+#else
+   // Attempting to use netcdf boundaries without netcdf libraries
+      printf("Error: NetCDF Libraries required for prop->netcdfBdy > 0\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+#endif
+  }
+if(prop->metmodel>0){
+    MPI_GetFile(filename,DATAFILE,"metfile","OpenFiles",myproc);
+#ifdef USENETCDF
+    prop->metncid = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+	//if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
+#else
+   // Attempting to use heat flux model without netcdf libraries
+      printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+#endif
+  }
 
+if(prop->calcaverage){
+    MPI_GetFile(filename,DATAFILE,"averageNetcdfFile","OpenFiles",myproc);
+#ifdef USENETCDF
+    sprintf(str,"%s.%d",filename,myproc);
+    prop->averageNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+#else
+      printf("Error: NetCDF Libraries required for prop->calcaverages > 1\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+#endif
+  }
+  
+
+  if(prop->outputNetcdf==0) {
   MPI_GetFile(filename,DATAFILE,"FreeSurfaceFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->FreeSurfaceFID = MPI_FOpen(str,"w","OpenFiles",myproc);
@@ -4332,6 +4647,19 @@ void OpenFiles(propT *prop, int myproc)
   MPI_GetFile(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
   sprintf(str,"%s.%d",filename,myproc);
   prop->VerticalGridFID = MPI_FOpen(str,"w","OpenFiles",myproc);
+  
+  }else {
+#ifdef USENETCDF
+      MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
+      sprintf(str,"%s.%d",filename,myproc);
+      prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+#else
+      printf("Error: NetCDF Libraries required for prop->outputNetcdf = 1\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+#endif
+  }
+  
 
   if(RESTART) {
     MPI_GetFile(filename,DATAFILE,"StartFile","OpenFiles",myproc);
@@ -4940,6 +5268,39 @@ static REAL HFaceFlux(int j, int k, REAL *phi, REAL **u, gridT *grid, REAL dt, i
 }
 
 /*
+ * Function: getTsurf
+ * ----------------------------------------------------------------
+ * Returns the temperature at the surface cell
+ */
+static void getTsurf(gridT *grid, physT *phys){
+  int i, iptr, ktop;
+  int Nc = grid->Nc;
+  
+  //for(i=0;i<Nc;i++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+    ktop = grid->ctop[i];
+    phys->Tsurf[i] = phys->T[i][ktop];
+  }
+}
+
+/*
+ * Function: getchangeT
+ * ----------------------------------------------------------------
+ * Returns the change in temperature at the surface cell
+ */
+static void getchangeT(gridT *grid, physT *phys){
+  int i, iptr, ktop;
+  int Nc = grid->Nc;
+  
+  //for(i=0;i<Nc;i++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+    ktop = grid->ctop[i];
+    phys->dT[i] = phys->T[i][ktop] - phys->Tsurf[i];
+  }
+}
+ /*
  *
  */
 static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop,
@@ -5058,9 +5419,107 @@ static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, R
 }
 
 
+/* Function getToffSet()
+ * ------------------
+ * Returns the time offset in days between two time strings - starttime and basetime
+ * 
+ * The time string format is: yyyymmdd.HHMMSS (15 characters)
+ * Uses the time.h libraries
+ */
+static REAL getToffSet(char basetime[15], char starttime[15]){
+	
+    //char *strptime(const char *buf, const char *format, struct tm *tm) 
+    //time_t mktime ( struct tm * timeptr ); 
+    struct tm tm0; 
+    struct tm tm1;
+    time_t t0, t1;
+    //const char time1=*basetime;
+    //const char time2=*starttime;
+
+    strptime(basetime,"%Y%m%d.%H%M%S",&tm0);
+    strptime(starttime,"%Y%m%d.%H%M%S",&tm1);
+    
+    t0 = mktime(&tm0);
+    t1 = mktime(&tm1);
+    return difftime(t1,t0)/86400.0;
+
+}//End function
 
 
+/*
+ * Function: UpdateAge()
+ * ---------------------------------------
+ * Update the age concentration quantities
+ *
+ */
+void UpdateAge(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc){
+    int i, ib, iptr, j, jptr, k;
 
+    // Specify age at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
+    // age flow outward. (same as turbulence quantities)
+    for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
+        j = grid->edgep[jptr];
+        ib = grid->grad[2*j];
+        for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+          //phys->boundary_tmp[jptr-grid->edgedist[2]][k]=phys->agec[ib][k];
+	  phys->boundary_age[jptr-grid->edgedist[2]][k]=1;
+    }
+
+    //printf("Updating agec...\n");
+    //printf("prop->rtime = %f\n",prop->rtime);
+    UpdateScalars(grid,phys,prop,phys->wnew,phys->agec,phys->boundary_age,phys->Cn_Ac,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,NULL,NULL,NULL,NULL,0,0,comm,myproc,0,prop->TVDsalt);
+//    UpdateScalars(grid,phys,prop,phys->wnew,phys->agec,phys->boundary_age,phys->Cn_Ac,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDsalt);
+
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+      for(k=grid->ctop[i];k<grid->Nk[i];k++){
+//	 phys->agec[i][k] = phys->agec[i][k]*prop->dt; 
+	 phys->agec[i][k] = phys->agec[i][k]; 
+      }
+    }
+
+    ISendRecvCellData3D(phys->agec,grid,myproc,comm);
+
+    for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
+        j = grid->edgep[jptr];
+        ib = grid->grad[2*j];
+
+        for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+          //phys->boundary_tmp[jptr-grid->edgedist[2]][k]=phys->agealpha[ib][k];
+	  phys->boundary_agealpha[jptr-grid->edgedist[2]][k]=0.0;
+    }
+
+    //printf("Updating agealpha...\n");
+    //for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    //  i = grid->cellp[iptr];
+    //  for(k=grid->ctop[i];k<grid->Nk[i];k++){
+    //     phys->uold[i][k] = phys->agec[i][k]; 
+    //     phys->wtmp[i][k] = 0;
+    //  }
+    //}
+
+
+    //UpdateScalars(grid,phys,prop,phys->wnew,phys->agealpha,phys->boundary_agealpha,phys->Cn_Aa, prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDsalt);
+    UpdateScalars(grid,phys,prop,phys->wnew,phys->agealpha,phys->boundary_agealpha,phys->Cn_Aa, prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,NULL,NULL,NULL,NULL,0,0,comm,myproc,0,prop->TVDsalt);
+
+
+    // Alpha parameter source term
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+      i = grid->cellp[iptr];
+      for(k=grid->ctop[i];k<grid->Nk[i];k++){
+         //These are the source terms for the alpha parameter
+         //phys->wtmp[i][k] = 0;
+         //phys->uold[i][k] = phys->agec[i][k]*prop->dt;
+         phys->agealpha[i][k] += phys->agec[i][k]*prop->dt; 
+         //phys->agealpha[i][k] = phys->agealpha[i][k] + phys->agec[i][k]*prop->rtime; 
+      }
+    }
+
+    ISendRecvCellData3D(phys->agealpha,grid,myproc,comm);
+    
+    //printf("Done\n");
+    
+}
 
 
 

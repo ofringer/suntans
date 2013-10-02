@@ -30,7 +30,7 @@
 void *SunMalloc(const unsigned bytes, const char *function) {
   void *ptr = malloc(bytes);
 
-  //  VerboseMemory=1;
+  // VerboseMemory=1;
 
   if(ptr==NULL) {
     printf("Error.  Out of memory!\n");
