@@ -102,8 +102,8 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, R
     }
   }
 
-  // Type 2/3 boundary specifies flux at faces
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[4];jptr++) {
+  // Type 2 boundary specifies flux at faces
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
     
     ib = grid->grad[2*j];
