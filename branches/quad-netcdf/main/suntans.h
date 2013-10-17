@@ -16,7 +16,6 @@
 #include "time.h"
 
 // number of faces (for triangle)
-#define NFACES 3
 #define REAL double
 #define BUFFERLENGTH 256
 #define NUMEDGECOLUMNS 3

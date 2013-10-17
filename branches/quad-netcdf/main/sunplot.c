@@ -125,6 +125,7 @@ typedef struct {
   float **xv;
   float **yv;
   int **cells;
+  int **nfaces;
   int **edges;
   int **face;
   float **depth;
@@ -157,7 +158,7 @@ typedef struct {
   int *sliceInd;
   int *sliceProc;
 
-  int *Ne, *Nc, Np, Nkmax, nsteps, numprocs, Nslice;
+  int *Ne, *Nc, Np, Nkmax, nsteps, numprocs, Nslice, maxfaces;
   int timestep, klevel;
   float umagmax, dmax, hmax, hmin, rx, ry, Emagmax;
 } dataT;
@@ -176,7 +177,7 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
 void GetDMax(dataT *data, int numprocs);
 void GetHMax(dataT *data, int numprocs);
 void GetUMagMax(dataT *data, int klevel, int numprocs);
-void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N);
+void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N, int maxfaces, int *nfaces);
 void DrawDelaunayPoints(float *xc, float *yc, plottypeT plottype, int Np);
 float *GetScalarPointer(dataT *data, plottypeT plottype, int klevel, int proc);
 dataT *NewData(void);
@@ -196,7 +197,7 @@ void Fill(XPoint *vertices, int N, int cindex, int edges);
 void CAxis(dataT *data, plottypeT plottype, int klevel, int procnum, int numprocs);
 int LoadCAxis(void);
 void ReadColorMap(char *str);
-void UnSurf(float *xc, float *yc, int *cells, float *data, int N);
+void UnSurf(float *xc, float *yc, int *cells, float *data, int N, int maxfaces, int *nfaces);
 void SetDataLimits(dataT *data);
 void SetAxesPosition(void);
 void Clf(void);
@@ -1026,7 +1027,7 @@ void ShowMessage(void) {
 void LoopDraw(dataT *data, plottypeT plottype, int procnum, int numprocs) {
   float umagmax;
   int iloc, procloc, proc;
-
+  // read all the data into *data
   ReadData(data,n,numprocs);
 
   if(sliceType==value_keyboard) {
@@ -1132,7 +1133,7 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
     //	     data->sliceData,data->sliceX,data->z,data->Nslice,data->Nkmax,plottype);
   else {
     if(plottype!=noplottype)
-      UnSurf(data->xc,data->yc,data->cells[procnum],scal,data->Nc[procnum]);
+      UnSurf(data->xc,data->yc,data->cells[procnum],scal,data->Nc[procnum],data->maxfaces,data->nfaces[procnum]);
     
     if(delaunaypoints)
       DrawDelaunayPoints(data->xc,data->yc,plottype,data->Np);
@@ -1141,7 +1142,8 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
       DrawVoronoiPoints(data->xv[procnum],data->yv[procnum],data->Nc[procnum]);
     
     if(edgelines)
-      DrawEdgeLines(data->xc,data->yc,data->cells[procnum],plottype,data->Nc[procnum]);
+      DrawEdgeLines(data->xc,data->yc,data->cells[procnum],plottype,data->Nc[procnum],data->maxfaces,data->nfaces[procnum]);
+    
   }
   DrawControls(data,procnum,numprocs);
   DrawColorBar(data,procnum,numprocs,plottype);
@@ -1574,6 +1576,7 @@ void DrawVoronoiPoints(float *xv, float *yv, int Nc) {
     yp = 	axesPosition[3]*height*(1-(yv[i]-dataLimits[2])/
 					(dataLimits[3]-dataLimits[2]));
     FillCircle(xp,yp,POINTSIZE,red,pix);
+    //printf("cell=%d xv=%f yv=%f\n", xv[i],yv[i]);
   }
 }
 
@@ -1622,12 +1625,12 @@ void AxisImage(float *axes, float *data) {
     axes[3] = h;
   }
 }
-
+////
 void Fill(XPoint *vertices, int N, int cindex, int edges) {
   int i, ic;
   if(plottype!=noplottype) {
     XSetForeground(dis,gc,colors[cindex]);
-    XFillPolygon(dis,pix,gc,vertices,3,Convex,CoordModeOrigin);
+    XFillPolygon(dis,pix,gc,vertices,(N+1),Convex,CoordModeOrigin);
   }
 }
 
@@ -1737,54 +1740,55 @@ void ReadColorMap(char *str) {
   colors[NUMCOLORS-1]=black;
 }
 
-void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N) {
+void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N, int maxfaces, int *nfaces) {
   int i, j, ind;
-  XPoint *vertices = (XPoint *)malloc(4*sizeof(XPoint));
+  XPoint *vertices = (XPoint *)malloc((maxfaces+1)*sizeof(XPoint));    ////////????????????
 
   for(i=0;i<N;i++) {
-    for(j=0;j<3;j++) {
+    for(j=0;j<nfaces[i];j++) {
       vertices[j].x = 
-	axesPosition[2]*width*(xc[cells[3*i+j]]-dataLimits[0])/
+	axesPosition[2]*width*(xc[cells[maxfaces*i+j]]-dataLimits[0])/
 	(dataLimits[1]-dataLimits[0]);
       vertices[j].y = 
-	axesPosition[3]*height*(1-(yc[cells[3*i+j]]-dataLimits[2])/
+	axesPosition[3]*height*(1-(yc[cells[maxfaces*i+j]]-dataLimits[2])/
 	(dataLimits[3]-dataLimits[2]));
     }
-
-    vertices[3].x = vertices[0].x;
-    vertices[3].y = vertices[0].y;
-
+    
+    vertices[nfaces[i]].x = vertices[0].x;
+    vertices[nfaces[i]].y = vertices[0].y;
+    
+ 
     if(plottype!=noplottype)
       XSetForeground(dis,gc,black);
     else
       XSetForeground(dis,gc,white);
-    XDrawLines(dis,pix,gc,vertices,4,0);
+    XDrawLines(dis,pix,gc,vertices,(nfaces[i]+1),0);
   }
   free(vertices);
 }
 
-void UnSurf(float *xc, float *yc, int *cells, float *data, int N) {
+void UnSurf(float *xc, float *yc, int *cells, float *data, int N, int maxfaces, int *nfaces) {
   int i, j, ind;
-  XPoint *vertices = (XPoint *)malloc(4*sizeof(XPoint));
+  XPoint *vertices = (XPoint *)malloc((maxfaces+1)*sizeof(XPoint));
 
   for(i=0;i<N;i++) {
-    for(j=0;j<3;j++) {
+    for(j=0;j<nfaces[i];j++) {
       vertices[j].x = 
-	axesPosition[2]*width*(xc[cells[3*i+j]]-dataLimits[0])/
+	axesPosition[2]*width*(xc[cells[maxfaces*i+j]]-dataLimits[0])/
 	(dataLimits[1]-dataLimits[0]);
       vertices[j].y = 
-	axesPosition[3]*height*(1-(yc[cells[3*i+j]]-dataLimits[2])/
+	axesPosition[3]*height*(1-(yc[cells[maxfaces*i+j]]-dataLimits[2])/
 	(dataLimits[3]-dataLimits[2]));
     }
 
-    vertices[3].x = vertices[0].x;
-    vertices[3].y = vertices[0].y;
+    vertices[nfaces[i]].x = vertices[0].x;
+    vertices[nfaces[i]].y = vertices[0].y;
 
     ind = (data[i]-caxis[0])/(caxis[1]-caxis[0])*(NUMCOLORS-3);
     if(data[i]==EMPTY || (plottype=='D' && data[i]==0) || ind>=NUMCOLORS)
       ind = NUMCOLORS-1;
 
-    Fill(vertices,3,ind,edgelines);
+    Fill(vertices,nfaces[i],ind,edgelines);
   }
   free(vertices);
 }
@@ -2686,6 +2690,7 @@ void Usage(char *str) {
 void FindNearest(dataT *data, int x, int y, int *iloc, int *procloc, int procnum, int numprocs) {
   int proc, i, procstart, procend;
   float mindist, dist, xval, yval;
+  //datalimits is xmin xmax ymin ymax
   xval = dataLimits[0]+
     (float)x*(dataLimits[1]-dataLimits[0])/(axesPosition[2]*(float)width);
   yval = dataLimits[2]+
@@ -2739,7 +2744,7 @@ void FreeData(dataT *data, int numprocs) {
       free(data->depth[proc]);
       free(data->h[proc]);
       free(data->h_d[proc]);
-
+      free(data->nfaces[proc]);
       for(j=0;j<data->Nkmax;j++) {
 	free(data->s[proc][j]);
 	free(data->sd[proc][j]);
@@ -2768,6 +2773,7 @@ void FreeData(dataT *data, int numprocs) {
       free(data->w[proc]);
     }
     free(data->cells);
+    free(data->nfaces);
     free(data->edges);
     free(data->face);
     free(data->xv);
@@ -2811,7 +2817,7 @@ int GetFile(char *string, char *datadir, char *datafile, char *name, int proc) {
 }
 
 void ReadData(dataT *data, int nstep, int numprocs) {
-  int i, j, ik, ik0, proc, status, ind, ind0, nf, count, nsteps, ntout, nk, turbmodel;
+  int i, j, ik, ik0, proc, status, ind, ind0, nf, count, nsteps, ntout, nk, turbmodel, kk;
   float xind, vel, ubar, vbar, dz, beta, dmax;
   double *dummy, *dummy2;
   char string[BUFFERLENGTH];
@@ -2829,6 +2835,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->cells = (int **)malloc(numprocs*sizeof(int *));
     data->edges = (int **)malloc(numprocs*sizeof(int *));
     data->face = (int **)malloc(numprocs*sizeof(int *));
+    //added part
+    data->nfaces = (int **)malloc(numprocs*sizeof(int *));
 
     data->xv = (float **)malloc(numprocs*sizeof(float *));
     data->yv = (float **)malloc(numprocs*sizeof(float *));
@@ -2854,7 +2862,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     data->Nc = (int *)malloc(numprocs*sizeof(int));
     
     data->timestep=-1;
-
+    data->maxfaces=(int)GetValue(DATAFILE,"maxFaces",&status);
     data->Nkmax=(int)GetValue(DATAFILE,"Nkmax",&status);
     nsteps=(int)GetValue(DATAFILE,"nsteps",&status);
     ntout = (int)GetValue(DATAFILE,"ntout",&status);
@@ -2894,12 +2902,13 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
     for(proc=0;proc<numprocs;proc++) {
 
-      data->cells[proc]=(int *)malloc(3*data->Nc[proc]*sizeof(int));
+      data->cells[proc]=(int *)malloc(data->maxfaces*data->Nc[proc]*sizeof(int));
       data->edges[proc]=(int *)malloc(2*data->Ne[proc]*sizeof(int));
-      data->face[proc]=(int *)malloc(3*data->Nc[proc]*sizeof(int));
+      data->face[proc]=(int *)malloc(data->maxfaces*data->Nc[proc]*sizeof(int));
 
       data->xv[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->yv[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
+      data->nfaces[proc]=(int *)malloc(data->Nc[proc]*sizeof(float));
 
       data->depth[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
       data->h[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
@@ -2943,12 +2952,20 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
       sprintf(string,"%s.%d",CELLSFILE,proc);
       fid = MyFOpen(string,"r","ReadData");
-      for(i=0;i<data->Nc[proc];i++) 
-	fscanf(fid,"%f %f %d %d %d %d %d %d",&xind,&xind,
-	       &(data->cells[proc][3*i]),
-	       &(data->cells[proc][3*i+1]),
-	       &(data->cells[proc][3*i+2]),
-	       &ind,&ind,&ind);
+      //corrected part (only for 3 or 4)
+      for(i=0;i<data->Nc[proc];i++) {
+        fscanf(fid,"%d ",&(data->nfaces[proc][i]));
+	// printf("%d\n   ",data->nfaces[proc][i]);
+        fscanf(fid,"%f %f ",&xind,&xind);
+        for(kk=0;kk<data->nfaces[proc][i];kk++)
+          fscanf(fid,"%d ",&(data->cells[proc][data->maxfaces*i+kk]));
+        for(kk=0;kk<data->nfaces[proc][i];kk++){
+          if(kk==(data->nfaces[proc][i]-1))
+            fscanf(fid,"%d",&ind);
+          else
+            fscanf(fid,"%d ",&ind);
+        }  
+      }
       fclose(fid);
 
       sprintf(string,"%s.%d",EDGEFILE,proc);
@@ -2958,32 +2975,38 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	       &(data->edges[proc][2*i]),
 	       &(data->edges[proc][2*i+1]),
 	       &ind,&ind,&ind);
+	// printf("%d %d  \n",data->edges[proc][2*i],data->edges[proc][2*i+1]);
       }
       fclose(fid);
       
       sprintf(string,"%s.%d",CELLCENTEREDFILE,proc);
       fid = MyFOpen(string,"r","ReadData");
+      //printf("Nc[proc=%d]=%d\n",proc,data->Nc[proc]);
       for(i=0;i<data->Nc[proc];i++) {
 	// This line was removed since 1 less int is printed to this file
 	// in grid.c (mnptr is no longer printed).
 	//	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
-	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %f %f %f %d %d %d",
-	       &(data->xv[proc][i]),
-	       &(data->yv[proc][i]),
-	       &xind,
-	       &(data->depth[proc][i]),
-	       &ind,
-	       &(data->face[proc][NFACES*i]),
-	       &(data->face[proc][NFACES*i+1]),
-	       &(data->face[proc][NFACES*i+2]),
-	       // Same for this line
-	       //	       &ind,&ind,&ind,&ind,&ind,&ind,&ind);
-	       &ind,&ind,&ind,&ind,&ind,&ind,&ind,&ind,&ind,
-         &ind, &ind, &ind);
+	fscanf(fid,"%d %f %f %f %f %d",&ind,&(data->xv[proc][i]),&(data->yv[proc][i]), &xind,&(data->depth[proc][i]),&ind);
+  //printf("proc:%d cell:%d xv=%f yv=%f\n",proc,i,data->xv[proc][i],data->yv[proc][i]);
+        for(kk=0;kk<data->nfaces[proc][i];kk++)
+          fscanf(fid,"%d ",&(data->face[proc][data->maxfaces*i+kk]));
+        for(kk=0;kk<data->nfaces[proc][i];kk++)
+          fscanf(fid,"%d ",&ind);
+        for(kk=0;kk<data->nfaces[proc][i];kk++)
+          fscanf(fid,"%d ",&ind);
+        for(kk=0;kk<data->nfaces[proc][i];kk++)
+          fscanf(fid,"%f ",&ind);
+        for(kk=0;kk<data->nfaces[proc][i];kk++){
+          if(kk==(data->nfaces[proc][i]-1))
+            fscanf(fid,"%d",&ind);
+          else
+            fscanf(fid,"%d ",&ind);
+        }      
       }
       fclose(fid);
     }
     GetDMax(data,numprocs);
+    // printf("%f \n",data->dmax);
     for(i=0;i<data->Nkmax+1;i++) 
       data->z[i]=-data->dmax*(float)i/(float)(data->Nkmax);
     sprintf(string,"%s",VERTSPACEFILE);
@@ -3240,12 +3263,12 @@ void GetSlice(dataT *data, int xs, int ys, int xe, int ye,
       for(i=0;i<data->Nc[proc];i++) {
 	xcent=0;
 	ycent=0;
-	for(nf=0;nf<NFACES;nf++) {
-	  xcent+=data->xc[data->cells[proc][3*i+nf]]/NFACES;
-	  ycent+=data->yc[data->cells[proc][3*i+nf]]/NFACES;
+	for(nf=0;nf<data->nfaces[proc][i];nf++) {
+	  xcent+=data->xc[data->cells[proc][data->maxfaces*i+nf]]/data->nfaces[proc][i];
+	  ycent+=data->yc[data->cells[proc][data->maxfaces*i+nf]]/data->nfaces[proc][i];
 	}
-	rad = sqrt(pow(data->xc[data->cells[proc][3*i]]-xcent,2)+
-		   pow(data->yc[data->cells[proc][3*i]]-ycent,2));
+	rad = sqrt(pow(data->xc[data->cells[proc][data->maxfaces*i]]-xcent,2)+
+		   pow(data->yc[data->cells[proc][data->maxfaces*i]]-ycent,2));
 	rx = (xcent-xstart);
 	ry = (ycent-ystart);
 	mag = rx*rx0+ry*ry0;
@@ -3481,7 +3504,8 @@ void GetCAxes(REAL datamin, REAL datamax) {
     if(caxis[0]==caxis[1])
       printf("Color axes limits may not be equal.  Try again: ");
     else if(caxis[0]<datamin && caxis[1]>datamax)
-      printf("Axes must be in the range [%.2e, %.2e].  Try again: ");
+      printf("Axes must be in the range [%.2e, %.2e].  Try again: ",datamin,datamax);
+
     fscanf(stdin,"%f %f",&caxis[0],&caxis[1]);
   }
 }

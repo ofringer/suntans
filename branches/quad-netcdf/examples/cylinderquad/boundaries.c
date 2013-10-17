@@ -68,6 +68,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm
   int iptr, i, ii;
   int nf,ne,neigh;
   REAL z;
+  REAL Tb;
   
   //Type-2 zero gradient (Neumann) boundary condition
   /* 
@@ -100,15 +101,19 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm
       }
   }else{//No NetCDF
       for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-	jind = jptr-grid->edgedist[2];
-	j = grid->edgep[jptr];
-	ib=grid->grad[2*j];
+	  j=grid->edgep[jptr];
+	  ib=grid->grad[2*j];
 
-	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
-	  phys->boundary_T[jind][k]=0;
-	  phys->boundary_s[jind][k]=0;
-	}
+	  if(grid->yv[ib]<0.2) 
+	    Tb = 1.0;
+	  else
+	    Tb = 0.0;
+	  for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+	    phys->boundary_T[jptr-grid->edgedist[2]][k]=Tb;
+	    phys->boundary_s[jptr-grid->edgedist[2]][k]=phys->s[ib][k];
+	  }
       }
+
   }
 
   //Type-3 
@@ -177,6 +182,8 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm) {
   int i, ii, j, jj, jind, iptr, jptr, n, k;
   REAL u,v,w,h;
+  int ib;
+  REAL x0,y0,r,utheta;
 
    //printf("#####\nUpdating boundary velocities on processor: %d\n#####\n",myproc);
   //REAL rampfac = 1-exp(-prop->rtime/prop->thetaramptime);//Tidal rampup factor 
@@ -211,13 +218,44 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
     }
   }
   }else{ // No NetCDF
-      for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-	jind = jptr-grid->edgedist[2];
+    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
 	j = grid->edgep[jptr];
+
+	ib = grid->grad[2*j];
+
+
+	if(grid->xv[ib]>1)
+	  for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	    // Right boundary
+	    phys->boundary_u[jptr-grid->edgedist[2]][k]=1;
+	    phys->boundary_v[jptr-grid->edgedist[2]][k]=phys->vc[ib][k];
+	    phys->boundary_w[jptr-grid->edgedist[2]][k]=phys->w[ib][k];
+	  }
+	else
+	  for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	    // Left boundary
+	    phys->boundary_u[jptr-grid->edgedist[2]][k]=1;
+	    phys->boundary_v[jptr-grid->edgedist[2]][k]=0.0;
+	    phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
+	  }
+      }
+
+      // Add circulation with utheta nonzero to simulate cylinder with lift
+      r = 0.1;
+      utheta = 0.0;
+      x0 = 0.3;
+      y0 = 0.15;
+      for(jptr=grid->edgedist[4];jptr<grid->edgedist[5];jptr++) {
+	j = grid->edgep[jptr];
+
+	ib = grid->grad[2*j];
+	u = utheta*(grid->ye[j]-y0)/r;
+	v = -utheta*(grid->xe[j]-x0)/r;
+
 	for(k=grid->etop[j];k<grid->Nke[j];k++) {
-	    phys->boundary_u[jind][k]=0;
-	    phys->boundary_v[jind][k]=0;
-	    phys->boundary_w[jind][k]=0;
+	  phys->boundary_u[jptr-grid->edgedist[2]][k]=u;
+	  phys->boundary_v[jptr-grid->edgedist[2]][k]=v;
+	  phys->boundary_w[jptr-grid->edgedist[2]][k]=0;
 	}
       }
   }

@@ -169,13 +169,13 @@ void ReportConnectivity(gridT *grid, gridT *maingrid, int myproc)
     for(j=0;j<grid->Nc;j++) {
       printf("Cell %d (BC type %d) (%d): ",j,
 	     IsBoundaryCell(grid->mnptr[j],maingrid,myproc),grid->mnptr[j]);
-      for(nf=0;nf<NFACES;nf++) {
-	mgptr = grid->neigh[j*NFACES+nf];
+      for(nf=0;nf<grid->nfaces[j];nf++) {
+	mgptr = grid->neigh[j*grid->maxfaces+nf];
 	if(mgptr!=-1)
-	  printf("%d (%d) ",grid->neigh[j*NFACES+nf],
+	  printf("%d (%d) ",grid->neigh[j*grid->maxfaces+nf],
 		 grid->mnptr[mgptr]);
 	else
-	  printf("%d (-1) ",grid->neigh[j*NFACES+nf]);
+	  printf("%d (-1) ",grid->neigh[j*grid->maxfaces+nf]);
       }
       printf("\n");
     }

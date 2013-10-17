@@ -24,7 +24,7 @@
  */
 void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int myproc);
 static int IsOnGrid(REAL x, REAL y, REAL *xp, REAL *yp, 
-		    int *cells, int *celldist, int *cellp, int Np, int Nc);
+		    int *cells, int *celldist, int *cellp, int *nfaces, int maxfaces, int Np, int Nc);
 static int InPolygon(REAL x, REAL y, REAL *xg, REAL *yg, int N);
 static void OpenDataFiles(int myproc);
 static void CloseDataFiles(void);
@@ -150,17 +150,19 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   MPI_GetFile(str,DATAFILE,"cells","InitializeOutputIndices",myproc);
   sprintf(filename,"%s.%d",str,myproc);
 
-  cells = (int *)SunMalloc(3*grid->Nc*sizeof(int),"InitializeOutputIndices");
+  cells = (int *)SunMalloc(grid->maxfaces*grid->Nc*sizeof(int),"InitializeOutputIndices");
 
   ifid = fopen(filename,"r");
   for(i=0;i<grid->Nc;i++) {
     getfield(ifid,str);
     getfield(ifid,str);
-    for(nf=0;nf<NFACES;nf++) 
-      cells[i*NFACES+nf]=(int)getfield(ifid,str);
     getfield(ifid,str);
-    getfield(ifid,str);
-    getfield(ifid,str);
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      cells[i*grid->maxfaces+nf]=(int)getfield(ifid,str);
+      //printf("%d,%d\n",(i*grid->maxfaces+nf),cells[i*grid->maxfaces+nf]);
+    }
+    for(nf=0;nf<grid->nfaces[i];nf++)
+      getfield(ifid,str);
   }
   fclose(ifid);
 
@@ -194,7 +196,7 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   for(i=0;i<numTotalDataPoints;i++) {
     x = getfield(ifid,str);
     y = getfield(ifid,str);
-    if(IsOnGrid(x,y,xp,yp,cells,grid->celldist,grid->cellp,Np,grid->Nc)) {
+    if(IsOnGrid(x,y,xp,yp,cells,grid->celldist,grid->cellp,grid->nfaces,grid->maxfaces,Np,grid->Nc)) {
       dataIndices[numLocalDataPoints]=i;
       dataXY[2*numLocalDataPoints]=x;
       dataXY[2*numLocalDataPoints+1]=y;
@@ -273,7 +275,7 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   // Only free up space associated with the grid since this is no longer needed.
   SunFree(xp,Np*sizeof(REAL),"InitializeOutputIndices");
   SunFree(yp,Np*sizeof(REAL),"InitializeOutputIndices");
-  SunFree(cells,3*grid->Nc*sizeof(int),"InitializeOutputIndices");
+  SunFree(cells,grid->maxfaces*grid->Nc*sizeof(int),"InitializeOutputIndices");
 }
 
 /*
@@ -284,20 +286,21 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
  * If so, it returns 1, otherwise 0.
  *
  */
-static int IsOnGrid(REAL x, REAL y, REAL *xp, REAL *yp, int *cells, int *celldist, int *cellp, int Np, int Nc) {
+static int IsOnGrid(REAL x, REAL y, REAL *xp, REAL *yp, int *cells, int *celldist, int *cellp, int *nfaces, int maxfaces, int Np, int Nc) {
   int i, iptr, nf;
-  REAL xg[NFACES], yg[NFACES];
+  REAL xg[maxfaces], yg[maxfaces];
 
   // Need to make sure only check the computational cells, not the interprocessor boundary
   // cells.
   for(iptr=celldist[0];iptr<celldist[2];iptr++) {
     i = cellp[iptr];
-
-    for(nf=0;nf<NFACES;nf++) {
-      xg[nf]=xp[cells[i*NFACES+nf]];
-      yg[nf]=yp[cells[i*NFACES+nf]];
+    for(nf=0;nf<nfaces[i];nf++) {
+      //printf("%d, %d\n",nf,cells[(i*maxfaces+nf)]);
+      xg[nf]=xp[cells[i*maxfaces+nf]];
+      yg[nf]=yp[cells[i*maxfaces+nf]]; 
     }
-    if(InPolygon(x,y,xg,yg,NFACES))
+
+    if(InPolygon(x,y,xg,yg,nfaces[i]))
       return 1;
   }
   return 0;
