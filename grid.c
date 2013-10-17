@@ -2629,6 +2629,8 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
     }
     // set value to max found (-1 if this is a bogus [TRIANGLE] point)
     (*localgrid)->Nkp[i] = maxNk;
+    if((*localgrid)->numpcneighs[i]==0)
+      (*localgrid)->Nkp[i]=0;
   }
 }
 
