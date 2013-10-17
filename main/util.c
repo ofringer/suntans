@@ -47,29 +47,85 @@ int *ReSize(int *a, int N)
   return new;
 }
 
-void ReOrderRealArray(REAL *a, int *order, REAL *tmp, int N, int Num)
+void ReOrderRealArray(REAL *a, int *order, REAL *tmp, int N, int Num, int *nfaces, int *grad, int maxfaces)
 {
-  int n, j;
-
-  for(n=0;n<N;n++)
-    for(j=0;j<Num;j++) 
-      tmp[n*Num+j]=a[n*Num+j];
-
-  for(n=0;n<N;n++)
-    for(j=0;j<Num;j++)
-      a[n*Num+j]=tmp[order[n]*Num+j];
+  int n, j, grad1, grad2, enei;
+ 
+  if(Num==1 || Num==2 || Num==NUMEDGECOLUMNS){
+    for(n=0;n<N;n++)
+      for(j=0;j<Num;j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    for(n=0;n<N;n++)
+      for(j=0;j<Num;j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    return;
+  }
+  if(Num==maxfaces){
+    for(n=0;n<N;n++)
+      for(j=0;j<nfaces[n];j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    for(n=0;n<N;n++)
+      for(j=0;j<nfaces[order[n]];j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    return;
+  }
+  if(Num==(2*(maxfaces-1))){
+    for(n=0;n<N;n++){
+      grad1=grad[2*n];
+      grad2=grad[2*n+1];
+      enei=grad1+grad2-2;
+      for(j=0;j<enei;j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    }
+    for(n=0;n<N;n++){
+      grad1=grad[2*order[n]];
+      grad2=grad[2*order[n]+1];
+      enei=grad1+grad2-2;
+      for(j=0;j<enei;j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    }
+    return;
+  } 
 }
-
-void ReOrderIntArray(int *a, int *order, int *tmp, int N, int Num)
+// corrected, make it to include all the possibility
+void ReOrderIntArray(int *a, int *order, int *tmp, int N, int Num, int *nfaces, int *grad, int maxfaces)
 {
-  int n, j;
-
-  for(n=0;n<N;n++)
-    for(j=0;j<Num;j++)
-      tmp[n*Num+j]=a[n*Num+j];
-  for(n=0;n<N;n++)
-    for(j=0;j<Num;j++)
-      a[n*Num+j]=tmp[order[n]*Num+j];
+  int n, j, grad1, grad2, enei;
+  if(Num==1 || Num==2 || Num==NUMEDGECOLUMNS){
+    for(n=0;n<N;n++)
+      for(j=0;j<Num;j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    for(n=0;n<N;n++)
+      for(j=0;j<Num;j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    return;
+  }
+  if(Num==maxfaces){
+    for(n=0;n<N;n++)
+      for(j=0;j<nfaces[n];j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    for(n=0;n<N;n++)
+      for(j=0;j<nfaces[order[n]];j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    return;
+  }
+  if(Num==(2*(maxfaces-1))){
+    for(n=0;n<N;n++){
+      grad1=grad[2*n];
+      grad2=grad[2*n+1];
+      enei=grad1+grad2-2;
+      for(j=0;j<enei;j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    }
+    for(n=0;n<N;n++){
+      grad1=grad[2*order[n]];
+      grad2=grad[2*order[n]+1];
+      enei=grad1+grad2-2;
+      for(j=0;j<enei;j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    }
+    return;
+  }
 }
 
 int IsMember(int i, int *points, int numpoints)
@@ -80,9 +136,9 @@ int IsMember(int i, int *points, int numpoints)
   return -1;
 }    
 
-void Interp(REAL *x, REAL *y, REAL *z, int N, REAL *xi, REAL *yi, REAL *zi, int Ni)
+void Interp(REAL *x, REAL *y, REAL *z, int N, REAL *xi, REAL *yi, REAL *zi, int Ni, int maxFaces)
 {
-  int j, n, numpoints=NFACES+1, *points=(int *)malloc(numpoints*sizeof(int));
+  int j, n, numpoints=maxFaces+1, *points=(int *)malloc(numpoints*sizeof(int));
   REAL r, r0, dist;
 
   for(n=0;n<Ni;n++) {
@@ -198,10 +254,10 @@ void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction) {
     for(k=0;k<grid->Nk[i];k++)
       gradient[i][k]=0;
 
-    for(nf=0;nf<NFACES;nf++) {
-      if((neigh=grid->neigh[i*NFACES+nf])!=-1) {
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      if((neigh=grid->neigh[i*grid->maxfaces+nf])!=-1) {
 
-        ne=grid->face[i*NFACES+nf];
+        ne=grid->face[i*grid->maxfaces+nf];
         nc1 = grid->grad[2*ne];
         nc2 = grid->grad[2*ne+1];
 
@@ -216,7 +272,7 @@ void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction) {
           coordinate=grid->n2[ne];
 
         for(k=kmin;k<grid->Nke[ne];k++) 
-          gradient[i][k]+=0.5/grid->Ac[i]*(phi[nc1][k]+phi[nc2][k])*coordinate*grid->normal[i*NFACES+nf]*grid->df[ne];
+          gradient[i][k]+=0.5/grid->Ac[i]*(phi[nc1][k]+phi[nc2][k])*coordinate*grid->normal[i*grid->maxfaces+nf]*grid->df[ne];
       }
     }
   }

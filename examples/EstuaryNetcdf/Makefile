@@ -43,6 +43,8 @@ test:	data
 
 	#python ~/suntans/SourceForge/python/SUNTANS/joinsun.py -f Estuary_SUNTANS.nc -p $(datadir) -t 168 -n $(NUMPROCS)
 
+inputs:
+	sh estuarynetcdf.sh
 
 join:   
 	python ~/suntans/SourceForge/python/SUNTANS/joinsun.py -f Estuary_SUNTANS.nc -p $(datadir) -t 168 -n $(NUMPROCS)
@@ -62,4 +64,5 @@ clean:
 	rm -f $(SUNTANSHOME)/*.o
 
 clobber: clean
-	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/*~
+	#rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata
+	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data 

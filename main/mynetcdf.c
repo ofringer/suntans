@@ -23,6 +23,8 @@ void nc_read_3D(int ncid, char *vname, size_t *start, size_t *count, REAL ***tmp
 void nc_read_2D(int ncid, char *vname, size_t *start, size_t *count, REAL **tmparray, int myproc);
 void nc_write_double(int ncid, char *vname, REAL *tmparray, int myproc);
 void nc_write_int(int ncid, char *vname, int *tmparray, int myproc);
+void nc_write_intvar(int ncid, char *vname, gridT *grid, int *tmparray, int myproc);
+void nc_write_doublevar(int ncid, char *vname, gridT *grid, REAL *tmparray, int myproc);
 
 /*########################################################
 *
@@ -129,7 +131,7 @@ void nc_write_double(int ncid, char *vname, REAL *tmparray, int myproc){
  * Function: nc_write_int()
  * --------------------------
  *
- * Wrapper function for writing a double variable
+ * Wrapper function for writing an integer variable
  *
  */
 void nc_write_int(int ncid, char *vname, int *tmparray, int myproc){
@@ -141,6 +143,64 @@ void nc_write_int(int ncid, char *vname, int *tmparray, int myproc){
       ERR(retval);
 
 } //end function
+
+/*
+ * Function: nc_write_intvar()
+ * --------------------------
+ *
+ * Wrapper function for writing a variable length integer variable
+ *
+ */
+void nc_write_intvar(int ncid, char *vname, gridT *grid, int *tmparray, int myproc){
+    int varid, retval,j,nf;
+    int *tmpvar;
+    tmpvar = (int *)SunMalloc((grid->Nc*grid->maxfaces)*sizeof(int),"nc_write_intvar");
+
+    for(j=0;j<grid->Nc;j++){
+	for(nf=0;nf<grid->maxfaces;nf++){
+	    if(nf < grid->nfaces[j])
+	    	tmpvar[j*grid->maxfaces+nf]=tmparray[j*grid->maxfaces+nf];
+	    else
+	    	tmpvar[j*grid->maxfaces+nf]=(int)EMPTY;
+	}
+    }
+    
+    if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	ERR(retval);
+    if ((retval = nc_put_var_int(ncid, varid, tmpvar)))
+      ERR(retval);
+
+} //end function
+
+/*
+ * Function: nc_write_doublevar()
+ * --------------------------
+ *
+ * Wrapper function for writing a variable length double variable
+ *
+ */
+void nc_write_doublevar(int ncid, char *vname, gridT *grid, REAL *tmparray, int myproc){
+    int varid, retval,j,nf;
+    REAL *tmpvar;
+    tmpvar = (REAL *)SunMalloc(grid->Nc*grid->maxfaces*sizeof(REAL),"nc_write_intvar");
+
+    for(j=0;j<grid->Nc;j++){
+	for(nf=0;nf<grid->maxfaces;nf++){
+	    if(nf < grid->nfaces[j])
+	    	tmpvar[j*grid->maxfaces+nf]=tmparray[j*grid->maxfaces+nf];
+	    else
+	    	tmpvar[j*grid->maxfaces+nf]=(REAL)EMPTY;
+	}
+    }
+    
+    if ((retval = nc_inq_varid(ncid, vname, &varid)))
+	ERR(retval);
+    if ((retval = nc_put_var_double(ncid, varid, tmpvar)))
+      ERR(retval);
+
+} //end function
+
+
 
 /*
 * Function: getTimeRec()
@@ -371,8 +431,6 @@ void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, 
        }
      }
      
-	  
-     
     /* Update the time counter*/
     prop->nctimectr += 1;  
    }
@@ -382,6 +440,7 @@ void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, 
    //SunFree(tmpvarE,grid->Ne*grid->Nkmax*sizeof(REAL),"WriteOuputNC");
   
 } // End of function
+
 
 
 /*
@@ -449,7 +508,7 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
 	ERR(retval);
    if ((retval = nc_def_dim(ncid, "Nkw", grid->Nkmax+1, &dimid_Nkw)))
 	ERR(retval);
-   if ((retval = nc_def_dim(ncid, "numsides", NUMEDGECOLUMNS, &dimid_numsides)))
+   if ((retval = nc_def_dim(ncid, "numsides", grid->maxfaces, &dimid_numsides)))
 	ERR(retval);
    if ((retval = nc_def_dim(ncid, "Two", 2, &dimid_Two)))
 	ERR(retval);
@@ -495,6 +554,13 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     nc_addattr(ncid, varid,"long_name","Maps every face to its edges");
     //if ((retval = nc_put_var_int(ncid,varid, grid->face)))
     //  ERR(retval);
+
+    //nfaces
+    dimidone[0] = dimid_Nc;
+    if ((retval = nc_def_var(ncid,"nfaces",NC_INT,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Number of cell faces");
+
 
     //edges
     dimidtwo[0] = dimid_Ne;
@@ -1094,13 +1160,14 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
    * Write data (needs to be done out of definition mode for classic model)
    *
    ****************************************************************/
-   nc_write_int(ncid,"cells",grid->cells,myproc);
-   nc_write_int(ncid,"face",grid->face,myproc);
+   nc_write_intvar(ncid,"cells",grid,grid->cells,myproc);
+   nc_write_intvar(ncid,"face",grid,grid->face,myproc);
+   nc_write_int(ncid,"nfaces",grid->nfaces,myproc);
    nc_write_int(ncid,"edges",grid->edges,myproc);
-   nc_write_int(ncid,"neigh",grid->neigh,myproc);
+   nc_write_intvar(ncid,"neigh",grid,grid->neigh,myproc);
    nc_write_int(ncid,"grad",grid->grad,myproc);
-   nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
-   nc_write_int(ncid,"eptr",grid->eptr,myproc);
+   //nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
+   //nc_write_int(ncid,"eptr",grid->eptr,myproc);
    
    nc_write_double(ncid,"xv",grid->xv,myproc);
    nc_write_double(ncid,"yv",grid->yv,myproc);
@@ -1109,12 +1176,12 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
    nc_write_double(ncid,"xp",grid->xp,myproc);
    nc_write_double(ncid,"yp",grid->yp,myproc);
 
-   nc_write_int(ncid,"normal",grid->normal,myproc);
+   nc_write_intvar(ncid,"normal",grid,grid->normal,myproc);
    nc_write_double(ncid,"n1",grid->n1,myproc);
    nc_write_double(ncid,"n2",grid->n2,myproc);
    nc_write_double(ncid,"df",grid->df,myproc);
    nc_write_double(ncid,"dg",grid->dg,myproc);
-   nc_write_double(ncid,"def",grid->def,myproc);
+   nc_write_doublevar(ncid,"def",grid,grid->def,myproc);
    nc_write_double(ncid,"Ac",grid->Ac,myproc);
 
    nc_write_double(ncid,"dz",grid->dz,myproc);
@@ -1123,7 +1190,6 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
    nc_write_int(ncid,"Nk",grid->Nk,myproc);
    nc_write_int(ncid,"Nke",grid->Nke,myproc);
    nc_write_double(ncid,"dv",grid->dv,myproc);
-
 
    // Free the temporary vectors
    //SunFree(z_r,grid->Nkmax*sizeof(REAL),"InitialiseOutputNCugrid");
@@ -1203,7 +1269,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
 	ERR(retval);
    if ((retval = nc_def_dim(ncid, "Nkw", grid->Nkmax+1, &dimid_Nkw)))
 	ERR(retval);
-   if ((retval = nc_def_dim(ncid, "numsides", NUMEDGECOLUMNS, &dimid_numsides)))
+   if ((retval = nc_def_dim(ncid, "numsides", grid->maxfaces, &dimid_numsides)))
 	ERR(retval);
    if ((retval = nc_def_dim(ncid, "Two", 2, &dimid_Two)))
 	ERR(retval);
