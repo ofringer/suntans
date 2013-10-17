@@ -4276,9 +4276,9 @@ void ReadProperties(propT **prop, gridT **grid, int myproc)
   (*prop)->prettyplot = MPI_GetValue(DATAFILE,"prettyplot","ReadProperties",myproc);
   // when maxFaces>3 we cannot use quadratic and prettyplot so set all zero
   if(max>3){
-  (*prop)->prettyplot = 0;
-  (*prop)->interp = PEROT;
-  printf("Because maxFaces=%d >3, so prettyplot and interp are all set to be 0 automatically.\n",max);
+  //(*prop)->prettyplot = 0;
+  //(*prop)->interp = PEROT;
+    printf("Because maxFaces=%d >3, so prettyplot and interp will only work on triangles.\n",max);
   }
   // addition for linearized free surface where dzz=dz
   (*prop)->linearFS = (int)MPI_GetValue(DATAFILE,"linearFS","ReadProperties",myproc);
@@ -4637,10 +4637,31 @@ inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, i
     // possible mistake here- make sure to the get the right value for the start
     // of the loop (etop?)
     //    if(myproc==0) printf("ComputeQuadraticInterp\n");
+    if(grid->nfaces[n]==3){
     for(k=grid->ctop[n];k<grid->Nk[n];k++) {
       // now we can compute the quadratic interpolated velocity from these results
       ComputeQuadraticInterp(grid->xv[n], grid->yv[n], n, k, ui, 
           vi, phys, grid, nRT2, tRT2, myproc);
+    }
+    } else {
+       // over the entire depth (cell depth)
+       for(k=grid->ctop[n];k<grid->Nk[n];k++) {
+        // over each face
+        for(nf=0;nf<grid->nfaces[n];nf++) {
+          ne = grid->face[n*grid->maxfaces+nf];
+          if(!(grid->smoothbot) || k<grid->Nke[ne]){
+            phys->uc[n][k]+=phys->u[ne][k]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+            phys->vc[n][k]+=phys->u[ne][k]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+          }
+          else{	
+            phys->uc[n][k]+=phys->u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+            phys->vc[n][k]+=phys->u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+          }
+        }
+
+        phys->uc[n][k]/=grid->Ac[n];
+        phys->vc[n][k]/=grid->Ac[n];
+      }
     }
   } 
 }
