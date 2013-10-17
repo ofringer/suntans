@@ -307,7 +307,7 @@ class ROMS(roms_grid):
         if self.ndim == 4 and self.zlayer==True:
             # Slice along z layers
             print 'Extracting data along z-coordinates...'
-            dataz = np.zeros((len(tstep),)+self.X.shape)
+            dataz = np.zeros((len(tstep),)+self.z.shape+self.X.shape)
             
             for ii,tt in enumerate(tstep):
                 Z = self.calcDepth(zeta=self.loadData(varname='zeta',tstep=[tt]))
@@ -315,8 +315,8 @@ class ROMS(roms_grid):
                     dataz[ii,:,:] = isoslice(data[ii,:,:,:].squeeze(),Z,self.Z)
                 else:
                     # Isoslice won't work on 1-D arrays
-                    F = interpolate.interp1d(Z,data[ii,:,:,:].squeeze())
-                    dataz[ii,:,:] = F(self.Z)
+                    F = interpolate.interp1d(Z,data[ii,:,:,:].squeeze(),bounds_error=False)
+                    dataz[ii,:,:] = F(self.Z)[:,np.newaxis,np.newaxis]
                 
             data = dataz
         

@@ -28,8 +28,9 @@ import pdb
 
 ###############################################################        
 class Grid(object):
-    
     """ Class for handling SUNTANS grid data"""
+
+    MAXFACES=3 # Default number of faces
     def __init__(self,infile ,**kwargs):
                
         self.__dict__.update(kwargs)
@@ -69,24 +70,69 @@ class Grid(object):
         celldata = readTXT(self.infile+'/cells.dat')
         edgedata = readTXT(self.infile+'/edges.dat')
         
-        
         self.xp = pointdata[:,0]
         self.yp = pointdata[:,1]
         #self.dv = pointdata[:,2] # zero to start
         self.Np = len(self.xp)
         
-        self.xv = celldata[:,0]
-        self.yv = celldata[:,1]
-        self.cells = np.asarray(celldata[:,2:5],int)
-        self.neigh = np.asarray(celldata[:,5:8])
-        self.Nc = len(self.xv)
+        # Work out if cells.dat is in the quad grid format based on number of
+        # columns
+        self.Nc = celldata.shape[0]
+        if celldata.ndim==2:
+            ncols = celldata.shape[1]
+            #print '!!!cells.dat has %d columns!!!'%ncols
+            if ncols==8: # Old format
+                self.xv = celldata[:,0]
+                self.yv = celldata[:,1]
+                self.cells = np.asarray(celldata[:,2:5],int)
+                self.neigh = np.asarray(celldata[:,5:8])
+                self.nfaces = 3*np.ones((self.Nc,),np.int)
+                self.maxFaces=self.MAXFACES
+            elif ncols==9: # New format
+                nfaces = celldata[:,0]
+                self.nfaces = np.zeros((self.Nc,),np.int)
+                self.nfaces[:] = nfaces
+                self.xv = celldata[:,1]
+                self.yv = celldata[:,2]
+                self.cells = np.asarray(celldata[:,3:6],int)
+                self.neigh = np.asarray(celldata[:,6:9])
+                self.nfaces = 3*np.ones((self.Nc,),np.int)
+                self.maxFaces=self.MAXFACES
+
+            elif ncols==11: # Quad grid format
+                nfaces = celldata[:,0]
+                self.nfaces = np.zeros((self.Nc,),np.int)
+                self.nfaces[:] = nfaces
+                self.xv = celldata[:,1]
+                self.yv = celldata[:,2]
+                self.cells = np.asarray(celldata[:,3:7],int)
+                self.neigh = np.asarray(celldata[:,7:11])
+                self.maxFaces=4
+        else: # Uneven number of cells
+            celldata = celldata.tolist()
+            nfaces = [ll[0] for ll in celldata]
+            self.nfaces=np.array(nfaces,np.int)
+            self.maxFaces=self.nfaces.max()
+            self.cells = -999999*np.ones((self.Nc,self.maxFaces),int)
+            self.neigh = -999999*np.ones((self.Nc,self.maxFaces),int)
+            self.xv = np.zeros((self.Nc,))
+            self.yv = np.zeros((self.Nc,))
+            for ii in range(self.Nc):
+                nf = self.nfaces[ii]
+                self.xv[ii] = celldata[ii][1]
+                self.yv[ii] = celldata[ii][2]
+                self.cells[ii,0:nf] = celldata[ii][3:3+nf]
+                self.neigh[ii,0:nf] = celldata[ii][3+nf:3+2*nf]
+
         
         self.edges = np.asarray(edgedata[:,0:2],int)
+        self.Ne = self.edges.shape[0]
         self.mark = np.asarray(edgedata[:,2],int)
         self.grad = np.asarray(edgedata[:,3:5],int)
         if np.size(edgedata,1)==6:
-            self.edgeflag = np.asarray(edgedata[:,5],int)
-        self.Ne = self.edges.shape[0]
+            self.edge_id = np.asarray(edgedata[:,5],int)
+        else:
+            self.edge_id = np.zeros((self.Ne,),int)
         
         # Load the vertical grid info from vertspace.dat if it exists
         try:
@@ -104,7 +150,7 @@ class Grid(object):
         Try statements are for backward compatibility  
         
         Variables loaded are presently:
-        'xp','yp','xv','yv','xe','ye','cells','face','edges','neigh','grad',
+        'xp','yp','xv','yv','xe','ye','cells','face','nfaces','edges','neigh','grad',
         'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke'
         """
         
@@ -124,8 +170,10 @@ class Grid(object):
             print 'Edge dimension not found'
             
         self.Nkmax = nc.dimensions['Nk'].__len__()
+        self.maxFaces = nc.dimensions['numsides'].__len__()
         
-        gridvars = ['xp','yp','xv','yv','xe','ye','cells','face','edges','neigh','grad',\
+        gridvars = ['xp','yp','xv','yv','xe','ye','cells','face','nfaces', \
+        'edges','neigh','grad',\
         'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
         
         for vv in gridvars:
@@ -139,6 +187,9 @@ class Grid(object):
          
         #if self.Nk.max()==self.Nkmax:
         self.Nk-=1 #These need to be zero based
+        
+        if not self.__dict__.has_key('nfaces'):
+            self.nfaces = self.MAXFACES*np.ones((self.Nc,))
 #        try:
 #            #self.Nke-=1
 #        except:
@@ -239,24 +290,11 @@ class Grid(object):
             
         Used by spatial ploting routines 
         """
-#        try:
-#            self.cells[self.cells.mask]=0
-#        except:
-#            ''         
-        return [closePoly(self.xp[self.cells[ii,:]],self.yp[self.cells[ii,:]]) for ii in range(self.Nc)]
-#        xynodes = []
-#        for ii in range(0,self.Nc):
-#            x=self.xp[self.cells[ii,:]]
-#            y=self.yp[self.cells[ii,:]]
-#            xynodes.append(closePoly(x,y))
-#        return xynodes
+#        return [closePoly(self.xp[self.cells[ii,:]],\
+#            self.yp[self.cells[ii,:]]) for ii in range(self.Nc)]
 
-#        xnodes = np.array([self.xp[self.cells[:,0]],self.xp[self.cells[:,1]],self.xp[self.cells[:,2]],self.xp[self.cells[:,0]]]).T
-#        ynodes = np.array([self.yp[self.cells[:,0]],self.yp[self.cells[:,1]],self.yp[self.cells[:,2]],self.yp[self.cells[:,0]]]).T
-#                            
-#        xynodes = np.concatenate((xnodes,ynodes),axis=1)
-#        xynodes = xynodes.reshape((self.Nc,4,2))
-#        return [xynodes[ii,:,:] for ii in range(self.Nc)]
+        return [closePoly(self.xp[self.cells[ii,0:self.nfaces[ii]]],\
+            self.yp[self.cells[ii,0:self.nfaces[ii]]]) for ii in range(self.Nc)]
         
     def saveBathy(self,filename):
         """
@@ -290,7 +328,27 @@ class Grid(object):
             
         f.close()
         
-        
+    def saveCells(self,filename):
+        """
+        Save cells.dat into hybrid grid format
+        """
+
+        f = open(filename,'w')
+
+        for ii in range(self.Nc):
+            outstr = '%d %10.6f %10.6f '%(self.nfaces[ii],self.xv[ii],self.yv[ii])
+            for nn in range(self.nfaces[ii]):
+                outstr += '%d '%self.cells[ii,nn]
+
+            for nn in range(self.nfaces[ii]):
+                outstr += '%d '%self.neigh[ii,nn]
+
+            outstr += '\n'
+            f.write(outstr)
+            
+
+        f.close()
+
     def saveEdges(self,filename):
         """
         Saves the edges.dat data to a text file
@@ -304,8 +362,8 @@ class Grid(object):
 #            f.write('%d %d  %d  %d  %d\n'%(e1,e2,m,g1,g2))
 
         # Write an extra column that has the boundary edge segment flag    
-        if self.__dict__.has_key('edgeflag'):
-            for e1,e2,m,g1,g2,ef1 in zip(self.edges[:,0],self.edges[:,1],self.mark,self.grad[:,0],self.grad[:,1],self.edgeflag):
+        if self.__dict__.has_key('edge_id'):
+            for e1,e2,m,g1,g2,ef1 in zip(self.edges[:,0],self.edges[:,1],self.mark,self.grad[:,0],self.grad[:,1],self.edge_id):
                 f.write('%d %d  %d  %d  %d  %d\n'%(e1,e2,m,g1,g2,ef1))
         else:
             for e1,e2,m,g1,g2 in zip(self.edges[:,0],self.edges[:,1],self.mark,self.grad[:,0],self.grad[:,1]):
@@ -367,7 +425,7 @@ class Grid(object):
             z_top = np.hstack((0.0,z_bot[:-1]))
             self.z_r = 0.5*(z_bot+z_top)
         else:
-            self.z_r=0.0
+            self.z_r=np.array([0.0])
             
     def calcVertSpace(self, Nkmax, r, depthmax):
         """
@@ -651,7 +709,7 @@ class Grid(object):
             print 'No dimension: Ne'
         nc.createDimension('Nk', self.Nkmax)
         nc.createDimension('Nkw', self.Nkmax+1)
-        nc.createDimension('numsides', 3)
+        nc.createDimension('numsides', self.maxFaces)
         nc.createDimension('two', 2)
         nc.createDimension('time', 0) # Unlimited
         
@@ -662,7 +720,7 @@ class Grid(object):
                 tmp.setncattr(aa,attdict[aa])
             nc.variables[name][:] = var
     
-        gridvars = ['suntans_mesh','cells','face','edges','neigh','grad','xp','yp','xv','yv','xe','ye',\
+        gridvars = ['suntans_mesh','cells','face','nfaces','edges','neigh','grad','xp','yp','xv','yv','xe','ye',\
             'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
         
         self.Nk += 1

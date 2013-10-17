@@ -113,8 +113,8 @@ class Boundary(object):
             self.ye = ye[self.edgep]
             
             # Determine the unique flux segments (these are a subset of Type-2 boundaries)
-            indseg = np.argwhere(self.grd.edgeflag>0)
-            segID = self.grd.edgeflag[indseg]
+            indseg = np.argwhere(self.grd.edge_id>0)
+            segID = self.grd.edge_id[indseg]
             self.segp = np.unique(segID)
             self.Nseg = np.size(self.segp)
 
@@ -123,8 +123,8 @@ class Boundary(object):
             n=-1            
             for ii in self.edgep:
                 n+=1
-                if self.grd.edgeflag[ii]>0:
-                    self.segedgep[n]=self.grd.edgeflag[ii]
+                if self.grd.edge_id[ii]>0:
+                    self.segedgep[n]=self.grd.edge_id[ii]
         else:
             self.Nseg=0
                      
@@ -365,9 +365,18 @@ class Boundary(object):
         
         # Get the dimension sizes
         self.Nk = nc.dimensions['Nk'].__len__()
-        self.N2 = nc.dimensions['Ntype2'].__len__()
-        self.N3 = nc.dimensions['Ntype3'].__len__()
-        self.Nseg = nc.dimensions['Nseg'].__len__()
+        try:
+            self.N2 = nc.dimensions['Ntype2'].__len__()
+        except:
+            self.N2=0
+        try:
+            self.N3 = nc.dimensions['Ntype3'].__len__()
+        except:
+            self.N3=0
+        try:
+            self.Nseg = nc.dimensions['Nseg'].__len__()
+        except:
+            self.Nseg=0 
         self.Nt = nc.dimensions['Nt'].__len__()
         
         t = nc.variables['time']
@@ -700,7 +709,7 @@ def modifyBCmarker(suntanspath,bcfile):
     grd.mark[ind0]=1
         
     # Find the points inside each of the polygon and assign new bc
-    grd.edgeflag = grd.mark*0 # Flag to identify linked edges/segments (marker=4 only)
+    grd.edge_id = grd.mark*0 # Flag to identify linked edges/segments (marker=4 only)
     for xpoly, bctype,segmentID in zip(XY,newmarker,edge_id):
         ind0 = grd.mark>0
         edges = np.asarray([xe[ind0],ye[ind0]])
@@ -708,9 +717,9 @@ def modifyBCmarker(suntanspath,bcfile):
         
         ind1 = nxutils.points_inside_poly(edges.T,xpoly)
         if bctype==4:
-            eflag = grd.edgeflag[ind0]
+            eflag = grd.edge_id[ind0]
             eflag[ind1]=segmentID
-            grd.edgeflag[ind0]=eflag
+            grd.edge_id[ind0]=eflag
             bctype=2
         mark[ind1]=bctype
         grd.mark[ind0]=mark

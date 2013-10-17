@@ -46,6 +46,8 @@ class sundriver(object):
     # Verical grid options
     Nkmax = 1 # number of layers
     r = 1.01 # vertical stretching parameter
+    setconstantdepth=False # Option to set constant depth
+    H0 = 10.0 # Constant depth
     
     ###
     # Bathymetry interpolation options
@@ -192,6 +194,11 @@ class sundriver(object):
             
             print 'SUNTANS depths saved to: %s'%(self.suntanspath+'/depths.dat-voro')
         
+        elif self.setconstantdepth:
+            print 'Using constant depth (%6.2f m)...'%self.H0
+            self.grd = Grid(self.suntanspath)
+            self.grd.dv = np.zeros_like(self.grd.xv)
+            self.grd.dv[:] = self.H0
         else:
             print 'Loading grid from folder:\n%s'%self.suntanspath
             # Load the grid
@@ -211,6 +218,11 @@ class sundriver(object):
         # Save vertspace.dat
         self.grd.saveVertspace(self.suntanspath+'/vertspace.dat')
 
+        # Write cells.dat and edges.dat to ensure they are in the right format
+        print 'Overwriting cells.dat and edges.dat to ensure format consistency.'
+        self.grd.saveCells(self.suntanspath+'/cells.dat')
+        self.grd.saveEdges(self.suntanspath+'/edges.dat')
+
     def _makebnd(self):
         """
         Generate boundary condition files
@@ -227,6 +239,7 @@ class sundriver(object):
         ###
         if self.opt_bcseg == 'constant':
             print 'Setting %d boundary segments to discharge of %6.3f m3/s'%(bnd.Nseg,self.Q0)
+            bnd.boundary_Q[:]=self.Q0
             
         elif self.opt_bcseg == 'file':
             print 'Loading river segment data from file...\n'

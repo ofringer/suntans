@@ -109,11 +109,15 @@ class timeseries(object):
             
         (b, a) = signal.butter(order, Wn, btype=btype, analog=0, output='ba')
         
+        # filtfilt only likes to operate along the last axis
+        #pdb.set_trace()
+        #ytmp = np.swapaxes(self.y,-1,axis)
+        #ytmp = signal.filtfilt(b, a, ytmp, axis=axis)
+        #return np.swapaxes(self.y,axis,-1)
         return signal.filtfilt(b, a, self.y, axis=axis)
-#        return signal.lfilter(b, a, self.y, axis=axis)
 
         
-    def interp(self,timein,method='linear',timeformat='%Y%m%d.%H%M%S'):
+    def interp(self,timein,method='linear',timeformat='%Y%m%d.%H%M%S',axis=-1):
         """
         Interpolate the data onto an equally spaced vector
         
@@ -138,13 +142,12 @@ class timeseries(object):
         t = othertime.SecondsSince(tnew,basetime = self.basetime)
         
         # Don't include nan points
-        
         if self.ndim > 1:
             # Interpolate multidimensional arrays without a mask
-            F = interpolate.interp1d(self.tsec,self.y.T,kind=method,axis=-1)
+            F = interpolate.interp1d(self.tsec,self.y,kind=method,axis=axis)
         else:
             mask = np.isnan(self.y) == False
-            F = interpolate.interp1d(self.tsec[mask],self.y[mask],kind=method,axis=0)
+            F = interpolate.interp1d(self.tsec[mask],self.y[mask],kind=method,axis=axis)
         
         #F = interpolate.UnivariateSpline(self.tsec,self.y,k=method)
         
@@ -352,8 +355,8 @@ class ModVsObs(object):
         TSobs = timeseries(tobs,yobs)
 
         # Interpolate the observed value onto the model
-        tobs_i, yobs_i = TSobs.interp(tmod)
-        self.TSobs = timeseries(tobs_i, yobs_i.T)
+        tobs_i, yobs_i = TSobs.interp(tmod,axis=0)
+        self.TSobs = timeseries(tobs_i, yobs_i)
 
         self.N = self.TSmod.t.shape[0]
 

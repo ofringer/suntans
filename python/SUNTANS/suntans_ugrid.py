@@ -42,6 +42,12 @@ attributes = {'cf_role':'face_edge_connectivity',\
 dtype = 'i4'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
 
+vname = 'nfaces'
+dimensions = ('Nc',)
+attributes = {'long_name':'Number of cell faces'}
+dtype = 'i4'		
+ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
+
 vname = 'edges'
 dimensions = ('Ne','two')
 attributes = {'cf_role':'edge_node_connectivity',\
