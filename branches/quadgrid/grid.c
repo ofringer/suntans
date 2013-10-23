@@ -818,7 +818,7 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces
   (*grid)->nfaces= (int *)SunMalloc((*grid)->Nc*sizeof(int),"InitMainGrid");
   // Load the faces' number of each cell and calculate the maximum nfaces
   // if -t not use READNFACES
-  if(!TRIANGULATE){ 
+  if(!TRIANGULATE && maxFaces!=3){ 
     ReadNfaces(*grid, myproc, maxFaces);
   }else{ 
     for(n=0;n<Nc;n++)
@@ -939,7 +939,8 @@ void ReadMainGrid(gridT *grid, int myproc)
   for(n=0;n<grid->Nc;n++) {
  
     //added part, the first column is the number of faces for each cell, not xv 
-    getfield(ifile,str);
+    if(grid->maxfaces>3)
+      getfield(ifile,str);
     grid->xv[n] = getfield(ifile,str);
     grid->yv[n] = getfield(ifile,str);
     for(nf=0;nf<grid->nfaces[n];nf++)
@@ -1303,6 +1304,7 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
   int n1[2], n2[2], e3[maxfaces]; int nc, nf, e1, e2, sharednode, i;
   // over each cell
   for(nc=0; nc<Nc; nc++) {
+
     // consider each face in a cycle
     for(nf=0;nf<nfaces[nc]-1;nf++) {
       //  consider pairs of touching faces in cycle
@@ -1315,24 +1317,26 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
       n1[1] = edges[e1*NUMEDGECOLUMNS+1];
       n2[0] = edges[e2*NUMEDGECOLUMNS  ];
       n2[1] = edges[e2*NUMEDGECOLUMNS+1];
-
       // compare nodes to find first value for cells
       sharednode = SharedListValue(n1, n2, 2);
       //if edge is not clockwise or counter-clockwise 
       //exchang with the next one
-      if(sharednode==-1){
+      if(sharednode==-1 && maxfaces>3){
          for(i=0;i<(nfaces[nc]-1-nf);i++)
            e3[i]=face[nc*maxfaces+nf+1+i];
          for(i=0;i<(nfaces[nc]-2-nf);i++)
            face[nc*maxfaces+nf+1+i]=e3[i+1];
          face[nc*maxfaces+nfaces[nc]-1]=e3[0];
          nf=nf-1;
+      } else if(sharednode==-1 && maxfaces==3) {
+        printf("Error as sharednode in %s not found %d\n", "ReorderCellPoints",maxfaces);     
       }
       // check for match
       if(sharednode != -1) 
         cells[maxfaces*nc + (nf+1)]  = sharednode;
 
     }
+
     // consider last pairs of touching faces in cycle
     e1 = face[nc*maxfaces+nfaces[nc]-1];
     e2 = face[nc*maxfaces  ];
@@ -1349,8 +1353,10 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
     if(sharednode != -1)
       cells[maxfaces*nc  ]  = sharednode;
     else
-      printf("Error as sharednode in %s not found\n", "ReorderCellPoints");
+      printf("Error as sharednode in %s not found\n", "ReorderCellPoints");  
+
   }
+
   //PJw now we have sorted our list of cell vertexes to correspond with the 
   // structure in the face (edge) array for the cell
 }
@@ -3911,10 +3917,10 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
 
   CreateFaceArray((*localgrid)->grad,(*localgrid)->gradf,(*localgrid)->neigh,
       (*localgrid)->face,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc,(*localgrid)->Ne);
-  
+
   ReorderCellPoints((*localgrid)->face,(*localgrid)->edges,(*localgrid)->cells,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc);
   // there is no need to use Reordergradf here because face and gradf is already in order for maingrid 
-  
+
   CreateNormalArray((*localgrid)->grad,(*localgrid)->face,(*localgrid)->normal,(*localgrid)->nfaces,(*localgrid)->maxfaces,(*localgrid)->Nc);
 
   // create node array which will keep track of all nodal neighboors
@@ -3942,6 +3948,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
   // as nodes are not reordered
   if(myproc==0 && VERBOSE>2)  printf("\t\tCreateNodeArray\n");
   Tic();
+
   CreateNodeArray((*localgrid), (*localgrid)->Np,(*localgrid)->Ne, (*localgrid)->Nc, myproc);
   if(myproc==0 && VERBOSE>2) printf("\t\t... time used is %f\n", Toc());
 
