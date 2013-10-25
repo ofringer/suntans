@@ -913,7 +913,7 @@ void ReadNfaces(gridT *grid, int myproc, int maxFaces)
  */
 void ReadMainGrid(gridT *grid, int myproc)
 {
-  int j, n, nei, nf;
+  int j, n, nei, nf,k;
   char str[BUFFERLENGTH];
   FILE *ifile;
 
@@ -934,12 +934,11 @@ void ReadMainGrid(gridT *grid, int myproc)
       grid->grad[2*n+j]=(int)getfield(ifile,str);
   }
   fclose(ifile);
-
+  
   ifile = MPI_FOpen(CELLSFILE,"r","ReadMainGrid",myproc);
   for(n=0;n<grid->Nc;n++) {
- 
     //added part, the first column is the number of faces for each cell, not xv 
-    if(grid->maxfaces>3)
+    if(getcolumn(CELLSFILE)>8)
       getfield(ifile,str);
     grid->xv[n] = getfield(ifile,str);
     grid->yv[n] = getfield(ifile,str);
