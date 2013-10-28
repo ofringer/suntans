@@ -131,17 +131,14 @@ typedef struct _boundT{
 // Declare the boundary structure global
 boundT *bound;
 
+FILE *windFID;
+
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop);
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc);
-
-FILE *windFID;
-
-#ifdef USENETCDF
-    void InitBoundaryData(propT *prop, gridT *grid, int myproc);
-    void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc);
-    void UpdateBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
-#endif
+void InitBoundaryData(propT *prop, gridT *grid, int myproc);
+void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc);
+void UpdateBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 
 #endif

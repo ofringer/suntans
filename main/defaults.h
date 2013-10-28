@@ -167,4 +167,7 @@ const int readinitialnc_DEFAULT = 0;
 const int calcage_DEFAULT = 0;
 
 // Calculate average quantities
-const int calcaverage_DEFAULT;
+const int calcaverage_DEFAULT = 0;
+
+// Maximum number of faces 
+const int maxFaces_DEFAULT = 3;

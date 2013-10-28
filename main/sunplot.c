@@ -2863,6 +2863,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     
     data->timestep=-1;
     data->maxfaces=(int)GetValue(DATAFILE,"maxFaces",&status);
+    if(data->maxfaces==0)
+      data->maxfaces=3;
     data->Nkmax=(int)GetValue(DATAFILE,"Nkmax",&status);
     nsteps=(int)GetValue(DATAFILE,"nsteps",&status);
     ntout = (int)GetValue(DATAFILE,"ntout",&status);

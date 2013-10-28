@@ -276,7 +276,6 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
   
   
   /* Scalars */
-#ifdef USENETCDF  
   (*metin)->NUwind = returndimlen(prop->metncid,"NUwind");
   (*metin)->NVwind = returndimlen(prop->metncid,"NVwind");
   (*metin)->NTair = returndimlen(prop->metncid,"NTair");
@@ -285,16 +284,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
   (*metin)->NRH = returndimlen(prop->metncid,"NRH");
   (*metin)->Ncloud = returndimlen(prop->metncid,"Ncloud");
   (*metin)->nt = returndimlen(prop->metncid,"nt");
-#else
-  (*metin)->NUwind = 1;
-  (*metin)->NVwind = 1;
-  (*metin)->NTair = 1;
-  (*metin)->NPair = 1;
-  (*metin)->Nrain = 1;
-  (*metin)->NRH = 1;
-  (*metin)->Ncloud = 1;
-  (*metin)->nt = 1;
-#endif
+
   (*metin)->t0 = -1;
   (*metin)->t1 = -1;
   (*metin)->t2 = -1;

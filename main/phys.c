@@ -4499,10 +4499,10 @@ void ReadProperties(propT **prop, gridT **grid, int myproc)
   (*prop)->Cda = MPI_GetValue(DATAFILE,"Cda","ReadProperties",myproc);
   (*prop)->Ce = MPI_GetValue(DATAFILE,"Ce","ReadProperties",myproc);
   (*prop)->Ch = MPI_GetValue(DATAFILE,"Ch","ReadProperties",myproc);
-#ifdef USENETCDF   
-  MPI_GetString((*prop)->starttime,DATAFILE,"starttime","ReadProperties",myproc);
-  MPI_GetString((*prop)->basetime,DATAFILE,"basetime","ReadProperties",myproc);
-#endif
+  if((*prop)->outputNetcdf > 0 || (*prop)->netcdfBdy > 0 || (*prop)->readinitialnc > 0){ 
+      MPI_GetString((*prop)->starttime,DATAFILE,"starttime","ReadProperties",myproc);
+      MPI_GetString((*prop)->basetime,DATAFILE,"basetime","ReadProperties",myproc);
+  }
   if((*prop)->nonlinear==2) {
     (*prop)->laxWendroff = MPI_GetValue(DATAFILE,"laxWendroff","ReadProperties",myproc);
     if((*prop)->laxWendroff!=0)
@@ -4565,50 +4565,21 @@ void OpenFiles(propT *prop, int myproc)
   }
   if(prop->readinitialnc>0){
     MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
-#ifdef USENETCDF
     prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-#else
-   // Attempting to use heat flux model without netcdf libraries
-      printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
-      MPI_Finalize();
-      exit(EXIT_FAILURE);
-#endif
   }
   if(prop->netcdfBdy>0){
     MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
-#ifdef USENETCDF
     prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-	//if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
-#else
-   // Attempting to use netcdf boundaries without netcdf libraries
-      printf("Error: NetCDF Libraries required for prop->netcdfBdy > 0\n");
-      MPI_Finalize();
-      exit(EXIT_FAILURE);
-#endif
   }
 if(prop->metmodel>0){
     MPI_GetFile(filename,DATAFILE,"metfile","OpenFiles",myproc);
-#ifdef USENETCDF
     prop->metncid = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-	//if (myproc ==0) printf("Leaving MPI_NCOpen function...\n");
-#else
-   // Attempting to use heat flux model without netcdf libraries
-      printf("Error: NetCDF Libraries required for prop->metmodel > 1\n");
-      MPI_Finalize();
-      exit(EXIT_FAILURE);
-#endif
   }
 
 if(prop->calcaverage){
     MPI_GetFile(filename,DATAFILE,"averageNetcdfFile","OpenFiles",myproc);
-#ifdef USENETCDF
     sprintf(str,"%s.%d",filename,myproc);
     prop->averageNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
-#else
-      printf("Error: NetCDF Libraries required for prop->calcaverages > 1\n");
-      MPI_Finalize();
-      exit(EXIT_FAILURE);
-#endif
   }
   
 
@@ -4654,15 +4625,9 @@ if(prop->calcaverage){
   prop->VerticalGridFID = MPI_FOpen(str,"w","OpenFiles",myproc);
   
   }else {
-#ifdef USENETCDF
       MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
       sprintf(str,"%s.%d",filename,myproc);
       prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
-#else
-      printf("Error: NetCDF Libraries required for prop->outputNetcdf = 1\n");
-      MPI_Finalize();
-      exit(EXIT_FAILURE);
-#endif
   }
   
 
@@ -4956,10 +4921,31 @@ inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, i
     // possible mistake here- make sure to the get the right value for the start
     // of the loop (etop?)
     //    if(myproc==0) printf("ComputeQuadraticInterp\n");
+    if(grid->nfaces[n]==3){
     for(k=grid->ctop[n];k<grid->Nk[n];k++) {
       // now we can compute the quadratic interpolated velocity from these results
       ComputeQuadraticInterp(grid->xv[n], grid->yv[n], n, k, ui, 
           vi, phys, grid, nRT2, tRT2, myproc);
+    }
+    } else {
+       // over the entire depth (cell depth)
+       for(k=grid->ctop[n];k<grid->Nk[n];k++) {
+        // over each face
+        for(nf=0;nf<grid->nfaces[n];nf++) {
+          ne = grid->face[n*grid->maxfaces+nf];
+          if(!(grid->smoothbot) || k<grid->Nke[ne]){
+            phys->uc[n][k]+=phys->u[ne][k]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+            phys->vc[n][k]+=phys->u[ne][k]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+          }
+          else{	
+            phys->uc[n][k]+=phys->u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+            phys->vc[n][k]+=phys->u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+          }
+        }
+
+        phys->uc[n][k]/=grid->Ac[n];
+        phys->vc[n][k]/=grid->Ac[n];
+      }
     }
   } 
 }

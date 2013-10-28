@@ -67,7 +67,8 @@ else
   NETCDFLIBDIR = 
   NETCDFINCLUDE = 
   NETCDFLD = 
-  NETCDFSRC=
+  NETCDFDEF = -DNONETCDF
+  NETCDFSRC= mynetcdf-nonetcdf.c
 endif
 
 # For the Altix
