@@ -7,7 +7,14 @@
 #ifndef _mynetcdf_h
 #define _mynetcdf_h
 
-#include <netcdf.h>
+#ifndef NONETCDF
+#include "netcdf.h"
+#else
+//Netcdf globals
+#define NC_NOWRITE 0
+#define NC_NETCDF4 0
+#endif
+
 #include "suntans.h"
 #include "phys.h"
 #include "grid.h"
@@ -33,7 +40,7 @@ void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc);
 
 void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc);
 void ReadBdyNC(propT *prop, gridT *grid, int myproc);
-void UpdateBdyNC(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
+//void UpdateBdyNC(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
 size_t returndimlenBC(int ncid, char *dimname);
 int getTimeRecBnd(REAL nctime, REAL *time, int nt);
 void ReadInitialNCcoord(propT *prop, gridT *grid, int *Nci, int *Nki, int *T0, int myproc);
@@ -42,4 +49,6 @@ void ReturnFreeSurfaceNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int 
 void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
 void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
 void ReturnAgeNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
+int MPI_NCOpen(char *file, int perms, char *caller, int myproc);
+int MPI_NCClose(int ncid);
 #endif

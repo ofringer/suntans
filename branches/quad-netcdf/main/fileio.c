@@ -192,6 +192,31 @@ int getsize(char *filename)
 }
 
 /*
+ * Function: getcolumn();
+ * Usage: N = getcolumn(filename);
+ * -----------------------------
+ * Returns the number of rows in a file.
+ *
+ */
+int getcolumn(char *filename)
+{
+  int N;
+  char c;
+  FILE *infile = fopen(filename,"r");
+  if(!infile)
+    printf("Error opening %s\n",filename);
+
+  N=1;
+  while((c=fgetc(infile))!=EOF){
+    if(c==' ') 
+      N++;
+    if(c=='\n')
+      break;
+  }
+  fclose(infile);
+  return N;
+}
+/*
  * Function: GetValue
  * Usage: Nkmax = (int)GetValue("datafile","Nkmax");
  * --------------------------------------------
@@ -377,6 +402,11 @@ double GetDefaultValue(char *str, int *status) {
 } else if(!strcmp(str,"calcaverage")) {
     
    return calcaverage_DEFAULT;   
+
+} else if(!strcmp(str,"maxFaces")) {
+    
+   return maxFaces_DEFAULT;   
+
 
 }else {
     *status=0;

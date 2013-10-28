@@ -31,6 +31,57 @@ void nc_write_doublevar(int ncid, char *vname, gridT *grid, REAL *tmparray, int 
 * General functions
 *
 *#########################################################*/
+/*
+ * Function: MPI_NCOpen
+ * Usage: fid = MPI_NCOpen(string,NC_NOWRITE,"GetValue",myproc);
+ * -----------------------------------------------------
+ * Exits if the requested file does not exist and closes
+ * MPI cleanly. The third string is useful for determining which
+ * function the function was called from.  When two processes
+ * are trying to read the same file at the same time, an error
+ * code of EAGAIN results.  This is ommitted as a possible error
+ * code.
+ *
+ */
+int MPI_NCOpen(char *file, int perms, char *caller, int myproc) {
+    extern int errno;
+    int ncid;
+    int retval;
+    char str[BUFFERLENGTH];
+    
+    if (perms==NC_NOWRITE){
+      // Just open the file for read access
+      if ( (VERBOSE>1) && (myproc==0) ) printf("Opening netcdf file: %s\n",file) ;
+       if ((retval = nc_open(file,perms, &ncid)))
+		ERR(retval);
+    } else {
+      // Create a new netcdf dataset
+      if (VERBOSE>1) printf("Creating netcdf file: %s\n",file) ;
+	if ((retval = nc_create(file,perms, &ncid)))
+		ERR(retval);
+    }
+    if (retval){
+      sprintf(str,"Error in Function %s while trying to open %s ",caller,file);
+      sprintf("Error: %s\n", nc_strerror(retval));
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+    } else {
+	//if ( (VERBOSE>1) ) printf("Successfully opened file: %s on processor %d \n",file,myproc) ;
+      return ncid;
+    }
+  }
+/*
+ * Function: MPI_NCClose(int ncid)
+ * -------------------------------
+ * Wrapper function for nc_close()
+ */
+int MPI_NCClose(int ncid){
+    int retval;
+    if ((retval = nc_close(ncid)))
+	ERR(retval);
+    return retval;
+}
+
 
 /*
 * Function: nc_read_3D()
@@ -1166,8 +1217,8 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
    nc_write_int(ncid,"edges",grid->edges,myproc);
    nc_write_intvar(ncid,"neigh",grid,grid->neigh,myproc);
    nc_write_int(ncid,"grad",grid->grad,myproc);
-   //nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
-   //nc_write_int(ncid,"eptr",grid->eptr,myproc);
+   nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
+   nc_write_int(ncid,"eptr",grid->eptr,myproc);
    
    nc_write_double(ncid,"xv",grid->xv,myproc);
    nc_write_double(ncid,"yv",grid->yv,myproc);

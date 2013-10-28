@@ -123,12 +123,10 @@ typedef struct _metT {
 } metT;
 
 /* Public functions*/
-#ifdef USENETCDF
-  void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc);
-  void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc, MPI_Comm comm);
-  void AllocateMet(propT *prop, gridT *grid, metT **met, int myproc);
-  void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc);
-#endif
+void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc);
+void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int myproc, MPI_Comm comm);
+void AllocateMet(propT *prop, gridT *grid, metT **met, int myproc);
+void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc);
 void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **T);
 REAL shortwave(REAL time, REAL lat,REAL C_cloud);
 #endif

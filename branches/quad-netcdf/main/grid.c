@@ -23,11 +23,11 @@
 /*
  * Global variables for halo region for inner-processor boundaries
  */
-//boundaryselection g_halolist[1] ={EDGE};// classic suntans
-//const int g_halolistsize = 1;
+boundaryselection g_halolist[1] ={EDGE};// classic suntans
+const int g_halolistsize = 1;
 //// for quadratic interpolation
-boundaryselection g_halolist[2] ={NODE, NODE}; 
-const int g_halolistsize = 2;
+//boundaryselection g_halolist[2] ={NODE, NODE}; 
+//const int g_halolistsize = 2;
 
 /*
  * Private function declarations.
@@ -818,7 +818,7 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces
   (*grid)->nfaces= (int *)SunMalloc((*grid)->Nc*sizeof(int),"InitMainGrid");
   // Load the faces' number of each cell and calculate the maximum nfaces
   // if -t not use READNFACES
-  if(!TRIANGULATE){ 
+  if(!TRIANGULATE && maxFaces!=3){ 
     ReadNfaces(*grid, myproc, maxFaces);
   }else{ 
     for(n=0;n<Nc;n++)
@@ -943,7 +943,8 @@ void ReadMainGrid(gridT *grid, int myproc)
   for(n=0;n<grid->Nc;n++) {
  
     //added part, the first column is the number of faces for each cell, not xv 
-    getfield(ifile,str);
+    if(getcolumn(CELLSFILE)>8)
+      getfield(ifile,str);
     grid->xv[n] = getfield(ifile,str);
     grid->yv[n] = getfield(ifile,str);
     for(nf=0;nf<grid->nfaces[n];nf++)
@@ -1326,13 +1327,15 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
       sharednode = SharedListValue(n1, n2, 2);
       //if edge is not clockwise or counter-clockwise 
       //exchang with the next one
-      if(sharednode==-1){
+      if(sharednode==-1 && maxfaces>3){
          for(i=0;i<(nfaces[nc]-1-nf);i++)
            e3[i]=face[nc*maxfaces+nf+1+i];
          for(i=0;i<(nfaces[nc]-2-nf);i++)
            face[nc*maxfaces+nf+1+i]=e3[i+1];
          face[nc*maxfaces+nfaces[nc]-1]=e3[0];
          nf=nf-1;
+      } else if(sharednode==-1 && maxfaces==3) {
+        printf("Error as sharednode in %s not found %d\n", "ReorderCellPoints",maxfaces);     
       }
       // check for match
       if(sharednode != -1) 
@@ -1882,6 +1885,7 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
       fprintf(ofile,"%d ",maingrid->mark[n]);
       for(j=0;j<2;j++) 
 	fprintf(ofile,"%d ",maingrid->grad[2*n+j]);
+      fprintf(ofile,"%d ",maingrid->edge_id[n]);
       fprintf(ofile,"\n");
     }
     fclose(ofile);
@@ -1947,6 +1951,8 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
       fprintf(ofile,"%e ",grid->def[grid->maxfaces*n+nf]);
     for(nf=0;nf<grid->nfaces[n];nf++) 
       fprintf(ofile,"%d ",grid->cells[grid->maxfaces*n+nf]);
+    // MR - output mnptr array
+    fprintf(ofile,"%d ",grid->mnptr[n]);
     fprintf(ofile,"\n");
   }
   fclose(ofile);
@@ -1956,11 +1962,18 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
   for(n=0;n<Ne;n++) {
-    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d %d %d\n",
+//    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d %d %d\n",
+//	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
+//	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
+//	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n], 
+//      grid->edges[n*NUMEDGECOLUMNS], grid->edges[n*NUMEDGECOLUMNS+1]);
+//MR - output eptr array
+    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d %d %d %d\n",
 	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
 	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
 	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n], 
-      grid->edges[n*NUMEDGECOLUMNS], grid->edges[n*NUMEDGECOLUMNS+1]);
+      grid->edges[n*NUMEDGECOLUMNS], grid->edges[n*NUMEDGECOLUMNS+1],grid->eptr[n]);
+
   }
   fclose(ofile);
 
@@ -2204,6 +2217,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->normal = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->def = (REAL *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(REAL),"ReadGrid");
   (*grid)->cells = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(REAL),"ReadGrid");
+  (*grid)->mnptr = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");//MR
 
   sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
   if(VERBOSE>2) printf("Reading %s...\n",str);
@@ -2231,6 +2245,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
       (*grid)->def[(*grid)->maxfaces*n+nf]=getfield(ifile,str);
     for(nf=0;nf<(*grid)->nfaces[n];nf++)
       (*grid)->cells[(*grid)->maxfaces*n+nf]=(int)getfield(ifile,str);
+    (*grid)->mnptr[n]=(int)getfield(ifile,str);//MR
   }
   fclose(ifile);
   
@@ -2250,8 +2265,9 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->grad = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->gradf = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
-  (*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
+  //(*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid"); This doesn't belong here!
   (*grid)->edges = (int *)SunMalloc((*grid)->Ne*NUMEDGECOLUMNS*sizeof(int),"ReadGrid");
+  (*grid)->eptr = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");//MR
 
   sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
   if(VERBOSE>2) printf("Reading %s...\n",str);
@@ -2273,6 +2289,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
       (*grid)->mark[n] = (int)getfield(ifile,str);
       (*grid)->edges[NUMEDGECOLUMNS*n] = (int)getfield(ifile,str);
       (*grid)->edges[NUMEDGECOLUMNS*n+1] = (int)getfield(ifile,str);
+      (*grid)->eptr[n] = (int)getfield(ifile,str);//MR
   }
   fclose(ifile);
 
@@ -2638,6 +2655,8 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
     }
     // set value to max found (-1 if this is a bogus [TRIANGLE] point)
     (*localgrid)->Nkp[i] = maxNk;
+    if((*localgrid)->numpcneighs[i]==0)
+      (*localgrid)->Nkp[i]=0;
   }
 }
 
@@ -2984,8 +3003,8 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc, MPI_Com
   (*localgrid)->num_edges_recv=num_edges_recv;
 
   // free temporary arrays
-  free(lcptr);
-  free(leptr);
+  //free(lcptr);
+  //free(leptr);
 }
 
 /*
@@ -3892,6 +3911,9 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
         leptr[iface]=k;
         //point from local edge index to global one
         (*localgrid)->eptr[k++]=iface;
+	//edge_id array
+	(*localgrid)->edge_id[k]=maingrid->edge_id[k];
+
       }
     }
   }
@@ -4479,6 +4501,9 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
         -(((*grid)->xv[n]-maingrid->xp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n1[ne]+
             ((*grid)->yv[n]-maingrid->yp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n2[ne])*
         (*grid)->normal[n*(*grid)->maxfaces+nf];
+	//Check for nan
+	if((*grid)->def[n*(*grid)->maxfaces+nf] != (*grid)->def[n*(*grid)->maxfaces+nf])
+	     printf("Warning: nan computed for edge distance (def)\n");
 
       // Distance to the edge midpoint. Not used.
       /*

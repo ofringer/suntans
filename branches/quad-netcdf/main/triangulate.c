@@ -80,6 +80,7 @@ int GetTriangulation(gridT **grid, int myproc) {
       (*grid)->grad[2*n+j]=vorout.edgelist[2*n+j];
     }
     (*grid)->mark[n]=out.edgemarkerlist[n];
+    (*grid)->edge_id[n]=0;
   }
 
   for(n=0;n<(*grid)->Nc;n++) {
