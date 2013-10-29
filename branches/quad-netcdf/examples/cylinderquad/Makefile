@@ -24,14 +24,14 @@ OBJS =
 SUN = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
-NUMPROCS = 1
+NUMPROCS = 2
 
 all:	data
 
 test:   data
-	cp rundata/trigridnew/cells.dat rundata/cells.dat
-	cp rundata/trigridnew/edges.dat rundata/edges.dat
-	cp rundata/trigridnew/points.dat rundata/points.dat
+	cp rundata/trigrid/cells.dat rundata/cells.dat
+	cp rundata/trigrid/edges.dat rundata/edges.dat
+	cp rundata/trigrid/points.dat rundata/points.dat
 	#make data
 	sh $(EXEC).sh $(NUMPROCS)
 
