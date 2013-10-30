@@ -195,7 +195,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   if(myproc==0 && VERBOSE>0) printf("Partitioning...\n");
   Tic();
   // most important and complicated function to ensure parallelism for grid
-  // takes the main grid and redistributes to local grids on each processor
+  // takes the main grid and redistributes to local grids on each processor 
   Partition(maingrid,localgrid,comm);
 
   if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
@@ -246,7 +246,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   Tic();
   CreateCellGraph(maingrid);
   if(myproc==0 && VERBOSE>0) printf("\t... time used is %f\n", Toc());
- 
+
   // use ParMETIS API get get parallelized partioning, this basically 
   // just assigns each cell to a particular processor number  
   // (color cells with mapping!)
@@ -318,7 +318,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   Tic();
   VertGrid(maingrid,localgrid,comm);
   if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
-  
+
   if(myproc==0 && VERBOSE>2) 
     printf("\tComputing edge and voronoi distances and areas...\n");
   Tic();
@@ -4454,8 +4454,7 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
       else {
         (*grid)->n1[n] = (*grid)->xv[(*grid)->grad[2*n]]-xc;
         (*grid)->n2[n] = (*grid)->yv[(*grid)->grad[2*n]]-yc;
-        (*grid)->dg[n] = sqrt(pow((*grid)->n1[n],2)+
-            pow((*grid)->n2[n],2));
+        (*grid)->dg[n] = sqrt(pow((*grid)->n1[n],2)+pow((*grid)->n2[n],2));
         (*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
         (*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
         (*grid)->dg[n] = 2.0*(*grid)->dg[n];
@@ -4688,8 +4687,8 @@ static int CorrectVoronoi(gridT *grid, int myproc)
 	yc1 += grid->yp[grid->cells[nc1*grid->maxfaces+nf]]/grid->nfaces[nc1];
       }
       for(nf=0;nf<grid->nfaces[nc2];nf++) {
-	xc1 += grid->xp[grid->cells[nc2*grid->maxfaces+nf]]/grid->nfaces[nc2];
-	yc1 += grid->yp[grid->cells[nc2*grid->maxfaces+nf]]/grid->nfaces[nc2];
+	xc2 += grid->xp[grid->cells[nc2*grid->maxfaces+nf]]/grid->nfaces[nc2];
+	yc2 += grid->yp[grid->cells[nc2*grid->maxfaces+nf]]/grid->nfaces[nc2];
       }
       xc = 0.5*(xc1+xc2);
       yc = 0.5*(yc1+yc2);

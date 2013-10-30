@@ -18,6 +18,6 @@
 #
 MPIHOME=
 PARMETISHOME=
-TRIANGLEHOME=
+TRIANGLEHOME=/home/zyaj/packages/triangle
 
 
