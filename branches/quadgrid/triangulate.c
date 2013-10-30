@@ -62,18 +62,14 @@ int GetTriangulation(gridT **grid, int myproc) {
   Np = out.numberofpoints;
   Ne = out.numberofedges;
   Nc = out.numberoftriangles;
-
   if(VERBOSE>0 && myproc==0 && Nc>0) 
-    printf("Created a triangulation with %d Cells, %d Edges, %d Delaunay points...\n",
-		       Nc, Ne, Np);
-
+    printf("Created a triangulation with %d Cells, %d Edges, %d Delaunay points...\n",Nc, Ne, Np);
   if(myproc==0 && VERBOSE>0) printf("Initializing Main Grid...\n");  
   InitMainGrid(grid,Np,Ne,Nc,myproc,3);
   for(n=0;n<(*grid)->Np;n++) {
     (*grid)->xp[n]=out.pointlist[2*n];
     (*grid)->yp[n]=out.pointlist[2*n+1];
   }
-  
   for(n=0;n<(*grid)->Ne;n++) {
     for(j=0;j<2;j++) {
       (*grid)->edges[NUMEDGECOLUMNS*n+j]=out.edgelist[2*n+j];
@@ -81,7 +77,6 @@ int GetTriangulation(gridT **grid, int myproc) {
     }
     (*grid)->mark[n]=out.edgemarkerlist[n];
   }
-
   for(n=0;n<(*grid)->Nc;n++) {
     (*grid)->nfaces[n]=3;
     (*grid)->xv[n] = vorout.pointlist[2*n];
@@ -91,7 +86,6 @@ int GetTriangulation(gridT **grid, int myproc) {
       (*grid)->neigh[n*(*grid)->maxfaces+nf]=out.neighborlist[n*(*grid)->maxfaces+nf];
     }
   }
-
   free(in.pointlist);
   free(in.pointmarkerlist);
   free(in.segmentlist);

@@ -33,7 +33,7 @@ main(int argc, char *argv[])
   StartMpi(&argc,&argv,&comm,&myproc,&numprocs);
 
   ParseFlags(argc,argv,myproc);
-  
+
   if(GRID)
     GetGrid(&grid,myproc,numprocs,comm);
   else
