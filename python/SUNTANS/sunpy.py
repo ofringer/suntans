@@ -240,7 +240,7 @@ class Grid(object):
         plt.legend(('Node','Edge','Marker=1','Marker=2','Marker=3','Marker=4'))
         plt.axis('equal')
     
-    def plotmesh(self,**kwargs):
+    def plotmesh(self,facecolors='none',linewidths=0.2,**kwargs):
         """
         Plots the outline of the grid mesh
         """
@@ -249,7 +249,8 @@ class Grid(object):
     
         xlim=self.xlims
         ylim=self.ylims
-        collection = PolyCollection(self.xy,**kwargs)
+        collection = PolyCollection(self.xy,facecolors=facecolors,\
+            linewidths=linewidths,**kwargs)
         #collection.set_array(np.array(self.dv))
         #collection.set_linewidth(0)
         #collection.set_edgecolors(collection.to_rgba(np.array(z))) 
@@ -976,6 +977,17 @@ class Spatial(Grid):
 	for name in nc.ncattrs():
 	    self.globalatts.update({name:getattr(nc,name)})
 
+    def listCoordVars(self):
+        """
+        List all of the variables that have the 'coordinate' attribute
+        """
+        
+        vname=[]
+        for vv in self.nc.variables.keys():
+            if hasattr(self.nc.variables[vv],'coordinates'):
+                vname.append(vv)
+        return vname
+ 
     
     def plot(self,z=None,xlims=None,ylims=None,titlestr=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
         """
@@ -1002,7 +1014,7 @@ class Spatial(Grid):
             clim=self.clim,**kwargs)
             
         if titlestr==None:
-            plt.title(self.__genTitle())
+            plt.title(self.genTitle())
         else:
             plt.title(titlestr)
             
@@ -1055,7 +1067,7 @@ class Spatial(Grid):
 	    self.cb = fig.colorbar(camp)
         
         if titlestr==None:
-            plt.title(self.__genTitle())
+            plt.title(self.genTitle())
         else:
             plt.title(titlestr)
             
@@ -1077,7 +1089,7 @@ class Spatial(Grid):
         
         points = np.column_stack((self.xp,self.yp,0.0*self.xp))
                 
-        self.fig,h,ug,d,title = unsurfm(points,self.cells,self.data,clim=self.clim,title=self.__genTitle(),**kwargs)
+        self.fig,h,ug,d,title = unsurfm(points,self.cells,self.data,clim=self.clim,title=self.genTitle(),**kwargs)
         
         if vector_overlay:
              u,v,w = self.getVector()
@@ -1117,7 +1129,7 @@ class Spatial(Grid):
         self.fig = plt.gcf()
         ax = self.fig.gca()
         h = plt.plot(self.time,self.data,**kwargs) 
-        ax.set_title(self.__genTitle())
+        ax.set_title(self.genTitle())
         
         return h
         
@@ -1194,7 +1206,7 @@ class Spatial(Grid):
         def updateScalar(i):
             collection.set_array(np.array(self.data[i,:]))
             collection.set_edgecolors(collection.to_rgba(np.array((self.data[i,:])))) 
-            title.set_text(self.__genTitle(i))
+            title.set_text(self.genTitle(i))
             if vector_overlay:
                 qh.set_UVC(U[i,1::subsample],V[i,1::subsample])
 
@@ -1696,7 +1708,7 @@ class Spatial(Grid):
         return dzz
         
 
-    def __genTitle(self,tt=None):
+    def genTitle(self,tt=None):
         
         if tt ==None:
             if type(self.tstep)==int:

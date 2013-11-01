@@ -35,7 +35,7 @@ def main(suntanspath,basename,numprocs,nstep=-1,outvars=None):
 
     # If outvars have been set only write those variables and the grid variables
     if not outvars==None:
-        gridvars=['suntans_mesh','cells','face','edges','neigh','grad','mnptr','eptr','xv','yv','xp','yp','xe','ye','normal','n1','n2','df','dg','def','Ac','dz','z_r','z_w','Nk','Nke','dv','time']	
+        gridvars=['suntans_mesh','cells','face','edges','neigh','grad','nfaces','mnptr','eptr','xv','yv','xp','yp','xe','ye','normal','n1','n2','df','dg','def','Ac','dz','z_r','z_w','Nk','Nke','dv','time']	
     	outvars=gridvars+outvars
 	newvariables = [vv for vv in variables if vv['Name'] in outvars]
 	variables = newvariables

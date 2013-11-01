@@ -186,7 +186,7 @@ class SunTvtk(Spatial):
         self.fig=mlab.figure(bgcolor=(0.,0.,0.),size=size)
         self.fig.scene.z_plus_view()
         #mlab.view(0,0)
-        #self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+        #self.title=mlab.title(self._SpatialgenTitle(),height=0.95,size=0.15)
         
     def colorbar(self):
         """
@@ -217,7 +217,7 @@ class SunTvtk(Spatial):
             
         # Add a title if there isn't one
         if not self.__dict__.has_key('title'):
-            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+            self.title=mlab.title(self._SpatialgenTitle(),height=0.95,size=0.15)
         
     def contour(self,vv=[10],clim=None,**kwargs):
         """
@@ -244,7 +244,7 @@ class SunTvtk(Spatial):
             
         # Add a title if there isn't one
         if not self.__dict__.has_key('title'):
-            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+            self.title=mlab.title(self._SpatialgenTitle(),height=0.95,size=0.15)
     
     def isosurface(self,vv=[4.0],clim=None,**kwargs):
         """
@@ -270,7 +270,7 @@ class SunTvtk(Spatial):
             
         # Add a title if there isn't one
         if not self.__dict__.has_key('title'):
-            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+            self.title=mlab.title(self._SpatialgenTitle(),height=0.95,size=0.15)
     
     def volume(self,clim=None,**kwargs):
         """
@@ -298,7 +298,7 @@ class SunTvtk(Spatial):
             
         # Add a title if there isn't one
         if not self.__dict__.has_key('title'):
-            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+            self.title=mlab.title(self._SpatialgenTitle(),height=0.95,size=0.15)
             
     def sliceplane(self,plane_orientation='y_axes',**kwargs):
         """
@@ -322,7 +322,7 @@ class SunTvtk(Spatial):
             
         # Add a title if there isn't one
         if not self.__dict__.has_key('title'):
-            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15) 
+            self.title=mlab.title(self._SpatialgenTitle(),height=0.95,size=0.15) 
             
     def vector(self,color=(1,1,1),subsample=1,scale=1e-3,line_width=1.0,**kwargs):
         """
@@ -410,7 +410,7 @@ class SunTvtk(Spatial):
             
         # Add a title if there isn't one
         if not self.__dict__.has_key('title'):
-            self.title=mlab.title(self._Spatial__genTitle(),height=0.95,size=0.15)
+            self.title=mlab.title(self._SpatialgenTitle(),height=0.95,size=0.15)
          
         return streams
 
@@ -514,7 +514,7 @@ class SunTvtk(Spatial):
                 
                 
                     
-                titlestr=self._Spatial__genTitle(tt=ii)
+                titlestr=self._SpatialgenTitle(tt=ii)
                 self.title.text=titlestr
                 
                 self.fig.scene.render()
@@ -565,7 +565,7 @@ class SunTvtk(Spatial):
             self.ug.cell_data.scalars = self.data
             self.ug.cell_data.scalars.name = 'suntans_scalar'
                 
-            titlestr=self._Spatial__genTitle(tt=ii)
+            titlestr=self._SpatialgenTitle(tt=ii)
             self.title.text=titlestr
             
             self.fig.scene.render()

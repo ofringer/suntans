@@ -10,6 +10,7 @@ Stanford University
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import mlab
+from matplotlib.lines import Line2D
 from scipy import signal, interpolate
 import othertime
 from datetime import datetime, timedelta
@@ -110,11 +111,10 @@ class timeseries(object):
         (b, a) = signal.butter(order, Wn, btype=btype, analog=0, output='ba')
         
         # filtfilt only likes to operate along the last axis
-        #pdb.set_trace()
-        #ytmp = np.swapaxes(self.y,-1,axis)
-        #ytmp = signal.filtfilt(b, a, ytmp, axis=axis)
-        #return np.swapaxes(self.y,axis,-1)
-        return signal.filtfilt(b, a, self.y, axis=axis)
+        ytmp = np.swapaxes(self.y,-1,axis)
+        ytmp = signal.filtfilt(b, a, ytmp, axis=-1)
+        return np.swapaxes(ytmp,axis,-1)
+        #return signal.filtfilt(b, a, self.y, axis=axis)
 
         
     def interp(self,timein,method='linear',timeformat='%Y%m%d.%H%M%S',axis=-1):
@@ -381,6 +381,18 @@ class ModVsObs(object):
             plt.legend(('Model','Observation'))
 
         return h1, h2
+        
+    def stackplot(self,colormod='r',colorobs='b',scale=None,ax=None,fig=None,**kwargs):
+        """
+        Stack plot of several time series
+        """
+        labels = ['z = %1.1f m'%z for z in self.Z.tolist()]
+        
+        fig,ax,ll = stackplot(self.TSobs.t,self.TSobs.y,ax=ax,fig=fig,\
+            scale=scale,units=self.units,labels=labels,color=colorobs,*kwargs)
+            
+        fig,ax,ll = stackplot(self.TSmod.t,self.TSmod.y,ax=ax,fig=fig,\
+            scale=scale,units=self.units,labels=labels,color=colormod,*kwargs)
 
     def calcStats(self):
         """
@@ -622,6 +634,77 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
     else:
         return ts
 
+def stackplot(t,y,scale=None,gap=0.2,ax=None,fig=None,units='',labels=None,**kwargs):
+    """
+    Vertically stacked time series plot.
+    
+    Puts all of the time-series into one axes by working out a suitable spacing. 
+    
+    Inputs:
+        y - 2d array [nt,ny] where ny is the number of time series
+        t - datetime vector
+        
+    Returns: 
+        fig, ax : figure and axes handles
+        ll : plot handles to each line plot [list]
+    """
+    # Determine the scale factors and the heights of all of the axes
+    ny = y.shape[1]
+        
+    if scale==None:
+        scale = np.abs(y).max()
+    
+    if not labels == None:
+        assert len(labels)==ny, ' number of labels (%d) must equal number of layers (%d)'%(len(labels),ny)
+        
+    # Height of each axes in normalized coordinates
+    yheight = 1.0 / (ny + (ny+1.0)*gap)
+    
+    # Create a new figure
+    if fig==None:
+        fig=plt.figure()
+    else:
+        fig = plt.gcf()
+    
+    if ax == None:
+        ax = fig.add_subplot(111,frame_on=False,ylim=[0,1.0],yticks=[])
+        
+    # Now add each line to the figure
+    ll = [] # List of line objects
+    
+    def fakeaxes(yval,dy):
+        cc=[0.5,0.5,0.5]
+        ax.add_line(Line2D([0,1],[yval,yval],linewidth=0.5,color=cc,transform=ax.transAxes,linestyle='--'))
+        yp = yval + dy/2.
+        ym = yval - dy/2.
+        ax.add_line(Line2D([0,0],[yp,ym],linewidth=0.5,color=cc,transform=ax.transAxes))
+        ax.add_line(Line2D([1,1],[yp,ym],linewidth=0.5,color=cc,transform=ax.transAxes))
+        #Little caps
+        ax.add_line(Line2D([0,0.01],[yp,yp],linewidth=0.5,color=cc,transform=ax.transAxes))
+        ax.add_line(Line2D([0,0.01],[ym,ym],linewidth=0.5,color=cc,transform=ax.transAxes))
+        ax.add_line(Line2D([0.99,1],[yp,yp],linewidth=0.5,color=cc,transform=ax.transAxes))
+        ax.add_line(Line2D([0.99,1],[ym,ym],linewidth=0.5,color=cc,transform=ax.transAxes))
+        
+    for N in range(1,ny+1):
+        yoffset = N*(gap*yheight) + 0.5*yheight + (N-1)*yheight     
+        # scaling factor
+        vscale = yheight / (scale+yoffset)
+        l = ax.plot(t,vscale*y[:,N-1]+yoffset,**kwargs)
+        ll.append(l)
+        #Adds an axes
+        fakeaxes(yoffset,yheight)
+        
+        if not labels==None:
+            plt.text(0.8,yoffset+0.5*yheight-0.02,labels[N-1],transform=ax.transAxes,fontstyle='italic')
+              
+    # Add a few extra features    
+    ax.add_line(Line2D([0,1],[0.01,0.01],linewidth=0.5,color='k',transform=ax.transAxes))
+    ax.add_line(Line2D([0,1],[1,1],linewidth=0.5,color='k',transform=ax.transAxes))
+    plt.xticks(rotation=17)
+    plt.ylabel('$Scale\ =\  %2.1f\  %s$'%(scale,units))
+    
+    return fig,ax,ll
+    
 def SpeedDirPlot(t,u,v,convention='current',units='m s^{-1}',color1='b',color2='r'):
     """
     Plots speed and direction on the same axes

@@ -144,6 +144,7 @@ class roms_grid(object):
         write_nc_var(self.hc, 'hc', ())
         write_nc_var(self.Vstretching, 'Vstretching', ())
         write_nc_var(self.Vtransform, 'Vtransform', ())
+
         
     def nc_add_dimension(self,outfile,name,length):
         """
@@ -307,10 +308,11 @@ class ROMS(roms_grid):
         if self.ndim == 4 and self.zlayer==True:
             # Slice along z layers
             print 'Extracting data along z-coordinates...'
-            dataz = np.zeros((len(tstep),)+self.z.shape+self.X.shape)
+            dataz = np.zeros((len(tstep),)+self.Z.shape+self.X.shape)
             
             for ii,tt in enumerate(tstep):
-                Z = self.calcDepth(zeta=self.loadData(varname='zeta',tstep=[tt]))
+                #Z = self.calcDepth(zeta=self.loadData(varname='zeta',tstep=[tt]))
+                Z = self.calcDepth()
                 if len(Z.shape) > 1:
                     dataz[ii,:,:] = isoslice(data[ii,:,:,:].squeeze(),Z,self.Z)
                 else:
@@ -371,7 +373,16 @@ class ROMS(roms_grid):
         """
         Calculates the depth array for the current variable
         """
-        h = self.h[self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]].squeeze()
+        #h = self.h[self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]].squeeze()
+        if self.gridtype == 'rho':
+            h = self.h
+        elif self.gridtype == 'psi':
+            h = 0.5 * (self.h[1:,1:] + self.h[0:-1,0:-1])
+        elif self.gridtype == 'u':
+            h = 0.5 * (self.h[:,1:] + self.h[:,0:-1])
+        elif self.gridtype == 'v':
+            h = 0.5 * (self.h[1:,:] + self.h[0:-1,:])
+         
         return get_depth(self.S,self.C,self.hc,h,zeta=zeta, Vtransform=self.Vtransform).squeeze()
         
     def depthInt(self,var,grid='rho',cumulative=False):
@@ -726,7 +737,7 @@ class ROMS(roms_grid):
                 self.K = range(0,self.Nz)
                 
             if self.zlayer==True: # Load all layers when zlayer is true
-                self.Z = self.K[0]
+                self.Z = np.array(self.K)
                 self.K = range(0,self.Nz)
                 
             if self.zcoord == 's_rho':
@@ -845,9 +856,9 @@ class roms_timeseries(ROMS, timeseries):
         """
         z-t contour plot of the time series
         """
-        h1 = plt.contourf(self.time[self.tstep],self.Z,self.TS.y.T,clevs,**kwargs)
+        h1 = plt.contourf(self.time[self.tstep],self.Z,self.y.T,clevs,**kwargs)
         
-        plt.colorbar()
+        #plt.colorbar()
         
         plt.xticks(rotation=17)
         return h1
