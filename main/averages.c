@@ -177,9 +177,9 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
       average->nu_v[i][k]+=phys->nu_tv[i][k];
 
       if(prop->calcage){
-        if(phys->agec[i][k]>1e-10){
+        if(age->agec[i][k]>1e-10){
 	    // Calculate the mean online here
-	    average->agemean[i][k]+=phys->agealpha[i][k]/phys->agec[i][k];
+	    average->agemean[i][k]+=age->agealpha[i][k]/age->agec[i][k];
 	}else{
 	    average->agemean[i][k]+=0;
         }

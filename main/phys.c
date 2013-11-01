@@ -26,6 +26,7 @@
 #include "sources.h"
 #include "mynetcdf.h"
 #include "met.h"
+#include "age.h"
 
 
 /*
@@ -105,8 +106,6 @@ void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
 static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc, int nonlinear);
 static void getTsurf(gridT *grid, physT *phys);
 static void getchangeT(gridT *grid, physT *phys);
-static REAL getToffSet(char starttime[15], char basetime[15]);
-static void UpdateAge(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc);
 /*
  * Function: AllocatePhysicalVariables
  * Usage: AllocatePhysicalVariables(grid,phys,prop);
@@ -218,13 +217,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->tau_B = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->CdT = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->CdB = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
-  // Age variables
-  if(prop->calcage>0){
-    (*phys)->agec = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-    (*phys)->agealpha = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-    (*phys)->Cn_Ac = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-    (*phys)->Cn_Aa = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-  }
 
   /* new interpolation variables */
   // loop over the nodes
@@ -283,12 +275,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
       (*phys)->qT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->lT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     }
-    if(prop->calcage>0){
-      (*phys)->agec[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-      (*phys)->agealpha[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-      (*phys)->Cn_Ac[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-      (*phys)->Cn_Aa[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-    }
     (*phys)->stmp[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->stmp2[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->stmp3[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -305,10 +291,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->boundary_T = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_rho = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_tmp = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  if(prop->calcage>0){
-      (*phys)->boundary_age = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-      (*phys)->boundary_agealpha = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  }
   (*phys)->boundary_h = (REAL *)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->boundary_flag = (REAL *)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
   // allocate over vertical layers
@@ -322,11 +304,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->boundary_T[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_tmp[jptr-grid->edgedist[2]] = (REAL *)SunMalloc((grid->Nke[j]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_rho[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
-    if(prop->calcage>0){
-	(*phys)->boundary_age[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
-	(*phys)->boundary_agealpha[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
     }
-  }
 
   // allocate coefficients
   (*phys)->ap = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
@@ -690,10 +668,6 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       phys->s[i][k]=0;
       phys->T[i][k]=0;
       phys->s0[i][k]=0;
-      if(prop->calcage>0){
-      	phys->agec[i][k]=0;
-	phys->agealpha[i][k]=0;
-      }
     }
   }
 
@@ -771,10 +745,6 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
 	phys->Ttmp[i][k]=phys->T[i][k];
     }
   }
-
-  // Initialise the age arrays (netcdf only)
-  if (prop->calcage && prop->readinitialnc)
-       ReturnAgeNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
 
 
   // Need to compute the velocity vectors at the cell centers based
@@ -1298,10 +1268,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       
      // Update the age (passive) tracers
       if(prop->calcage>0){
-        //t0=Timer();
-        //printf("Entering age...\n");
         UpdateAge(grid,phys,prop,comm,myproc);
-        //t_transport+=Timer()-t0;
       }
      
       // Update the temperature only if gamma is nonzero in suntans.dat
@@ -5408,113 +5375,3 @@ static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, R
       }
     }
 }
-
-
-/* Function getToffSet()
- * ------------------
- * Returns the time offset in days between two time strings - starttime and basetime
- * 
- * The time string format is: yyyymmdd.HHMMSS (15 characters)
- * Uses the time.h libraries
- */
-static REAL getToffSet(char basetime[15], char starttime[15]){
-	
-    //char *strptime(const char *buf, const char *format, struct tm *tm) 
-    //time_t mktime ( struct tm * timeptr ); 
-    struct tm tm0; 
-    struct tm tm1;
-    time_t t0, t1;
-    //const char time1=*basetime;
-    //const char time2=*starttime;
-
-    strptime(basetime,"%Y%m%d.%H%M%S",&tm0);
-    strptime(starttime,"%Y%m%d.%H%M%S",&tm1);
-    
-    t0 = mktime(&tm0);
-    t1 = mktime(&tm1);
-    return difftime(t1,t0)/86400.0;
-
-}//End function
-
-
-/*
- * Function: UpdateAge()
- * ---------------------------------------
- * Update the age concentration quantities
- *
- */
-void UpdateAge(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc){
-    int i, ib, iptr, j, jptr, k;
-
-    // Specify age at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
-    // age flow outward. (same as turbulence quantities)
-    for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
-        j = grid->edgep[jptr];
-        ib = grid->grad[2*j];
-        for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
-          //phys->boundary_tmp[jptr-grid->edgedist[2]][k]=phys->agec[ib][k];
-	  phys->boundary_age[jptr-grid->edgedist[2]][k]=1;
-    }
-
-    //printf("Updating agec...\n");
-    //printf("prop->rtime = %f\n",prop->rtime);
-    UpdateScalars(grid,phys,prop,phys->wnew,phys->agec,phys->boundary_age,phys->Cn_Ac,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,NULL,NULL,NULL,NULL,0,0,comm,myproc,0,prop->TVDsalt);
-//    UpdateScalars(grid,phys,prop,phys->wnew,phys->agec,phys->boundary_age,phys->Cn_Ac,prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDsalt);
-
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i = grid->cellp[iptr];
-      for(k=grid->ctop[i];k<grid->Nk[i];k++){
-//	 phys->agec[i][k] = phys->agec[i][k]*prop->dt; 
-	 phys->agec[i][k] = phys->agec[i][k]; 
-      }
-    }
-
-    ISendRecvCellData3D(phys->agec,grid,myproc,comm);
-
-    for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
-        j = grid->edgep[jptr];
-        ib = grid->grad[2*j];
-
-        for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
-          //phys->boundary_tmp[jptr-grid->edgedist[2]][k]=phys->agealpha[ib][k];
-	  phys->boundary_agealpha[jptr-grid->edgedist[2]][k]=0.0;
-    }
-
-    //printf("Updating agealpha...\n");
-    //for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-    //  i = grid->cellp[iptr];
-    //  for(k=grid->ctop[i];k<grid->Nk[i];k++){
-    //     phys->uold[i][k] = phys->agec[i][k]; 
-    //     phys->wtmp[i][k] = 0;
-    //  }
-    //}
-
-
-    //UpdateScalars(grid,phys,prop,phys->wnew,phys->agealpha,phys->boundary_agealpha,phys->Cn_Aa, prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDsalt);
-    UpdateScalars(grid,phys,prop,phys->wnew,phys->agealpha,phys->boundary_agealpha,phys->Cn_Aa, prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,NULL,NULL,NULL,NULL,0,0,comm,myproc,0,prop->TVDsalt);
-
-
-    // Alpha parameter source term
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
-      i = grid->cellp[iptr];
-      for(k=grid->ctop[i];k<grid->Nk[i];k++){
-         //These are the source terms for the alpha parameter
-         //phys->wtmp[i][k] = 0;
-         //phys->uold[i][k] = phys->agec[i][k]*prop->dt;
-         phys->agealpha[i][k] += phys->agec[i][k]*prop->dt; 
-         //phys->agealpha[i][k] = phys->agealpha[i][k] + phys->agec[i][k]*prop->rtime; 
-      }
-    }
-
-    ISendRecvCellData3D(phys->agealpha,grid,myproc,comm);
-    
-    //printf("Done\n");
-    
-}
-
-
-
-
-
-
-

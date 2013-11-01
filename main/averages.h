@@ -11,6 +11,7 @@
 #include "grid.h"
 #include "met.h"
 #include "tvd.h"
+#include "age.h"
 
 /*
  * Main averages variable struct.

@@ -346,3 +346,31 @@ REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2){
     return y0*L0 + y1*L1 + y2*L2;
 
 }//End Function
+
+/* Function getToffSet()
+ * ------------------
+ * Returns the time offset in days between two time strings - starttime and basetime
+ * 
+ * The time string format is: yyyymmdd.HHMMSS (15 characters)
+ * Uses the time.h libraries
+ */
+REAL getToffSet(char basetime[15], char starttime[15]){
+	
+    //char *strptime(const char *buf, const char *format, struct tm *tm) 
+    //time_t mktime ( struct tm * timeptr ); 
+    struct tm tm0; 
+    struct tm tm1;
+    time_t t0, t1;
+    //const char time1=*basetime;
+    //const char time2=*starttime;
+
+    strptime(basetime,"%Y%m%d.%H%M%S",&tm0);
+    strptime(starttime,"%Y%m%d.%H%M%S",&tm1);
+    
+    t0 = mktime(&tm0);
+    t1 = mktime(&tm1);
+    return difftime(t1,t0)/86400.0;
+
+}//End function
+
+

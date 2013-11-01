@@ -935,7 +935,11 @@ void ReadMainGrid(gridT *grid, int myproc)
     grid->mark[n]=(int)getfield(ifile,str);
     for(j=0;j<2;j++) 
       grid->grad[2*n+j]=(int)getfield(ifile,str);
-    grid->edge_id[n]=(int)getfield(ifile,str);
+    if(getcolumn(EDGEFILE)>5){//Backwards compatibility
+	grid->edge_id[n]=(int)getfield(ifile,str);
+    } else {
+    	grid->edge_id[n]=0;
+    }
   }
   fclose(ifile);
 
@@ -943,8 +947,11 @@ void ReadMainGrid(gridT *grid, int myproc)
   for(n=0;n<grid->Nc;n++) {
  
     //added part, the first column is the number of faces for each cell, not xv 
-    if(getcolumn(CELLSFILE)>8)
-      getfield(ifile,str);
+    if(getcolumn(CELLSFILE)>8){//Backwards compatibilty
+      grid->nfaces[n]=getfield(ifile,str);
+    } else {
+      grid->nfaces[n]=3;
+    }
     grid->xv[n] = getfield(ifile,str);
     grid->yv[n] = getfield(ifile,str);
     for(nf=0;nf<grid->nfaces[n];nf++)
@@ -1968,11 +1975,11 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
 //	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n], 
 //      grid->edges[n*NUMEDGECOLUMNS], grid->edges[n*NUMEDGECOLUMNS+1]);
 //MR - output eptr array
-    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d %d %d %d\n",
+    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d %d %d %d %d\n",
 	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
 	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
 	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n], 
-      grid->edges[n*NUMEDGECOLUMNS], grid->edges[n*NUMEDGECOLUMNS+1],grid->eptr[n]);
+      grid->edges[n*NUMEDGECOLUMNS], grid->edges[n*NUMEDGECOLUMNS+1],grid->edge_id[n],grid->eptr[n]);
 
   }
   fclose(ofile);
@@ -2265,7 +2272,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->grad = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->gradf = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
   (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
-  //(*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid"); This doesn't belong here!
+  (*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid"); 
   (*grid)->edges = (int *)SunMalloc((*grid)->Ne*NUMEDGECOLUMNS*sizeof(int),"ReadGrid");
   (*grid)->eptr = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");//MR
 
@@ -2289,6 +2296,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
       (*grid)->mark[n] = (int)getfield(ifile,str);
       (*grid)->edges[NUMEDGECOLUMNS*n] = (int)getfield(ifile,str);
       (*grid)->edges[NUMEDGECOLUMNS*n+1] = (int)getfield(ifile,str);
+      (*grid)->edge_id[n] = (int)getfield(ifile,str);//MR
       (*grid)->eptr[n] = (int)getfield(ifile,str);//MR
   }
   fclose(ifile);
@@ -4717,8 +4725,8 @@ static int CorrectVoronoi(gridT *grid, int myproc)
 	yc1 += grid->yp[grid->cells[nc1*grid->maxfaces+nf]]/grid->nfaces[nc1];
       }
       for(nf=0;nf<grid->nfaces[nc2];nf++) {
-	xc1 += grid->xp[grid->cells[nc2*grid->maxfaces+nf]]/grid->nfaces[nc2];
-	yc1 += grid->yp[grid->cells[nc2*grid->maxfaces+nf]]/grid->nfaces[nc2];
+	xc2 += grid->xp[grid->cells[nc2*grid->maxfaces+nf]]/grid->nfaces[nc2];
+	yc2 += grid->yp[grid->cells[nc2*grid->maxfaces+nf]]/grid->nfaces[nc2];
       }
       xc = 0.5*(xc1+xc2);
       yc = 0.5*(yc1+yc2);

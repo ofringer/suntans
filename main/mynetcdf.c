@@ -374,13 +374,13 @@ void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, 
      if(prop->calcage>0){ 
 	if ((retval = nc_inq_varid(ncid, "agec", &varid)))
 	  ERR(retval);
-	ravel(phys->agec, phys->tmpvar, grid);
+	ravel(age->agec, phys->tmpvar, grid);
 	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	  ERR(retval);
 
 	if ((retval = nc_inq_varid(ncid, "agealpha", &varid)))
 	  ERR(retval);
-	ravel(phys->agealpha, phys->tmpvar, grid);
+	ravel(age->agealpha, phys->tmpvar, grid);
 	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	  ERR(retval);
      }
@@ -3000,7 +3000,7 @@ void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int 
  * Reads the age variables (agec & agealpha) from the initial condition netcdf array
  *
  */
-void ReturnAgeNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc){
+void ReturnAgeNC(propT *prop, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc){
    int i,k,ind;
    size_t start[] = {T0, 0, 0};
    size_t count[] = {1, Nki, Nci};
@@ -3019,7 +3019,7 @@ void ReturnAgeNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       //for(k=0;k<grid->Nk[i];k++) {
 	 ind = k*Nci + grid->mnptr[i]; 
-	 phys->agec[i][k]=htmp[ind];
+	 age->agec[i][k]=htmp[ind];
       }
   }
 
@@ -3033,7 +3033,7 @@ void ReturnAgeNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
       //for(k=0;k<grid->Nk[i];k++) {
 	 ind = k*Nci + grid->mnptr[i]; 
-	 phys->agealpha[i][k]=htmp[ind];
+	 age->agealpha[i][k]=htmp[ind];
       }
   }
 
