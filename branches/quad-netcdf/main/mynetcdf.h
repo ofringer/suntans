@@ -21,6 +21,7 @@
 #include "met.h"
 #include "boundaries.h"
 #include "averages.h"
+#include "age.h"
 
 /* Netcdf error */
 #define ERRCODE 2
@@ -48,7 +49,7 @@ int getICtime(propT *prop, int Nt, int myproc);
 void ReturnFreeSurfaceNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int T0, int myproc);
 void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
 void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
-void ReturnAgeNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
+void ReturnAgeNC(propT *prop, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc);
 int MPI_NCOpen(char *file, int perms, char *caller, int myproc);
 int MPI_NCClose(int ncid);
 #endif

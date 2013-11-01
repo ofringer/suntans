@@ -143,7 +143,7 @@ void ReturnSalinityNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci
   exit(EXIT_FAILURE);
 }
 
-void ReturnAgeNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc){
+void ReturnAgeNC(propT *prop, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc){
 
   if(myproc==0) printf("Error: NetCDF Libraries required. Set readinitialnc = 0\n");
   MPI_Finalize();

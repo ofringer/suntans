@@ -78,8 +78,6 @@ typedef struct _physT {
   REAL **boundary_T;
   REAL **boundary_tmp;
   REAL **boundary_rho;
-  REAL **boundary_age;
-  REAL **boundary_agealpha;
   REAL *boundary_h;
   REAL *boundary_flag;
 
@@ -135,11 +133,6 @@ typedef struct _physT {
   REAL **TP;
   REAL **TB;
   REAL **TD;
-  // Age variables
-  REAL **agec;
-  REAL **agealpha;
-  REAL **Cn_Ac;
-  REAL **Cn_Aa;
 
   REAL *ap;
   REAL *am;
