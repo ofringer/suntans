@@ -12,7 +12,7 @@ SUNPLOT=$SUNTANSHOME/sunplot
 . $SUNTANSHOME/Makefile.in
 
 maindatadir=rundata
-datadir=dataXY
+datadir=data
 
 NUMPROCS=$1
 

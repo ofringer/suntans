@@ -19,7 +19,9 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
     dz[0]=depth;
   } else {
     for(k=0;k<Nkmax;k++) {
-      dz[k]=1.0/Nkmax;
+      zk=-depth*0.5*(1-cos(((REAL)k)*PI/(REAL)Nkmax));
+      zkp1=-depth*0.5*(1-cos(((REAL)(k+1))*PI/(REAL)Nkmax));
+      dz[k]=zk-zkp1;
     }
   }
   return Nkmax;
@@ -34,7 +36,7 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
  *
  */
 REAL ReturnDepth(REAL x, REAL y) {
-  return 1.0;//e6;
+  return 1.0;
 }
 
  /*
