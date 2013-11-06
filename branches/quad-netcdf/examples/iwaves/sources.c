@@ -87,7 +87,7 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
  * be assigned elsewhere.
  *
  */
-void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met) {
+void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met, int myproc, MPI_Comm comm) {
   int i, k;
   for(i=0;i<grid->Nc;i++)
     for(k=0;k<grid->Nk[i];k++)

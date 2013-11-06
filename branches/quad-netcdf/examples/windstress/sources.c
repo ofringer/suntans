@@ -98,7 +98,7 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
  *
  *
  */
-void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met) {
+void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met, int myproc, MPI_Comm comm) {
   int i, iptr, k, ktop;
   REAL z, dztop, sigma , epsilon_w, epsilon_a, dzmin_heatflux, T_0, T_00, c_p, alpha_0,
     r_LW, alpha_LW, F, e_s, e_a, alpha_E1, alpha_E2, alpha_E3, alpha_E4,
