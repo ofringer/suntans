@@ -17,6 +17,7 @@
 #include<stdlib.h>
 #include<stdio.h>
 #include "memory.h"
+#include<string.h>
 
 /*
  * Function: SunMalloc
@@ -30,7 +31,7 @@
 void *SunMalloc(const unsigned bytes, const char *function) {
   void *ptr = malloc(bytes);
 
-  // VerboseMemory=1;
+  //  VerboseMemory=1;
 
   if(ptr==NULL) {
     printf("Error.  Out of memory!\n");
@@ -39,9 +40,11 @@ void *SunMalloc(const unsigned bytes, const char *function) {
     exit(1);
   } else {
     TotSpace+=bytes;
-    if(VerboseMemory)
-      printf("Allocated %u, Total: %u (%s)\n",
-	     bytes,TotSpace,function);
+    if(VerboseMemory) {
+      if(strcmp(function,oldAllocFunction)) 
+	printf("Allocated %u, Total: %u (%s)\n",bytes,TotSpace,function);
+      strcpy(oldAllocFunction,function);
+    }
     return ptr;
   }
 }
@@ -58,15 +61,23 @@ void *SunMalloc(const unsigned bytes, const char *function) {
 void SunFree(void *ptr, const unsigned bytes, const char *function) {
   if(ptr==NULL) {
     printf("Error!  Attempting to free a NULL pointer in funciton %s\n",function);
-    exit(1);
+
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
   } else {
     free(ptr);
     if(bytes<=TotSpace) {
       TotSpace-=bytes;
-      if(VerboseMemory)
+      if(VerboseMemory && strcmp(function,oldFreeFunction))
 	printf("Freed %u, Total: %u (%s)\n",
 	       bytes,TotSpace,function);
-    } else if(VerboseMemory)
-      printf("Warning! Negative TotSpace!\n");
+      strcpy(oldFreeFunction,function);
+    } else {
+      printf("Error! Attempting to free %d bytes when only %d have been allocated (%s)!\n",
+      	     bytes,TotSpace,function);
+
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+    }
   }
 }
