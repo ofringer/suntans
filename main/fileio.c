@@ -192,30 +192,37 @@ int getsize(char *filename)
 }
 
 /*
- * Function: getcolumn();
- * Usage: N = getcolumn(filename);
- * -----------------------------
- * Returns the number of rows in a file.
+ * Function: getNumColumns();
+ * Usage: N = getNumColumns(filename);
+ * -----------------------------------
+ * Returns the number of columns in a file.
  *
  */
-int getcolumn(char *filename)
+int getNumColumns(char *filename)
 {
   int N;
-  char c;
+  char c, c_old;
   FILE *infile = fopen(filename,"r");
   if(!infile)
     printf("Error opening %s\n",filename);
 
   N=1;
+  c_old='\0';
   while((c=fgetc(infile))!=EOF){
-    if(c==' ') 
+    // Don't add another column for multiple white spaces or tabs or if the first column is a white space
+    if((c==' ' | c=='\t') && !(c_old == ' ' | c_old == '\t' | c_old == '\0'))  
       N++;
-    if(c=='\n')
+    if(c=='\n') {
+      if(c_old==' ');
+      N--;
       break;
+    }
+    c_old=c;
   }
   fclose(infile);
   return N;
 }
+
 /*
  * Function: GetValue
  * Usage: Nkmax = (int)GetValue("datafile","Nkmax");
