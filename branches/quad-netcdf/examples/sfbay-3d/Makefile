@@ -25,9 +25,9 @@ SUN = $(SUNTANSHOME)/sun
 SUNNC = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
-NUMPROCS = 8
+NUMPROCS = 16
 
-all:	data datanc
+all:	$(SUN)
 
 test:
 	@echo Please use \"make test2d\" or \"make test3d\" or \"make netcdf-test2d\" or \"make netcdf-test3d\".
@@ -46,8 +46,12 @@ netcdf-test3d:	datanc
 
 
 data:	$(SUN)
+	cp boundaries-no-nc.c boundaries.c
 
-datanc: $(SUNNC)
+
+datanc: $(SUN)
+	cp boundaries-nc.c boundaries.c
+
 
 .c.o:	
 	$(LD) -c $(INCLUDES) $(DEFS) $*.c
@@ -56,12 +60,10 @@ $(SUN):	initialization.o boundaries.o state.o
 	cp initialization.o boundaries.o state.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 
-$(SUNNC): initialization.o state.o
-	cp initialization.o state.o $(SUNTANSHOME)
-	make -C $(SUNTANSHOME)
-
 clean:
 	rm -f *.o
 
 clobber: clean
-	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/*~
+	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/*~ 
+	cp boundaries-no-nc.c boundaries.c
+
