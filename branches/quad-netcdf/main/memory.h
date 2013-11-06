@@ -12,8 +12,11 @@
 #ifndef _memory_h
 #define _memory_h
 
+#include "suntans.h"
+
 unsigned TotSpace;
 int VerboseMemory;
+char oldAllocFunction[BUFFERLENGTH], oldFreeFunction[BUFFERLENGTH];
 
 /*
  * Function: SunMalloc
