@@ -170,4 +170,4 @@ const int calcage_DEFAULT = 0;
 const int calcaverage_DEFAULT = 0;
 
 // Maximum number of faces 
-const int maxFaces_DEFAULT = 3;
+const int maxFaces_DEFAULT = DEFAULT_NFACES;

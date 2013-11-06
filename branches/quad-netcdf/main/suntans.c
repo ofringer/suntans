@@ -42,7 +42,7 @@ main(int argc, char *argv[])
 
   if(SOLVE) {
     //read parameters in suntans.dat into the solver
-    ReadProperties(&prop,&grid,myproc);
+    ReadProperties(&prop,grid,myproc);
     // give space and initialize dzf(edge) dzz(center) dzzold(center)
     InitializeVerticalGrid(&grid,myproc);
     AllocatePhysicalVariables(grid,&phys,prop);

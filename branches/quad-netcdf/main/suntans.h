@@ -30,6 +30,7 @@
 #define CHECKCONSISTENCY 0
 #define DRYCELLHEIGHT 1e-10
 #define BUFFERHEIGHT 1e-2
+#define DEFAULT_NFACES 3
 
 // Error/Exit codes
 #define EXIT_WRITING 1

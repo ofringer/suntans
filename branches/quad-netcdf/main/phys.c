@@ -4368,12 +4368,11 @@ static void OutputData(gridT *grid, physT *phys, propT *prop,
  * data file.  Note that if an entry does not exist, a default can be used.
  *
  */
-void ReadProperties(propT **prop, gridT **grid, int myproc)
-{ int max;
+void ReadProperties(propT **prop, gridT *grid, int myproc)
+{ 
   // allocate memory
   *prop = (propT *)SunMalloc(sizeof(propT),"ReadProperties");
-  // max get value for maxfaces to define interp and prettyplot
-  max = (*grid)->maxfaces;//MPI_GetValue(DATAFILE,"maxFaces","ReadProperties",myproc);
+
   // set values from suntans.dat file (DATAFILE)
   (*prop)->thetaramptime = MPI_GetValue(DATAFILE,"thetaramptime","ReadProperties",myproc);
   (*prop)->theta = MPI_GetValue(DATAFILE,"theta","ReadProperties",myproc);
@@ -4497,18 +4496,20 @@ void ReadProperties(propT **prop, gridT **grid, int myproc)
       exit(EXIT_FAILURE);
       break;
   }
+  if((*prop)->interp==QUAD && grid->maxfaces>DEFAULT_NFACES) {
+    printf("Warning in ReadProperties...interp set to PEROT for use with quad or hybrid grid.\n");
+    (*prop)->interp=PEROT;
+  }
 
   // additional data for pretty plot methods
   (*prop)->prettyplot = MPI_GetValue(DATAFILE,"prettyplot","ReadProperties",myproc);
-  // when maxFaces>3 we cannot use quadratic and prettyplot so set all zero
-  if(max>3){
-  (*prop)->prettyplot = 0;
-  (*prop)->interp = PEROT;
-  if(myproc==0 && VERBOSE>1) printf("Because maxFaces=%d >3, so prettyplot and interp are all set to be 0 automatically.\n",max);
+  if((*prop)->prettyplot!=0 && grid->maxfaces>DEFAULT_NFACES) {
+    printf("Warning in ReadProperties...prettyplot set to zero for use with quad or hybrid grid.\n");
+    (*prop)->prettyplot=0;
   }
+
   // addition for linearized free surface where dzz=dz
   (*prop)->linearFS = (int)MPI_GetValue(DATAFILE,"linearFS","ReadProperties",myproc);
-
 }
 
 /* 
