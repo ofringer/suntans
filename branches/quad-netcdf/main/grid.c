@@ -3898,9 +3898,9 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
         //Point from global edge index to local one
         leptr[iface]=k;
         //point from local edge index to global one
-        (*localgrid)->eptr[k++]=iface;
+        (*localgrid)->eptr[k]=iface;
 	//edge_id array
-	(*localgrid)->edge_id[k]=maingrid->edge_id[k];
+	(*localgrid)->edge_id[k++]=maingrid->edge_id[iface];
 
       }
     }
