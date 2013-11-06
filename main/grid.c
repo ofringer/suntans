@@ -19,6 +19,8 @@
 #include "timer.h"
 
 #define VTXDISTMAX 100
+#define COLUMNS_IN_TRIANGLE_CELLS_FILE 8  // Number of columns in original cells.dat before hybrid version of code
+#define COLUMNS_IN_TRIANGLE_EDGES_FILE 5  // Number of columns in original edges.dat before netcdf version of code that includes edge_id
 
 /*
  * Global variables for halo region for inner-processor boundaries
@@ -110,7 +112,7 @@ static int GetNk(REAL *dz, REAL localdepth, int Nkmax);
  */
 void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
 {
-  int Np, Ne, Nc, numcorr, maxFaces, i;
+  int Np, Ne, Nc, numcorr, i;
   gridT *maingrid;
 
   // read in all the filenames from the suntans.dat file
@@ -122,13 +124,12 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
     Np = MPI_GetSize(POINTSFILE,"GetGrid",myproc);
     Ne = MPI_GetSize(EDGEFILE,"GetGrid",myproc);
     Nc = MPI_GetSize(CELLSFILE,"GetGrid",myproc);
-    maxFaces=(int)MPI_GetValue(DATAFILE,"maxFaces","GetGrid",0);
     
     // Every processor will know about data read in from
     // triangle as well as the depth.
     if(myproc==0 && VERBOSE>0) printf("Initializing Main Grid...\n");
     // allocate memory and define main grid structure members
-    InitMainGrid(&maingrid,Np,Ne,Nc,myproc,maxFaces);
+    InitMainGrid(&maingrid,Np,Ne,Nc,myproc);
 
     if(myproc==0 && VERBOSE>0) printf("Reading Grid...\n");
     // read in cells, edges, points files (suntans grid format files)
@@ -781,7 +782,7 @@ void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Co
  * Initialize the main grid struct.
  *
  */
-void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces)
+void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc)
 { int n;
   *grid = (gridT *)SunMalloc(sizeof(gridT),"InitMainGrid");
   
@@ -796,7 +797,7 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces
   (*grid)->Np = Np;
  
   // Max number of edges of cells
-  (*grid)->maxfaces=maxFaces;
+  (*grid)->maxfaces=MPI_GetValue(DATAFILE,"maxFaces","GetDepth",myproc);
  
   // (x,y) coordinates of vertices
   (*grid)->xp = (REAL *)SunMalloc((*grid)->Np*sizeof(REAL),"InitMainGrid");
@@ -813,17 +814,8 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces
   // the given edge.
   (*grid)->gradf = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"InitMainGrid");
 
-  // parts added
-  // allocate nfaces and maxfaces
+  // nfaces array contains the number of faces in each cell
   (*grid)->nfaces= (int *)SunMalloc((*grid)->Nc*sizeof(int),"InitMainGrid");
-  // Load the faces' number of each cell and calculate the maximum nfaces
-  // if -t not use READNFACES
-  if(!TRIANGULATE && maxFaces!=3){ 
-    ReadNfaces(*grid, myproc, maxFaces);
-  }else{ 
-    for(n=0;n<Nc;n++)
-      (*grid)->nfaces[n]=3;
-   }
 
   // Pointers to xp,yp coordinates of vertices that make up polygons (0<cells<Np)
   (*grid)->cells = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"InitMainGrid");
@@ -868,35 +860,6 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc, int maxFaces
   (*grid)->vtxdist = (int *)SunMalloc(VTXDISTMAX*sizeof(int),"InitMainGrid");
 }
 
-/* added functions
- * Function: ReadNfaces
- * Usage: ReadNfaces(grid,myproc,maxfaces);
- * ---------------------------------
- * Read the first column in the cell data.
- * Create the array of nfaces for each cell
- * Calculate the maximum nfaces
- */ 
-void ReadNfaces(gridT *grid, int myproc, int maxFaces)
-{
-  int n, max, i;
-  char str[BUFFERLENGTH];
-  FILE *ifile;
-  ifile=MPI_FOpen(CELLSFILE,"r","ReadNfaces",myproc);
-  max=0;
-
-  for(n=0;n<grid->Nc;n++){
-    grid->nfaces[n]=(int)getfield(ifile,str);
-    if(grid->nfaces[n]>maxFaces){
-    printf("Max number of edges is %d of No. %d in Cell.dat is more than maxFaces %d in suntans.dat!",grid->nfaces[n],n,maxFaces);
-    MPI_Finalize();
-    exit(EXIT_FAILURE);
-    }   
-    for(i=0;i<(2*grid->nfaces[n]+2);i++)
-      getfield(ifile,str);
-  }    
-}
-
-
 /*
  * Function: ReadMainGrid
  * Usage: ReadmainGrid(grid,myproc);
@@ -916,7 +879,7 @@ void ReadNfaces(gridT *grid, int myproc, int maxFaces)
  */
 void ReadMainGrid(gridT *grid, int myproc)
 {
-  int j, n, nei, nf;
+  int j, n, nei, nf, nfaces, numColumns;
   char str[BUFFERLENGTH];
   FILE *ifile;
 
@@ -928,6 +891,8 @@ void ReadMainGrid(gridT *grid, int myproc)
   }
   fclose(ifile);
   
+  numColumns=getNumColumns(EDGEFILE);
+
   ifile = MPI_FOpen(EDGEFILE,"r","ReadMainGrid",myproc);
   for(n=0;n<grid->Ne;n++) {
     for(j=0;j<NUMEDGECOLUMNS-1;j++) 
@@ -935,22 +900,35 @@ void ReadMainGrid(gridT *grid, int myproc)
     grid->mark[n]=(int)getfield(ifile,str);
     for(j=0;j<2;j++) 
       grid->grad[2*n+j]=(int)getfield(ifile,str);
-    if(getcolumn(EDGEFILE)>5){//Backwards compatibility
-	grid->edge_id[n]=(int)getfield(ifile,str);
+    if(numColumns>COLUMNS_IN_TRIANGLE_EDGES_FILE) {
+      grid->edge_id[n]=(int)getfield(ifile,str);
     } else {
-    	grid->edge_id[n]=0;
+      grid->edge_id[n]=0;
     }
   }
   fclose(ifile);
 
+  numColumns=getNumColumns(CELLSFILE);
+
   ifile = MPI_FOpen(CELLSFILE,"r","ReadMainGrid",myproc);
   for(n=0;n<grid->Nc;n++) {
  
-    //added part, the first column is the number of faces for each cell, not xv 
-    if(getcolumn(CELLSFILE)>8){//Backwards compatibilty
-      grid->nfaces[n]=getfield(ifile,str);
+    // Set the number of faces in each cell as follows:
+    // 1) If there are more than eight columns in cells.dat, set nfaces[n] to that number only if it does 
+    //    not exceed the number specified in suntans.dat
+    // 2) Otherwise set it to the default value of 3
+    if(numColumns>COLUMNS_IN_TRIANGLE_CELLS_FILE) {
+      nfaces=getfield(ifile,str);
+      if(nfaces>grid->maxfaces) {
+	printf("Error!!: Number of faces %d in first column of cells file %s is larger than maximum of %d!\n",
+	       nfaces,CELLSFILE,grid->maxfaces);
+	MPI_Finalize();
+	exit(EXIT_FAILURE);
+      } else {
+	grid->nfaces[n]=nfaces;
+      }
     } else {
-      grid->nfaces[n]=3;
+      grid->nfaces[n]=DEFAULT_NFACES;
     }
     grid->xv[n] = getfield(ifile,str);
     grid->yv[n] = getfield(ifile,str);
@@ -1878,6 +1856,8 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   char str[BUFFERLENGTH];
   FILE *ofile;
 
+  // Assume that the triangulation output uses the same as the original format, i.e.
+  // no first column and no edge_id
   if(TRIANGULATE && myproc==0) {
     if(VERBOSE>2) printf("Outputting %s...\n",POINTSFILE);
     ofile = MPI_FOpen(POINTSFILE,"w","OutputData",myproc);
@@ -1892,15 +1872,12 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
       fprintf(ofile,"%d ",maingrid->mark[n]);
       for(j=0;j<2;j++) 
 	fprintf(ofile,"%d ",maingrid->grad[2*n+j]);
-      fprintf(ofile,"%d ",maingrid->edge_id[n]);
       fprintf(ofile,"\n");
     }
     fclose(ofile);
-    
+
     ofile = MPI_FOpen(CELLSFILE,"w","OutputData",myproc);
     for(n=0;n<maingrid->Nc;n++) {
-      // add a column in cells.dat
-      fprintf(ofile,"%d %f %f ",maingrid->nfaces[n],maingrid->xv[n],maingrid->yv[n]);
       // corrected part
       fprintf(ofile,"%f %f ",maingrid->xv[n],maingrid->yv[n]);
       for(nf=0;nf<maingrid->nfaces[n];nf++)
@@ -1912,6 +1889,8 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
     fclose(ofile);
   }
   
+  // On each processor, cells.dat.* always contains the number of faces in the first column,
+  // even if cells.dat does not.  
   sprintf(str,"%s.%d",CELLSFILE,myproc);
   if(VERBOSE>2) printf("Outputting %s...\n",str); 
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
@@ -1926,6 +1905,8 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   }
   fclose(ofile);	
 
+  // On each processor, edgess.dat.* always contains the edge_id in the last column,
+  // even if edges.dat does not.
   sprintf(str,"%s.%d",EDGEFILE,myproc);
   if(VERBOSE>2) printf("Outputting %s...\n",str);
 
@@ -1941,9 +1922,11 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
   }
   fclose(ofile);
 
+  // celldata.dat.* always has number of faces in first column
   sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
   if(VERBOSE>2) printf("Outputting %s...\n",str);
   ofile = MPI_FOpen(str,"w","OutputData",myproc);
+
   for(n=0;n<Nc;n++) {
     //corrected part //add another column for celldata.dat for nfaces 
     fprintf(ofile,"%d %e %e %e %e %d ",grid->nfaces[n],grid->xv[n],grid->yv[n],grid->Ac[n],grid->dv[n],grid->Nk[n]);
@@ -1958,7 +1941,6 @@ static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
       fprintf(ofile,"%e ",grid->def[grid->maxfaces*n+nf]);
     for(nf=0;nf<grid->nfaces[n];nf++) 
       fprintf(ofile,"%d ",grid->cells[grid->maxfaces*n+nf]);
-    // MR - output mnptr array
     fprintf(ofile,"%d ",grid->mnptr[n]);
     fprintf(ofile,"\n");
   }
@@ -2119,7 +2101,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
 {
   int neigh, n, nf, np, ne, nc, Nkmax;
   int Np;
-  char str[BUFFERLENGTH];
+  char str[BUFFERLENGTH], str2[BUFFERLENGTH];
   FILE *ifile;
 
   ReadFileNames(myproc);
@@ -2226,17 +2208,18 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->cells = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(REAL),"ReadGrid");
   (*grid)->mnptr = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");//MR
 
-  sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
+  sprintf(str2,"%s.%d",CELLCENTEREDFILE,myproc);
   if(VERBOSE>2) printf("Reading %s...\n",str);
 
-  ifile = MPI_FOpen(str,"r","ReadGrid",myproc);
+  ifile = MPI_FOpen(str2,"r","ReadGrid",myproc);
   for(n=0;n<(*grid)->Nc;n++) {
     (*grid)->nfaces[n]=(int)getfield(ifile,str);
-    if((*grid)->nfaces[n]>(*grid)->maxfaces){
-    printf("Max number of edges is %d of No. %d in Cell.dat is more than maxFaces %d in suntans.dat!",(*grid)->nfaces[n],n,(*grid)->maxfaces);
-    MPI_Finalize();
-    exit(EXIT_FAILURE);
-    }
+    if((*grid)->nfaces[n]>(*grid)->maxfaces) {
+      printf("Error!!: Number of faces %d in first column of cells file %s is larger than maximum of %d!\n",
+ 	     (*grid)->nfaces[n],str2,(*grid)->maxfaces);
+      MPI_Finalize();
+      exit(EXIT_FAILURE);    
+    }    
     (*grid)->xv[n]=getfield(ifile,str);
     (*grid)->yv[n]=getfield(ifile,str);
     (*grid)->Ac[n]=getfield(ifile,str);
@@ -3484,14 +3467,11 @@ void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs)
   // being conservative with memory this time (contrast with the global)
   (*localgrid)->myneighs=(int *)SunMalloc((*localgrid)->Nneighs*sizeof(int),"Topology");
 
-    printf("Proc %d, neighs: ",myproc);
   // transfer the list of neighbors to the local grid
   for(j=0;j<(*localgrid)->Nneighs;j++) {
     (*localgrid)->myneighs[j]=(*maingrid)->neighs[myproc][j];
         printf("%d ",(*localgrid)->myneighs[j]);
   }
-    printf("\n");
-  
 }
 
 /*

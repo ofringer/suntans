@@ -2973,10 +2973,10 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       sprintf(string,"%s.%d",EDGEFILE,proc);
       fid = MyFOpen(string,"r","ReadData");
       for(i=0;i<data->Ne[proc];i++) {
-	fscanf(fid,"%d %d %d %d %d",
+	fscanf(fid,"%d %d %d %d %d %d",
 	       &(data->edges[proc][2*i]),
 	       &(data->edges[proc][2*i+1]),
-	       &ind,&ind,&ind);
+	       &ind,&ind,&ind,&ind); // Added extra read to account for edge_id addition during quad-netcdf merge
 	// printf("%d %d  \n",data->edges[proc][2*i],data->edges[proc][2*i+1]);
       }
       fclose(fid);
@@ -2998,12 +2998,9 @@ void ReadData(dataT *data, int nstep, int numprocs) {
           fscanf(fid,"%d ",&ind);
         for(kk=0;kk<data->nfaces[proc][i];kk++)
           fscanf(fid,"%f ",&ind);
-        for(kk=0;kk<data->nfaces[proc][i];kk++){
-          if(kk==(data->nfaces[proc][i]-1))
-            fscanf(fid,"%d",&ind);
-          else
-            fscanf(fid,"%d ",&ind);
-        }      
+        for(kk=0;kk<data->nfaces[proc][i];kk++)
+	  fscanf(fid,"%d ",&ind);
+	fscanf(fid,"%d",&ind); // mnptr added during quad-netcdf merge
       }
       fclose(fid);
     }

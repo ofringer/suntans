@@ -68,7 +68,7 @@ int GetTriangulation(gridT **grid, int myproc) {
 		       Nc, Ne, Np);
 
   if(myproc==0 && VERBOSE>0) printf("Initializing Main Grid...\n");  
-  InitMainGrid(grid,Np,Ne,Nc,myproc,3);
+  InitMainGrid(grid,Np,Ne,Nc,myproc);
   for(n=0;n<(*grid)->Np;n++) {
     (*grid)->xp[n]=out.pointlist[2*n];
     (*grid)->yp[n]=out.pointlist[2*n+1];
@@ -84,7 +84,7 @@ int GetTriangulation(gridT **grid, int myproc) {
   }
 
   for(n=0;n<(*grid)->Nc;n++) {
-    (*grid)->nfaces[n]=3;
+    (*grid)->nfaces[n]=DEFAULT_NFACES;
     (*grid)->xv[n] = vorout.pointlist[2*n];
     (*grid)->yv[n] = vorout.pointlist[2*n+1];
     for(nf=0;nf<(*grid)->nfaces[n];nf++) {
