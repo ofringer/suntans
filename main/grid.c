@@ -180,7 +180,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   if(myproc==0 && VERBOSE>0) printf("Getting the depth for graph weights...\n");
   Tic();
   GetDepth(maingrid,myproc,numprocs,comm);
-  if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
+  if(myproc==0 && VERBOSE>2) printf("... time used is %f\n", Toc());
 
   // functions to set up parallelization of the code and compute geometrical 
   // information needed for grid computations
@@ -191,7 +191,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   Tic();
   Connectivity(maingrid,myproc);
 
-  if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
+  if(myproc==0 && VERBOSE>2) printf("... time used is %f\n", Toc());
 
   if(myproc==0 && VERBOSE>0) printf("Partitioning...\n");
   Tic();
@@ -199,18 +199,18 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   // takes the main grid and redistributes to local grids on each processor
   Partition(maingrid,localgrid,comm);
 
-  if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
+  if(myproc==0 && VERBOSE>2) printf("... time used is %f\n", Toc());
   
   // functions to check to make sure all the communications are set up properly
   //  CheckCommunicateCells(maingrid,*localgrid,myproc,comm);
   //  CheckCommunicateEdges(maingrid,*localgrid,myproc,comm);
   //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm);
  
-  if(myproc==0 && VERBOSE>0) printf("Outputing Data...\n");
+  if(myproc==0 && VERBOSE>0) printf("Outputting Data...\n");
   Tic();
 
   OutputData(maingrid,*localgrid,myproc,numprocs);
-  if(myproc==0 && VERBOSE>0) printf("... time used is %f\n", Toc());
+  if(myproc==0 && VERBOSE>2) printf("... time used is %f\n", Toc());
   //FreeGrid(maingrid,numprocs);
 }
 
@@ -240,21 +240,21 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   MPI_Comm_size(comm, &numprocs);
   MPI_Comm_rank(comm, &myproc);
 
-  if(myproc==0 && VERBOSE>0) printf("\tComputing Graph...\n");
+  if(myproc==0 && VERBOSE>1) printf("\tComputing Graph...\n");
   // cell graph generates Nge, adjncy, xadj members of maingrid
   // Useful to create cell graph compatible with ParMETIS to "color" each
   // cell based on its partitioning on a processor in Partition:GetPartitioning
   Tic();
   CreateCellGraph(maingrid);
-  if(myproc==0 && VERBOSE>0) printf("\t... time used is %f\n", Toc());
+  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
  
   // use ParMETIS API get get parallelized partioning, this basically 
   // just assigns each cell to a particular processor number  
   // (color cells with mapping!)
-  if(myproc==0 && VERBOSE>0) printf("\tComputing Partitioning...\n");
+  if(myproc==0 && VERBOSE>1) printf("\tComputing Partitioning...\n");
   Tic();
   GetPartitioning(maingrid,localgrid,myproc,numprocs,comm);
-  if(myproc==0 && VERBOSE>0) printf("\t... time used is %f\n", Toc());
+  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
 //  // output a list of each cells processor for debugging
 //  PrintVectorToFile(INT, maingrid->part, maingrid->Nc, "CellProcessors.dat",0);
@@ -291,12 +291,12 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   // node are now considered important ghost cells)
   // Topology needs updated so that any cell touching a node is considered to allow 
   // flagging as a boundary node
-  if(myproc==0 && VERBOSE>0) printf("\tComputing Topology...\n");
+  if(myproc==0 && VERBOSE>1) printf("\tComputing Topology...\n");
   Tic();
   Topology(&maingrid,localgrid,myproc,numprocs);
-  if(myproc==0 && VERBOSE>0) printf("\t... time used is %f\n", Toc());
+  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
-  if(myproc==0 && VERBOSE>2) printf("\tTransferring data...\n");
+  if(myproc==0 && VERBOSE>1) printf("\tTransferring data...\n");
   // function to move data between main and local grid where boundary points were
   // defined with convention of shared edge with number and list of neighbors 
   // described in Topology
@@ -305,7 +305,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
   if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
-  if(myproc==0 && VERBOSE>2) printf("\tCreating edge markers...\n");
+  if(myproc==0 && VERBOSE>1) printf("\tCreating edge markers...\n");
   // get edge marker information where we designate mark=5 and mark=6 for interproc
   // boundary ghost cells and mark=6 for pure ghost cells
   Tic();
@@ -314,13 +314,13 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
 
   // note that Vert grid was moved above geometry so that Nkp can
   // be used in geometry
-  if(myproc==0 && VERBOSE>2) printf("\tVert grid...\n");
+  if(myproc==0 && VERBOSE>1) printf("\tVert grid...\n");
   // get vertical grid, notably Nke, Nkc to distinguish number of layers at edges, cells
   Tic();
   VertGrid(maingrid,localgrid,comm);
   if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
   
-  if(myproc==0 && VERBOSE>2) 
+  if(myproc==0 && VERBOSE>1) 
     printf("\tComputing edge and voronoi distances and areas...\n");
   Tic();
   Geometry(maingrid,localgrid,myproc);
@@ -332,7 +332,7 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   // is not currently known to work
   //  ReOrder(*localgrid);
 
-  if(myproc==0 && VERBOSE>2) printf("\tMaking pointers...\n");
+  if(myproc==0 && VERBOSE>1) printf("\tMaking pointers...\n");
   // compute cellp, edgep, lcptr, leptrs and also get the reference for local cell processor
   // interprocessor send-receives
   Tic();
@@ -1367,23 +1367,20 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
 
   // these numbers reflect the assumption that a node will never be surrounded by
   // cells with angles less than or equal 30 deg.
-  const int maxnodeneighs = 24; 
-  const int maxedgeneighs = 24; //since the edges are intentionally counted twice (once per cell)
-  const int maxcellneighs = 12;
-  int in, ie, ic, nf, np1, np2, inn, inode;
+  int in, ie, ic, nf, np1, np2, inn, inode, maxnodeneighs, maxedgeneighs, maxcellneighs;
+  int **tempppneighs, tempnumppneighs, **temppeneighs, **temppcneighs;
+  maxnodeneighs = 24; 
+  maxedgeneighs = 24; //since the edges are intentionally counted twice (once per cell)
+  maxcellneighs = 12;
 
   // assume that at most there will only be a maximum of edge neighbors to a node
-  //  int tempppneighs[Np][maxnodeneighs]; int tempnumppneighs;
-  //  int temppeneighs[Np][maxedgeneighs];
-  //  int temppcneighs[Np][maxcellneighs];
-  int **tempppneighs, tempnumppneighs, **temppeneighs, **temppcneighs;
-  tempppneighs = (int **)malloc(Np*sizeof(int *));
-  temppeneighs = (int **)malloc(Np*sizeof(int *));
-  temppcneighs = (int **)malloc(Np*sizeof(int *));
+  tempppneighs = (int **)SunMalloc(Np*sizeof(int *),"CreateNodeArray");
+  temppeneighs = (int **)SunMalloc(Np*sizeof(int *),"CreateNodeArray");
+  temppcneighs = (int **)SunMalloc(Np*sizeof(int *),"CreateNodeArray");
   for(in=0;in<Np;in++) {
-    tempppneighs[in] = (int *)malloc(maxnodeneighs*sizeof(int));
-    temppeneighs[in] = (int *)malloc(maxedgeneighs*sizeof(int));
-    temppcneighs[in] = (int *)malloc(maxcellneighs*sizeof(int));
+    tempppneighs[in] = (int *)SunMalloc(maxnodeneighs*sizeof(int),"CreateNodeArray");
+    temppeneighs[in] = (int *)SunMalloc(maxedgeneighs*sizeof(int),"CreateNodeArray");
+    temppcneighs[in] = (int *)SunMalloc(maxcellneighs*sizeof(int),"CreateNodeArray");
   }
   // initialize the number of neighbors for each point
   for (in = 0; in < Np; in++) { 
@@ -1499,23 +1496,16 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
   }
 
   //  printf("Finished computing nodal array information\n");
-  //printf("Freeing neighs...\n");
   for(in=0;in<Np;in++) 
-    SunFree(tempppneighs[in],Np*sizeof(int *),"CreateNodeArray");
-  //printf("Freeing edges...\n");
+    SunFree(tempppneighs[in],maxnodeneighs*sizeof(int),"CreateNodeArray");
   for(in=0;in<Np;in++) 
-    SunFree(temppeneighs[in],Np*sizeof(int *),"CreateNodeArray");
-  printf("Freeing cells...\n");
+    SunFree(temppeneighs[in],maxedgeneighs*sizeof(int),"CreateNodeArray");
   for(in=0;in<Np;in++) 
-    SunFree(temppcneighs[in],Np*sizeof(int *),"CreateNodeArray");
+    SunFree(temppcneighs[in],maxcellneighs*sizeof(int),"CreateNodeArray");
 
-  printf("Points\n");
-  SunFree(tempppneighs,maxnodeneighs*sizeof(int),"CreateNodeArray");
-  printf("Edges\n");
-  SunFree(temppeneighs,maxedgeneighs*sizeof(int),"CreateNodeArray");
-  printf("Cells\n");
-  SunFree(temppcneighs,maxcellneighs*sizeof(int),"CreateNodeArray");
-  printf("Done!\n");
+  SunFree(tempppneighs,Np*sizeof(int *),"CreateNodeArray");
+  SunFree(temppeneighs,Np*sizeof(int *),"CreateNodeArray");
+  SunFree(temppcneighs,Np*sizeof(int *),"CreateNodeArray");
 }
 
 /*
@@ -2200,7 +2190,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
   (*grid)->Nk = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");
 
   //read maxFaces and nfaces from celldata.dat first
-  (*grid)->maxfaces=(int)MPI_GetValue(DATAFILE,"maxFaces","ReadGrid",0);
+  (*grid)->maxfaces=(int)MPI_GetValue(DATAFILE,"maxFaces","ReadGrid",myproc);
   (*grid)->neigh = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->face = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
   (*grid)->normal = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
@@ -3470,7 +3460,7 @@ void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs)
   // transfer the list of neighbors to the local grid
   for(j=0;j<(*localgrid)->Nneighs;j++) {
     (*localgrid)->myneighs[j]=(*maingrid)->neighs[myproc][j];
-        printf("%d ",(*localgrid)->myneighs[j]);
+    //        printf("%d ",(*localgrid)->myneighs[j]);
   }
 }
 
