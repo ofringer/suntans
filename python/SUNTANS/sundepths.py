@@ -59,30 +59,49 @@ class DepthDriver(object):
         isnorth=self.isnorth,vdatum=self.vdatum)
 
 
-    def __call__(self,suntanspath,depthmax=0.0):
+    def __call__(self,suntanspath,depthmax=0.0,scalefac=-1.0, interpnodes=True):
         
         self.suntanspath=suntanspath
         
         # Initialise the interpolation points
         print 'Loading suntans grid points...'
         self.grd = sunpy.Grid(self.suntanspath)
-        self.xy = np.column_stack((self.grd.xv,self.grd.yv))
-        
+
+
+        if interpnodes:
+            print 'Interpolating depths onto nodes and taking min...'
+            self.xy = np.column_stack((self.grd.xp,self.grd.yp))
+
+
+        else:
+            print 'Interpolating depths straight to cell centres...'
+            self.xy = np.column_stack((self.grd.xv,self.grd.yv))
+
+
         # Initialise the Interpolation class
         print 'Building interpolant class...'
         self.F = interpXYZ(self.indata.XY,self.xy,method=self.interpmethod,NNear=self.NNear,\
-        p=self.p,varmodel=self.varmodel,nugget=self.nugget,sill=self.sill,vrange=self.vrange)
+                p=self.p,varmodel=self.varmodel,nugget=self.nugget,sill=self.sill,vrange=self.vrange)
+
 
         # Interpolate the data
         print 'Interpolating data...'
-        self.grd.dv = self.F(self.indata.Zin)
-        
+        dv = self.F(self.indata.Zin)*scalefac
+
+        if interpnodes:
+            self.grd.dv = np.zeros_like(self.grd.xv)
+            for nn in range(self.grd.Nc):
+                self.grd.dv[nn] = np.max(dv[self.grd.cells[nn,0:self.grd.nfaces[nn] ] ])
+                
+        else:
+            self.grd.dv = dv
+            
         # Smooth
         if self.smooth:
             self.smoothDepths()
         
         # Cap the maximum depth
-        ind = self.grd.dv>=depthmax
+        ind = self.grd.dv<=depthmax
         self.grd.dv[ind]=depthmax
         
         # Write the depths to file
@@ -105,7 +124,7 @@ class DepthDriver(object):
         Smooth the data by running an interpolant over the model grid points
         """
         print 'Smoothing the data...'
-        Fsmooth = interpXYZ(self.xy,self.xy,method=self.smoothmethod,NNear=self.smoothnear)
+        Fsmooth =interpXYZ(self.xy,self.xy,method=self.smoothmethod,NNear=self.smoothnear,vrange=self.vrange)
         self.grd.dv = Fsmooth(self.grd.dv)
 
     def plot(self):

@@ -11,8 +11,8 @@ r"""
 	>>> import getNOAAWeatherStation as noaa
 	>>> 
 	>>> latlon = [-95.60,-93.7,28.8,30]
-	>>> timestart = datetime(2010,1,1,0,0,0)
-	>>> timeend = datetime(2011,12,31,0,0,0)
+	>>> timestart = 2010
+	>>> timeend = 2012
 	>>> dt = 1.0/24.0
 	>>> localdir = 'C:/Projects/GOMGalveston/CODE/PYTHON/NOAAWeather/rawdata/'
 	>>> showplot = False
@@ -40,7 +40,7 @@ def noaaish2nc(latlon,yearrange,localdir,ncfile,shpfile):
     timestart=yearrange[0]
     timeend=yearrange[1]
 
-    data = readall(latlon,[timestart.year,timeend.year],localdir) 
+    data = readall(latlon,[timestart,timeend],localdir) 
     
     data = dataQC(data,varnames)
        
@@ -95,7 +95,7 @@ def readall(latlon,yearrange,localdir):
     localfiles = os.listdir(localdir)
     
     # Get the names of the stations 
-    stations = getFileNames(latlon,yearrange)
+    stations = getFileNames(latlon,yearrange,localdir)
     
     # Loop through and check if the files are in the local directory, if not download
     data_all = []
@@ -106,9 +106,9 @@ def readall(latlon,yearrange,localdir):
             # Check if the file exists locally
             if ff in localfiles:
                 print 'File found locally: %s' % ff
-                gzfile = localdir+ff
+                gzfile = localdir+'/'+ff
             else:
-                gzfile = localdir+ff
+                gzfile = localdir+'/'+ff
                 ftpfile = ff
                 ftp.cwd(ftpdir+str(yy))
                 #ftp.retrlines('LIST')
@@ -649,12 +649,26 @@ def ishData2struct(gzfile,station_id,station_name):
         
     return station
 # End of function    
-def getFileNames(latlon,yearrange):
+def getFileNames(latlon,yearrange,localdir):
     """ 
     Function to retrieve station names to download from the ftp site (see ftplib.retrievefile)
     """  
     # Read the station metadata CSV file
-    csvfile = '../DATA/ish-history.csv'
+    csvfile = localdir+'/'+'ish-history.csv'
+    if not os.path.exists(csvfile):
+        print 'Cannot find station history csv file, downloading...'
+        ftpdir = '/pub/data/noaa/'
+        ftpsrvr = 'ftp.ncdc.noaa.gov'
+        ftp = FTP(ftpsrvr)
+        ftp.login() 
+        hisfile = 'ish-history.csv'
+        ftp.cwd(ftpdir)
+        try:
+            ftp.retrbinary('RETR '+hisfile,open(csvfile, 'wb').write)
+        except:
+            raise Exception, ' could not download history file.'
+        
+            
     data = stationMeta(csvfile)
     # Create a list of dictionaries each containing: years, filenames and station name
     stations = []

@@ -17,10 +17,11 @@ from scipy import sparse
 import othertime
 from suntans_ugrid import ugrid
 from timeseries import timeseries
+from ufilter import ufilter
 import operator
 
 import matplotlib.pyplot as plt
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import PolyCollection, LineCollection
 import matplotlib.animation as animation
 
 
@@ -151,7 +152,7 @@ class Grid(object):
         
         Variables loaded are presently:
         'xp','yp','xv','yv','xe','ye','cells','face','nfaces','edges','neigh','grad',
-        'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke'
+        'gradf','mark','normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke'
         """
         
         #try: 
@@ -173,7 +174,7 @@ class Grid(object):
         self.maxFaces = nc.dimensions['numsides'].__len__()
         
         gridvars = ['xp','yp','xv','yv','xe','ye','cells','face','nfaces', \
-        'edges','neigh','grad',\
+        'edges','neigh','grad','gradf','mark',\
         'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
         
         for vv in gridvars:
@@ -412,7 +413,14 @@ class Grid(object):
         dy=y1-y2
         
         self.dg = np.sqrt( dx*dx + dy*dy )
-    
+
+    def calc_edgecoord(self):
+        """
+        Manually calculate the coordinates of the edge points
+        """
+        self.xe = np.mean(self.xp[self.edges],axis=1)
+        self.ye = np.mean(self.yp[self.edges],axis=1)    
+
     def setDepth(self,vertspace):
         """
         Calculates and sets the depth variables based on the vertspace vector
@@ -583,28 +591,28 @@ class Grid(object):
         
 
         Nc = cellind.shape[0]
-	ii = np.arange(0,Nc)
-	i = cellind[ii]
+        ii = np.arange(0,Nc)
+        i = cellind[ii]
 
-	# Find the row and column indices of the sparse matrix
-	rowindex = self.cells[i,:] 
-	colindex = np.repeat(i.reshape((Nc,1)),3,axis=1)
+        # Find the row and column indices of the sparse matrix
+        rowindex = self.cells[i,:] 
+        colindex = np.repeat(i.reshape((Nc,1)),3,axis=1)
 
-	mask = k <= self.Nk[colindex]
-	
-	cell_scalar3d = np.repeat(cell_scalar[i].reshape((Nc,1)),3,axis=1)
-	area = np.repeat(self.Ac[i].reshape((Nc,1)),3,axis=1)
-	
-	#Build the sparse matrices
-	Asparse = sparse.coo_matrix((area[mask],(rowindex[mask],colindex[mask])),shape=(self.Np,self.Nc),dtype=np.double)
-	datasparse = sparse.coo_matrix((cell_scalar3d[mask],(rowindex[mask],colindex[mask])),shape=(self.Np,self.Nc),dtype=np.double)
+        mask = k <= self.Nk[colindex]
+        
+        cell_scalar3d = np.repeat(cell_scalar[i].reshape((Nc,1)),3,axis=1)
+        area = np.repeat(self.Ac[i].reshape((Nc,1)),3,axis=1)
+        
+        #Build the sparse matrices
+        Asparse = sparse.coo_matrix((area[mask],(rowindex[mask],colindex[mask])),shape=(self.Np,self.Nc),dtype=np.double)
+        datasparse = sparse.coo_matrix((cell_scalar3d[mask],(rowindex[mask],colindex[mask])),shape=(self.Np,self.Nc),dtype=np.double)
 
-	# This step is necessary to avoid summing duplicate elements
-	datasparse=sparse.csr_matrix(datasparse).tocoo()
-	Asparse=sparse.csr_matrix(Asparse).tocoo()
+        # This step is necessary to avoid summing duplicate elements
+        datasparse=sparse.csr_matrix(datasparse).tocoo()
+        Asparse=sparse.csr_matrix(Asparse).tocoo()
 
-	node_scalar = datasparse.multiply(Asparse).sum(axis=1) / Asparse.sum(axis=1)
-       
+        node_scalar = datasparse.multiply(Asparse).sum(axis=1) / Asparse.sum(axis=1)
+           
         return np.array(node_scalar).squeeze()
  
     def cell2nodekindold(self,cell_scalar,cellind,k=0):
@@ -691,6 +699,26 @@ class Grid(object):
         dY = np.sum(Gy_phi,axis=1)/self.Ac;
         
         return dX, dY
+
+    def spatialfilter(self,phi,dx, ftype='low'):
+        """
+        Perform a gaussian spatial lowpass filter on the
+        variable, phi. 
+        dx is the filter length (gaussian simga parameter).
+        """
+
+        if not self.__dict__.has_key('_spatialfilter'):
+            print 'Building the filter matrix...'
+            xy = np.vstack((self.xv,self.yv)).T
+            self._spatialfilter = ufilter(xy,dx)
+
+        if ftype=='low':
+            return self._spatialfilter(phi)
+        elif ftype=='high':
+            return phi - self._spatialfilter(phi)
+        else:
+            raise Exception, 'unknown filter type %s. Must be "low" or "high".'%ftype
+
     
     def writeNC(self,outfile):
         """
@@ -757,6 +785,8 @@ class Grid(object):
         try: 
             self.nc = MFDataset(self.ncfile)
         except:
+            if type(self.ncfile)==list:
+                self.ncfile = self.ncfile[0]
             self.nc = Dataset(self.ncfile, 'r')
  
     def __getitem__(self,y):
@@ -805,8 +835,8 @@ class Spatial(Grid):
         except:
             print 'No time variable.'
         
-	# Load the global attributes
-	self.loadGlobals()
+        # Load the global attributes
+        self.loadGlobals()
 
 
     def loadData(self, variable=None):
@@ -858,9 +888,9 @@ class Spatial(Grid):
         if variable==None:
             variable=self.variable
 	
-        if self.hasDim('Ne') and self.j==None:
+        if self.hasDim(variable,'Ne') and self.j==None:
             j=range(self.Ne)
-        elif self.hasDim('Nc') and self.j==None:
+        elif self.hasDim(variable,'Nc') and self.j==None:
             j=range(self.Nc)
         else:
             j = self.j
@@ -1023,6 +1053,39 @@ class Spatial(Grid):
              plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[0,1::subsample],v[0,1::subsample],scale=scale,scale_units='xy')
             #print 'Elapsed time: %f seconds'%(time.clock()-tic)
             
+    def plotedgedata(self,z=None,xlims=None,ylims=None,titlestr=None,**kwargs):
+        """
+          Plot the unstructured grid edge data
+        """
+            
+        if z==None:
+            # Load the data if it's needed
+            if not self.__dict__.has_key('data'):
+                self.loadData() 
+            z=self.data.ravel()
+
+        assert(z.shape[0] == self.Ne),\
+            ' length of z scalar vector not equal to number of edges, Ne.'
+        
+        # Find the colorbar limits if unspecified
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(z))
+            self.clim.append(np.max(z))
+        # Set the xy limits
+        if xlims==None or ylims==None:
+            xlims=self.xlims 
+            ylims=self.ylims
+        
+        xylines = [self.xp[self.edges],self.yp[self.edges]]
+        self.fig,self.ax,self.collection,self.cb=edgeplot(xylines,z,xlim=xlims,ylim=ylims,\
+            clim=self.clim,**kwargs)
+            
+        if titlestr==None:
+            plt.title(self.genTitle())
+        else:
+            plt.title(titlestr)
+ 
     def contourf(self, clevs=20,z=None,xlims=None,ylims=None,filled=True,vector_overlay=False,scale=1e-4,subsample=10,titlestr=None,**kwargs):
         """
         Filled contour plot of  unstructured grid data
@@ -1405,15 +1468,16 @@ class Spatial(Grid):
         except:
             return False
 
-    def hasDim(self,dimname):
+    def hasDim(self,varname,dimname):
         """
-        Tests if a dimension  exists in the file
+        Tests if a variable contains a dimension
         """
-        try:
-            self.nc.dimensions[dimname].__len__()
-            return True
-        except:
-            return False
+        return dimname in self.nc.variables[varname].dimensions
+        #try:
+        #    self.nc.dimensions[dimname].__len__()
+        #    return True
+        #except:
+        #    return False
      
     def strain(self):
         """
@@ -2313,7 +2377,47 @@ def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
     axcb = fig.colorbar(collection)
     
     return fig, ax, collection, axcb
+
+def edgeplot(xylines,edata,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
+    """
+    Plot edge data as a series of colored lines
+
+    Inputs:
+        xylines - list with two Ne x 2 arrays containing x/y end points
+        edata - Ne vector with edge values
+    """
+    # Create the figure and axes handles
+    plt.ioff()
+    fig = plt.gcf()
+    ax = fig.gca()
     
+
+    # Find the colorbar limits if unspecified
+    if clim==None:
+        clim=[]
+        clim.append(np.min(z))
+        clim.append(np.max(z))
+ 
+    # Create the inputs needed by line collection
+    Ne = xylines[0].shape[0]
+
+    # Put this into the format needed by LineCollection
+    linesc = [zip(xylines[0][ii,:],xylines[1][ii,:]) for ii in range(Ne)]
+
+    collection = LineCollection(linesc,array=edata,**kwargs)
+
+    collection.set_clim(vmin=clim[0],vmax=clim[1])
+    
+    ax.add_collection(collection)
+
+    ax.set_aspect('equal')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
+    axcb = fig.colorbar(collection)
+    
+    return fig, ax, collection, axcb
+
 def unanimate(xy,z,tsteps,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
     """
     Plot cell-centred data on an unstructured grid as a series of patches

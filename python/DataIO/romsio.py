@@ -1256,8 +1256,9 @@ class roms_interp(roms_grid):
                 vold[k,:] = self.Fuv(tmp[self.mask_uv==1])
     
             # Calculate depths (zeta dependent)
-	    #zroms = get_depth(self.s_rho,self.Cs_r,self.hc, h, zetaroms[tstep,:], Vtransform=self.Vtransform)
-	    zroms = get_depth(self.s_rho,self.Cs_r,self.hc, h, zeta=zetaroms[tstep,:], Vtransform=self.Vtransform)
+            #zroms = get_depth(self.s_rho,self.Cs_r,self.hc, h, zetaroms[tstep,:], Vtransform=self.Vtransform)
+            zroms = get_depth(self.s_rho,self.Cs_r,self.hc, h, zeta=zetaroms[tstep,:], Vtransform=self.Vtransform)
+
     
             # Interpolate vertically
             for ii in range(0,self.Nx):

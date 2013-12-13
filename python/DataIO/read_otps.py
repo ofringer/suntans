@@ -111,7 +111,7 @@ def tide_pred_correc(modfile,lon,lat,time,dbfile,ID,z=None,conlist=None):
     # Calculate the amp and phase corrections
     dphs = phs - h_phs + np.pi
     damp = amp/h_amp
-    
+
     # Extract the data along the specified points
     u_re, u_im, v_re, v_im, h_re, h_im, omega, conlist = extract_HC(modfile,lon,lat,z=z,conlist=conlist)
     

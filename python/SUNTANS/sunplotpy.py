@@ -9,9 +9,14 @@ import wx
 # backend. 
 #
 import matplotlib
+
 matplotlib.use('WXAgg')
+# Set some default parameters
+#matplotlib.rcParams['savefig.facecolor']=['k']
+matplotlib.rc('savefig',facecolor='k')
+
 from matplotlib.figure import Figure
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import PolyCollection, LineCollection
 from matplotlib.backends.backend_wxagg import \
     FigureCanvasWxAgg as FigCanvas, \
     NavigationToolbar2WxAgg as NavigationToolbar
@@ -21,6 +26,8 @@ from datetime import datetime
 import numpy as np
 
 import pdb
+
+
 
 class SunPlotPy(wx.Frame, Spatial):
     """ 
@@ -33,6 +40,11 @@ class SunPlotPy(wx.Frame, Spatial):
     showedges=False
     bgcolor='k'
     textcolor='w'
+    cmap='jet'
+
+    # other flags
+    collectiontype='cells'
+    oldcollectiontype='cells'
     
     def __init__(self):
         wx.Frame.__init__(self, None, -1, self.title)
@@ -211,17 +223,28 @@ class SunPlotPy(wx.Frame, Spatial):
             self.climhigh.SetValue('%3.1f'%self.clim[1])
          
         if self.__dict__.has_key('collection'):
-            self.collection.remove()
+            #self.collection.remove()
+            self.axes.collections.remove(self.collection)
+        else:
+            # First call - set the axes limits
+            self.axes.set_aspect('equal')
+            self.axes.set_xlim(self.xlims)
+            self.axes.set_ylim(self.ylims)
+ 
 
-        self.collection = PolyCollection(self.xy,)
-        self.collection.set_array(np.array(self.data[:]))
+        if self.collectiontype=='cells':
+            self.collection = PolyCollection(self.xy,cmap=self.cmap)
+            self.collection.set_array(np.array(self.data[:]))
+            if not self.showedges:
+                self.collection.set_edgecolors(self.collection.to_rgba(np.array((self.data[:])))) 
+        elif self.collectiontype=='edges':
+            xylines = [self.xp[self.edges],self.yp[self.edges]]
+            linesc = [zip(xylines[0][ii,:],xylines[1][ii,:]) for ii in range(self.Ne)]
+            self.collection = LineCollection(linesc,array=np.array(self.data[:]),cmap=self.cmap)
+
         self.collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
-        if not self.showedges:
-            self.collection.set_edgecolors(self.collection.to_rgba(np.array((self.data[:])))) 
+
         self.axes.add_collection(self.collection)    
-        self.axes.set_aspect('equal')
-        self.axes.set_xlim(self.xlims)
-        self.axes.set_ylim(self.ylims)
         title=self.axes.set_title(self.genTitle(),color=self.textcolor)
         self.axes.set_xlabel('Easting [m]')
         self.axes.set_ylabel('Northing [m]')
@@ -232,9 +255,10 @@ class SunPlotPy(wx.Frame, Spatial):
             self.cbar = self.fig.colorbar(self.collection)
             SetAxColor(self.cbar.ax.axes,self.textcolor,self.bgcolor)
         else:
-            pass
+            #pass
+            print 'Updating colorbar...'
             #self.cbar.check_update(self.collection)
-            #self.cbar.on_mappable_changed(self.collection)
+            self.cbar.on_mappable_changed(self.collection)
 
         self.canvas.draw()
    
@@ -243,15 +267,39 @@ class SunPlotPy(wx.Frame, Spatial):
             self.clim = [self.data.min(),self.data.max()]
             self.climlow.SetValue('%3.1f'%self.clim[0])
             self.climhigh.SetValue('%3.1f'%self.clim[1])
+        else:
+            self.clim = [float(self.climlow.GetValue()),\
+                float(self.climhigh.GetValue())]
  
+        # check whether it is cell or edge type
+        if self.hasDim(self.variable,'Ne'):
+            self.collectiontype='edges'
+        elif self.hasDim(self.variable,'Nc'):
+            self.collectiontype='cells'
+
+        # Create a new figure if the variable has gone from cell to edge of vice
+        # versa
+        if not self.collectiontype==self.oldcollectiontype:
+            self.create_figure()
+            self.oldcollectiontype=self.collectiontype
+
         self.collection.set_array(np.array(self.data[:]))
         self.collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
-        if not self.showedges:
-            self.collection.set_edgecolors(self.collection.to_rgba(np.array((self.data[:])))) 
-        else:
-            self.collection.set_edgecolors('k')
 
+        # Cells only
+        if self.collectiontype=='cells':
+            if not self.showedges:
+                self.collection.set_edgecolors(self.collection.to_rgba(np.array((self.data[:])))) 
+            else:
+                self.collection.set_edgecolors('k')
+
+        # Update the title
         title=self.axes.set_title(self.genTitle(),color=self.textcolor)
+
+        #Update the colorbar
+        self.cbar.update_normal(self.collection)
+
+        # redraw the figure
         self.canvas.draw()
     
     def on_pick(self, event):
@@ -283,9 +331,9 @@ class SunPlotPy(wx.Frame, Spatial):
         # Check if the variable has a depth coordinate
         depthstr = ['']
         # If so populate the vertical layer box
-        if self.hasDim('Nk'):
+        if self.hasDim(self.variable,'Nk'):
             depthstr = ['%3.1f'%self.z_r[k] for k in range(self.Nkmax)]
-        elif self.hasDim('Nkw'):
+        elif self.hasDim(self.variable,'Nkw'):
             depthstr = ['%3.1f'%self.z_w[k] for k in range(self.Nkmax+1)]
 
         self.depthlayer_list.SetItems(depthstr)
@@ -317,11 +365,11 @@ class SunPlotPy(wx.Frame, Spatial):
             self.update_figure()
 
     def on_open_file(self, event):
-        file_choices = "NetCDF (*.nc)|*.nc|All Files (*.*)|*.*"
+        file_choices = "NetCDF (*.nc)|*.nc*|All Files (*.*)|*.*"
         
         dlg = wx.FileDialog(
             self, 
-            message="Save plot as...",
+            message="Open SUNTANS file...",
             defaultDir=os.getcwd(),
             defaultFile="",
             wildcard=file_choices,
@@ -373,8 +421,8 @@ class SunPlotPy(wx.Frame, Spatial):
         #self.update_figure()
 
     def on_select_cmap(self,event):
-        cmap=event.GetString()
-        self.collection.set_cmap(cmap)
+        self.cmap=event.GetString()
+        self.collection.set_cmap(self.cmap)
 
         # Update the figure
         self.update_figure()

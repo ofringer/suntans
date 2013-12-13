@@ -178,6 +178,48 @@ def readShpBathy(shpfile,FIELDNAME = 'CONTOUR'):
     del Y
     return XY,np.array(Z)
     
+def readShpPointLine(shpfile,FIELDNAME = 'CONTOUR'):
+    """ Reads a shapefile with line or point geometry and returns x,y,z
+    
+    See this tutorial:
+        http://www.gis.usu.edu/~chrisg/python/2009/lectures/ospy_slides1.pdf
+    """
+    # Open the shapefile
+    driver = ogr.GetDriverByName('ESRI Shapefile')
+    
+    shp = driver.Open(shpfile, 0)
+    
+    lyr = shp.GetLayer()
+    
+    lyr.ResetReading()
+    XY=[]
+    field=[]
+    for feat in lyr:
+        feat_defn = lyr.GetLayerDefn()
+        for i in range(feat_defn.GetFieldCount()):
+            field_defn = feat_defn.GetFieldDefn(i)
+            if field_defn.GetName() == FIELDNAME:
+                geom = feat.GetGeometryRef()
+                ztmp = float(feat.GetField(i))
+                if geom.GetGeometryType() == ogr.wkbPoint: # point
+                    field.append(ztmp)
+                    XY.append([geom.getX(),geom.getY()])
+                elif geom.GetGeometryType() == 2:  # line
+                    xyall=geom.GetPoints()
+                    XY.append(np.asarray(xyall))
+                    field.append(ztmp)
+                        
+                elif geom.GetGeometryType() == 5:  # multiline
+                    for ii in range(0,geom.GetGeometryCount()):
+                        geom2 = geom.GetGeometryRef(ii)
+                        xyall=geom2.GetPoints()
+                        XY.append(np.asarray(xyall))
+                        field.append(ztmp)
+
+    shp=None
+    
+    return XY,field
+    
 def readShpPoly(shpfile,FIELDNAME = 'marker'):
     """ Reads a shapefile with polygon geometry and returns x,y and FIELDNAME value
     

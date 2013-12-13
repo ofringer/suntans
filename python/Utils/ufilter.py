@@ -17,9 +17,9 @@ class ufilter(object):
     Unstructured grid filter class
     """
     
-    c = 4 # uses point c x p for filter
-    dxmin = 3600.0
+    c = 4. # uses point c x p for filter
     filtertype = 'gaussian' # 'gaussian' or 'lanczos'
+    kmax = 50 # Maximum number of points to use in filter matrix
     
     def __init__(self,X,delta_f,**kwargs):
         
@@ -89,11 +89,13 @@ class ufilter(object):
         # Compute the spatial tree
         kd = spatial.cKDTree(self.X)
         eps=1e-6
+
         # Initialise the sparse matrix
         self.G = sparse.lil_matrix((self.n,self.n))
         
         # Find all of the points within c * p distance from point
-        dx, i = kd.query(self.X+eps,k=self.kmax(),distance_upper_bound=self.c*self.p)
+
+        dx, i = kd.query(self.X+eps,k=self.kmax,distance_upper_bound=self.c*self.p)
         
         ind = np.isinf(dx)
         # Calculate the filter weights
@@ -143,11 +145,11 @@ class ufilter(object):
         #self.p = self.delta_f**2/40.0
         self.p = self.delta_f
         
-    def kmax(self):
-        """
-        Estimate the maximum number of points in the search radius
-        """        
-        return np.round(self.c*self.p/self.dxmin)
+    #def kmax(self):
+    #    """
+    #    Estimate the maximum number of points in the search radius
+    #    """        
+    #    return np.round(self.c*self.p/self.dxmin)
         
     def Gaussian(self,dx):
         """

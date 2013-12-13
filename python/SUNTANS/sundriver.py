@@ -53,7 +53,7 @@ class sundriver(object):
     # Bathymetry interpolation options
     ###
     depthfile = None
-    depthmax=-0.1
+    depthmax=0.1
     interpmethod='idw' # Interpolation method:  'nn', 'idw', 'kriging', 'griddata'
     plottype='mpl' # Type of plot: 'mpl', 'vtk2' or 'vtk3'
     
@@ -132,6 +132,8 @@ class sundriver(object):
     opt_ic = 'constant', 'depth_profile', 'ROMS'
 
     icfile = 'SUNTANS_IC.nc'
+
+    icfilterdx = 0.0 # Filtering length scale
     
     ###
     # Input file names
@@ -143,6 +145,9 @@ class sundriver(object):
     # Use ROMS u,v and eta
     useROMSuv=False
     useROMSeta=False
+
+    # Use OTIS u & v
+    useOTISuv=False
     
     ############################
 
@@ -207,7 +212,7 @@ class sundriver(object):
             self.grd.loadBathy(self.suntanspath+'/depths.dat-voro')
 
 
-        zmax = np.abs(self.grd.dv.min())
+        zmax = np.abs(self.grd.dv.max())
         
         print 'Calculating vertical grid spacing for Nk = %d, r = %1.3f, %6.3f...'%(self.Nkmax,self.r,zmax)
 
@@ -260,7 +265,7 @@ class sundriver(object):
         self.useROMS = False
         self.useOTIS = False
         self.useFILE = False
-	self.useOTISFILE = False
+        self.useOTISFILE = False
 
         if self.opt_bctype3=='constant':
             print 'Setting constant type-3 boundary conditions...'  
@@ -293,12 +298,12 @@ class sundriver(object):
             self.useROMS = True
             self.useFILE = True
         
-	elif self.opt_bctype3 in ('OTISFILE'):
-	    self.useOTISFILE = True
+        elif self.opt_bctype3 in ('OTISFILE'):
+            self.useOTISFILE = True
 
-	elif self.opt_bctype3 in ('ROMSOTISFILE'):
-	    self.useOTISFILE = True
-	    self.useROMS = True
+        elif self.opt_bctype3 in ('ROMSOTISFILE'):
+            self.useOTISFILE = True
+            self.useROMS = True
 
         else:
             print 'Unknown option: opt_bctype3 = %s. Not setting type-3 boundaries.'%self.opt_bctype3
@@ -308,10 +313,10 @@ class sundriver(object):
             bnd.roms2boundary(self.romsfile,setUV=self.useROMSuv,seth=self.useROMSeta)
             
         if self.useOTIS:
-            bnd.otis2boundary(self.otisfile)
+            bnd.otis2boundary(self.otisfile,setUV=self.useOTISuv)
 
-	if self.useOTISFILE:
-	    bnd.otisfile2boundary(self.otisfile,self.dbasefile,self.waterlevelstationID)
+        if self.useOTISFILE:
+            bnd.otisfile2boundary(self.otisfile,self.dbasefile,self.waterlevelstationID,setUV=self.useOTISuv)
             
         if self.useFILE:
             ID = self.waterlevelstationID
@@ -332,24 +337,24 @@ class sundriver(object):
             print 'Setting salinity = %f, temperature = %f'%(self.S0,self.T0)
             bnd.boundary_S[:]=self.S0
             bnd.boundary_T[:]=self.T0
-	elif self.opt_bctype2 == 'file':
-	    print 'Using file for type-2 boundary condition (temperature only)'
+        elif self.opt_bctype2 == 'file':
+            print 'Using file for type-2 boundary condition (temperature only)'
             print 'Setting salinity = %f'%(self.S0)
-	    bnd.boundary_S[:]=self.S0
-	    self.useFILE2 = True
+            bnd.boundary_S[:]=self.S0
+            self.useFILE2 = True
         else:
             print 'Unknown option: opt_bctype2 = %s. Not setting type-2 boundaries.'%self.opt_bctype3
             
             
-	if self.useFILE2:
-	    ID = self.TairstationID
+        if self.useFILE2:
+            ID = self.TairstationID
             print 'Loading air temperature onto all type-2 points from stationID: %s...'%(ID)
             ts = timeseries.loadDBstation(self.dbasefile,ID,'Tair',timeinfo=(self.starttime,self.endtime,self.dt),\
-                    filttype=self.tairfilttype,cutoff=self.taircutoff)
+            filttype=self.tairfilttype,cutoff=self.taircutoff)
                     
             for ii in range(bnd.N2):
-		for kk in range(bnd.Nk):
-		    bnd.boundary_T[:,kk,ii] += ts.y.copy()
+                for kk in range(bnd.Nk):
+                    bnd.boundary_T[:,kk,ii] += ts.y.copy()
             
         # Write to netcdf
         bnd.write2NC(self.suntanspath+'/'+self.bcfile)
@@ -378,14 +383,20 @@ class sundriver(object):
                 
         elif self.opt_ic=='ROMS':
             print 'Setting initial conditions from ROMS model output...'  
-            IC.roms2ic(self.romsfile,setUV=self.useROMSuv,seth=self.useROMSeta)
+            IC.roms2ic(self.romsfile,setUV=self.useROMSuv,seth=self.useROMSeta,interpmethod='idw',NNear=5,p=2)
+                #interpmethod=self.interpmethod,NNear=self.NNear,p=self.p,\
+                #varmodel=self.varmodel,nugget=self.nugget,sill=self.sill,\
+                #vrange=self.vrange)
             
         else:
             print 'Unknown option: opt_ic = %s. Not setting initial conditions.'%self.opt_ic
 
     
+        # Filter the variables in space
+        if self.icfilterdx>0:
+            IC.filteric(self.icfilterdx)
         # Write the initial condition file
-        IC.writeNC(self.suntanspath+'/'+self.icfile)
+        IC.writeNC(self.suntanspath+'/'+self.icfile,dv=self.grd.dv)
         
     def _makewinds(self):
         """

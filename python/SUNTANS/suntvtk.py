@@ -590,13 +590,13 @@ class SunTvtk(Spatial):
                 os.remove(ff)
         print 'Complete.'
             
-#    def savefig(self,outfile):
-#        """
-#        Saves the current scene to an image
-#        """
-#        self.fig.scene.save(outfile)
-#            
-#        print 'SUNTANS image saved to file:%s'%outfile
+        #    def savefig(self,outfile):
+        #        """
+        #        Saves the current scene to an image
+        #        """
+        #        self.fig.scene.save(outfile)
+        #            
+        #        print 'SUNTANS image saved to file:%s'%outfile
         
     def plotbathy3d(self,clims=None,**kwargs):
         """

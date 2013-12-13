@@ -95,7 +95,8 @@ class Slice(Spatial):
         
         return h1, axcb
             
-    def contourslice(self,t=0,xaxis='xslice',clevs=20,titlestr=None,bathyoverlay=True,**kwargs):
+    def contourslice(self,t=0,xaxis='xslice',clevs=20,titlestr=None,bathyoverlay=True,\
+        filled = True, outline = False,colorbar=True,**kwargs):
         """
         Filled-contour plot of the slice
         
@@ -112,8 +113,12 @@ class Slice(Spatial):
             self.clim.append(np.max(am))
         
         V = np.linspace(self.clim[0],self.clim[1],clevs)
-        h1 = plt.contourf(self[xaxis],self.zslice,am,V,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
+        if filled:
+            h1 = plt.contourf(self[xaxis],self.zslice,am,V,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
         
+        if outline:
+            h2 = plt.contour(self[xaxis],self.zslice,am,V,colors='k')
+            
         #Overlay the bed
 	if bathyoverlay:
 	    self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
@@ -125,7 +130,8 @@ class Slice(Spatial):
         plt.xlim([self[xaxis].min(),self[xaxis].max()])
         plt.ylim([self.hslice.min(),0])
         
-        axcb = plt.colorbar(h1)
+        if colorbar and filled:
+            axcb = plt.colorbar(h1)
         
         
         if titlestr==None:
@@ -133,7 +139,12 @@ class Slice(Spatial):
         else:
             plt.title(titlestr)
         
-        return h1, axcb
+        if filled and not outline:
+            return h1, 
+        elif not filled and outline:
+            return h2, 
+        elif filled and outline:
+            return h1, h2, 
     
     def xtplot(self,zlayer=0,xaxis='xslice',clevs=20,titlestr=None,**kwargs):    
         """
@@ -146,8 +157,8 @@ class Slice(Spatial):
                        
         """
         
-	#kbed = np.max(self.Nk[self.cellind]-1,0)
-	kbed = self.Nk[self.cellind]
+        #kbed = np.max(self.Nk[self.cellind]-1,0)
+        kbed = self.Nk[self.cellind]
         if zlayer == 'seabed':
             a= self.data[:,kbed,range(0,self.Npt)]
             zstring = 'seabed'
@@ -228,7 +239,7 @@ class Slice(Spatial):
             if self.Ntslice>1:
                 print 'Slicing data at time-step: %d of %d...'%(tt,self.Ntslice)
             
-            self.tstep=[tt]
+            self.tstep=[tstep[tt]]
             rawdata = self.loadData(variable=variable)
 
 #	    if method == 'nearest':

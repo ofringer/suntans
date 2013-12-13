@@ -480,7 +480,7 @@ class Boundary(object):
         self.fig.savefig(outfile,dpi=dpi)
         print 'Boundary condition image saved to file:%s'%outfile
     
-    def roms2boundary(self,romsfile,setUV=False,seth=False):
+    def roms2boundary(self,romsfile,setUV=False,seth=False,**kwargs):
         """
         Interpolates ROMS data onto the type-3 boundary cells
         
@@ -488,7 +488,7 @@ class Boundary(object):
         import romsio
 
         # Include type 3 cells only
-        roms = romsio.roms_interp(romsfile,self.xv,self.yv,-self.z,self.time)
+        roms = romsio.roms_interp(romsfile,self.xv,self.yv,-self.z,self.time,**kwargs)
         
         h, T, S, uc, vc = roms.interp()
 
@@ -501,7 +501,7 @@ class Boundary(object):
             self.uc+=uc
             self.vc+=vc
         
-    def otis2boundary(self,otisfile,conlist=None):
+    def otis2boundary(self,otisfile,conlist=None,setUV=False):
         """
         Interpolates the OTIS tidal data onto all type-3 boundary cells
         
@@ -523,9 +523,10 @@ class Boundary(object):
         
         # Update the arrays - note that the values are added to the existing arrays
         self.h += h
-        for k in range(self.Nk):
-            self.uc[:,k,:] += U
-            self.vc[:,k,:] += V
+        if setUV:
+            for k in range(self.Nk):
+                self.uc[:,k,:] += U
+                self.vc[:,k,:] += V
             
         print 'Finished interpolating OTIS tidal data onto boundary arrays.'
        
@@ -554,17 +555,17 @@ class Boundary(object):
         
         # Update the arrays - note that the values are added to the existing arrays
         self.h += h
-	if setUV:
-	    for k in range(self.Nk):
-		self.uc[:,k,:] += U
-		self.vc[:,k,:] += V
-        
-	# Add the residual
-	for ii in range(self.N3):
-	    self.h[:,ii] += residual
+        if setUV:
+            for k in range(self.Nk):
+                self.uc[:,k,:] += U
+                self.vc[:,k,:] += V
+
+                # Add the residual
+                for ii in range(self.N3):
+                    self.h[:,ii] += residual
 
         print 'Finished interpolating OTIS tidal data onto boundary arrays.'
- 
+
         
     def __getitem__(self,y):
         x = self.__dict__.__getitem__(y)
@@ -603,14 +604,14 @@ class InitialCond(Grid):
         self.agec = np.zeros((1,self.Nkmax,self.Nc))
         self.agealpha = np.zeros((1,self.Nkmax,self.Nc))
 
-    def roms2ic(self,romsfile,setUV=False,seth=False):
+    def roms2ic(self,romsfile,setUV=False,seth=False,**kwargs):
         """
         Interpolates ROMS data onto the SUNTANS grid
         """
         import romsio
         
         romsi = romsio.roms_interp(romsfile,self.xv.reshape((self.Nc,1)),\
-            self.yv.reshape((self.Nc,1)),-self.z_r,[self.time,self.time])
+            self.yv.reshape((self.Nc,1)),-self.z_r,[self.time,self.time],**kwargs)
 
         self.h, self.T, self.S, self.uc, self.vc = romsi.interp()
         
@@ -619,8 +620,24 @@ class InitialCond(Grid):
             self.vc *= 0
         if not seth:
             self.h *= 0
+
+    def filteric(self,dx):
+        """
+        Apply a spatial low pass filter to all initial condition fields
+        """
+        print 'Spatially filtering initial conditions...'
+
+        self.h[0,:]  = self.spatialfilter(self.h[0,:].ravel(),dx)
+
+        for k in range(self.Nkmax):
+            print '\t filtering layer %d...'%k
+            self.uc[:,k,:] = self.spatialfilter(self.uc[:,k,:].ravel(),dx)
+            self.vc[:,k,:] = self.spatialfilter(self.vc[:,k,:].ravel(),dx)
+            self.S[:,k,:] = self.spatialfilter(self.S[:,k,:].ravel(),dx)
+            self.T[:,k,:] = self.spatialfilter(self.T[:,k,:].ravel(),dx)
+
     
-    def writeNC(self,outfile):
+    def writeNC(self,outfile,dv=None):
         """
         Export the results to a netcdf file
         """
@@ -628,8 +645,11 @@ class InitialCond(Grid):
         from netCDF4 import Dataset
         
         # Fill in the depths with zero
-        if not self.__dict__.has_key('dv'):
+        #if not self.__dict__.has_key('dv'):
+        if dv==None:
             self.dv = np.zeros((self.Nc,))
+        else:
+            self.dv = dv
         if not self.__dict__.has_key('Nk'):
             self.Nk = self.Nkmax*np.ones((self.Nc,))
             
@@ -640,13 +660,13 @@ class InitialCond(Grid):
         self.create_nc_var(outfile,'time', ugrid['time']['dimensions'], ugrid['time']['attributes'])        
         
         # Create the other variables
-        self.create_nc_var(outfile,'eta',('time','Nc'),{'long_name':'Sea surface elevation','units':'metres'})
-        self.create_nc_var(outfile,'uc',('time','Nk','Nc'),{'long_name':'Eastward water velocity component','units':'metre second-1'})
-        self.create_nc_var(outfile,'vc',('time','Nk','Nc'),{'long_name':'Northward water velocity component','units':'metre second-1'})
-        self.create_nc_var(outfile,'salt',('time','Nk','Nc'),{'long_name':'Salinity','units':'ppt'})
-        self.create_nc_var(outfile,'temp',('time','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C'})
+        self.create_nc_var(outfile,'eta',('time','Nc'),{'long_name':'Sea surface elevation','units':'metres','coordinates':'time yv xv'})
+        self.create_nc_var(outfile,'uc',('time','Nk','Nc'),{'long_name':'Eastward water velocity component','units':'metre second-1','coordinates':'time z_r yv xv'})
+        self.create_nc_var(outfile,'vc',('time','Nk','Nc'),{'long_name':'Northward water velocity component','units':'metre second-1','coordinates':'time z_r yv xv'})
+        self.create_nc_var(outfile,'salt',('time','Nk','Nc'),{'long_name':'Salinity','units':'ppt','coordinates':'time z_r yv xv'})
+        self.create_nc_var(outfile,'temp',('time','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C','coordinates':'time z_r yv xv'})
         self.create_nc_var(outfile,'agec',('time','Nk','Nc'),{'long_name':'Age concentration','units':''})
-        self.create_nc_var(outfile,'agealpha',('time','Nk','Nc'),{'long_name':'Age alpha parameter','units':'seconds'})
+        self.create_nc_var(outfile,'agealpha',('time','Nk','Nc'),{'long_name':'Age alpha parameter','units':'seconds','coordinates':'time z_r yv xv'})
         
         # now write the variables...
         nc = Dataset(outfile,'a')
