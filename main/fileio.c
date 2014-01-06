@@ -144,8 +144,11 @@ double getfield(FILE *file, char *str)
   c = fgetc(file);
 
   if(c==EOF) {
-    if(VERBOSE > 2)
+    if(VERBOSE > 1) {
       printf("End of file obtained, if  an error follows it is possible geometry is not consistent.\n");
+      printf("Make sure there are no dangling white spaces or carriage returns at end of input files suntans.dat\n");
+      printf("     and dataxy.dat (if used).\n");
+    }
     return;
   }
 
@@ -213,8 +216,8 @@ int getNumColumns(char *filename)
     if((c==' ' | c=='\t') && !(c_old == ' ' | c_old == '\t' | c_old == '\0'))  
       N++;
     if(c=='\n') {
-      if(c_old==' ');
-      N--;
+      if(c_old==' ')
+	N--;
       break;
     }
     c_old=c;
@@ -349,6 +352,10 @@ double GetDefaultValue(char *str, int *status) {
  } else if(!strcmp(str,"smoothbot")) {
 
     return smoothbot_DEFAULT;
+
+ } else if(!strcmp(str,"mergeArrays")) {
+
+    return mergeArrays_DEFAULT;
   
  } else if(!strcmp(str,"latitude")) {
     
