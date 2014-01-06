@@ -118,6 +118,12 @@ const int wetdry_DEFAULT = 0;
 */
 const REAL smoothbot_DEFAULT = 0.0;
 
+/* mergeArrays
+   If mergeArrays=1 then merge output data into one file.  Otherwise output into separate
+   files on each processor with suffix file.processor_number
+*/
+const int mergeArrays_DEFAULT = 1;
+
 /* 
  *  Heat flux model and meteorological IO netcdf Parameters
  */

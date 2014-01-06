@@ -27,7 +27,7 @@
 #include "mynetcdf.h"
 #include "met.h"
 #include "age.h"
-
+#include "physio.h"
 
 /*
  * Private Function declarations.
@@ -69,8 +69,6 @@ static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid,
     physT *phys, propT *prop);
 static void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop);
 void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop);
-static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, 
-    int numprocs, MPI_Comm comm);
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop, REAL **wnew, 
     MPI_Comm comm, int myproc);
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
@@ -93,14 +91,10 @@ static void BarycentricCoordsFromCartesian(gridT *grid, int cell,
     REAL x, REAL y, REAL* lambda);
 static void BarycentricCoordsFromCartesianEdge(gridT *grid, int cell, 
     REAL x, REAL y, REAL* lambda);
-static void OutputData(gridT *grid, physT *phys, propT *prop,
-//void OutputData(gridT *grid, physT *phys, propT *prop,
-    int myproc, int numprocs, int blowup, MPI_Comm comm);
 static REAL UFaceFlux(int j, int k, REAL **phi, REAL **u, gridT *grid, REAL dt, 
     int method);
 static REAL HFaceFlux(int j, int k, REAL *phi, REAL **u, gridT *grid, REAL dt, 
     int method);
-static void SetDensity(gridT *grid, physT *phys, propT *prop);
 //static void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
 void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
 static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc, int nonlinear);
@@ -176,7 +170,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->hcorr = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->active = (unsigned char *)SunMalloc(Nc*sizeof(char),"AllocatePhysicalVariables");
   (*phys)->hold = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
-  (*phys)->htmp = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->htmp = (REAL *)SunMalloc(10*Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->htmp2 = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->htmp3 = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->hcoef = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
@@ -495,105 +489,6 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   free(phys->gradSy);
 
   free(phys);
-}
-
-/*
- * Function: ReadPhysicalVariables
- * Usage: ReadPhysicalVariables(grid,phys,prop,myproc);
- * ----------------------------------------------------
- * This function reads in physical variables for a restart run
- * from the restart file defined by prop->StartFID.
- *
- */
-void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm) {
-
-  int i, j;
-
-  if(VERBOSE>1 && myproc==0) printf("Reading from rstore...\n");
-  //fixdzz
-  UpdateDZ(grid,phys,prop,-1); 
-
-  if(fread(&(prop->nstart),sizeof(int),1,prop->StartFID) != 1)
-    printf("Error reading prop->nstart\n");
-
-  if(fread(phys->h,sizeof(REAL),grid->Nc,prop->StartFID) != grid->Nc)
-    printf("Error reading phys->h\n");
-  for(j=0;j<grid->Ne;j++) 
-    if(fread(phys->Cn_U[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j])
-      printf("Error reading phys->Cn_U[j]\n");
-  for(j=0;j<grid->Ne;j++) 
-    if(fread(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j]) //AB3
-      printf("Error reading phys->Cn_U2[j]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->Cn_W[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->Cn_W[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->Cn_W2[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->Cn_W[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->Cn_R[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->Cn_T[i]\n");
-
-  if(prop->turbmodel>=1) {
-    for(i=0;i<grid->Nc;i++) 
-      if(fread(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-        printf("Error reading phys->Cn_q[i]\n");
-    for(i=0;i<grid->Nc;i++) 
-      if(fread(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-        printf("Error reading phys->Cn_l[i]\n");
-
-    for(i=0;i<grid->Nc;i++) 
-      if(fread(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-        printf("Error reading phys->qT[i]\n");
-    for(i=0;i<grid->Nc;i++) 
-      if(fread(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-        printf("Error reading phys->lT[i]\n");
-  }
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->nu_tv[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->kappa_tv[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->kappa_tv[i]\n");
-
-  for(j=0;j<grid->Ne;j++) 
-    if(fread(phys->u[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j])
-      printf("Error reading phys->u[j]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StartFID) != grid->Nk[i]+1)
-      printf("Error reading phys->w[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->q[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->qc[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->qc[i]\n");
-
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->s[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->T[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->T[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->s0[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->s0[i]\n");
-  fclose(prop->StartFID);
-
-  UpdateDZ(grid,phys,prop, 0);
-
-  // cell centered velocity computed so that this does not 
-  // need to be reconsidered 
-  ComputeUC(phys->uc, phys->vc, phys,grid, myproc, prop->interp);
-
-  ISendRecvCellData3D(phys->uc,grid,myproc,comm);
-  ISendRecvCellData3D(phys->vc,grid,myproc,comm);
-
-  // Set the density from s and T using the equation of state
-  SetDensity(grid,phys,prop);
 }
 
 /*
@@ -1417,7 +1312,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     t0=Timer();
     if (prop->outputNetcdf==0){
       // Write to binary
-      OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
+      OutputPhysicalVariables(grid,phys,prop,myproc,numprocs,blowup,comm);
     }else {
       // Output data to netcdf
       WriteOuputNC(prop, grid, phys, met, blowup, myproc);
@@ -3900,8 +3795,8 @@ void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop)
  * the tolerance CONSERVED specified in suntans.h 
  *
  */
-static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
-    MPI_Comm comm)
+void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
+			  MPI_Comm comm)
 {
   int i, iptr, k;
   REAL mass, volume, volh, height, Ep;
@@ -4003,363 +3898,6 @@ static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
   }
 }
 
-
-/*
- * Function: OutputData
- * Usage: OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
- * --------------------------------------------------------------
- * Output the data every ntout steps as specified in suntans.dat
- * If this is the last time step or if the run is blowing up (blowup==1),
- * then output the data to the restart file specified by the file pointer
- * prop->StoreFID.
- *
- * If ASCII is specified then the data is output in ascii format, otherwise
- * it is output in binary format.  This variable is specified in suntans.h.
- *
- */
-
-
-// this was done for debugging purposes and should go back to the way 
-// it was for the final release to prevent aliasing of the function
-// with grid.c 
-//static void OutputData(gridT *grid, physT *phys, propT *prop,
-static void OutputData(gridT *grid, physT *phys, propT *prop,
-    int myproc, int numprocs, int blowup, MPI_Comm comm)
-{
-  int i, j, jptr, k, nwritten;
-  char str[BUFFERLENGTH], filename[BUFFERLENGTH];
-  REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData");
-
-  if(!(prop->n%prop->ntconserve) && !blowup) {
-    ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
-    if(myproc==0)
-      fprintf(prop->ConserveFID,"%e %e %e %e %e %e %e %e\n",prop->rtime,phys->mass,phys->volume,
-          phys->Ep-phys->Ep0,phys->Eflux1,phys->Eflux2,phys->Eflux3,phys->Eflux4);
-  }
-
-  if(!(prop->n%prop->ntout) || prop->n==1+prop->nstart || blowup) {
-
-    if(myproc==0 && VERBOSE>1) 
-      if(!blowup) 
-        printf("Outputting data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-      else
-        printf("Outputting blowup data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-
-
-    if(ASCII) 
-      for(i=0;i<grid->Nc;i++)
-        fprintf(prop->FreeSurfaceFID,"%f\n",phys->h[i]);
-    else {
-      nwritten=fwrite(phys->h,sizeof(REAL),grid->Nc,prop->FreeSurfaceFID);
-      if(nwritten!=grid->Nc) {
-        printf("Error outputting free-surface data!\n");
-        exit(EXIT_WRITING);
-      }
-    }
-    fflush(prop->FreeSurfaceFID);
-
-    // compute quadratic interpolated estimates for velocity using pretty plot and don't redo work
-    if(prop->prettyplot==1 && prop->interp != QUAD) {
-      ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
-      ComputeUC(phys->uc, phys->vc, phys,grid, myproc, QUAD);
-    }
-
-    // ut stores the tangential component of velocity on the faces.
-    if(ASCII) 
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i];k++) 
-          fprintf(prop->HorizontalVelocityFID,"%e %e %e\n",
-              phys->uc[i][k],phys->vc[i][k],0.5*(phys->w[i][k]+phys->w[i][k+1]));
-        for(k=grid->Nk[i];k<grid->Nkmax;k++)
-          fprintf(prop->HorizontalVelocityFID,"0.0 0.0 0.0\n");
-      }
-    else 
-      for(k=0;k<grid->Nkmax;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i]) 
-            tmp[i]=phys->uc[i][k];
-          else
-            tmp[i]=0;
-        }
-        nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting Horizontal Velocity data!\n");
-          exit(EXIT_WRITING);
-        }
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            tmp[i]=phys->vc[i][k];
-          else
-            tmp[i]=0;
-        }
-        nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting Horizontal Velocity data!\n");
-          exit(EXIT_WRITING);
-        }
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            tmp[i]=0.5*(phys->w[i][k]+phys->w[i][k+1]);
-          else
-            tmp[i]=0;
-        }
-        nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting Face Velocity data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-    fflush(prop->HorizontalVelocityFID);
-
-    if(ASCII)
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i]+1;k++)
-          fprintf(prop->VerticalVelocityFID,"%e\n",phys->w[i][k]);
-        for(k=grid->Nk[i]+1;k<grid->Nkmax+1;k++)
-          fprintf(prop->VerticalVelocityFID,"0.0\n");
-      }
-    else {
-      for(k=0;k<grid->Nkmax+1;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i]+1)
-            phys->htmp[i]=phys->w[i][k];
-          else
-            phys->htmp[i]=EMPTY;
-        }
-        nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->VerticalVelocityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting vertical velocity data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-    }
-    fflush(prop->VerticalVelocityFID);
-
-    if(ASCII) {
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i];k++)
-          fprintf(prop->SalinityFID,"%e\n",phys->s[i][k]);
-        for(k=grid->Nk[i];k<grid->Nkmax;k++)
-          fprintf(prop->SalinityFID,"0.0\n");
-      }
-      if(prop->n==1+prop->nstart) {
-        for(i=0;i<grid->Nc;i++) {
-          for(k=0;k<grid->Nk[i];k++)
-            fprintf(prop->BGSalinityFID,"%e\n",phys->s0[i][k]);
-          for(k=grid->Nk[i];k<grid->Nkmax;k++)
-            fprintf(prop->BGSalinityFID,"0.0\n");
-        }
-      }
-    } else {
-      for(k=0;k<grid->Nkmax;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            phys->htmp[i]=phys->s[i][k];
-          else
-            phys->htmp[i]=EMPTY;
-        }
-        nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->SalinityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting salinity data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-      if(prop->n==1+prop->nstart) {
-        for(k=0;k<grid->Nkmax;k++) {
-          for(i=0;i<grid->Nc;i++) {
-            if(k<grid->Nk[i])
-              phys->htmp[i]=phys->s0[i][k];
-            else
-              phys->htmp[i]=EMPTY;
-          }
-          nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->BGSalinityFID);
-          if(nwritten!=grid->Nc) {
-            printf("Error outputting background salinity data!\n");
-            exit(EXIT_WRITING);
-          }
-        }
-      }
-    }
-    fflush(prop->SalinityFID);
-
-    if(ASCII) 
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i];k++)
-          fprintf(prop->TemperatureFID,"%e\n",phys->T[i][k]);
-        for(k=grid->Nk[i];k<grid->Nkmax;k++)
-          fprintf(prop->TemperatureFID,"0.0\n");
-      }
-    else 
-      for(k=0;k<grid->Nkmax;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            phys->htmp[i]=phys->T[i][k];
-          else
-            phys->htmp[i]=EMPTY;
-        }
-        nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->TemperatureFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting temperature data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-    fflush(prop->TemperatureFID);
-
-    if(ASCII) 
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i];k++)
-          fprintf(prop->PressureFID,"%e\n",phys->q[i][k]);
-        for(k=grid->Nk[i];k<grid->Nkmax;k++)
-          fprintf(prop->PressureFID,"0.0\n");
-      }
-    else 
-      for(k=0;k<grid->Nkmax;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            phys->htmp[i]=phys->q[i][k];
-          else
-            phys->htmp[i]=EMPTY;
-        }
-        nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->PressureFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting pressure data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-    fflush(prop->PressureFID);
-
-    if(prop->turbmodel) {
-      if(ASCII) 
-        for(i=0;i<grid->Nc;i++) {
-          for(k=0;k<grid->Nk[i];k++)
-            fprintf(prop->EddyViscosityFID,"%e\n",phys->nu_tv[i][k]);
-          for(k=grid->Nk[i];k<grid->Nkmax;k++)
-            fprintf(prop->EddyViscosityFID,"0.0\n");
-        }
-      else 
-        for(k=0;k<grid->Nkmax;k++) {
-          for(i=0;i<grid->Nc;i++) {
-            if(k<grid->Nk[i])
-              phys->htmp[i]=phys->nu_tv[i][k];
-            else
-              phys->htmp[i]=EMPTY;
-          }
-          nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->EddyViscosityFID);
-          if(nwritten!=grid->Nc) {
-            printf("Error outputting eddy viscosity data!\n");
-            exit(EXIT_WRITING);
-          }
-        }
-      fflush(prop->EddyViscosityFID);
-
-      if(ASCII) 
-        for(i=0;i<grid->Nc;i++) {
-          for(k=0;k<grid->Nk[i];k++)
-            fprintf(prop->ScalarDiffusivityFID,"%e\n",phys->kappa_tv[i][k]);
-          for(k=grid->Nk[i];k<grid->Nkmax;k++)
-            fprintf(prop->ScalarDiffusivityFID,"0.0\n");
-        }
-      else 
-        for(k=0;k<grid->Nkmax;k++) {
-          for(i=0;i<grid->Nc;i++) {
-            if(k<grid->Nk[i])
-              phys->htmp[i]=phys->kappa_tv[i][k];
-            else
-              phys->htmp[i]=EMPTY;
-          }
-          nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->ScalarDiffusivityFID);
-          if(nwritten!=grid->Nc) {
-            printf("Error outputting scalar diffusivity data!\n");
-            exit(EXIT_WRITING);
-          }
-        }
-      fflush(prop->ScalarDiffusivityFID);
-    }
-
-    for(i=0;i<grid->Nc;i++) {
-      for(k=0;k<grid->Nk[i];k++)
-        fprintf(prop->VerticalGridFID,"%e\n",grid->dzz[i][k]);
-      for(k=grid->Nk[i];k<grid->Nkmax;k++)
-        fprintf(prop->VerticalGridFID,"0.0\n");
-    }
-  }
-  fflush(prop->VerticalGridFID);
-
-  if(prop->n==1)
-    fclose(prop->BGSalinityFID);
-
-  if(prop->n==prop->nsteps+prop->nstart) {
-    fclose(prop->FreeSurfaceFID);
-    fclose(prop->HorizontalVelocityFID);
-    fclose(prop->VerticalVelocityFID);
-    fclose(prop->SalinityFID);
-    fclose(prop->VerticalGridFID);
-    if(myproc==0) fclose(prop->ConserveFID);
-  }
-
-  // probably should change to make a distinction between blowup and restarts
-  if(!(prop->n%prop->ntoutStore) || blowup) {
-    if(VERBOSE>1 && myproc==0) 
-      printf("Outputting restart data at step %d\n",prop->n);
-
-    MPI_GetFile(filename,DATAFILE,"StoreFile","OutputData",myproc);
-    sprintf(str,"%s.%d",filename,myproc);
-    prop->StoreFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-    nwritten=fwrite(&(prop->n),sizeof(int),1,prop->StoreFID);
-
-    fwrite(phys->h,sizeof(REAL),grid->Nc,prop->StoreFID);
-    for(j=0;j<grid->Ne;j++) 
-      fwrite(phys->Cn_U[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
-    for(j=0;j<grid->Ne;j++) 
-      fwrite(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_W[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_W2[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-    if(prop->turbmodel>=1) {
-      for(i=0;i<grid->Nc;i++) 
-        fwrite(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-      for(i=0;i<grid->Nc;i++) 
-        fwrite(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-      for(i=0;i<grid->Nc;i++) 
-        fwrite(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-      for(i=0;i<grid->Nc;i++) 
-        fwrite(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    }
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->kappa_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-    for(j=0;j<grid->Ne;j++) 
-      fwrite(phys->u[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->qc[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->s0[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-    fclose(prop->StoreFID);
-  }
-
-  SunFree(tmp,grid->Ne*sizeof(REAL),"OutputData");
-}
-
 /*
  * Function: ReadProperties
  * Usage: ReadProperties(prop,grid,myproc);
@@ -4436,6 +3974,7 @@ void ReadProperties(propT **prop, gridT *grid, int myproc)
   (*prop)->conserveMomentum = MPI_GetValue(DATAFILE,"conserveMomentum","ReadProperties",myproc); 
   (*prop)->thetaM = MPI_GetValue(DATAFILE,"thetaM","ReadProperties",myproc); 
   (*prop)->newcells = MPI_GetValue(DATAFILE,"newcells","ReadProperties",myproc); 
+  (*prop)->mergeArrays = MPI_GetValue(DATAFILE,"mergeArrays","ReadProperties",myproc); 
 
   // When wetting and drying is desired:
   // -Do nonconservative momentum advection (conserveMomentum=0)
@@ -4510,106 +4049,6 @@ void ReadProperties(propT **prop, gridT *grid, int myproc)
 
   // addition for linearized free surface where dzz=dz
   (*prop)->linearFS = (int)MPI_GetValue(DATAFILE,"linearFS","ReadProperties",myproc);
-}
-
-/* 
- * Function: OpenFiles
- * Usage: OpenFiles(prop,myproc);
- * ------------------------------
- * Open all of the files used for i/o to store the file pointers.
- *
- */
-void OpenFiles(propT *prop, int myproc)
-{
-  char str[BUFFERLENGTH], filename[BUFFERLENGTH];
-
-  if(prop->readSalinity && prop->readinitialnc == 0) {
-    MPI_GetFile(filename,DATAFILE,"InitSalinityFile","OpenFiles",myproc);
-    prop->InitSalinityFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
-  }
-  if(prop->readTemperature && prop->readinitialnc == 0) {
-    MPI_GetFile(filename,DATAFILE,"InitTemperatureFile","OpenFiles",myproc);
-    prop->InitTemperatureFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
-  }
-  if(prop->readinitialnc>0){
-    MPI_GetFile(filename,DATAFILE,"initialNCfile","OpenFiles",myproc);
-    prop->initialNCfileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-  }
-  if(prop->netcdfBdy>0){
-    MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
-    prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-  }
-if(prop->metmodel>0){
-    MPI_GetFile(filename,DATAFILE,"metfile","OpenFiles",myproc);
-    prop->metncid = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
-  }
-
-if(prop->calcaverage){
-    MPI_GetFile(filename,DATAFILE,"averageNetcdfFile","OpenFiles",myproc);
-    sprintf(str,"%s.%d",filename,myproc);
-    prop->averageNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
-  }
-  
-
-  if(prop->outputNetcdf==0) {
-  MPI_GetFile(filename,DATAFILE,"FreeSurfaceFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->FreeSurfaceFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"HorizontalVelocityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->HorizontalVelocityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"VerticalVelocityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->VerticalVelocityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"SalinityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->SalinityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"BGSalinityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->BGSalinityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"TemperatureFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->TemperatureFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"PressureFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->PressureFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"EddyViscosityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->EddyViscosityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"ScalarDiffusivityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->ScalarDiffusivityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->VerticalGridFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-  
-  }else {
-      MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
-      sprintf(str,"%s.%d",filename,myproc);
-      prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
-  }
-  
-
-  if(RESTART) {
-    MPI_GetFile(filename,DATAFILE,"StartFile","OpenFiles",myproc);
-    sprintf(str,"%s.%d",filename,myproc);
-    prop->StartFID = MPI_FOpen(str,"r","OpenFiles",myproc);
-  }
-
-  if(myproc==0) {
-    MPI_GetFile(filename,DATAFILE,"ConserveFile","OpenFiles",myproc);
-    sprintf(str,"%s",filename);
-    prop->ConserveFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-  }
 }
 
 /*
@@ -4688,7 +4127,7 @@ static REAL UFaceFlux(int j, int k, REAL **phi, REAL **u, gridT *grid, REAL dt, 
  * at the boundaries.
  *
  */
-static void SetDensity(gridT *grid, physT *phys, propT *prop) {
+void SetDensity(gridT *grid, physT *phys, propT *prop) {
   int i, j, k, jptr, ib;
   REAL z, p;
 

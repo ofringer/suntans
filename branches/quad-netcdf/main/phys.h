@@ -181,8 +181,9 @@ typedef struct _propT {
        laxWendroff_Vertical, latitude;
   int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, 
       qmaxiters, hprecond, qprecond, volcheck, masscheck, nonlinear, linearFS, newcells, wetdry, sponge_distance, 
-      sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
-    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum, conserveMomentum;
+    sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
+    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum, conserveMomentum,
+    mergeArrays;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID, *SalinityFID, *BGSalinityFID, 
        *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,    
        *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID; 
@@ -205,12 +206,13 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop);
 void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop);
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void InitializeVerticalGrid(gridT **grid,int myproc);
-void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
-void OpenFiles(propT *prop, int myproc);
 void ReadProperties(propT **prop, gridT *grid, int myproc);
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
 REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind);
 REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);
 inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) ;
 void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option);
+void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
+void SetDensity(gridT *grid, physT *phys, propT *prop);
+
 #endif
