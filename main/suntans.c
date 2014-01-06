@@ -19,6 +19,7 @@
 #include "suntans.h"
 #include "mympi.h"
 #include "grid.h"
+#include "gridio.h"
 #include "phys.h"
 #include "report.h"
 

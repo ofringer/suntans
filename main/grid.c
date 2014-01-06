@@ -17,10 +17,10 @@
 #include "triangulate.h"
 #include "report.h"
 #include "timer.h"
+#include "gridio.h"
+#include "sendrecv.h"
 
 #define VTXDISTMAX 100
-#define COLUMNS_IN_TRIANGLE_CELLS_FILE 8  // Number of columns in original cells.dat before hybrid version of code
-#define COLUMNS_IN_TRIANGLE_EDGES_FILE 5  // Number of columns in original edges.dat before netcdf version of code that includes edge_id
 
 /*
  * Global variables for halo region for inner-processor boundaries
@@ -34,7 +34,6 @@ const int g_halolistsize = 1;
 /*
  * Private function declarations.
  */
-static void InitLocalGrid(gridT **grid);
 static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm);
 static void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs);
 static int GetNumCells(gridT *grid, int proc);
@@ -58,7 +57,7 @@ static int IsNeighborGlobalByEdge(int cell, gridT *maingrid,
     gridT **localgrid, int myproc, boundaryselection *list, int listsize);
 static int IsNeighborGlobalByNode(int cell, gridT *maingrid, 
     gridT **localgrid, int myproc, boundaryselection *list, int listsize);
-static inline int IsNeighborLocal(int cell, gridT *maingrid, int myproc,
+static int IsNeighborLocal(int cell, gridT *maingrid, int myproc,
     boundaryselection *list, int listsize);
 static int IsNeighborLocalByEdge(int cell, gridT *maingrid, int myproc,
     boundaryselection *list, int listsize);
@@ -70,7 +69,7 @@ static int IsBoundaryCellByEdge(int mgptr, gridT *maingrid, int myproc,
     boundaryselection *list, int listsize);
 static int IsBoundaryCellByNode(int mgptr, gridT *maingrid, int myproc,
     boundaryselection *list, int listsize);
-static inline void  BoundaryTopologyByHalo(gridT *maingrid, int numprocs,
+static void  BoundaryTopologyByHalo(gridT *maingrid, int numprocs,
     boundaryselection *list, int listsize);
 static void  BoundaryTopologyByEdge(int cellbase, int cell, gridT *maingrid, 
     int numprocs, boundaryselection *list, int listsize);
@@ -81,16 +80,14 @@ static void MakePointers(gridT *maingrid, gridT **localgrid, int myproc,
 static void ResortBoundaries(gridT *localgrid, int myproc);
 static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 static void FreeGrid(gridT *grid, int numprocs);
-static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs);
-static inline void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int *nfaces, int maxfaces, int Nc, int Ne);
-static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfaces, int maxfaces, int Nc);
-static inline void Reordergradf(int *face, int *grad, int *gradf, int *nfaces, int maxfaces, int Nc, int Ne);
-static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int myproc);
-static inline void CreateNormalArray(int *grad, int *face, int *normal, int *nfaces, int maxfaces, int Nc);
-static inline void CreateArray(int *grad, int *gradf, int *neigh, int *face, 
+static void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int *nfaces, int maxfaces, int Nc, int Ne);
+static void ReorderCellPoints(int *face, int *edges, int *cells, int *nfaces, int maxfaces, int Nc);
+static void Reordergradf(int *face, int *grad, int *gradf, int *nfaces, int maxfaces, int Nc, int Ne);
+static void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int myproc);
+static void CreateNormalArray(int *grad, int *face, int *normal, int *nfaces, int maxfaces, int Nc);
+static void CreateArray(int *grad, int *gradf, int *neigh, int *face, 
     int Nc, int Ne);
-static inline void CreateMomentumCV(gridT *grid);
-static void ReadDepth(gridT *grid, int myproc);
+static void CreateMomentumCV(gridT *grid);
 static int CorrectVoronoi(gridT *grid, int myproc);
 static int CorrectAngles(gridT *grid, int myproc);
 static void VoronoiStats(gridT *grid);
@@ -116,7 +113,7 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   gridT *maingrid;
 
   // read in all the filenames from the suntans.dat file
-  ReadFileNames(myproc);
+  ReadGridFileNames(myproc);
 
   //  compute the grid with triangle or read it in if in suntans format
   if(!TRIANGULATE) {
@@ -176,30 +173,33 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
     }
   }
 
-  // get graph weights
+  // Get the depth and set the graph weights:
+  //   maingrid->dv
+  //   maingrid->vwgt
   if(myproc==0 && VERBOSE>0) printf("Getting the depth for graph weights...\n");
-  Tic();
   GetDepth(maingrid,myproc,numprocs,comm);
-  if(myproc==0 && VERBOSE>2) printf("... time used is %f\n", Toc());
 
   // functions to set up parallelization of the code and compute geometrical 
   // information needed for grid computations
 
-  // makes the face and normal arrays as well as the control volume for momentum 
-  // based on the dual
+  // Set the following pointers
+  //   maingrid->face
+  //   maingrid->gradf
+  //   maingrid->normal
+  //   maingrid->numppneighs
+  //   maingrid->numpeneighs
+  //   maingrid->numpcneighs
+  //   maingrid->pcneighs
+  //   maingrid->peneighs
+  //   maingrid->ppneighs
+  //   maingrid->eneigh
   if(myproc==0 && VERBOSE>0) printf("Computing Connectivity...\n");
-  Tic();
   Connectivity(maingrid,myproc);
 
-  if(myproc==0 && VERBOSE>2) printf("... time used is %f\n", Toc());
-
   if(myproc==0 && VERBOSE>0) printf("Partitioning...\n");
-  Tic();
   // most important and complicated function to ensure parallelism for grid
   // takes the main grid and redistributes to local grids on each processor
   Partition(maingrid,localgrid,comm);
-
-  if(myproc==0 && VERBOSE>2) printf("... time used is %f\n", Toc());
   
   // functions to check to make sure all the communications are set up properly
   //  CheckCommunicateCells(maingrid,*localgrid,myproc,comm);
@@ -207,10 +207,8 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   //  SendRecvCellData2D((*localgrid)->dv,*localgrid,myproc,comm);
  
   if(myproc==0 && VERBOSE>0) printf("Outputting Data...\n");
-  Tic();
+  OutputGridData(maingrid,*localgrid,myproc,numprocs);
 
-  OutputData(maingrid,*localgrid,myproc,numprocs);
-  if(myproc==0 && VERBOSE>2) printf("... time used is %f\n", Toc());
   //FreeGrid(maingrid,numprocs);
 }
 
@@ -226,6 +224,8 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
  * Topology determines neighboring processors for each
  * processor and TransferData determines which cells must 
  * have their information passed between processors.
+ *
+ * 
  *
  */
 void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
@@ -244,20 +244,16 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   // cell graph generates Nge, adjncy, xadj members of maingrid
   // Useful to create cell graph compatible with ParMETIS to "color" each
   // cell based on its partitioning on a processor in Partition:GetPartitioning
-  Tic();
   CreateCellGraph(maingrid);
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
  
   // use ParMETIS API get get parallelized partioning, this basically 
   // just assigns each cell to a particular processor number  
   // (color cells with mapping!)
   if(myproc==0 && VERBOSE>1) printf("\tComputing Partitioning...\n");
-  Tic();
   GetPartitioning(maingrid,localgrid,myproc,numprocs,comm);
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
-//  // output a list of each cells processor for debugging
-//  PrintVectorToFile(INT, maingrid->part, maingrid->Nc, "CellProcessors.dat",0);
+  // output a list of each cells processor for debugging
+  //  PrintVectorToFile(INT, maingrid->part, maingrid->Nc, "CellProcessors.dat",0);
 
   // location of these functions seems a little funny, they could be "popped" out 
   // of this function up a level for a little more clarity
@@ -292,40 +288,28 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   // Topology needs updated so that any cell touching a node is considered to allow 
   // flagging as a boundary node
   if(myproc==0 && VERBOSE>1) printf("\tComputing Topology...\n");
-  Tic();
   Topology(&maingrid,localgrid,myproc,numprocs);
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
   if(myproc==0 && VERBOSE>1) printf("\tTransferring data...\n");
   // function to move data between main and local grid where boundary points were
   // defined with convention of shared edge with number and list of neighbors 
   // described in Topology
-  Tic(); 
   TransferData(maingrid,localgrid,myproc);
-
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
   if(myproc==0 && VERBOSE>1) printf("\tCreating edge markers...\n");
   // get edge marker information where we designate mark=5 and mark=6 for interproc
   // boundary ghost cells and mark=6 for pure ghost cells
-  Tic();
   EdgeMarkers(maingrid,localgrid,myproc);
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
   // note that Vert grid was moved above geometry so that Nkp can
   // be used in geometry
   if(myproc==0 && VERBOSE>1) printf("\tVert grid...\n");
   // get vertical grid, notably Nke, Nkc to distinguish number of layers at edges, cells
-  Tic();
   VertGrid(maingrid,localgrid,comm);
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
   
   if(myproc==0 && VERBOSE>1) 
     printf("\tComputing edge and voronoi distances and areas...\n");
-  Tic();
   Geometry(maingrid,localgrid,myproc);
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
-
 
   //if(myproc==0 && VERBOSE>2) printf("\tReordering...\n");
   // function to reorder the grid for increased computational efficiency, this 
@@ -335,446 +319,14 @@ void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
   if(myproc==0 && VERBOSE>1) printf("\tMaking pointers...\n");
   // compute cellp, edgep, lcptr, leptrs and also get the reference for local cell processor
   // interprocessor send-receives
-  Tic();
   MakePointers(maingrid,localgrid,myproc,comm);
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
 
   //  ResortBoundaries(*localgrid,myproc);
 
   if(VERBOSE>3) ReportConnectivity(*localgrid,maingrid,myproc);
   if(VERBOSE>2) ReportPartition(maingrid,*localgrid,myproc,comm);
- 
-
 }
 
-/*
- * Function: SendRecvCellData2D
- * Usage: SendRecvCellData2D(grid->h,grid,myproc,comm);
- * ----------------------------------------------------
- * This function will transfer the cell data back and forth between
- * processors.  
- *
- */
-void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
-			MPI_Comm comm)
-{
-  int n, neigh, neighproc, *num_send, *num_recv;
-  REAL **recv, **send;
-  MPI_Status status;
-
-  num_send=grid->num_cells_send;
-  num_recv=grid->num_cells_recv;
-    
-  recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvCellData2D");
-  send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvCellData2D");
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-
-    send[neigh] = (REAL *)SunMalloc(num_send[neigh]*sizeof(REAL),"SendRecvCellData2D");
-    recv[neigh] = (REAL *)SunMalloc(num_recv[neigh]*sizeof(REAL),"SendRecvCellData2D");
-
-    for(n=0;n<num_send[neigh];n++)
-      send[neigh][n]=celldata[grid->cell_send[neigh][n]];
-
-    MPI_Send((void *)(send[neigh]),num_send[neigh],
-	     MPI_DOUBLE,neighproc,1,comm); 
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-    MPI_Recv((void *)(recv[neigh]),num_recv[neigh],
-	     MPI_DOUBLE,neighproc,1,comm,&status);
-  }
-  MPI_Barrier(comm);
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    for(n=0;n<num_recv[neigh];n++)
-      celldata[grid->cell_recv[neigh][n]]=recv[neigh][n];
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    SunFree(send[neigh],num_send[neigh]*sizeof(REAL),"SendRecvCellData2D");
-    SunFree(recv[neigh],num_recv[neigh]*sizeof(REAL),"SendRecvCellData2D");
-  }
-  SunFree(send,grid->Nneighs*sizeof(REAL *),"SendRecvCellData2D");
-  SunFree(recv,grid->Nneighs*sizeof(REAL *),"SendRecvCellData2D");
-}
-
-/*
- * Function: SendRecvCellData3D
- * Usage: SendRecvCellData3D(grid->s,grid,myproc,comm);
- * ----------------------------------------------------
- * This function will transfer the 3D cell data back and forth between
- * processors.  
- *
- */
-void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
-			MPI_Comm comm)
-{
-  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
-  REAL **recv, **send;
-  MPI_Status status;
-
-  num_send=grid->num_cells_send;
-  num_recv=grid->num_cells_recv;
-
-  recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvCellData3D");
-  send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvCellData3D");
-  Nsend = (int *)SunMalloc(grid->Nneighs*sizeof(int),"SendRecvCellData3D");
-  Nrecv = (int *)SunMalloc(grid->Nneighs*sizeof(int),"SendRecvCellData3D");
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-
-    Nsend[neigh] = 0;
-    Nrecv[neigh] = 0;
-    for(n=0;n<num_send[neigh];n++) 
-      Nsend[neigh]+=grid->Nk[grid->cell_send[neigh][n]];
-    for(n=0;n<num_recv[neigh];n++) 
-      Nrecv[neigh]+=grid->Nk[grid->cell_recv[neigh][n]];
-
-    send[neigh] = (REAL *)SunMalloc(Nsend[neigh]*sizeof(REAL),"SendRecvCellData3D");
-    recv[neigh] = (REAL *)SunMalloc(Nrecv[neigh]*sizeof(REAL),"SendRecvCellData3D");
-
-    nstart=0;
-    for(n=0;n<num_send[neigh];n++) {
-      for(k=0;k<grid->Nk[grid->cell_send[neigh][n]];k++) 
-	send[neigh][nstart+k]=celldata[grid->cell_send[neigh][n]][k];
-      nstart+=grid->Nk[grid->cell_send[neigh][n]];
-    }
-
-    MPI_Send((void *)(send[neigh]),Nsend[neigh],MPI_DOUBLE,neighproc,1,comm); 
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-    MPI_Recv((void *)(recv[neigh]),Nrecv[neigh],MPI_DOUBLE,neighproc,1,comm,&status);
-  }
-  MPI_Barrier(comm);
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    nstart=0;
-    for(n=0;n<num_recv[neigh];n++) {
-      for(k=0;k<grid->Nk[grid->cell_recv[neigh][n]];k++) 
-	celldata[grid->cell_recv[neigh][n]][k]=recv[neigh][nstart+k];
-      nstart+=grid->Nk[grid->cell_recv[neigh][n]];
-    }
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    SunFree(send[neigh],Nsend[neigh]*sizeof(REAL),"SendRecvCellData3D");
-    SunFree(recv[neigh],Nrecv[neigh]*sizeof(REAL),"SendRecvCellData3D");
-  }
-  SunFree(send,grid->Nneighs*sizeof(REAL *),"SendRecvCellData3D");
-  SunFree(recv,grid->Nneighs*sizeof(REAL *),"SendRecvCellData3D");
-  SunFree(Nsend,grid->Nneighs*sizeof(int),"SendRecvCellData3D");
-  SunFree(Nrecv,grid->Nneighs*sizeof(int),"SendRecvCellData3D");
-}
-
-/*
- * Function: SendRecvWData
- * Usage: SendRecvWData(grid->w,grid,myproc,comm);
- * -----------------------------------------------
- * This function will transfer the 3D w data back and forth between
- * processors.  
- *
- */
-void SendRecvWData(REAL **celldata, gridT *grid, int myproc, 
-		   MPI_Comm comm)
-{
-  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
-  REAL **recv, **send;
-  MPI_Status status;
-
-  num_send=grid->num_cells_send;
-  num_recv=grid->num_cells_recv;
-
-  recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvWData");
-  send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvWData");
-  Nsend = (int *)SunMalloc(grid->Nneighs*sizeof(int),"SendRecvWData");
-  Nrecv = (int *)SunMalloc(grid->Nneighs*sizeof(int),"SendRecvWData");
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-
-    Nsend[neigh] = 0;
-    Nrecv[neigh] = 0;
-    for(n=0;n<num_send[neigh];n++) 
-      Nsend[neigh]+=(1+grid->Nk[grid->cell_send[neigh][n]]);
-    for(n=0;n<num_recv[neigh];n++) 
-      Nrecv[neigh]+=(1+grid->Nk[grid->cell_recv[neigh][n]]);
-
-    send[neigh] = (REAL *)SunMalloc(Nsend[neigh]*sizeof(REAL),"SendRecvWData");
-    recv[neigh] = (REAL *)SunMalloc(Nrecv[neigh]*sizeof(REAL),"SendRecvWData");
-
-    nstart=0;
-    for(n=0;n<num_send[neigh];n++) {
-      for(k=0;k<(1+grid->Nk[grid->cell_send[neigh][n]]);k++) 
-	send[neigh][nstart+k]=celldata[grid->cell_send[neigh][n]][k];
-      nstart+=(1+grid->Nk[grid->cell_send[neigh][n]]);
-    }
-
-    MPI_Send((void *)(send[neigh]),Nsend[neigh],MPI_DOUBLE,neighproc,1,comm); 
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-    MPI_Recv((void *)(recv[neigh]),Nrecv[neigh],MPI_DOUBLE,neighproc,1,comm,&status);
-  }
-  MPI_Barrier(comm);
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    nstart=0;
-    for(n=0;n<num_recv[neigh];n++) {
-      for(k=0;k<(1+grid->Nk[grid->cell_recv[neigh][n]]);k++) 
-	celldata[grid->cell_recv[neigh][n]][k]=recv[neigh][nstart+k];
-      nstart+=(1+grid->Nk[grid->cell_recv[neigh][n]]);
-    }
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    SunFree(send[neigh],Nsend[neigh]*sizeof(REAL),"SendRecvWData");
-    SunFree(recv[neigh],Nrecv[neigh]*sizeof(REAL),"SendRecvWData");
-  }
-  SunFree(send,grid->Nneighs*sizeof(REAL *),"SendRecvWData");
-  SunFree(recv,grid->Nneighs*sizeof(REAL *),"SendRecvWData");
-  SunFree(Nsend,grid->Nneighs*sizeof(int),"SendRecvWData");
-  SunFree(Nrecv,grid->Nneighs*sizeof(int),"SendRecvWData");
-}
-
-/*
- * Function: SendRecvEdgeData3D
- * Usage: SendRecvEdgeData3D(grid->u,grid,myproc,comm);
- * ----------------------------------------------------
- * This function will transfer the 3D edge data back and forth between
- * processors.  
- *
- */
-void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
-			MPI_Comm comm)
-{
-  int k, n, nstart, neigh, neighproc, *Nsend, *Nrecv, *num_send, *num_recv;
-  REAL **recv, **send;
-  MPI_Status status;
-
-  num_send=grid->num_edges_send;
-  num_recv=grid->num_edges_recv;
-
-  recv = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvEdgeData3D");
-  send = (REAL **)SunMalloc(grid->Nneighs*sizeof(REAL *),"SendRecvEdgeData3D");
-  Nsend = (int *)SunMalloc(grid->Nneighs*sizeof(int),"SendRecvEdgeData3D");
-  Nrecv = (int *)SunMalloc(grid->Nneighs*sizeof(int),"SendRecvEdgeData3D");
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-
-    Nsend[neigh] = 0;
-    Nrecv[neigh] = 0;
-    for(n=0;n<num_send[neigh];n++) 
-      Nsend[neigh]+=grid->Nke[grid->edge_send[neigh][n]];
-    for(n=0;n<num_recv[neigh];n++) 
-      Nrecv[neigh]+=grid->Nke[grid->edge_recv[neigh][n]];
-
-    send[neigh] = (REAL *)SunMalloc(Nsend[neigh]*sizeof(REAL),"SendRecvEdgeData3D");
-    recv[neigh] = (REAL *)SunMalloc(Nrecv[neigh]*sizeof(REAL),"SendRecvEdgeData3D");
-
-    nstart=0;
-    for(n=0;n<num_send[neigh];n++) {
-      for(k=0;k<grid->Nke[grid->edge_send[neigh][n]];k++) 
-	send[neigh][nstart+k]=edgedata[grid->edge_send[neigh][n]][k];
-      nstart+=grid->Nke[grid->edge_send[neigh][n]];
-    }
-
-    MPI_Send((void *)(send[neigh]),Nsend[neigh],MPI_DOUBLE,neighproc,1,comm); 
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-    MPI_Recv((void *)(recv[neigh]),Nrecv[neigh],MPI_DOUBLE,neighproc,1,comm,&status);
-  }
-  MPI_Barrier(comm);
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    nstart=0;
-    for(n=0;n<num_recv[neigh];n++) {
-      for(k=0;k<grid->Nke[grid->edge_recv[neigh][n]];k++) {
-	edgedata[grid->edge_recv[neigh][n]][k]=recv[neigh][nstart+k];
-      }
-      nstart+=grid->Nke[grid->edge_recv[neigh][n]];
-    }
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    SunFree(send[neigh],Nsend[neigh]*sizeof(REAL),"SendRecvEdgeData3D");
-    SunFree(recv[neigh],Nrecv[neigh]*sizeof(REAL),"SendRecvEdgeData3D");
-  }
-  SunFree(send,grid->Nneighs*sizeof(REAL *),"SendRecvEdgeData3D");
-  SunFree(recv,grid->Nneighs*sizeof(REAL *),"SendRecvEdgeData3D");
-  SunFree(Nsend,grid->Nneighs*sizeof(int),"SendRecvEdgeData3D");
-  SunFree(Nrecv,grid->Nneighs*sizeof(int),"SendRecvEdgeData3D");
-}
-
-void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm)
-{
-  int n, neigh, neighproc, noncontig, flag;
-  int **recv, **send;
-  MPI_Status status;
-
-  recv = (int **)SunMalloc(maingrid->numneighs[myproc]*sizeof(int *),"CheckCommunicateCells");
-  send = (int **)SunMalloc(maingrid->numneighs[myproc]*sizeof(int *),"CheckCommunicateCells");
-
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    neighproc = maingrid->neighs[myproc][neigh];
-    send[neigh] = (int *)SunMalloc(localgrid->num_cells_send[neigh]*sizeof(int),"CheckCommunicateCells");
-    recv[neigh] = (int *)SunMalloc(localgrid->num_cells_recv[neigh]*sizeof(int),"CheckCommunicateCells");
-    for(n=0;n<localgrid->num_cells_send[neigh];n++)
-      send[neigh][n]=localgrid->mnptr[localgrid->cell_send[neigh][n]];
-
-    MPI_Send((void *)(send[neigh]),localgrid->num_cells_send[neigh],
-	     MPI_INT,neighproc,1,comm); 
-  }
-
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    neighproc = maingrid->neighs[myproc][neigh];
-    MPI_Recv((void *)(recv[neigh]),localgrid->num_cells_recv[neigh],
-	     MPI_INT,neighproc,1,comm,&status);
-  }
-  MPI_Barrier(comm);
-
-  noncontig=0;
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    for(n=0;n<localgrid->num_cells_recv[neigh];n++)
-      if(localgrid->mnptr[localgrid->cell_recv[neigh][n]] !=
-	 recv[neigh][n]) {
-	printf("Warning!  Non-contiguous cell data! %d <-> %d\n",myproc,maingrid->neighs[myproc][neigh]);
-	noncontig=1;
-	break;
-      }
-  }
-
-  if(noncontig) {
-    for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-      flag=1;
-      for(n=0;n<localgrid->num_cells_recv[neigh];n++)
-	if(IsMember(localgrid->mnptr[localgrid->cell_recv[neigh][n]],recv[neigh],
-		    localgrid->num_cells_recv[neigh])==-1) {
-	  flag=0;
-	  break;
-	}
-      if(!flag)
-	printf("Warning!  Incorrect cell data! %d <-> %d\n",myproc,maingrid->neighs[myproc][neigh]);
-      else
-	printf("Cell data is non-contiguous but correctly transferred. %d <-> %d\n",
-	       myproc,maingrid->neighs[myproc][neigh]);
-    }
-
-    for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-      printf("%d <-> %d, Sent: %d, Received: %d\n",myproc,maingrid->neighs[myproc][neigh],
-	     localgrid->num_cells_send[neigh],localgrid->num_cells_recv[neigh]);
-      printf("Sent: ");
-      for(n=0;n<localgrid->num_cells_send[neigh];n++) printf("%d ",send[neigh][n]);
-      printf("\n");
-      printf("Rec: ");
-      for(n=0;n<localgrid->num_cells_recv[neigh];n++) printf("%d ",recv[neigh][n]);
-      printf("\n");
-      printf("Loc: ");
-      for(n=0;n<localgrid->num_cells_recv[neigh];n++) 
-	printf("%d ",localgrid->mnptr[localgrid->cell_recv[neigh][n]]);
-      printf("\n");
-    }
-  } else 
-    printf("Processor %d, Cell data transferred correctly.\n", myproc);
-
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    SunFree(send[neigh],localgrid->num_cells_send[neigh]*sizeof(int),"CheckCommunicateCells");
-    SunFree(recv[neigh],localgrid->num_cells_recv[neigh]*sizeof(int),"CheckCommunicateCells");
-  }
-  SunFree(send,maingrid->numneighs[myproc]*sizeof(int *),"CheckCommunicateCells");
-  SunFree(recv,maingrid->numneighs[myproc]*sizeof(int *),"CheckCommunicateCells");
-}
-
-void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm)
-{
-  int n, neigh, neighproc, noncontig, flag;
-  int **recv, **send;
-  MPI_Status status;
-
-  recv = (int **)SunMalloc(maingrid->numneighs[myproc]*sizeof(int *),"CheckCommunicateEdges");
-  send = (int **)SunMalloc(maingrid->numneighs[myproc]*sizeof(int *),"CheckCommunicateEdges");
-
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    neighproc = maingrid->neighs[myproc][neigh];
-
-    send[neigh] = (int *)SunMalloc(localgrid->num_edges_send[neigh]*sizeof(int),"CheckCommunicateEdges");
-    recv[neigh] = (int *)SunMalloc(localgrid->num_edges_recv[neigh]*sizeof(int),"CheckCommunicateEdges");
-
-    for(n=0;n<localgrid->num_edges_send[neigh];n++)
-      send[neigh][n]=localgrid->eptr[localgrid->edge_send[neigh][n]];
-
-    MPI_Send((void *)(send[neigh]),localgrid->num_edges_send[neigh],
-	     MPI_INT,neighproc,1,comm); 
-  }
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    neighproc = maingrid->neighs[myproc][neigh];
-    MPI_Recv((void *)(recv[neigh]),localgrid->num_edges_recv[neigh],
-	     MPI_INT,neighproc,1,comm,&status);
-  }
-  MPI_Barrier(comm);
-
-
-  noncontig=0;
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    for(n=0;n<localgrid->num_edges_recv[neigh];n++)
-      if(localgrid->eptr[localgrid->edge_recv[neigh][n]] !=
-	 recv[neigh][n]) {
-	printf("Warning!  Non-contiguous edge data! %d <-> %d\n",myproc,maingrid->neighs[myproc][neigh]);
-	noncontig=1;
-	break;
-      }
-  }
-
-  if(noncontig) {
-    for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-      flag=1;
-      for(n=0;n<localgrid->num_edges_recv[neigh];n++)
-	if(IsMember(localgrid->eptr[localgrid->edge_recv[neigh][n]],recv[neigh],
-		    localgrid->num_edges_recv[neigh])==-1) {
-	  flag=0;
-	  break;
-	}
-      if(!flag)
-	printf("Warning!  Incorrect edge data! %d <-> %d\n",myproc,maingrid->neighs[myproc][neigh]);
-      else
-	printf("Edge data is non-contiguous but correctly transferred. %d <-> %d\n",
-	       myproc,maingrid->neighs[myproc][neigh]);
-    }
-
-    for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-      printf("%d <-> %d, Sent: %d, Received: %d\n",myproc,maingrid->neighs[myproc][neigh],
-	     localgrid->num_edges_send[neigh],localgrid->num_edges_recv[neigh]);
-      printf("Sent: ");
-      for(n=0;n<localgrid->num_edges_send[neigh];n++) printf("%d ",send[neigh][n]);
-      printf("\n");
-      printf("Rec: ");
-      for(n=0;n<localgrid->num_edges_recv[neigh];n++) printf("%d ",recv[neigh][n]);
-      printf("\n");
-      printf("Loc: ");
-      for(n=0;n<localgrid->num_edges_recv[neigh];n++) 
-	printf("%d ",localgrid->eptr[localgrid->edge_recv[neigh][n]]);
-      printf("\n");
-    }
-  } else
-    printf("Processor %d, Edge data transferred correctly.\n",myproc);
-
-  for(neigh=0;neigh<maingrid->numneighs[myproc];neigh++) {
-    SunFree(send[neigh],localgrid->num_edges_send[neigh]*sizeof(int),"CheckCommunicateEdges");
-    SunFree(recv[neigh],localgrid->num_edges_recv[neigh]*sizeof(int),"CheckCommunicateEdges");
-  }
-  SunFree(send,maingrid->numneighs[myproc]*sizeof(int *),"CheckCommunicateEdges");
-  SunFree(recv,maingrid->numneighs[myproc]*sizeof(int *),"CheckCommunicateEdges");
-}
-  
 /*
  * Function: InitMainGrid
  * Usage: InitMainGrid(&grid);
@@ -861,129 +413,25 @@ void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc)
 }
 
 /*
- * Function: ReadMainGrid
- * Usage: ReadmainGrid(grid,myproc);
- * ---------------------------------
- * Read in the cell data. If the CORRECTVORONOI
- * flag is set to 1 then the voronoi points are set to be the centroids of
- * the cells.
+ * Function: GetDepth
+ * Usage: GetDepth(maingrid,myproc,numprocs,comm);
+ * -----------------------------------------------
+ * Get the depth by reading it in or setting it with the ReturnDepth function defined in initialization.c,
+ * and set the weights for partitioning.  Also adjust the depth based on fixdzz or mindepth and output
+ * the depth file containing depths at the Voronoi points.  This file is specified by the depth keyword
+ * in suntans.dat, followed by "-voro", i.e. "depth.dat-voro"
  *
- * The files contain the data as follows:
- * POINTSFILE (x,y) list of points corresponding to the vertices of the cells, which also contains
- *            a third column with markers to those points.
- * CELLSFILE voronoi_x voronoi_y cell_pt1 cell_pt2 cell_pt3 neigh_pt1 neigh_pt2 neigh_pt3
- * EDGEFILE list of indices to points in POINTSFILE (always 2 columns + edge marker + 2 pointers to
- * neighboring cells (grad) = 5 columns)
- * **MR** EDGEFILE now has 6 columns. Last column contains the edge_id for boundary segments. **MR**
- *
+ * Populates:
+ *  grid->dv
+ *  grid->vwgt
+ *  
  */
-void ReadMainGrid(gridT *grid, int myproc)
-{
-  int j, n, nei, nf, nfaces, numColumns;
-  char str[BUFFERLENGTH];
-  FILE *ifile;
-
-  ifile = MPI_FOpen(POINTSFILE,"r","ReadMainGrid",myproc);
-  for(n=0;n<grid->Np;n++) {
-    grid->xp[n]=getfield(ifile,str);
-    grid->yp[n]=getfield(ifile,str);
-    getfield(ifile,str);
-  }
-  fclose(ifile);
-  
-  numColumns=getNumColumns(EDGEFILE);
-
-  ifile = MPI_FOpen(EDGEFILE,"r","ReadMainGrid",myproc);
-  for(n=0;n<grid->Ne;n++) {
-    for(j=0;j<NUMEDGECOLUMNS-1;j++) 
-      grid->edges[NUMEDGECOLUMNS*n+j]=(int)getfield(ifile,str);
-    grid->mark[n]=(int)getfield(ifile,str);
-    for(j=0;j<2;j++) 
-      grid->grad[2*n+j]=(int)getfield(ifile,str);
-    if(numColumns>COLUMNS_IN_TRIANGLE_EDGES_FILE) {
-      grid->edge_id[n]=(int)getfield(ifile,str);
-    } else {
-      grid->edge_id[n]=0;
-    }
-  }
-  fclose(ifile);
-
-  numColumns=getNumColumns(CELLSFILE);
-
-  ifile = MPI_FOpen(CELLSFILE,"r","ReadMainGrid",myproc);
-  for(n=0;n<grid->Nc;n++) {
- 
-    // Set the number of faces in each cell as follows:
-    // 1) If there are more than eight columns in cells.dat, set nfaces[n] to that number only if it does 
-    //    not exceed the number specified in suntans.dat
-    // 2) Otherwise set it to the default value of 3
-    if(numColumns>COLUMNS_IN_TRIANGLE_CELLS_FILE) {
-      nfaces=getfield(ifile,str);
-      if(nfaces>grid->maxfaces) {
-	printf("Error!!: Number of faces %d in first column of cells file %s is larger than maximum of %d!\n",
-	       nfaces,CELLSFILE,grid->maxfaces);
-	MPI_Finalize();
-	exit(EXIT_FAILURE);
-      } else {
-	grid->nfaces[n]=nfaces;
-      }
-    } else {
-      grid->nfaces[n]=DEFAULT_NFACES;
-    }
-    grid->xv[n] = getfield(ifile,str);
-    grid->yv[n] = getfield(ifile,str);
-    for(nf=0;nf<grid->nfaces[n];nf++)
-      grid->cells[n*grid->maxfaces+nf]=(int)getfield(ifile,str);
-    for(nf=0;nf<grid->nfaces[n];nf++) {
-      if((nei=(int)getfield(ifile,str))!=-1)
-	grid->neigh[n*grid->maxfaces+nf]=nei;
-      else
-	grid->neigh[n*grid->maxfaces+nf]=-1;
-    }
-  }
-}
-
-/*
- * Function: ReadFileNames
- * Usage: ReadFileNames(myproc);
- * -----------------------------
- * Reads the names of the files containing the grid data
- * from the file defined by GRIDDATAFILELIST in suntans.h
- * This is the global list mapping names to suntans.dat
- * 
- */
-void ReadFileNames(int myproc)
-{
-  MPI_GetFile(POINTSFILE,DATAFILE,"points","ReadFileNames",myproc);
-  MPI_GetFile(EDGEFILE,DATAFILE,"edges","ReadFileNames",myproc);
-  MPI_GetFile(CELLSFILE,DATAFILE,"cells","ReadFileNames",myproc);
-  MPI_GetFile(NODEFILE,DATAFILE,"nodes","ReadFileNames",myproc);
-  MPI_GetFile(INPUTDEPTHFILE,DATAFILE,"depth","ReadFileNames",myproc);
-  MPI_GetFile(CELLCENTEREDFILE,DATAFILE,"celldata","ReadFileNames",myproc);
-  MPI_GetFile(EDGECENTEREDFILE,DATAFILE,"edgedata","ReadFileNames",myproc);
-  MPI_GetFile(VERTSPACEFILE,DATAFILE,"vertspace","ReadFileNames",myproc);
-  MPI_GetFile(TOPOLOGYFILE,DATAFILE,"topology","ReadFileNames",myproc);
-}
-
-static void ReadDepth(gridT *grid, int myproc) {
-  int n;
-  char str[BUFFERLENGTH];
-  FILE *fid;
-  sprintf(str,"%s-voro",INPUTDEPTHFILE);
-
-  fid = MPI_FOpen(str,"r","ReadDepth",myproc);
-  for(n=0;n<grid->Nc;n++) {
-    getfield(fid,str);
-    getfield(fid,str);
-    grid->dv[n]=getfield(fid,str);
-  }
-  fclose(fid);
-}
-  
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
 {
   int n, maxgridweight=1000, IntDepth, Nkmax, stairstep, fixdzz, kount=0;
   REAL mindepth, maxdepth, maxdepth0, minimum_depth, *dz;
+  char str[BUFFERLENGTH];
+  FILE *ofile;
 
   Nkmax = MPI_GetValue(DATAFILE,"Nkmax","GetDepth",myproc);
   stairstep = MPI_GetValue(DATAFILE,"stairstep","GetDepth",myproc);
@@ -1010,6 +458,14 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
     }
   }
 
+  if(myproc==0 && IntDepth!=2) {
+    sprintf(str,"%s-voro",INPUTDEPTHFILE);
+    ofile = MPI_FOpen(str,"w","InterpDepth",myproc);
+    for(n=0;n<grid->Nc;n++) 
+      fprintf(ofile,"%f %f %f\n",grid->xv[n],grid->yv[n],grid->dv[n]);
+    fclose(ofile);
+  }
+
   for(n=0;n<grid->Nc;n++) 
     if(grid->dv[n]>maxdepth)
       maxdepth = grid->dv[n];
@@ -1017,8 +473,8 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
 
   GetDZ(dz,maxdepth,maxdepth,Nkmax,myproc);  
 
-  //if(!stairstep && fixdzz) 
-  //  FixDZZ(grid,maxdepth,Nkmax,fixdzz,myproc);
+  //  if(!stairstep && fixdzz) 
+  //    FixDZZ(grid,maxdepth,Nkmax,fixdzz,myproc);
 
   if(minimum_depth!=0) {
     if(minimum_depth>0) {
@@ -1186,8 +642,16 @@ void CreateEdgeGraph(gridT *grid)
  * CreateFaceArray information, called for both the local and
  * global grids.
  *
+ * Inputs: 
+ *   grad
+ *   nfaces
+ *   neigh
+ * Outputs:
+ *   face
+ *   gradf 
+ *
  */
-static inline void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int *nfaces, int maxfaces, int Nc, int Ne) // added two elements
+static void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face, int *nfaces, int maxfaces, int Nc, int Ne) 
 {
   int n, j, nf, nc, nc1, nc2, nb;
 
@@ -1262,7 +726,7 @@ static inline void CreateFaceArray(int *grad, int *gradf, int *neigh, int *face,
  * make gradf cosistent with faces
  *
  */
-static inline void Reordergradf(int *face, int *grad, int *gradf, int *nfaces, int maxfaces, int Nc, int Ne){
+static void Reordergradf(int *face, int *grad, int *gradf, int *nfaces, int maxfaces, int Nc, int Ne){
   int i, j, k, nc;
   for(i=0;i<Ne;i++){
      for(j=0;j<2;j++){
@@ -1287,7 +751,7 @@ static inline void Reordergradf(int *face, int *grad, int *gradf, int *nfaces, i
  * global grids.
  *
  *///added two elements
-static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfaces, int maxfaces, int Nc) {
+static void ReorderCellPoints(int *face, int *edges, int *cells, int *nfaces, int maxfaces, int Nc) {
   // arrange face values so that they corresond to structure for quadratic interpolation
   // based on organization of cells (i.e. we will change cells (pointers to the nodes)
   // to be consistent with the existing edge order for interpolation
@@ -1352,13 +816,21 @@ static inline void ReorderCellPoints(int *face, int *edges, int *cells, int *nfa
 /*
  * Function: CreateNodeArray
  * Usage: CreateNodeArray(grad, gradf, neigh, face, Nc, Ne)
- * ------------------------------------------
+ * --------------------------------------------------------
  * CreatNodeArray information so that all the nodal and cell 
  * neighboors for a nodal point can be easily accessed, 
  * called for both the global and local grids.
  *
+ * Output:
+ *   grid->numppneighs
+ *   grid->numpeneighs
+ *   grid->numpcneighs
+ *   grid->pcneighs
+ *   grid->peneighs
+ *   grid->ppneighs
+ *
  */
-static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int myproc)
+static void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int myproc)
 {
   //  printf("Nodal array stub with Np=%d Ne=%d\n", Np, Ne);
 
@@ -1516,7 +988,7 @@ static inline void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int mypr
  * global grids
  *
  */
-static inline void CreateNormalArray(int *grad, int *face, int *normal, int *nfaces, int maxfaces, int Nc)
+static void CreateNormalArray(int *grad, int *face, int *normal, int *nfaces, int maxfaces, int Nc)
 {
   int n, nf;
   // for each cell
@@ -1537,7 +1009,17 @@ static inline void CreateNormalArray(int *grad, int *face, int *normal, int *nfa
  * Function: Connectivity
  * Usage: Connectivity(grid, myproc)
  * ------------------------------------------
- * Determine how grid is connected.
+ * Determine how grid is connected and set:
+ *   grid->face
+ *   grid->gradf
+ *   grid->normal
+ *   grid->numppneighs
+ *   grid->numpeneighs
+ *   grid->numpcneighs
+ *   grid->pcneighs
+ *   grid->peneighs
+ *   grid->ppneighs
+ *   grid->eneigh
  *
  */
 void Connectivity(gridT *grid, int myproc)
@@ -1566,9 +1048,7 @@ void Connectivity(gridT *grid, int myproc)
   // create nodal neighboor values for the global grid
 
   if(myproc==0 && VERBOSE>2) printf("\tCreating global node array...\n");
-  Tic();
   CreateNodeArray(grid, grid->Np, grid->Ne, grid->Nc, myproc);
-  if(myproc==0 && VERBOSE>2) printf("\t... time used is %f\n", Toc());
   
   /* Create the edge connectivity array eneigh, which points to the 2(NFACES-1)
      neighbors that comprise the edges for the momentum control volume */
@@ -1586,7 +1066,7 @@ void Connectivity(gridT *grid, int myproc)
  * grid->eneigh[2(maxfaces-1)
  *
  */
-static inline void CreateMomentumCV(gridT *grid)
+static void CreateMomentumCV(gridT *grid)
 {
   int n, ne, ng, nf;
   // loop over all the edges
@@ -1637,7 +1117,7 @@ static inline void CreateMomentumCV(gridT *grid)
 // may have to be changed to incorporate full row of 
 // interprocessor cells for the interpolation, generalized
 // halo region
-inline int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
+int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc)
 {
   int nf, nei;
 
@@ -1832,549 +1312,6 @@ static int IsBoundaryCellByNode(int cell, gridT *maingrid, int myproc,
   return -1;
 }
 
-
-/*
- * Function: OutputData
- * Usage: OutputData(maingrid,localgrid,myproc);
- * ---------------------------------------------
- * Outputs the required grid data.
- *
- */
-static void OutputData(gridT *maingrid, gridT *grid, int myproc, int numprocs)
-{
-  int j, n, nf, neigh, Np=maingrid->Np, Nc=grid->Nc, Ne=grid->Ne;
-  char str[BUFFERLENGTH];
-  FILE *ofile;
-
-  // Assume that the triangulation output uses the same as the original format, i.e.
-  // no first column and no edge_id
-  if(TRIANGULATE && myproc==0) {
-    if(VERBOSE>2) printf("Outputting %s...\n",POINTSFILE);
-    ofile = MPI_FOpen(POINTSFILE,"w","OutputData",myproc);
-    for(j=0;j<Np;j++)
-      fprintf(ofile,"%f %f 0\n",maingrid->xp[j],maingrid->yp[j]);
-    fclose(ofile);
-  
-    ofile = MPI_FOpen(EDGEFILE,"w","OutputData",myproc);
-    for(n=0;n<maingrid->Ne;n++) {
-      for(j=0;j<NUMEDGECOLUMNS-1;j++) 
-	fprintf(ofile,"%d ",maingrid->edges[NUMEDGECOLUMNS*n+j]);
-      fprintf(ofile,"%d ",maingrid->mark[n]);
-      for(j=0;j<2;j++) 
-	fprintf(ofile,"%d ",maingrid->grad[2*n+j]);
-      fprintf(ofile,"\n");
-    }
-    fclose(ofile);
-
-    ofile = MPI_FOpen(CELLSFILE,"w","OutputData",myproc);
-    for(n=0;n<maingrid->Nc;n++) {
-      // corrected part
-      fprintf(ofile,"%f %f ",maingrid->xv[n],maingrid->yv[n]);
-      for(nf=0;nf<maingrid->nfaces[n];nf++)
-	fprintf(ofile,"%d ",maingrid->cells[n*maingrid->maxfaces+nf]);
-      for(nf=0;nf<maingrid->nfaces[n];nf++) 
-	fprintf(ofile,"%d ",maingrid->neigh[n*maingrid->maxfaces+nf]);
-      fprintf(ofile,"\n");
-    }
-    fclose(ofile);
-  }
-  
-  // On each processor, cells.dat.* always contains the number of faces in the first column,
-  // even if cells.dat does not.  
-  sprintf(str,"%s.%d",CELLSFILE,myproc);
-  if(VERBOSE>2) printf("Outputting %s...\n",str); 
-  ofile = MPI_FOpen(str,"w","OutputData",myproc);
-
-  for(j=0;j<grid->Nc;j++) {
-    fprintf(ofile,"%d %e %e ",grid->nfaces[j],grid->xv[j],grid->yv[j]);
-    for(nf=0;nf<grid->nfaces[j];nf++)
-      fprintf(ofile,"%d ",grid->cells[j*grid->maxfaces+nf]);
-    for(nf=0;nf<grid->nfaces[j];nf++)
-      fprintf(ofile,"%d ",grid->neigh[j*grid->maxfaces+nf]);
-    fprintf(ofile,"\n");
-  }
-  fclose(ofile);	
-
-  // On each processor, edgess.dat.* always contains the edge_id in the last column,
-  // even if edges.dat does not.
-  sprintf(str,"%s.%d",EDGEFILE,myproc);
-  if(VERBOSE>2) printf("Outputting %s...\n",str);
-
-  ofile = MPI_FOpen(str,"w","OutputData",myproc);
-  for(j=0;j<grid->Ne;j++) {
-    for(nf=0;nf<2;nf++)
-      fprintf(ofile,"%d ",grid->edges[j*NUMEDGECOLUMNS+nf]);
-    fprintf(ofile,"%d ",grid->mark[j]);
-    for(nf=0;nf<2;nf++)
-      fprintf(ofile,"%d ",grid->grad[2*j+nf]);
-    fprintf(ofile,"%d ",grid->edge_id[j]);
-    fprintf(ofile,"\n");
-  }
-  fclose(ofile);
-
-  // celldata.dat.* always has number of faces in first column
-  sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
-  if(VERBOSE>2) printf("Outputting %s...\n",str);
-  ofile = MPI_FOpen(str,"w","OutputData",myproc);
-
-  for(n=0;n<Nc;n++) {
-    //corrected part //add another column for celldata.dat for nfaces 
-    fprintf(ofile,"%d %e %e %e %e %d ",grid->nfaces[n],grid->xv[n],grid->yv[n],grid->Ac[n],grid->dv[n],grid->Nk[n]);
-    for(nf=0;nf<grid->nfaces[n];nf++)
-     //printf("grid->face is %d\n",grid->face[grid->maxfaces*n+nf]);
-      fprintf(ofile,"%d ",grid->face[grid->maxfaces*n+nf]);
-    for(nf=0;nf<grid->nfaces[n];nf++)
-      fprintf(ofile,"%d ",grid->neigh[grid->maxfaces*n+nf]);
-    for(nf=0;nf<grid->nfaces[n];nf++) 
-      fprintf(ofile,"%d ",grid->normal[grid->maxfaces*n+nf]);
-    for(nf=0;nf<grid->nfaces[n];nf++) 
-      fprintf(ofile,"%e ",grid->def[grid->maxfaces*n+nf]);
-    for(nf=0;nf<grid->nfaces[n];nf++) 
-      fprintf(ofile,"%d ",grid->cells[grid->maxfaces*n+nf]);
-    fprintf(ofile,"%d ",grid->mnptr[n]);
-    fprintf(ofile,"\n");
-  }
-  fclose(ofile);
-
-  sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
-  if(VERBOSE>2) printf("Outputting %s...\n",str);
-
-  ofile = MPI_FOpen(str,"w","OutputData",myproc);
-  for(n=0;n<Ne;n++) {
-//    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d %d %d\n",
-//	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
-//	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
-//	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n], 
-//      grid->edges[n*NUMEDGECOLUMNS], grid->edges[n*NUMEDGECOLUMNS+1]);
-//MR - output eptr array
-    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d %d %d %d %d\n",
-	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
-	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
-	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n], 
-      grid->edges[n*NUMEDGECOLUMNS], grid->edges[n*NUMEDGECOLUMNS+1],grid->edge_id[n],grid->eptr[n]);
-
-  }
-  fclose(ofile);
-
-  // added nodal structure information
-  sprintf(str,"%s.%d",NODEFILE,myproc);
-  if(VERBOSE>2) printf("Outputting %s...\n",str);
-
-  ofile = MPI_FOpen(str,"w","OutputData",myproc);
-//  // output the number of points to the domain
-//  fprintf(ofile,"%d\n", grid->Np);
-  // over each nodal point
-  for(n=0;n<Np;n++) { // Np needs to be local, global right now
-    // NOTE THAT n SHOULD BE SUBSTITUTED FOR THE GLOBAL ID FOR THE NODE 
-    // FOR THE PARALLLELIZED IMPLEMENTATION probably via local to global
-    // nodal pointer
-    
-    // print the nodal data structure information (will need conversion pointer)
-    fprintf(ofile,"%d %e %e ", n, maingrid->xp[n], maingrid->yp[n]);
-
-    // print the number of nodal neighbors
-    fprintf(ofile,"%d ", grid->numppneighs[n]);
-//    printf("Np = %d numppneighs= %d ppneighbors = { ", n, grid->numppneighs[n]);
-    // now loop over all the nodal neighbors for each node
-    for(neigh = 0; neigh < grid->numppneighs[n]; neigh++ ) {
-      fprintf(ofile,"%d ", grid->ppneighs[n][neigh]);
-//      printf("%d ", grid->ppneighs[n][neigh]);
-    }
-//    printf("}");
-
-    // now list the edge neighbors
-    fprintf(ofile,"%d ", grid->numpeneighs[n]);
-    // now loop over all the nodal neighbors for each node
-    for(neigh = 0; neigh < grid->numpeneighs[n]; neigh++ ) {
-      fprintf(ofile,"%d ", grid->peneighs[n][neigh]);
-//      printf("%d ", grid->ppneighs[n][neigh]);
-    }
-//    printf("}");
-
-    // now list all the cell neighboors
-//    printf(" numpcneighs= %d pcneighbors = { ", grid->numpcneighs[n]);
-    fprintf(ofile,"%d ", grid->numpcneighs[n]);
-    for(neigh = 0; neigh < grid->numpcneighs[n]; neigh++) {
-      // now loop over all the cell neighbors
-      fprintf(ofile,"%d ", grid->pcneighs[n][neigh]);
-//      printf("%d ", grid->pcneighs[n][neigh]);
-    }
-    // now add the maximum number of layers for the node
-    fprintf(ofile,"%d ", grid->Nkp[n]);
-    // now add the total area in each layer to the end
-    for(neigh = 0; neigh < grid->Nkp[n]; neigh++){
-      fprintf(ofile,"%e ", grid->Actotal[n][neigh]);
-    }
-    // now end the line since we've outputed all the data for 
-    // nodal neighbor information
-    fprintf(ofile,"\n");
-//    printf("}\n");
-  }
-  fclose(ofile);
-
-//  // added nodal structure information -- DEBUG FOR LIST OF POINTS CHECK
-//  sprintf(str,"%s.%d",NODEFILE,myproc);
-//  if(VERBOSE>2) printf("Outputting %s...\n",str);
-//
-//  ofile = MPI_FOpen(str,"w","OutputData",myproc);
-//  // over each nodal point
-//  for(n=0;n<grid->Np;n++) {
-//    // print the nodal point
-//    fprintf(ofile,"%d ", grid->localpoints[n]);
-//    // now end the line since we've outputed all the data for 
-//    // nodal neighbor information
-//    fprintf(ofile,"\n");
-//  }
-//  fclose(ofile);
-
-  sprintf(str,"%s.%d",TOPOLOGYFILE,myproc);
-  if(VERBOSE>2) printf("Outputting %s...\n",str);
-
-  ofile = MPI_FOpen(str,"w","OutputData",myproc);
-  fprintf(ofile,"%d %d\n",numprocs,grid->Nneighs);
-  for(neigh=0;neigh<grid->Nneighs;neigh++) 
-    fprintf(ofile,"%d ",grid->myneighs[neigh]);
-  fprintf(ofile,"\n");
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    fprintf(ofile,"%d %d %d %d\n",
-	    grid->num_cells_send[neigh],
-	    grid->num_cells_recv[neigh],
-	    grid->num_edges_send[neigh],
-	    grid->num_edges_recv[neigh]);
-    for(n=0;n<grid->num_cells_send[neigh];n++)
-      fprintf(ofile,"%d ",grid->cell_send[neigh][n]);
-    fprintf(ofile,"\n");
-    for(n=0;n<grid->num_cells_recv[neigh];n++)
-      fprintf(ofile,"%d ",grid->cell_recv[neigh][n]);
-    fprintf(ofile,"\n");
-    for(n=0;n<grid->num_edges_send[neigh];n++)
-      fprintf(ofile,"%d ",grid->edge_send[neigh][n]);
-    fprintf(ofile,"\n");
-    for(n=0;n<grid->num_edges_recv[neigh];n++)
-      fprintf(ofile,"%d ",grid->edge_recv[neigh][n]);
-    fprintf(ofile,"\n");
-  }
-  for(n=0;n<MAXBCTYPES-1;n++) 
-    fprintf(ofile,"%d ",grid->celldist[n]);
-  fprintf(ofile,"\n");
-  for(n=0;n<MAXMARKS-1;n++) 
-    fprintf(ofile,"%d ",grid->edgedist[n]);
-  fprintf(ofile,"\n");
-  for(n=0;n<grid->Nc;n++) 
-    fprintf(ofile,"%d ",grid->cellp[n]);
-  fprintf(ofile,"\n");
-  for(n=0;n<grid->Ne;n++) 
-    fprintf(ofile,"%d ",grid->edgep[n]);
-  fprintf(ofile,"\n");
-  fclose(ofile);
-
-  if(myproc==0 && VERBOSE>2) printf("Outputting %s...\n",VERTSPACEFILE);
-  if(myproc==0) {
-    sprintf(str,"%s",VERTSPACEFILE);
-    ofile = MPI_FOpen(str,"w","OutputData",myproc);
-    for(n=0;n<grid->Nkmax;n++)
-      fprintf(ofile,"%e\n",grid->dz[n]);
-    fclose(ofile);
-  }
-}
-
-/*
- * Function: ReadGrid
- * Usage: ReadGrid(&grid,myproc,numprocs,comm);
- * -------------------------------------------
- * Reads the partitioned grid data and allocates space
- * for the required arrays -- must have been
- * called with the right number of processors!
- *
- */
-void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm) 
-{
-  int neigh, n, nf, np, ne, nc, Nkmax;
-  int Np;
-  char str[BUFFERLENGTH], str2[BUFFERLENGTH];
-  FILE *ifile;
-
-  ReadFileNames(myproc);
-
-  InitLocalGrid(grid);
-
-  sprintf(str,"%s.%d",CELLCENTEREDFILE,myproc);
-  (*grid)->Nc = MPI_GetSize(str,"ReadGrid",myproc);
-  sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
-  (*grid)->Ne = MPI_GetSize(str,"ReadGrid",myproc);
-  sprintf(str,"%s.%d",NODEFILE,myproc);
-  (*grid)->Np = MPI_GetSize(str,"ReadGrid",myproc);
- 
-  /*
-   * First read in the topology file
-   *
-   */
-  // Here check to make sure you're reading in a topology file that
-  // corresponds to the right number of processors. All processors
-  // need to read in the 0 topo file to check this (rather than doing an mpi_send/recv
-  sprintf(str,"%s.0",TOPOLOGYFILE);
-  ifile = MPI_FOpen(str,"r","ReadGrid",myproc);
-  if(numprocs!=((int)getfield(ifile,str))) {
-    if(myproc==0) {
-      printf("Error! Topology file(s) %s.*\n",TOPOLOGYFILE);
-      printf("is/are not written for %d processors!\n",numprocs);
-    }
-    MPI_Finalize();
-    exit(EXIT_FAILURE);
-  }
-
-  sprintf(str,"%s.%d",TOPOLOGYFILE,myproc);
-  if(VERBOSE>2) printf("Reading %s...\n",str);
-  ifile = MPI_FOpen(str,"r","ReadGrid",myproc);
-
-  numprocs=(int)getfield(ifile,str);
-  (*grid)->Nneighs=(int)getfield(ifile,str);
-  (*grid)->myneighs=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
-  (*grid)->num_cells_send=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
-  (*grid)->num_cells_recv=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
-  (*grid)->num_edges_send=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
-  (*grid)->num_edges_recv=(int *)SunMalloc((*grid)->Nneighs*sizeof(int),"ReadGrid");
-  (*grid)->cell_send=(int **)SunMalloc((*grid)->Nneighs*sizeof(int *),"ReadGrid");
-  (*grid)->cell_recv=(int **)SunMalloc((*grid)->Nneighs*sizeof(int *),"ReadGrid");
-  (*grid)->edge_send=(int **)SunMalloc((*grid)->Nneighs*sizeof(int *),"ReadGrid");
-  (*grid)->edge_recv=(int **)SunMalloc((*grid)->Nneighs*sizeof(int *),"ReadGrid");
-
-  for(neigh=0;neigh<(*grid)->Nneighs;neigh++) 
-    (*grid)->myneighs[neigh]=(int)getfield(ifile,str);
-
-  for(neigh=0;neigh<(*grid)->Nneighs;neigh++) {
-
-    (*grid)->num_cells_send[neigh]=(int)getfield(ifile,str);
-    (*grid)->num_cells_recv[neigh]=(int)getfield(ifile,str);
-    (*grid)->num_edges_send[neigh]=(int)getfield(ifile,str);
-    (*grid)->num_edges_recv[neigh]=(int)getfield(ifile,str);
-
-    (*grid)->cell_send[neigh]=(int *)SunMalloc((*grid)->num_cells_send[neigh]*sizeof(int),"ReadGrid");
-    (*grid)->cell_recv[neigh]=(int *)SunMalloc((*grid)->num_cells_recv[neigh]*sizeof(int),"ReadGrid");
-    (*grid)->edge_send[neigh]=(int *)SunMalloc((*grid)->num_edges_send[neigh]*sizeof(int),"ReadGrid");
-    (*grid)->edge_recv[neigh]=(int *)SunMalloc((*grid)->num_edges_recv[neigh]*sizeof(int),"ReadGrid");
-
-    for(n=0;n<(*grid)->num_cells_send[neigh];n++)
-      (*grid)->cell_send[neigh][n]=(int)getfield(ifile,str);
-    for(n=0;n<(*grid)->num_cells_recv[neigh];n++)
-      (*grid)->cell_recv[neigh][n]=(int)getfield(ifile,str);
-    for(n=0;n<(*grid)->num_edges_send[neigh];n++)
-      (*grid)->edge_send[neigh][n]=(int)getfield(ifile,str);
-    for(n=0;n<(*grid)->num_edges_recv[neigh];n++)
-      (*grid)->edge_recv[neigh][n]=(int)getfield(ifile,str);
-  }
-
-  (*grid)->celldist = (int *)SunMalloc((MAXBCTYPES-1)*sizeof(int),"ReadGrid");
-  (*grid)->edgedist = (int *)SunMalloc((MAXMARKS-1)*sizeof(int),"ReadGrid");
-  (*grid)->cellp = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");
-  (*grid)->edgep = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
-
-  for(n=0;n<MAXBCTYPES-1;n++) 
-    (*grid)->celldist[n]=(int)getfield(ifile,str);
-  for(n=0;n<MAXMARKS-1;n++) 
-    (*grid)->edgedist[n]=(int)getfield(ifile,str);
-  for(n=0;n<(*grid)->Nc;n++) 
-    (*grid)->cellp[n]=(int)getfield(ifile,str);
-  for(n=0;n<(*grid)->Ne;n++) 
-    (*grid)->edgep[n]=(int)getfield(ifile,str);
-  
-  /*
-   * Now read in cell-centered data.dat
-   *
-   */
-  (*grid)->nfaces = (int *)SunMalloc((*grid)->Nc*sizeof(REAL),"ReadGrid");	
-  (*grid)->xv = (REAL *)SunMalloc((*grid)->Nc*sizeof(REAL),"ReadGrid");
-  (*grid)->yv = (REAL *)SunMalloc((*grid)->Nc*sizeof(REAL),"ReadGrid");
-  (*grid)->dv = (REAL *)SunMalloc((*grid)->Nc*sizeof(REAL),"ReadGrid");
-  (*grid)->Ac = (REAL *)SunMalloc((*grid)->Nc*sizeof(REAL),"ReadGrid");
-  (*grid)->Nk = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");
-
-  //read maxFaces and nfaces from celldata.dat first
-  (*grid)->maxfaces=(int)MPI_GetValue(DATAFILE,"maxFaces","ReadGrid",myproc);
-  (*grid)->neigh = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
-  (*grid)->face = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
-  (*grid)->normal = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(int),"ReadGrid");
-  (*grid)->def = (REAL *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(REAL),"ReadGrid");
-  (*grid)->cells = (int *)SunMalloc((*grid)->maxfaces*(*grid)->Nc*sizeof(REAL),"ReadGrid");
-  (*grid)->mnptr = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");//MR
-
-  sprintf(str2,"%s.%d",CELLCENTEREDFILE,myproc);
-  if(VERBOSE>2) printf("Reading %s...\n",str);
-
-  ifile = MPI_FOpen(str2,"r","ReadGrid",myproc);
-  for(n=0;n<(*grid)->Nc;n++) {
-    (*grid)->nfaces[n]=(int)getfield(ifile,str);
-    if((*grid)->nfaces[n]>(*grid)->maxfaces) {
-      printf("Error!!: Number of faces %d in first column of cells file %s is larger than maximum of %d!\n",
- 	     (*grid)->nfaces[n],str2,(*grid)->maxfaces);
-      MPI_Finalize();
-      exit(EXIT_FAILURE);    
-    }    
-    (*grid)->xv[n]=getfield(ifile,str);
-    (*grid)->yv[n]=getfield(ifile,str);
-    (*grid)->Ac[n]=getfield(ifile,str);
-    (*grid)->dv[n]=getfield(ifile,str);
-    (*grid)->Nk[n]=(int)getfield(ifile,str);
-    for(nf=0;nf<(*grid)->nfaces[n];nf++)
-      (*grid)->face[(*grid)->maxfaces*n+nf]=(int)getfield(ifile,str);
-    for(nf=0;nf<(*grid)->nfaces[n];nf++)
-      (*grid)->neigh[(*grid)->maxfaces*n+nf]=(int)getfield(ifile,str);
-    for(nf=0;nf<(*grid)->nfaces[n];nf++)
-      (*grid)->normal[(*grid)->maxfaces*n+nf]=(int)getfield(ifile,str);
-    for(nf=0;nf<(*grid)->nfaces[n];nf++)
-      (*grid)->def[(*grid)->maxfaces*n+nf]=getfield(ifile,str);
-    for(nf=0;nf<(*grid)->nfaces[n];nf++)
-      (*grid)->cells[(*grid)->maxfaces*n+nf]=(int)getfield(ifile,str);
-    (*grid)->mnptr[n]=(int)getfield(ifile,str);//MR
-  }
-  fclose(ifile);
-  
-  /*
-   * Now read in edge-centered data.dat
-   *
-   */
-  (*grid)->df = (REAL *)SunMalloc((*grid)->Ne*sizeof(REAL),"ReadGrid");
-  (*grid)->dg = (REAL *)SunMalloc((*grid)->Ne*sizeof(REAL),"ReadGrid");
-  (*grid)->n1 = (REAL *)SunMalloc((*grid)->Ne*sizeof(REAL),"ReadGrid");
-  (*grid)->n2 = (REAL *)SunMalloc((*grid)->Ne*sizeof(REAL),"ReadGrid");
-  (*grid)->xe = (REAL *)SunMalloc((*grid)->Ne*sizeof(REAL),"ReadGrid");
-  (*grid)->ye = (REAL *)SunMalloc((*grid)->Ne*sizeof(REAL),"ReadGrid");
-
-  (*grid)->Nke = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
-  (*grid)->Nkc = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
-  (*grid)->grad = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
-  (*grid)->gradf = (int *)SunMalloc(2*(*grid)->Ne*sizeof(int),"ReadGrid");
-  (*grid)->mark = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
-  (*grid)->edge_id = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid"); 
-  (*grid)->edges = (int *)SunMalloc((*grid)->Ne*NUMEDGECOLUMNS*sizeof(int),"ReadGrid");
-  (*grid)->eptr = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");//MR
-
-  sprintf(str,"%s.%d",EDGECENTEREDFILE,myproc);
-  if(VERBOSE>2) printf("Reading %s...\n",str);
-
-  ifile = MPI_FOpen(str,"r","ReadGrid",myproc);
-  for(n=0;n<(*grid)->Ne;n++) {
-      (*grid)->df[n] = getfield(ifile,str);
-      (*grid)->dg[n] = getfield(ifile,str);
-      (*grid)->n1[n] = getfield(ifile,str);
-      (*grid)->n2[n] = getfield(ifile,str);
-      (*grid)->xe[n] = getfield(ifile,str);
-      (*grid)->ye[n] = getfield(ifile,str);
-      (*grid)->Nke[n] = (int)getfield(ifile,str);
-      (*grid)->Nkc[n] = (int)getfield(ifile,str);
-      (*grid)->grad[2*n] = (int)getfield(ifile,str);
-      (*grid)->grad[2*n+1] = (int)getfield(ifile,str);
-      (*grid)->gradf[2*n] = (int)getfield(ifile,str);
-      (*grid)->gradf[2*n+1] = (int)getfield(ifile,str);
-      (*grid)->mark[n] = (int)getfield(ifile,str);
-      (*grid)->edges[NUMEDGECOLUMNS*n] = (int)getfield(ifile,str);
-      (*grid)->edges[NUMEDGECOLUMNS*n+1] = (int)getfield(ifile,str);
-      (*grid)->edge_id[n] = (int)getfield(ifile,str);//MR
-      (*grid)->eptr[n] = (int)getfield(ifile,str);//MR
-  }
-  fclose(ifile);
-
-  /* 
-   * Now read in node data
-   *
-   */
-
-  sprintf(str,"%s.%d",NODEFILE,myproc);
-  if(VERBOSE>2) printf("Reading %s...\n",str);
-  ifile = MPI_FOpen(str,"r","ReadGrid",myproc);
-
-  // allocate memory
-  Np = (*grid)->Np;
-  (*grid)->xp = (REAL *)SunMalloc(Np*sizeof(REAL),"ReadGrid");
-  (*grid)->yp = (REAL *)SunMalloc(Np*sizeof(REAL),"ReadGrid");
-  (*grid)->localtoglobalpoints = (int*)SunMalloc(Np*sizeof(int),"ReadGrid");
-  (*grid)->numppneighs = (int*)SunMalloc(Np*sizeof(int),"ReadGrid");
-  (*grid)->ppneighs = (int**)SunMalloc(Np*sizeof(int*),"ReadGrid");
-  (*grid)->numpeneighs = (int*)SunMalloc(Np*sizeof(int),"ReadGrid");
-  (*grid)->peneighs = (int**)SunMalloc(Np*sizeof(int*),"ReadGrid");
-  (*grid)->numpcneighs = (int*)SunMalloc(Np*sizeof(int),"ReadGrid");
-  (*grid)->pcneighs = (int**)SunMalloc(Np*sizeof(int*),"ReadGrid");
-  (*grid)->Nkp= (int*)SunMalloc(Np*sizeof(int),"ReadGrid");
-  (*grid)->Actotal = (REAL **)SunMalloc(Np*sizeof(REAL*),"ReadGrid");
-
-  // for each line in the nodal file
-  for(n=0; n < Np; n++) {
-    // get the pointer to the global value
-    (*grid)->localtoglobalpoints[n] = (int)getfield(ifile,str);
-    // get the coordinates of the point
-    (*grid)->xp[n] = getfield(ifile,str);
-    (*grid)->yp[n] = getfield(ifile,str);
-    // now get the nodal neighbors
-    // now read in the number of nodal neighbors
-    (*grid)->numppneighs[n] = (int)getfield(ifile,str);
-    // now allocate the memory
-    (*grid)->ppneighs[n] = (int*)SunMalloc((*grid)->numppneighs[n]*sizeof(int),"ReadGrid");
-    // now loop over all these and get the values for the nodal nodal neighbors
-    for(np=0; np < (*grid)->numppneighs[n]; np++) {
-      (*grid)->ppneighs[n][np] = (int)getfield(ifile,str);
-    }
-    // now get the number of edge neighbors
-    // now read in the number of edge neighbors
-    (*grid)->numpeneighs[n] = (int)getfield(ifile,str);
-    // now allocate the memory
-    (*grid)->peneighs[n] = (int*)SunMalloc((*grid)->numpeneighs[n]*sizeof(int),"ReadGrid");
-    // now loop over all these and get the values for the nodal edge neighbors
-    for(np=0; np < (*grid)->numpeneighs[n]; np++) {
-      (*grid)->peneighs[n][np] = (int)getfield(ifile,str);
-    }
-    // now get the number of cell neighbors
-    // now read in the number of cell neighbors
-    (*grid)->numpcneighs[n] = (int)getfield(ifile,str);
-    // now allocate the memory
-    (*grid)->pcneighs[n] = (int*)SunMalloc((*grid)->numpcneighs[n]*sizeof(int),"ReadGrid");
-    // now loop over all these and get the values for the nodal cell neighbors
-    for(np=0; np < (*grid)->numpcneighs[n]; np++) {
-      (*grid)->pcneighs[n][np] = (int)getfield(ifile,str);
-    }
-    // now get the number of vertical layers Nkp
-    (*grid)->Nkp[n] = (int)getfield(ifile,str);
-    // allocate memory for each layer
-    (*grid)->Actotal[n] = (REAL *)SunMalloc((*grid)->Nkp[n]*sizeof(REAL),"ReadGrid");
-    // now get the total area of shared cells at this point  (Actotal)
-    for(np=0; np < (*grid)->Nkp[n]; np++) {
-      (*grid)->Actotal[n][np] = (REAL)getfield(ifile,str);
-    }
-  }
-  fclose(ifile);
-
-  /*
-   * Now read in vertical grid spacing...
-   *
-   */
-  (*grid)->Nkmax=MPI_GetValue(DATAFILE,"Nkmax","VertGrid",myproc);
-  Nkmax=MPI_GetSize(VERTSPACEFILE,"ReadGrid",myproc);
-  if((*grid)->Nkmax!=Nkmax) {
-    printf("Error in reading in grid data!\n");
-    printf("Length of %s: %d is not consistent with what is in %s: %d\n",
-	   VERTSPACEFILE,Nkmax,DATAFILE,(*grid)->Nkmax);
-    MPI_Finalize();
-    exit(1);
-  }
-  (*grid)->dz = (REAL *)SunMalloc((*grid)->Nkmax*sizeof(REAL),"ReadGrid");
-
-  if(myproc==0 && VERBOSE>2) printf("Reading %s...\n",VERTSPACEFILE);
-  ifile = MPI_FOpen(VERTSPACEFILE,"r","ReadGrid",myproc);
-  for(n=0;n<(*grid)->Nkmax;n++)
-    (*grid)->dz[n]=getfield(ifile,str);
-  fclose(ifile);
-
-  // These are not read in but just initialized
-  (*grid)->ctop = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");
-  (*grid)->ctopold = (int *)SunMalloc((*grid)->Nc*sizeof(int),"ReadGrid");
-  (*grid)->etop = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
-  (*grid)->etopold = (int *)SunMalloc((*grid)->Ne*sizeof(int),"ReadGrid");
-
-  for(n=0;n<(*grid)->Nc;n++) 
-    (*grid)->ctop[n]=0;
-  for(n=0;n<(*grid)->Ne;n++) 
-    (*grid)->etop[n]=0;
-}
-
 /************************************************************************/
 /*                                                                      */
 /*                       Private Functions                              */
@@ -2388,7 +1325,7 @@ void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm)
  * Initialize the local grid struct.
  *
  */
-static void InitLocalGrid(gridT **grid)
+void InitLocalGrid(gridT **grid)
 {
   *grid = (gridT *)SunMalloc(sizeof(gridT),"InitLocalGrid");
 }
@@ -3480,7 +2417,7 @@ void Topology(gridT **maingrid, gridT **localgrid, int myproc, int numprocs)
  * connected.  The criteria is selectable by edge or node.
  *
  */
-static inline void  BoundaryTopologyByHalo(gridT *maingrid, int numprocs, 
+static void  BoundaryTopologyByHalo(gridT *maingrid, int numprocs, 
     boundaryselection *list, int listsize)
 {
   int j; 
@@ -3932,9 +2869,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
   // second, get a list of the points on each processor, this stores the 
   // values for each proc in localgrid->localpoints
   if(myproc==0 && VERBOSE>2)  printf("\t\tGetProcPoints\n");
-  Tic();
   GetProcPoints(*localgrid, maingrid);
-  if(myproc==0 && VERBOSE>2) printf("\t\t... time used is %f\n", Toc());
 
   // allocate nodal neighbor array information (list of neighbors for each point)
   // note that since the number of entries for each node is variable, 
@@ -3951,9 +2886,7 @@ static void TransferData(gridT *maingrid, gridT **localgrid, int myproc)
   // this function crashed because sampling of localgrid points is wrong 
   // as nodes are not reordered
   if(myproc==0 && VERBOSE>2)  printf("\t\tCreateNodeArray\n");
-  Tic();
   CreateNodeArray((*localgrid), (*localgrid)->Np,(*localgrid)->Ne, (*localgrid)->Nc, myproc);
-  if(myproc==0 && VERBOSE>2) printf("\t\t... time used is %f\n", Toc());
 
   // populate (*localgrid)->eneigh
   CreateMomentumCV(*localgrid);
@@ -4144,7 +3077,7 @@ static int IsNeighborLocalByNode(int cell, gridT *maingrid, int myproc,
  * included for interprocessor communication.  
  *
  */
-static inline int IsNeighborGlobal(int cell, gridT *maingrid, 
+static int IsNeighborGlobal(int cell, gridT *maingrid, 
     gridT **localgrid, int myproc, boundaryselection *list, int listsize)
 {
   // if we don't have a good list, exit
@@ -4306,7 +3239,7 @@ static int IsNeighborGlobalByNode(int cell, gridT *maingrid,
 /*
  * Function: Geometry
  * Usage: Geometry(maingrid, grid, myproc)
- * -------------------------
+ * ---------------------------------------
  * Compute  geometry information such as cell area (AC), 
  * edge length (df), gradient edge length (dg) between voronoi
  * cell centers [If this is a boundary edge then dg is twice the 
@@ -4371,7 +3304,6 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
       }
     }
   }
-            
   
   /* Compute the length of each edge */
   if(myproc==0 && VERBOSE>2) printf("\t\tComputing edge lengths...\n");
@@ -4477,7 +3409,7 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
       ne = (*grid)->face[n*(*grid)->maxfaces+nf];
       (*grid)->def[n*(*grid)->maxfaces+nf] = 
         -(((*grid)->xv[n]-maingrid->xp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n1[ne]+
-            ((*grid)->yv[n]-maingrid->yp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n2[ne])*
+	  ((*grid)->yv[n]-maingrid->yp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n2[ne])*
         (*grid)->normal[n*(*grid)->maxfaces+nf];
 	//Check for nan
 	if((*grid)->def[n*(*grid)->maxfaces+nf] != (*grid)->def[n*(*grid)->maxfaces+nf])
@@ -4485,9 +3417,9 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 
       // Distance to the edge midpoint. Not used.
       /*
-         (*grid)->def[n*NFACES+nf]=sqrt(pow((*grid)->xv[n]-(*grid)->xe[ne],2)+
-         pow((*grid)->yv[n]-(*grid)->ye[ne],2));
-         */
+	(*grid)->def[n*NFACES+nf]=sqrt(pow((*grid)->xv[n]-(*grid)->xe[ne],2)+
+	pow((*grid)->yv[n]-(*grid)->ye[ne],2));
+      */
     }
   }
     /*
@@ -4548,9 +3480,9 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
 /*
  * Function: GetCircumcircleRadius
  * Usage: GetCircumcircleRadius(xt, yt, Nf)
- * -------------------------
+ * ----------------------------------------
  * Compute the circumcircle radius for a polygon
- * with verticies (xt,yt) and Nf faces
+ * with verticies (xt,yt) and Nf faces.
  *
  */
 REAL GetCircumcircleRadius(REAL *xt, REAL *yt, int Nf)
@@ -4570,9 +3502,9 @@ REAL GetCircumcircleRadius(REAL *xt, REAL *yt, int Nf)
 /*
  * Function: GetArea
  * Usage: GetArea(xt, yt, Nf)
- * --------------------------------
+ * --------------------------
  * Compute the area of a polygon with verticies
- * (xt,yt) that has Nf faces
+ * (xt,yt) that has Nf faces.
  *
  */
 REAL GetArea(REAL *xt, REAL *yt, int Nf)
@@ -4612,7 +3544,7 @@ static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   int n, Nd, proc, nstart, ncount, scaledepth;
   REAL *xd, *yd, *d, scaledepthfactor;
   char str[BUFFERLENGTH];
-  FILE *ifile, *ofile;
+  FILE *ifile;
   MPI_Status status;
 
   scaledepth=(int)MPI_GetValue(DATAFILE,"scaledepth","InterpDepth",myproc);
@@ -4657,14 +3589,6 @@ static void InterpDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
     }
   }
   MPI_Bcast((void *)grid->dv,grid->Nc,MPI_DOUBLE,0,comm);
-
-  if(myproc==0) {
-    sprintf(str,"%s-voro",INPUTDEPTHFILE);
-    ofile = MPI_FOpen(str,"w","InterpDepth",myproc);
-    for(n=0;n<grid->Nc;n++) 
-      fprintf(ofile,"%f %f %f\n",grid->xv[n],grid->yv[n],grid->dv[n]);
-    fclose(ofile);
-  }
 
   free(xd);
   free(yd);
@@ -4866,283 +3790,6 @@ static void VoronoiStats(gridT *grid) {
 }
 
 /*
- * Function: AllocateTransferArrays
- * Usage: AllocateTransferArrays(&grid,myproc,numprocs,comm);
- * ----------------------------------------------------------
- * Allocate memory for the arrays used to send back and forth interprocessor data.
- *
- */
-void AllocateTransferArrays(gridT **grid, int myproc, int numprocs, MPI_Comm comm) {
-  int n, neigh, neighproc, maxtosend, maxtorecv;
-  (*grid)->status = (MPI_Status *)SunMalloc(2*(*grid)->Nneighs*sizeof(MPI_Status),"AllocateTransferrays");
-  (*grid)->request = (MPI_Request *)SunMalloc(2*(*grid)->Nneighs*sizeof(MPI_Request),"AllocateTransferrays");
-
-  (*grid)->recv = (REAL **)SunMalloc((*grid)->Nneighs*sizeof(REAL *),"AllocateTransferArrays");
-  (*grid)->send = (REAL **)SunMalloc((*grid)->Nneighs*sizeof(REAL *),"AllocateTransferArrays");
-  (*grid)->total_cells_send = (int *)SunMalloc((*grid)->Nneighs*sizeof(int),"AllocateTransferArrays");
-  (*grid)->total_cells_recv = (int *)SunMalloc((*grid)->Nneighs*sizeof(int),"AllocateTransferArrays");
-  (*grid)->total_cells_sendW = (int *)SunMalloc((*grid)->Nneighs*sizeof(int),"AllocateTransferArrays");
-  (*grid)->total_cells_recvW = (int *)SunMalloc((*grid)->Nneighs*sizeof(int),"AllocateTransferArrays");
-  (*grid)->total_edges_send = (int *)SunMalloc((*grid)->Nneighs*sizeof(int),"AllocateTransferArrays");
-  (*grid)->total_edges_recv = (int *)SunMalloc((*grid)->Nneighs*sizeof(int),"AllocateTransferArrays");
-
-  for(neigh=0;neigh<(*grid)->Nneighs;neigh++) {
-    // this does not appear to be used in the function below and could be removed
-    neighproc = (*grid)->myneighs[neigh];
-
-    (*grid)->total_cells_send[neigh] = 0;
-    (*grid)->total_cells_recv[neigh] = 0;
-    (*grid)->total_cells_sendW[neigh] = 0;
-    (*grid)->total_cells_recvW[neigh] = 0;
-    (*grid)->total_edges_send[neigh] = 0;
-    (*grid)->total_edges_recv[neigh] = 0;
-    for(n=0;n<(*grid)->num_cells_send[neigh];n++) 
-      (*grid)->total_cells_send[neigh]+=(*grid)->Nk[(*grid)->cell_send[neigh][n]];
-    for(n=0;n<(*grid)->num_cells_recv[neigh];n++) 
-      (*grid)->total_cells_recv[neigh]+=(*grid)->Nk[(*grid)->cell_recv[neigh][n]];
-    for(n=0;n<(*grid)->num_cells_send[neigh];n++) 
-      (*grid)->total_cells_sendW[neigh]+=(1+(*grid)->Nk[(*grid)->cell_send[neigh][n]]);
-    for(n=0;n<(*grid)->num_cells_recv[neigh];n++) 
-      (*grid)->total_cells_recvW[neigh]+=(1+(*grid)->Nk[(*grid)->cell_recv[neigh][n]]);
-    for(n=0;n<(*grid)->num_edges_send[neigh];n++) 
-      (*grid)->total_edges_send[neigh]+=(*grid)->Nke[(*grid)->edge_send[neigh][n]];
-    for(n=0;n<(*grid)->num_edges_recv[neigh];n++) 
-      (*grid)->total_edges_recv[neigh]+=(*grid)->Nke[(*grid)->edge_recv[neigh][n]];
-
-    if((*grid)->total_cells_sendW[neigh]>(*grid)->total_edges_send[neigh])
-      (*grid)->maxtosend=(*grid)->total_cells_sendW[neigh];
-    else
-      (*grid)->maxtosend=(*grid)->total_edges_send[neigh];
-    if((*grid)->total_cells_recvW[neigh]>(*grid)->total_edges_recv[neigh])
-      (*grid)->maxtorecv=(*grid)->total_cells_recvW[neigh];
-    else
-      (*grid)->maxtorecv=(*grid)->total_edges_recv[neigh];
-    (*grid)->send[neigh] = (REAL *)SunMalloc((*grid)->maxtosend*sizeof(REAL),"AllocateTransferArrays");
-    (*grid)->recv[neigh] = (REAL *)SunMalloc((*grid)->maxtorecv*sizeof(REAL),"AllocateTransferArrays");
-  }
-}
-
-/*
- * Function: FreeTransferArrays
- * Usage: FreeTransferArrays(&grid,myproc,numprocs,comm);
- * ------------------------------------------------------
- * Free memory for the arrays used to send back and forth interprocessor data.
- *
- */
-void FreeTransferArrays(gridT *grid, int myproc, int numprocs, MPI_Comm comm) {
-  int neigh, neighproc, maxtosend, maxtorecv;
-
-  SunFree(grid->status,2*grid->Nneighs*sizeof(MPI_Status),"FreeTransferArrays");
-  SunFree(grid->request,2*grid->Nneighs*sizeof(MPI_Request),"FreeTransferArrays");
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    // this does not appear to be used in the function below and could be removed
-    neighproc = grid->myneighs[neigh];
-
-    if(grid->total_cells_sendW[neigh]>grid->total_edges_send[neigh])
-      maxtosend=grid->total_cells_sendW[neigh];
-    else
-      maxtosend=grid->total_edges_send[neigh];
-    if(grid->total_cells_recvW[neigh]>grid->total_edges_recv[neigh])
-      maxtorecv=grid->total_cells_recvW[neigh];
-    else
-      maxtorecv=grid->total_edges_recv[neigh];
-    SunFree(grid->send[neigh],maxtosend*sizeof(REAL),"FreeTransferArrays");
-    SunFree(grid->recv[neigh],maxtorecv*sizeof(REAL),"FreeTransferArrays");
-  }
-  SunFree(grid->total_cells_send,grid->Nneighs*sizeof(int),"FreeTransferArrays");
-  SunFree(grid->total_cells_recv,grid->Nneighs*sizeof(int),"FreeTransferArrays");
-  SunFree(grid->total_cells_sendW,grid->Nneighs*sizeof(int),"FreeTransferArrays");
-  SunFree(grid->total_cells_recvW,grid->Nneighs*sizeof(int),"FreeTransferArrays");
-  SunFree(grid->total_edges_send,grid->Nneighs*sizeof(int),"FreeTransferArrays");
-  SunFree(grid->total_edges_recv,grid->Nneighs*sizeof(int),"FreeTransferArrays");
-  SunFree(grid->send,grid->Nneighs*sizeof(REAL *),"FreeTransferArrays");
-  SunFree(grid->recv,grid->Nneighs*sizeof(REAL *),"FreeTransferArrays");
-}
-
-/*
- * Function: ISendRecvCellData2D
- * Usage: ISendRecvCellData2D(grid->h,grid,myproc,comm);
- * -----------------------------------------------------
- * This function will transfer the cell data back and forth between
- * processors.  
- *
- * This is the non-blocking version of SendRecvCellData2D.
- *
- */
-void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
-			 MPI_Comm comm)
-{
-  int n, neigh, neighproc;
-  REAL t0=Timer();
-
-  // for each neighbor
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    // get the neighboring processors
-    neighproc = grid->myneighs[neigh];
-
-    // for each of the cell to send between the pair processor
-    for(n=0;n<grid->num_cells_send[neigh];n++)
-      grid->send[neigh][n]=celldata[grid->cell_send[neigh][n]];
-
-    MPI_Isend((void *)(grid->send[neigh]),grid->num_cells_send[neigh],
-	     MPI_DOUBLE,neighproc,1,comm,&(grid->request[neigh])); 
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-    MPI_Irecv((void *)(grid->recv[neigh]),grid->num_cells_recv[neigh],
-	     MPI_DOUBLE,neighproc,1,comm,&(grid->request[grid->Nneighs+neigh]));
-  }
-  MPI_Waitall(2*grid->Nneighs,grid->request,grid->status);
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    for(n=0;n<grid->num_cells_recv[neigh];n++)
-      celldata[grid->cell_recv[neigh][n]]=grid->recv[neigh][n];
-  }
-  t_comm+=Timer()-t0;
-}
-
-/*
- * Function: ISendRecvCellData3D
- * Usage: ISendRecvCellData3D(grid->s,grid,myproc,comm);
- * ----------------------------------------------------
- * This function will transfer the 3D cell data back and forth between
- * processors using nonblocking sends/recvs.
- *
- */
-void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
-			MPI_Comm comm)
-{
-  int k, n, nstart, neigh, neighproc;
-  REAL t0=Timer();
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-
-    nstart=0;
-    for(n=0;n<grid->num_cells_send[neigh];n++) {
-      for(k=0;k<grid->Nk[grid->cell_send[neigh][n]];k++) 
-        grid->send[neigh][nstart+k]=celldata[grid->cell_send[neigh][n]][k];
-      nstart+=grid->Nk[grid->cell_send[neigh][n]];
-    }
-
-    MPI_Isend((void *)(grid->send[neigh]),grid->total_cells_send[neigh],MPI_DOUBLE,neighproc,1,
-        comm,&(grid->request[neigh])); 
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-    MPI_Irecv((void *)(grid->recv[neigh]),grid->total_cells_recv[neigh],MPI_DOUBLE,neighproc,1,
-        comm,&(grid->request[grid->Nneighs+neigh]));
-  }
-  MPI_Waitall(2*grid->Nneighs,grid->request,grid->status);
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    nstart=0;
-    for(n=0;n<grid->num_cells_recv[neigh];n++) {
-      for(k=0;k<grid->Nk[grid->cell_recv[neigh][n]];k++) 
-        celldata[grid->cell_recv[neigh][n]][k]=grid->recv[neigh][nstart+k];
-      nstart+=grid->Nk[grid->cell_recv[neigh][n]];
-    }
-  }
-  t_comm+=Timer()-t0;
-}
-
-/*
- * Function: ISendRecvWData
- * Usage: ISendRecvWData(grid->w,grid,myproc,comm);
- * -----------------------------------------------
- * This function will transfer the 3D w data back and forth between
- * processors using nonblocking sends/recvs.
- *
- */
-void ISendRecvWData(REAL **celldata, gridT *grid, int myproc, 
-		   MPI_Comm comm)
-{
-  int k, n, nstart, neigh, neighproc;
-  REAL t0=Timer();
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-
-    nstart=0;
-    for(n=0;n<grid->num_cells_send[neigh];n++) {
-      for(k=0;k<(1+grid->Nk[grid->cell_send[neigh][n]]);k++) 
-        grid->send[neigh][nstart+k]=celldata[grid->cell_send[neigh][n]][k];
-      nstart+=(1+grid->Nk[grid->cell_send[neigh][n]]);
-    }
-
-    MPI_Isend((void *)(grid->send[neigh]),grid->total_cells_sendW[neigh],MPI_DOUBLE,neighproc,1,
-        comm,&(grid->request[neigh])); 
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-    MPI_Irecv((void *)(grid->recv[neigh]),grid->total_cells_recvW[neigh],MPI_DOUBLE,neighproc,1,
-        comm,&(grid->request[grid->Nneighs+neigh]));
-  }
-  MPI_Waitall(2*grid->Nneighs,grid->request,grid->status);
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    nstart=0;
-    for(n=0;n<grid->num_cells_recv[neigh];n++) {
-      for(k=0;k<(1+grid->Nk[grid->cell_recv[neigh][n]]);k++) 
-        celldata[grid->cell_recv[neigh][n]][k]=grid->recv[neigh][nstart+k];
-      nstart+=(1+grid->Nk[grid->cell_recv[neigh][n]]);
-    }
-  }
-  t_comm+=Timer()-t0;
-}
-
-/*
- * Function: ISendRecvEdgeData3D
- * Usage: ISendRecvEdgeData3D(grid->u,grid,myproc,comm);
- * ----------------------------------------------------
- * This function will transfer the 3D edge data back and forth between
- * processors using onblocking sends/recvs.
- *
- */
-void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
-			MPI_Comm comm)
-{
-  int k, n, nstart, neigh, neighproc;
-  REAL t0=Timer();
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-
-    nstart=0;
-    for(n=0;n<grid->num_edges_send[neigh];n++) {
-      for(k=0;k<grid->Nke[grid->edge_send[neigh][n]];k++) 
-        grid->send[neigh][nstart+k]=edgedata[grid->edge_send[neigh][n]][k];
-      nstart+=grid->Nke[grid->edge_send[neigh][n]];
-    }
-
-    MPI_Isend((void *)(grid->send[neigh]),grid->total_edges_send[neigh],MPI_DOUBLE,neighproc,1,
-        comm,&(grid->request[neigh])); 
-  }
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    neighproc = grid->myneighs[neigh];
-    MPI_Irecv((void *)(grid->recv[neigh]),grid->total_edges_recv[neigh],MPI_DOUBLE,neighproc,1,
-        comm,&(grid->request[grid->Nneighs+neigh]));
-  }
-  MPI_Waitall(2*grid->Nneighs,grid->request,grid->status);
-
-  for(neigh=0;neigh<grid->Nneighs;neigh++) {
-    nstart=0;
-    for(n=0;n<grid->num_edges_recv[neigh];n++) {
-      for(k=0;k<grid->Nke[grid->edge_recv[neigh][n]];k++) {
-        edgedata[grid->edge_recv[neigh][n]][k]=grid->recv[neigh][nstart+k];
-      }
-      nstart+=grid->Nke[grid->edge_recv[neigh][n]];
-    }
-  }
-  t_comm+=Timer()-t0;
-}
-
-/*
  * Function: FixDZZ
  * Usage: FixDZZ(grid,maxdepth,Nkmax,fixdzz,myproc);
  * -------------------------------------------------
@@ -5202,6 +3849,3 @@ static int GetNk(REAL *dz, REAL localdepth, int Nkmax) {
   }
   return k;
 }
-  
-  
-

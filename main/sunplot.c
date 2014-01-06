@@ -127,6 +127,7 @@ typedef struct {
   int **cells;
   int **nfaces;
   int **edges;
+  int **mark;
   int **face;
   float **depth;
 
@@ -158,9 +159,11 @@ typedef struct {
   int *sliceInd;
   int *sliceProc;
 
-  int *Ne, *Nc, Np, Nkmax, nsteps, numprocs, Nslice, maxfaces;
+  int *Ne, *Nc, Np, Nkmax, nsteps, numprocs, Nslice, maxfaces, noutput, ntout;
   int timestep, klevel;
-  float umagmax, dmax, hmax, hmin, rx, ry, Emagmax;
+  int *freesurface_step_loaded, *salinity_step_loaded, *temperature_step_loaded, *pressure_step_loaded,
+    *velocity_step_loaded, *nut_step_loaded, *kt_step_loaded;
+  float umagmax, dmin, dmax, hmax, hmin, rx, ry, Emagmax;
 } dataT;
 
 int GetStep(dataT *data);
@@ -175,12 +178,14 @@ void QuadContour(float *h, float *D,
 void GetSlice(dataT *data, int xs, int ys, int xe, int ye, 
 	      int procnum, int numprocs, plottypeT plottype);
 void GetDMax(dataT *data, int numprocs);
+void GetDMin(dataT *data, int numprocs);
 void GetHMax(dataT *data, int numprocs);
 void GetUMagMax(dataT *data, int klevel, int numprocs);
 void DrawEdgeLines(float *xc, float *yc, int *cells, plottypeT plottype, int N, int maxfaces, int *nfaces);
+void DrawBoundaries(float *xc, float *yc, int *edges, plottypeT plottype, int *mark, int Ne);
 void DrawDelaunayPoints(float *xc, float *yc, plottypeT plottype, int Np);
 float *GetScalarPointer(dataT *data, plottypeT plottype, int klevel, int proc);
-dataT *NewData(void);
+dataT *NewData(int numprocs);
 void FreeGrid(void);
 void FindNearest(dataT *data, int x, int y, int *iloc, int *procloc, int procnum, int numprocs);
 void InitializeGraphics(void);
@@ -260,17 +265,17 @@ float caxis[2], axesPosition[4], dataLimits[4], buttonAxesPosition[4], cmapAxesP
   zoomratio, vlengthfactor=1.0;
 int axisType, oldaxisType, white, black, red, blue, green, yellow, colors[NUMCOLORS];
 bool edgelines, setdatalimits, pressed,   voronoipoints, delaunaypoints, vectorplot, goprocs,
-  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, panning, cmaphold, getcmap, raisewindow;
+  vertprofile, fromprofile, gridread, setdatalimitsslice, zooming, panning, cmaphold, getcmap, raisewindow, boundaries;
 char str[BUFFERLENGTH], message[BUFFERLENGTH];
 zoomT zoom;
 plotProcT procplottype;
 sliceT sliceType;
 plottypeT plottype = salinity;
 int plotGrid = false;
+int mergeArrays;
 
 int main(int argc, char *argv[]) {
-  int procnum=0, numprocs;
-  dataT *data = NewData();
+  int procnum=0, numprocs, status;
   bool redraw, quit=false;
   buttonnumT mousebutton;
   dimT dims;
@@ -289,6 +294,15 @@ int main(int argc, char *argv[]) {
   goT go;
 
   ParseCommandLine(argc,argv,&numprocs,&n,&k,&dims,&go);  
+  mergeArrays=(int)GetValue(DATAFILE,"maxFaces",&status);
+  if(!status)
+    mergeArrays=1;
+  if(mergeArrays) {
+    if(numprocs!=1) printf("Since mergeArrays==1 then ignoring \"-np %d\" and setting numprocs=1\n",numprocs);
+    numprocs=1;
+  }
+
+  dataT *data = NewData(numprocs);
     
   ReadData(data,-1,numprocs);
 
@@ -308,6 +322,7 @@ int main(int argc, char *argv[]) {
   XStoreName(dis, win, windowtitle);
 
   axisType='i';
+  boundaries=true;
   edgelines=false;
   voronoipoints=false;
   delaunaypoints=false;
@@ -340,6 +355,9 @@ int main(int argc, char *argv[]) {
 
   while(true) {
 
+    data->noutput=GetNumOutput(data->ntout);
+    if(data->noutput==-1)
+      data->noutput=data->nsteps;
     if(dims==two_d) {
       fromprofile=true;
       dims=three_d;
@@ -350,7 +368,7 @@ int main(int argc, char *argv[]) {
     zoom=none;
     if(go!=nomovie) {
       if(go==forward) {
-	if(n<data->nsteps) {
+	if(n<data->noutput) {
 	  sprintf(message,"Stepping through...");
 	  redraw=true;
 	  n++;
@@ -409,11 +427,13 @@ int main(int argc, char *argv[]) {
       mousebutton = report.xbutton.button;
       if(mousebutton==middle_button) {
         // print location of cursor to console
+	/*
         printf("Cursor location (%f,%f)\n",
-            dataLimits[0]+(float)report.xbutton.x*(dataLimits[1]-dataLimits[0])
-            /(axesPosition[2]*(float)width),
-            dataLimits[2]+(float)(height*axesPosition[3]-report.xbutton.y)
-            *(dataLimits[3]-dataLimits[2])/(axesPosition[3]*(float)height));
+	       dataLimits[0]+(float)report.xbutton.x*(dataLimits[1]-dataLimits[0])
+	       /(axesPosition[2]*(float)width),
+	       dataLimits[2]+(float)(height*axesPosition[3]-report.xbutton.y)
+	       *(dataLimits[3]-dataLimits[2])/(axesPosition[3]*(float)height));
+	       */
       }
       if(report.xany.window==controlButtons[prevwin].butwin) {
 	if(mousebutton==left_button) {
@@ -432,10 +452,10 @@ int main(int argc, char *argv[]) {
 	}
       } else if(report.xany.window==controlButtons[nextwin].butwin) {
 	if(mousebutton==left_button) {
-	  if(n<data->nsteps) { redraw = true; n++; }
-	  else { redraw = false ; sprintf(message,"At n=nsteps!"); }
+	  if(n<data->noutput) { redraw = true; n++; }
+	  else { redraw = false ; sprintf(message,"At n=noutput!"); }
 	} else if(mousebutton==right_button) 
-	  if(n!=data->nsteps) { redraw = true; n=data->nsteps; }
+	  if(n!=data->noutput) { redraw = true; n=data->noutput; }
       } else if(report.xany.window==controlButtons[kdownwin].butwin) {
 	if(mousebutton==left_button) {
 	  if(k>0) { redraw = true; k--; }
@@ -926,8 +946,8 @@ int main(int argc, char *argv[]) {
 	else { redraw = false ; sprintf(message,"At n=1!"); }
 	break;
       case XK_n: case XK_Right:
-	if(n<data->nsteps) { redraw = true; n++; }
-	else { redraw = false ; sprintf(message,"At n=nsteps!"); }
+	if(n<data->noutput) { redraw = true; n++; }
+	else { redraw = false ; sprintf(message,"At n=noutput!"); }
 	break;
       case XK_s:
 	if(plottype!=salinity) {
@@ -1143,7 +1163,9 @@ void MyDraw(dataT *data, plottypeT plottype, int procnum, int numprocs, int iloc
     
     if(edgelines)
       DrawEdgeLines(data->xc,data->yc,data->cells[procnum],plottype,data->Nc[procnum],data->maxfaces,data->nfaces[procnum]);
-    
+
+    if(boundaries)
+      DrawBoundaries(data->xc,data->yc,data->edges[procnum],plottype,data->mark[procnum],data->Ne[procnum]);
   }
   DrawControls(data,procnum,numprocs);
   DrawColorBar(data,procnum,numprocs,plottype);
@@ -1837,7 +1859,11 @@ void InitializeGraphics(void) {
   XAllocNamedColor(dis,colormap,"yellow",&temp1,&temp2);
   yellow = temp2.pixel;
   
-  fontStruct = XLoadQueryFont(dis,DEFAULT_FONT);
+  //  fontStruct = XLoadQueryFont(dis,DEFAULT_FONT);
+  int mm, actual;
+  char **fontslist = XListFonts(dis,"*",10,&actual);
+  fontStruct = XLoadQueryFont(dis,fontslist[4]);
+  
   if(!fontStruct) {
     printf("Font \"%s\" does not exist!\n",DEFAULT_FONT);
     exit(0);
@@ -2168,7 +2194,7 @@ void DrawControls(dataT *data, int procnum, int numprocs) {
     DrawButton(controlButtons[buttonnum].butwin,controlButtons[buttonnum].string,bcolor);
   }
 
-  sprintf(str,"Step: %d of %d",n,data->nsteps);
+  sprintf(str,"Step: %d of %d (max %d)",n,data->noutput,data->nsteps);
   DrawHeader(controlButtons[prevwin].butwin,controlButtons[nextwin].butwin,str);
 
   sprintf(str,"Level: %d of %d",k+1,data->Nkmax);
@@ -2718,10 +2744,27 @@ void FindNearest(dataT *data, int x, int y, int *iloc, int *procloc, int procnum
   }
 }
 
-dataT *NewData(void) {
+dataT *NewData(int numprocs) {
+  int proc;
   dataT *data = (dataT *)malloc(sizeof(dataT));
   data->timestep=-1;
   data->klevel=-1;
+  data->freesurface_step_loaded=(int *)malloc(numprocs*sizeof(int));
+  data->salinity_step_loaded=(int *)malloc(numprocs*sizeof(int));
+  data->temperature_step_loaded=(int *)malloc(numprocs*sizeof(int));
+  data->pressure_step_loaded=(int *)malloc(numprocs*sizeof(int));
+  data->velocity_step_loaded=(int *)malloc(numprocs*sizeof(int));
+  data->nut_step_loaded=(int *)malloc(numprocs*sizeof(int));
+  data->kt_step_loaded=(int *)malloc(numprocs*sizeof(int));
+  for(proc=0;proc<numprocs;proc++) {
+    data->freesurface_step_loaded[proc]=0;
+    data->salinity_step_loaded[proc]=0;
+    data->temperature_step_loaded[proc]=0;
+    data->pressure_step_loaded[proc]=0;
+    data->velocity_step_loaded[proc]=0;
+    data->nut_step_loaded[proc]=0;
+    data->kt_step_loaded[proc]=0;
+  }
   return data;
 }
 
@@ -2813,12 +2856,13 @@ int GetFile(char *string, char *datadir, char *datafile, char *name, int proc) {
     else
       sprintf(string,"%s/%s.%d",datadir,str,proc);
   }
+
   return status;
 }
 
 void ReadData(dataT *data, int nstep, int numprocs) {
-  int i, j, ik, ik0, proc, status, ind, ind0, nf, count, nsteps, ntout, nk, turbmodel, kk;
-  float xind, vel, ubar, vbar, dz, beta, dmax;
+  int i, j, ik, ik0, proc, status, ind, ind0, nf, count, nsteps, ntout, nk, turbmodel, kk, numcolumns;
+  float xind, vel, ubar, vbar, dz, beta, dmax, fdepth;
   double *dummy, *dummy2;
   char string[BUFFERLENGTH];
   FILE *fid;
@@ -2826,6 +2870,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
   GetFile(POINTSFILE,DATADIR,DATAFILE,"points",-1);
   GetFile(EDGEFILE,DATADIR,DATAFILE,"edges",-1);
   GetFile(CELLSFILE,DATADIR,DATAFILE,"cells",-1);
+  GetFile(INPUTDEPTHFILE,DATADIR,DATAFILE,"depth",-1); 
   GetFile(CELLCENTEREDFILE,DATADIR,DATAFILE,"celldata",-1);
   GetFile(VERTSPACEFILE,DATADIR,DATAFILE,"vertspace",-1);
 
@@ -2834,6 +2879,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
     data->cells = (int **)malloc(numprocs*sizeof(int *));
     data->edges = (int **)malloc(numprocs*sizeof(int *));
+    data->mark = (int **)malloc(numprocs*sizeof(int *));
     data->face = (int **)malloc(numprocs*sizeof(int *));
     //added part
     data->nfaces = (int **)malloc(numprocs*sizeof(int *));
@@ -2867,19 +2913,26 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       data->maxfaces=3;
     data->Nkmax=(int)GetValue(DATAFILE,"Nkmax",&status);
     nsteps=(int)GetValue(DATAFILE,"nsteps",&status);
-    ntout = (int)GetValue(DATAFILE,"ntout",&status);
-    if(ntout==1 || nsteps==1)
+    data->ntout = (int)GetValue(DATAFILE,"ntout",&status);
+    if(data->ntout==1 || nsteps==1)
       data->nsteps=nsteps;
     else
-      data->nsteps=1+(int)GetValue(DATAFILE,"nsteps",&status)/ntout;
+      data->nsteps=1+(int)GetValue(DATAFILE,"nsteps",&status)/(data->ntout);
 
     data->numprocs=numprocs;
 
-    for(proc=0;proc<numprocs;proc++) {
-      sprintf(string,"%s.%d",EDGEFILE,proc);
-      data->Ne[proc]=getsize(string);
-      sprintf(string,"%s.%d",CELLSFILE,proc);
-      data->Nc[proc]=getsize(string);
+    if(mergeArrays) {
+      for(proc=0;proc<numprocs;proc++) {
+	data->Ne[proc]=getsize(EDGEFILE);
+	data->Nc[proc]=getsize(CELLSFILE);
+      }
+    } else {
+      for(proc=0;proc<numprocs;proc++) {
+	sprintf(string,"%s.%d",EDGEFILE,proc);
+	data->Ne[proc]=getsize(string);
+	sprintf(string,"%s.%d",CELLSFILE,proc);
+	data->Nc[proc]=getsize(string);
+      }
     }
     
     data->xc = (float *)malloc(data->Np*sizeof(float *));
@@ -2906,6 +2959,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
       data->cells[proc]=(int *)malloc(data->maxfaces*data->Nc[proc]*sizeof(int));
       data->edges[proc]=(int *)malloc(2*data->Ne[proc]*sizeof(int));
+      data->mark[proc]=(int *)malloc(data->Ne[proc]*sizeof(int));
       data->face[proc]=(int *)malloc(data->maxfaces*data->Nc[proc]*sizeof(int));
 
       data->xv[proc]=(float *)malloc(data->Nc[proc]*sizeof(float));
@@ -2951,14 +3005,23 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     fclose(fid);  
 
     for(proc=0;proc<numprocs;proc++) {
+      if(mergeArrays) {
+	fid = MyFOpen(CELLSFILE,"r","ReadData");
+	numcolumns=getNumColumns(CELLSFILE);
+      } else {
+	sprintf(string,"%s.%d",CELLSFILE,proc);
+	fid = MyFOpen(string,"r","ReadData");
+	numcolumns=getNumColumns(string);
+      }
 
-      sprintf(string,"%s.%d",CELLSFILE,proc);
-      fid = MyFOpen(string,"r","ReadData");
       //corrected part (only for 3 or 4)
       for(i=0;i<data->Nc[proc];i++) {
-        fscanf(fid,"%d ",&(data->nfaces[proc][i]));
+        if(numcolumns<=8)
+	  data->nfaces[proc][i]=3;
+	else
+	  fscanf(fid,"%d ",&(data->nfaces[proc][i]));
 	// printf("%d\n   ",data->nfaces[proc][i]);
-        fscanf(fid,"%f %f ",&xind,&xind);
+        fscanf(fid,"%f %f ",&(data->xv[proc][i]),&(data->yv[proc][i]));
         for(kk=0;kk<data->nfaces[proc][i];kk++)
           fscanf(fid,"%d ",&(data->cells[proc][data->maxfaces*i+kk]));
         for(kk=0;kk<data->nfaces[proc][i];kk++){
@@ -2970,41 +3033,64 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       }
       fclose(fid);
 
-      sprintf(string,"%s.%d",EDGEFILE,proc);
-      fid = MyFOpen(string,"r","ReadData");
-      for(i=0;i<data->Ne[proc];i++) {
-	fscanf(fid,"%d %d %d %d %d %d",
-	       &(data->edges[proc][2*i]),
-	       &(data->edges[proc][2*i+1]),
-	       &ind,&ind,&ind,&ind); // Added extra read to account for edge_id addition during quad-netcdf merge
-	// printf("%d %d  \n",data->edges[proc][2*i],data->edges[proc][2*i+1]);
+      if(mergeArrays) {
+	fid = MyFOpen(EDGEFILE,"r","ReadData");
+      } else {
+	sprintf(string,"%s.%d",EDGEFILE,proc);
+	fid = MyFOpen(string,"r","ReadData");
+      }
+      numcolumns=getNumColumns(EDGEFILE);
+      if(numcolumns==5) {
+	for(i=0;i<data->Ne[proc];i++) 
+	  fscanf(fid,"%d %d %d %d %d",
+		 &(data->edges[proc][2*i]),
+		 &(data->edges[proc][2*i+1]),
+		 &(data->mark[proc][i]),&ind,&ind);
+      } else {
+	for(i=0;i<data->Ne[proc];i++) 
+	  fscanf(fid,"%d %d %d %d %d %d",
+		 &(data->edges[proc][2*i]),
+		 &(data->edges[proc][2*i+1]),
+		 &(data->mark[proc][i]),&ind,&ind,&ind);
       }
       fclose(fid);
-      
-      sprintf(string,"%s.%d",CELLCENTEREDFILE,proc);
-      fid = MyFOpen(string,"r","ReadData");
-      //printf("Nc[proc=%d]=%d\n",proc,data->Nc[proc]);
-      for(i=0;i<data->Nc[proc];i++) {
-	// This line was removed since 1 less int is printed to this file
-	// in grid.c (mnptr is no longer printed).
-	//	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
-	fscanf(fid,"%d %f %f %f %f %d",&ind,&(data->xv[proc][i]),&(data->yv[proc][i]), &xind,&(data->depth[proc][i]),&ind);
-  //printf("proc:%d cell:%d xv=%f yv=%f\n",proc,i,data->xv[proc][i],data->yv[proc][i]);
-        for(kk=0;kk<data->nfaces[proc][i];kk++)
-          fscanf(fid,"%d ",&(data->face[proc][data->maxfaces*i+kk]));
-        for(kk=0;kk<data->nfaces[proc][i];kk++)
-          fscanf(fid,"%d ",&ind);
-        for(kk=0;kk<data->nfaces[proc][i];kk++)
-          fscanf(fid,"%d ",&ind);
-        for(kk=0;kk<data->nfaces[proc][i];kk++)
-          fscanf(fid,"%f ",&ind);
-        for(kk=0;kk<data->nfaces[proc][i];kk++)
-	  fscanf(fid,"%d ",&ind);
-	fscanf(fid,"%d",&ind); // mnptr added during quad-netcdf merge
+
+      if(mergeArrays) {
+	sprintf(string,"%s-voro",INPUTDEPTHFILE);
+	fid = MyFOpen(string,"r","ReadData");
+
+	for(i=0;i<data->Nc[proc];i++) {
+	  fscanf(fid,"%f %f %f",&fdepth,&fdepth,&fdepth);
+	  data->depth[proc][i]=fdepth;
+	}
+      } else {
+	sprintf(string,"%s.%d",CELLCENTEREDFILE,proc);
+	fid = MyFOpen(string,"r","ReadData");
+	//printf("Nc[proc=%d]=%d\n",proc,data->Nc[proc]);
+
+	for(i=0;i<data->Nc[proc];i++) {
+	  // This line was removed since 1 less int is printed to this file
+	  // in grid.c (mnptr is no longer printed).
+	  //	fscanf(fid,"%f %f %f %f %d %d %d %d %d %d %d %d %d %d %d",
+	  fscanf(fid,"%d %f %f %f %f %d",&ind,&xind,&xind,&xind,&(data->depth[proc][i]),&ind);
+	  //printf("proc:%d cell:%d xv=%f yv=%f\n",proc,i,data->xv[proc][i],data->yv[proc][i]);
+	  for(kk=0;kk<data->nfaces[proc][i];kk++)
+	    fscanf(fid,"%d ",&(data->face[proc][data->maxfaces*i+kk]));
+	  for(kk=0;kk<data->nfaces[proc][i];kk++)
+	    fscanf(fid,"%d ",&ind);
+	  for(kk=0;kk<data->nfaces[proc][i];kk++)
+	    fscanf(fid,"%d ",&ind);
+	  for(kk=0;kk<data->nfaces[proc][i];kk++)
+	    fscanf(fid,"%f ",&ind);
+	  for(kk=0;kk<data->nfaces[proc][i];kk++)
+	    fscanf(fid,"%d ",&ind);
+	  fscanf(fid,"%d",&ind); // mnptr added during quad-netcdf merge
+	}
+	fclose(fid);
       }
-      fclose(fid);
     }
     GetDMax(data,numprocs);
+    GetDMin(data,numprocs);
     // printf("%f \n",data->dmax);
     for(i=0;i<data->Nkmax+1;i++) 
       data->z[i]=-data->dmax*(float)i/(float)(data->Nkmax);
@@ -3015,7 +3101,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       fscanf(fid,"%f",&dz);
       data->z[i]=data->z[i-1]-dz;
     }
-  } else if(data->timestep != nstep && plotGrid != true) {
+  } else if(plotGrid != true) {
 
     data->timestep=nstep;
 
@@ -3026,8 +3112,11 @@ void ReadData(dataT *data, int nstep, int numprocs) {
       else
 	dummy=(double *)malloc(data->Nkmax*sizeof(double));
 
-      if(data->timestep==1) {
-	GetFile(string,DATADIR,DATAFILE,"BGSalinityFile",proc);
+      if(data->timestep==1 || plottype==saldiff) {
+	if(mergeArrays)
+	  GetFile(string,DATADIR,DATAFILE,"BGSalinityFile",-1);
+	else
+	  GetFile(string,DATADIR,DATAFILE,"BGSalinityFile",proc);	  
 	fid = fopen(string,"r");
 	if(fid) {
 	  for(i=0;i<data->Nkmax;i++) {
@@ -3042,9 +3131,14 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	}
       }
       
-      GetFile(string,DATADIR,DATAFILE,"SalinityFile",proc);
+      if(mergeArrays)
+	GetFile(string,DATADIR,DATAFILE,"SalinityFile",-1);
+      else
+	GetFile(string,DATADIR,DATAFILE,"SalinityFile",proc);
       fid = fopen(string,"r");
-      if(fid) {
+      if(fid && data->salinity_step_loaded[proc]!=data->timestep && (plottype==salinity || plottype==saldiff)) {
+
+	data->salinity_step_loaded[proc]=data->timestep;
 	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
 	for(i=0;i<data->Nkmax;i++) {
 	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
@@ -3059,9 +3153,14 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	fclose(fid);
       }
 
-      GetFile(string,DATADIR,DATAFILE,"TemperatureFile",proc);
+      if(mergeArrays)
+	GetFile(string,DATADIR,DATAFILE,"TemperatureFile",-1);
+      else
+	GetFile(string,DATADIR,DATAFILE,"TemperatureFile",proc);	
       fid = fopen(string,"r");
-      if(fid) {
+      if(fid && data->temperature_step_loaded[proc]!=data->timestep && plottype==temperature) {
+
+	data->temperature_step_loaded[proc]=data->timestep;
 	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
 	for(i=0;i<data->Nkmax;i++) {
 	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
@@ -3071,9 +3170,14 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	fclose(fid);
       }
 
-      GetFile(string,DATADIR,DATAFILE,"PressureFile",proc);
+      if(mergeArrays)
+	GetFile(string,DATADIR,DATAFILE,"PressureFile",-1);
+      else
+	GetFile(string,DATADIR,DATAFILE,"PressureFile",proc);	
       fid = fopen(string,"r");
-      if(fid) {
+      if(fid && data->pressure_step_loaded[proc]!=data->timestep && plottype==pressure) {
+
+	data->pressure_step_loaded[proc]=data->timestep;
 	fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
 	for(i=0;i<data->Nkmax;i++) {
 	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
@@ -3083,53 +3187,72 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	fclose(fid);
       }
 
-      GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",proc);
+      if(mergeArrays)
+	GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",-1);
+      else
+	GetFile(string,DATADIR,DATAFILE,"HorizontalVelocityFile",proc);	
       fid = fopen(string,"r");
-      if(fid) {
+      if(fid && data->velocity_step_loaded[proc]!=data->timestep && 
+	 (plottype==u_velocity || plottype==v_velocity || plottype==w_velocity || vectorplot || 
+	  plottype==u_baroclinic || plottype==v_baroclinic)) {
+
+	data->velocity_step_loaded[proc]=data->timestep;
 	fseek(fid,3*(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
 	for(i=0;i<data->Nkmax;i++) {
 	  
-    //voronoi point u 
-    fread(dummy,sizeof(double),data->Nc[proc],fid);     
-    for(j=0;j<data->Nc[proc];j++) 
-      data->u[proc][i][j]=dummy[j];
-
-    //voronoi point v 
-    fread(dummy,sizeof(double),data->Nc[proc],fid);     
-    for(j=0;j<data->Nc[proc];j++) 
-      data->v[proc][i][j]=dummy[j];
-    //voronoi point w 
-    fread(dummy,sizeof(double),data->Nc[proc],fid);      
-    for(j=0;j<data->Nc[proc];j++) 
-      data->w[proc][i][j]=dummy[j];
-
-    for(j=0;j<data->Nc[proc];j++) 
-      if(data->s0[proc][i][j]==EMPTY) {
-        data->u[proc][i][j]=EMPTY;
-        data->v[proc][i][j]=EMPTY;
-      }
-  }
-  fclose(fid);
-      }
-
-      //      printf("Computing ubar and vbar at step %d, proc %d\n",nstep,proc);
-
-      dz = data->dmax/data->Nkmax;
-      for(j=0;j<data->Nc[proc];j++) {
-	data->ubar[proc][j]=0;
-	data->vbar[proc][j]=0;
+	  //voronoi point u 
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);     
+	  for(j=0;j<data->Nc[proc];j++) 
+	    data->u[proc][i][j]=dummy[j];
+	}
+	for(i=0;i<data->Nkmax;i++) {	  
+	  //voronoi point v 
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);     
+	  for(j=0;j<data->Nc[proc];j++) 
+	    data->v[proc][i][j]=dummy[j];
+	}
 	for(i=0;i<data->Nkmax;i++) {
-	  dz = data->z[i-1]-data->z[i];
-	  if(data->s0[proc][i][j]!=EMPTY) {
-	    data->ubar[proc][j]+=data->u[proc][i][j]*dz/data->depth[proc][j];
-	    data->vbar[proc][j]+=data->v[proc][i][j]*dz/data->depth[proc][j];
+	  //voronoi point w 
+	  fread(dummy,sizeof(double),data->Nc[proc],fid);      
+	  for(j=0;j<data->Nc[proc];j++) 
+	    data->w[proc][i][j]=dummy[j];
+	}
+	fclose(fid);
+
+	for(i=0;i<data->Nkmax;i++) {
+	  for(j=0;j<data->Nc[proc];j++) 
+	    if(data->s0[proc][i][j]==EMPTY) {
+	      data->u[proc][i][j]=EMPTY;
+	      data->v[proc][i][j]=EMPTY;
+	      data->w[proc][i][j]=EMPTY;
+	    }
+	}
+
+	//      printf("Computing ubar and vbar at step %d, proc %d\n",nstep,proc);
+	
+	dz = data->dmax/data->Nkmax;
+	for(j=0;j<data->Nc[proc];j++) {
+	  data->ubar[proc][j]=0;
+	  data->vbar[proc][j]=0;
+	  for(i=0;i<data->Nkmax;i++) {
+	    dz = data->z[i-1]-data->z[i];
+	    if(data->s0[proc][i][j]!=EMPTY) {
+	      data->ubar[proc][j]+=data->u[proc][i][j]*dz/data->depth[proc][j];
+	      data->vbar[proc][j]+=data->v[proc][i][j]*dz/data->depth[proc][j];
+	    }
 	  }
 	}
       }
 
-      GetFile(string,DATADIR,DATAFILE,"FreeSurfaceFile",proc);
+      if(mergeArrays)
+	GetFile(string,DATADIR,DATAFILE,"FreeSurfaceFile",-1);
+      else
+	GetFile(string,DATADIR,DATAFILE,"FreeSurfaceFile",proc);
       fid = fopen(string,"r");
-      if(fid) {
+      // Always load free-surface
+      if(fid) {// && data->freesurface_step_loaded[proc]!=data->timestep && plottype==freesurface) {
+
+	data->freesurface_step_loaded[proc]=data->timestep;
 	fseek(fid,(nstep-1)*data->Nc[proc]*sizeof(double),0);
 	fread(dummy,sizeof(double),data->Nc[proc],fid);      
 	for(i=0;i<data->Nc[proc];i++)
@@ -3145,9 +3268,14 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 
       turbmodel=(int)GetValue(DATAFILE,"turbmodel",&status);
       if(turbmodel) {
-	GetFile(string,DATADIR,DATAFILE,"EddyViscosityFile",proc);
+	if(mergeArrays)
+	  GetFile(string,DATADIR,DATAFILE,"EddyViscosityFile",-1);
+	else
+	  GetFile(string,DATADIR,DATAFILE,"EddyViscosityFile",proc);	  
 	fid = fopen(string,"r");
-	if(fid) {
+	if(fid && data->nut_step_loaded[proc]!=data->timestep && plottype==nut) {
+
+	  data->nut_step_loaded[proc]=data->timestep;
 	  fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
 	  for(i=0;i<data->Nkmax;i++) {
 	    fread(dummy,sizeof(double),data->Nc[proc],fid);      
@@ -3161,9 +3289,14 @@ void ReadData(dataT *data, int nstep, int numprocs) {
 	  fclose(fid);
 	}
 
-	GetFile(string,DATADIR,DATAFILE,"ScalarDiffusivityFile",proc);
+	if(mergeArrays)
+	  GetFile(string,DATADIR,DATAFILE,"ScalarDiffusivityFile",-1);
+	else
+	  GetFile(string,DATADIR,DATAFILE,"ScalarDiffusivityFile",proc);	  
 	fid = fopen(string,"r");
-	if(fid) {
+	if(fid && data->kt_step_loaded[proc]!=data->timestep && plottype==kt) {
+
+	  data->kt_step_loaded[proc]=data->timestep;
 	  fseek(fid,(nstep-1)*data->Nc[proc]*data->Nkmax*sizeof(double),0);
 	  for(i=0;i<data->Nkmax;i++) {
 	    fread(dummy,sizeof(double),data->Nc[proc],fid);      
@@ -3185,7 +3318,7 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     
 void GetUMagMax(dataT *data, int klevel, int numprocs) {
   int j, i, proc;
-  float umag, umagmax=0, ud, vd;
+  float umag, umagmax=0, ud, vd, hd;
   
   if(sliceType==slice && vertprofile) {
     for(i=0;i<data->Nslice;i++) 
@@ -3196,14 +3329,15 @@ void GetUMagMax(dataT *data, int klevel, int numprocs) {
 	if(ud != EMPTY && vd != EMPTY && umag>umagmax) umagmax=umag;
       }
     data->umagmax=umagmax;
-  } else if(data->klevel!=klevel) {
+  } else {//if(data->klevel!=klevel) {
     data->klevel=klevel;
     for(proc=0;proc<numprocs;proc++)  
       for(j=0;j<data->Nc[proc];j++) {
 	ud = data->u[proc][klevel][j];
 	vd = data->v[proc][klevel][j];
+	hd = data->h[proc][j]+data->depth[proc][j];
 	umag=sqrt(pow(ud,2)+pow(vd,2));
-	if(ud != EMPTY && vd != EMPTY && umag>umagmax) umagmax=umag;
+	if(ud != EMPTY && vd != EMPTY && hd>0.01*data->dmin && umag>umagmax) umagmax=umag;
       }
     data->umagmax=umagmax;
   }
@@ -3217,6 +3351,16 @@ void GetDMax(dataT *data, int numprocs) {
     for(j=0;j<data->Nc[proc];j++) 
       if(data->depth[proc][j]>dmax) dmax=data->depth[proc][j];
   data->dmax=dmax;
+}
+
+void GetDMin(dataT *data, int numprocs) {
+  int j, proc;
+  float dmin=1e20;
+  
+  for(proc=0;proc<numprocs;proc++)  
+    for(j=0;j<data->Nc[proc];j++) 
+      if(data->depth[proc][j]<dmin) dmin=data->depth[proc][j];
+  data->dmin=dmin;
 }
 
 void GetHMax(dataT *data, int numprocs) {
@@ -3458,7 +3602,7 @@ int LoadCAxis(void) {
 
 int GetStep(dataT *data) {
   printf("Enter time step to plot: ");
-  return GetNumber(1,data->nsteps);
+  return GetNumber(1,data->noutput);
 }
 
 int GetLoc(dataT *data, int procnum, int numprocs) {
@@ -3509,3 +3653,49 @@ void GetCAxes(REAL datamin, REAL datamax) {
   }
 }
 
+int GetNumOutput(int ntout) {
+  int numoutput=0;
+  char str[BUFFERLENGTH], str2[BUFFERLENGTH];
+  FILE *fid;
+
+  sprintf(str2,"%s/step.dat",DATADIR);
+  fid=fopen(str2,"r");
+  if(fid) {
+    fscanf(fid,"%s %d",str,&numoutput);
+    fclose(fid);
+  }
+  
+  if(numoutput) {
+    numoutput=1+(int)((float)numoutput/(float)ntout);
+    if(numoutput==0)
+      numoutput=1;
+  } else 
+    numoutput=-1;
+
+  return numoutput;
+}
+
+void DrawBoundaries(float *xc, float *yc, int *edges, plottypeT plottype, int *mark, int Ne) {
+  int j, m;
+  XPoint *vertices = (XPoint *)malloc(2*sizeof(XPoint)); 
+
+  for(j=0;j<Ne;j++) {
+    if(mark[j]!=0) {
+      for(m=0;m<2;m++) {
+	vertices[m].x = axesPosition[2]*width*(xc[edges[2*j+m]]-dataLimits[0])/
+	  (dataLimits[1]-dataLimits[0]);
+	vertices[m].y = axesPosition[3]*height*(1-(yc[edges[2*j+m]]-dataLimits[2])/
+						(dataLimits[3]-dataLimits[2]));
+      }
+      
+      if(mark[j]==1)
+	XSetForeground(dis,gc,white);
+      else if(mark[j]==2)
+	XSetForeground(dis,gc,red);	
+      else if(mark[j]==3)
+	XSetForeground(dis,gc,blue);		
+      XDrawLines(dis,pix,gc,vertices,2,0);
+    }
+  }
+  free(vertices);
+}

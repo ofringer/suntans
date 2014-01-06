@@ -161,24 +161,6 @@ typedef enum _boundaryselection{
  */
 void GetGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void Partition(gridT *maingrid, gridT **localgrid, MPI_Comm comm);
-void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
-			MPI_Comm comm);
-void ISendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, 
-			 MPI_Comm comm);
-void SendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
-			MPI_Comm comm);
-void ISendRecvCellData3D(REAL **celldata, gridT *grid, int myproc, 
-			MPI_Comm comm);
-void SendRecvWData(REAL **celldata, gridT *grid, int myproc, 
-		   MPI_Comm comm);
-void ISendRecvWData(REAL **celldata, gridT *grid, int myproc, 
-		    MPI_Comm comm);
-void SendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
-			MPI_Comm comm);
-void ISendRecvEdgeData3D(REAL **edgedata, gridT *grid, int myproc, 
-			 MPI_Comm comm);
-void CheckCommunicateCells(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
-void CheckCommunicateEdges(gridT *maingrid, gridT *localgrid, int myproc, MPI_Comm comm);
 void InitMainGrid(gridT **grid, int Np, int Ne, int Nc, int myproc);
 void ReadMainGrid(gridT *grid, int myproc);
 void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
@@ -186,10 +168,9 @@ void CreateCellGraph(gridT *grid);
 void CreateEdgeGraph(gridT *grid);
 void Connectivity(gridT *grid, int myproc);
 inline int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc);
-void ReadFileNames(int myproc);
-void ReadGrid(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void AllocateTransferArrays(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void FreeTransferArrays(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 REAL GetArea(REAL *xt, REAL *yt, int Nf);
+void InitLocalGrid(gridT **grid);
 
 #endif
