@@ -245,11 +245,6 @@ void OutputPhysicalVariables(gridT *grid, physT *phys, propT *prop,int myproc, i
   REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData"), 
     *array2DPointer, **array3DPointer;
 
-  if(prop->n==1+prop->nstart && prop->mergeArrays) {
-    if(VERBOSE>2 && myproc==0) printf("Initializing arrays for merging...\n");
-    InitializeMerging(grid,numprocs,myproc,comm);
-  }
-  
   if(!(prop->n%prop->ntconserve) && !blowup) {
     ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
     if(myproc==0)
@@ -391,10 +386,6 @@ void OutputPhysicalVariables(gridT *grid, physT *phys, propT *prop,int myproc, i
   }
 
   SunFree(tmp,grid->Ne*sizeof(REAL),"OutputData");
-  if(prop->n==prop->nstart+prop->nsteps && prop->mergeArrays) {
-    if(VERBOSE>2 && myproc==0) printf("Freeing merging arrays...\n");
-    FreeMergingArrays(grid,myproc);
-  }
 }
 
 /*
