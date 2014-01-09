@@ -124,6 +124,11 @@ const REAL smoothbot_DEFAULT = 0.0;
 */
 const int mergeArrays_DEFAULT = 1;
 
+/* computeSediments
+   Whether or not to compute sediments.  Off by default.
+*/
+const int computeSediments_DEFAULT = 0;
+
 /* 
  *  Heat flux model and meteorological IO netcdf Parameters
  */

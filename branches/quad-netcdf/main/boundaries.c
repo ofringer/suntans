@@ -12,6 +12,7 @@
  */
 #include "boundaries.h"
 #include "mynetcdf.h"
+#include "sediments.h"
 
 // Local functions
 //static void GetBoundaryVelocity(REAL *ub, int *forced, REAL x, REAL y, REAL t, REAL h, REAL d, REAL omega, REAL amp);
@@ -875,3 +876,39 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
  }//End function
 
 
+/*
+ * Function: BoundarySediment
+ * Usage: BoundarySediment(boundary_s,boundary_T,grid,phys,prop);
+ * -------------------------------------------------------------
+ * This will set the values of the suspended sediment concentration
+ * at the open boundaries.
+ * 
+ */
+void BoundarySediment(gridT *grid, physT *phys, propT *prop) {
+  int jptr, j, ib, k,nosize,i,iptr;
+  REAL z;
+
+  // At the upstream boundary
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j=grid->edgep[jptr];
+    ib=grid->grad[2*j];
+    for(nosize=0;nosize<sediments->Nsize;nosize++){
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+        sediments->boundary_sediC[nosize][jptr-grid->edgedist[2]][k]=0;
+      }
+    }
+  }
+
+  // At the ocean boundary
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    i = grid->cellp[iptr];
+    for(nosize=0;nosize<sediments->Nsize;nosize++){
+      for(k=0;k<grid->ctop[i];k++) {
+        sediments->SediC[nosize][i][k]=0;
+      } 
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+        sediments->SediC[nosize][i][k]=0;
+      }
+    }
+  }
+}

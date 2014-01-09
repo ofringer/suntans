@@ -138,6 +138,7 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
 void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc);
 void InitBoundaryData(propT *prop, gridT *grid, int myproc);
+void BoundarySediment(gridT *grid, physT *phys, propT *prop);
 void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc);
 void UpdateBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 

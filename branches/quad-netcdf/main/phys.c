@@ -28,6 +28,8 @@
 #include "met.h"
 #include "age.h"
 #include "physio.h"
+#include "merge.h"
+#include "sediments.h"
 
 /*
  * Private Function declarations.
@@ -1081,6 +1083,12 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
   WindStress(grid,phys,prop,met,myproc);
 
+  // Set up arrays to merge output
+  if(prop->mergeArrays) {
+    if(VERBOSE>2 && myproc==0) printf("Initializing arrays for merging...\n");
+    InitializeMerging(grid,numprocs,myproc,comm);
+  }
+
   // main time loop
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
 
@@ -1093,6 +1101,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     //prop->nctime +=  n*prop->dt;
     //prop->nctime += prop->rtime;
 
+    // Set nsteps<0 for debugging i/o without hydro/seds/etc...
     if(prop->nsteps>0) {
 
       // Ramp down theta from 1 to the value specified in suntans.dat over
@@ -1215,7 +1224,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 		prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
 		NULL,NULL,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
 	}
-    ISendRecvCellData3D(phys->s,grid,myproc,comm);
+	ISendRecvCellData3D(phys->s,grid,myproc,comm);
 
 	if(prop->metmodel>0){
 	  //Communicate across processors
@@ -1225,7 +1234,12 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
         t_transport+=Timer()-t0;
       }
 
-
+      // Compute sediment transport when prop->computeSediments=1
+      if(prop->computeSediments){
+        t0=Timer(); 
+        ComputeSediments(grid,phys,prop,myproc,numprocs,blowup,comm);
+        t_transport+=Timer()-t0;
+      }
       
       // Compute vertical momentum and the nonhydrostatic pressure
       t0=Timer();
@@ -1291,7 +1305,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       ISendRecvCellData3D(phys->vc,grid,myproc,comm);
     }
 
-
     // Adjust the velocity field in the new cells if the newcells variable is set 
     // to 1 in suntans.dat.  Once this is done, send the interprocessor 
     // u-velocities to the neighboring processors.
@@ -1351,6 +1364,11 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       }
     }
     */
+  }
+
+  if(prop->mergeArrays) {
+    if(VERBOSE>2 && myproc==0) printf("Freeing merging arrays...\n");
+    FreeMergingArrays(grid,myproc);
   }
 }
 
@@ -3975,6 +3993,7 @@ void ReadProperties(propT **prop, gridT *grid, int myproc)
   (*prop)->thetaM = MPI_GetValue(DATAFILE,"thetaM","ReadProperties",myproc); 
   (*prop)->newcells = MPI_GetValue(DATAFILE,"newcells","ReadProperties",myproc); 
   (*prop)->mergeArrays = MPI_GetValue(DATAFILE,"mergeArrays","ReadProperties",myproc); 
+  (*prop)->computeSediments = MPI_GetValue(DATAFILE,"computeSediments","ReadProperties",myproc); 
 
   // When wetting and drying is desired:
   // -Do nonconservative momentum advection (conserveMomentum=0)

@@ -356,6 +356,10 @@ double GetDefaultValue(char *str, int *status) {
  } else if(!strcmp(str,"mergeArrays")) {
 
     return mergeArrays_DEFAULT;
+
+ } else if(!strcmp(str,"computeSediments")) {
+
+    return computeSediments_DEFAULT;
   
  } else if(!strcmp(str,"latitude")) {
     
