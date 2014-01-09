@@ -3,7 +3,7 @@
  *
  */
 #include "boundaries.h"
-
+#include "sediments.h"
 static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag);
 
 /*
@@ -75,8 +75,8 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
   int i, ib, iptr, k, j, jptr;
   REAL A_sac, A_san, Q_sac, Q_san, ub;
 
-  Q_sac = 0;
-  Q_san = 0;
+  Q_sac = 300;
+  Q_san = 300;
   A_sac = 0;
   A_san = 0;
 
@@ -154,3 +154,40 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 
 void InitBoundaryData(propT *prop, gridT *grid, int myproc){}
 void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){}
+
+/*
+ * Function: BoundarySediment
+ * Usage: BoundarySediment(boundary_s,boundary_T,grid,phys,prop);
+ * -------------------------------------------------------------
+ * This will set the values of the suspended sediment concentration
+ * at the open boundaries.
+ * 
+ */
+void BoundarySediment(gridT *grid, physT *phys, propT *prop) {
+  int jptr, j, ib, k,nosize,i,iptr;
+  REAL z;
+
+  // At the upstream boundary
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+    j=grid->edgep[jptr];
+    ib=grid->grad[2*j];
+    for(nosize=0;nosize<sediments->Nsize;nosize++){
+      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+        sediments->boundary_sediC[nosize][jptr-grid->edgedist[2]][k]=200;
+      }
+    }
+  }
+
+  // At the ocean boundary
+  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
+    i = grid->cellp[iptr];
+    for(nosize=0;nosize<sediments->Nsize;nosize++){
+      for(k=0;k<grid->ctop[i];k++) {
+        sediments->SediC[nosize][i][k]=0;
+      } 
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+        sediments->SediC[nosize][i][k]=0;
+      }
+    }
+  }
+}
