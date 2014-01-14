@@ -610,10 +610,17 @@ class Grid(object):
         # This step is necessary to avoid summing duplicate elements
         datasparse=sparse.csr_matrix(datasparse).tocoo()
         Asparse=sparse.csr_matrix(Asparse).tocoo()
-
+        
         node_scalar = datasparse.multiply(Asparse).sum(axis=1) / Asparse.sum(axis=1)
-           
-        return np.array(node_scalar).squeeze()
+         
+        # Return a masked array
+        
+        #node_scalar=np.ma.array(node_scalar,mask=mask).squeeze()
+        node_scalar=np.array(node_scalar).squeeze()
+        mask = np.isnan(node_scalar)
+        node_scalar[mask]=0.
+        
+        return node_scalar
  
     def cell2nodekindold(self,cell_scalar,cellind,k=0):
         """
@@ -1000,12 +1007,12 @@ class Spatial(Grid):
 
     def loadGlobals(self):
         """
-	Loads the global attributes into a dictionary
-	"""
-	nc=self.nc
-	self.globalatts={}
-	for name in nc.ncattrs():
-	    self.globalatts.update({name:getattr(nc,name)})
+        Loads the global attributes into a dictionary
+        """
+        nc=self.nc
+        self.globalatts={}
+        for name in nc.ncattrs():
+            self.globalatts.update({name:getattr(nc,name)})
 
     def listCoordVars(self):
         """
@@ -1086,7 +1093,8 @@ class Spatial(Grid):
         else:
             plt.title(titlestr)
  
-    def contourf(self, clevs=20,z=None,xlims=None,ylims=None,filled=True,vector_overlay=False,scale=1e-4,subsample=10,titlestr=None,**kwargs):
+    def contourf(self, clevs=20,z=None,xlims=None,ylims=None,filled=True,\
+        k=0,cellind=None,vector_overlay=False,scale=1e-4,subsample=10,titlestr=None,**kwargs):
         """
         Filled contour plot of  unstructured grid data
         """
@@ -1115,19 +1123,30 @@ class Spatial(Grid):
         fig = plt.gcf()
         ax = fig.gca()
         
+        # Calculate the nodal data and mask if necessary
+        #zdata = self.cell2node(z)
+        if cellind == None:
+            cellind = np.arange(self.Nc)
+            
+        zdata = self.cell2nodekind(z,cellind=cellind,k=k)
+        
         # Amplitude plot (note that the data must be on nodes for tricontourf)
-        V = np.linspace(self.clim[0],self.clim[1],clevs)
-	if filled:
-	    camp = plt.tricontourf(t, self.cell2node(z), V, **kwargs)
-	else:
-            camp = plt.tricontour(t, self.cell2node(z), V, **kwargs)
+        if type(clevs)==type(1): # is integer
+            V = np.linspace(self.clim[0],self.clim[1],clevs)
+        else:
+            V = clevs
+            
+        if filled:
+            camp = plt.tricontourf(t, zdata, V, **kwargs)
+        else:
+            camp = plt.tricontour(t, zdata, V, **kwargs)
                 
         ax.set_aspect('equal')
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
         
-	if filled:
-	    self.cb = fig.colorbar(camp)
+        if filled:
+            self.cb = fig.colorbar(camp)
         
         if titlestr==None:
             plt.title(self.genTitle())
@@ -1382,18 +1401,12 @@ class Spatial(Grid):
         """
         tmpvar = self.variable
         
-        self.variable='uc'
-        self.loadDataRaw()
-        u=self.data.copy()
+        u=self.loadDataRaw(variable='uc')
         
-        self.variable='vc'
-        self.loadDataRaw()
-        v=self.data.copy()
+        v=self.loadDataRaw(variable='vc')
         
         try:
-            self.variable='w'
-            self.loadDataRaw()
-            w=self.data.copy()
+            w=self.loadDataRaw(variable='w')
         except:
             w=u*0.0
                                

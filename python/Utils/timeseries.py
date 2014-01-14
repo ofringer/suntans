@@ -32,6 +32,12 @@ class timeseries(object):
     basetime = datetime(1900,1,1)
     VERBOSE=False
     
+    units=''
+    long_name=''
+    stationid = ''
+    varname = ''
+    Z=0.0
+    
     def __init__(self,t,y,**kwargs):
         
         self.__dict__.update(kwargs)        
