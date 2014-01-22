@@ -15,6 +15,7 @@ from scipy import signal, interpolate
 import othertime
 from datetime import datetime, timedelta
 from uspectra import uspectra, getTideFreq
+import operator
 
 import pdb
 
@@ -150,10 +151,12 @@ class timeseries(object):
         # Don't include nan points
         if self.ndim > 1:
             # Interpolate multidimensional arrays without a mask
-            F = interpolate.interp1d(self.tsec,self.y,kind=method,axis=axis)
+            F = interpolate.interp1d(self.tsec,self.y,kind=method,axis=axis,\
+            bounds_error=False,fill_value=0)
         else:
             mask = np.isnan(self.y) == False
-            F = interpolate.interp1d(self.tsec[mask],self.y[mask],kind=method,axis=axis)
+            F = interpolate.interp1d(self.tsec[mask],self.y[mask],kind=method,axis=axis,\
+            bounds_error=False,fill_value=0)
         
         #F = interpolate.UnivariateSpline(self.tsec,self.y,k=method)
         
@@ -262,7 +265,7 @@ class timeseries(object):
             yrms[ii] = crms(self.tsec[t1:t2],self.y[t1:t2]-ymean[ii])
             
             # Return the mid time point
-            ind = np.floor(t1 + (t2-t1)/2)
+            ind = int(np.floor(t1 + (t2-t1)/2))
             tmid.append(self.t[ind])
    
         tmid = np.asarray(tmid)
@@ -281,7 +284,52 @@ class timeseries(object):
             ax.set_xlim([self.t[0],self.t[-1]])
             
             
-        return tmid, ymean, yrms           
+        return tmid, ymean, yrms     
+        
+    def despike(self,nstd=4.,windowlength=3*86400.0,overlap=12*3600.0,\
+        upper=np.inf,lower=-np.inf):
+        """
+        Despike time series by replacing any values greater than nstd*std.dev with the
+        median of a running window. 
+        
+        nstd - number of standard deviations outside to replace        
+        windowlength - length of each time window [seconds]
+        overlap - overlap between windows [seconds]
+        lower - lower value bound
+        upper - upper value bound
+        """
+        
+        pt1,pt2 = window_index_time(self.t,windowlength,overlap)
+
+        for t1,t2 in zip(pt1,pt2):
+            
+            if t1==t2:
+                continue
+            
+            ytmp = self.y[t1:t2]
+           
+            # only calculate the median with values inside of the range
+            ind = operator.and_(ytmp>=lower,ytmp<=upper)
+            ind2 = operator.and_(ind, ~np.isnan(ytmp))
+            
+            if not any(ind2):
+                ytmp[:] = lower
+                self.y[t1:t2]=ytmp.copy()
+                continue
+            
+            ymedian = np.median(ytmp[ind2])
+            ystd = np.std(ytmp[ind2])
+            if np.isnan(ymedian):
+                print t1,t2
+            
+            ytmp[ytmp >= ymedian + nstd*ystd] = ymedian
+            ytmp[ytmp <= ymedian - nstd*ystd] = ymedian
+            
+            if ymedian>upper or ymedian < lower:
+                print 'Warning median value outside of bounds range...'
+
+            self.y[t1:t2]=ytmp.copy()
+            
         
     def plot(self,angle=17,**kwargs):
         """
@@ -304,13 +352,16 @@ class timeseries(object):
         
         return h1 
         
-    def save2txt(self,txtfile):
+    def savetxt(self,txtfile):
         f = open(txtfile,'w')
         
-        for t,v in zip(self.tsec,self.y):
-            f.write('%10.6f\t%10.6f\n'%(t,v))
+        #for t,v in zip(self.tsec,self.y):
+        #    f.write('%10.6f\t%10.6f\n'%(t,v))
+        for ii in range(self.y.shape[0]):
+            f.write('%s, %10.6f\n'%(datetime.strftime(self.t[ii],'%Y-%m-%d %H:%M:%S'),self.y[ii]))
             
         f.close()
+
         
     def _checkDT(self):
         """
@@ -356,12 +407,22 @@ class ModVsObs(object):
         """
         self.__dict__.update(kwargs)
 
-        # Load the data into timeseries objects
-        self.TSmod = timeseries(tmod,ymod)
-        TSobs = timeseries(tobs,yobs)
+
+        # Set the range inclusive of both observation and model result
+        time0 = max(tmod[0],tobs[0])
+        time1 = min(tmod[-1],tobs[-1])
+        
+        # Clip both the model and observation to this daterange
+        t0 = othertime.findNearest(time0,tobs)
+        t1 = othertime.findNearest(time1,tobs)
+        TSobs = timeseries(tobs[t0:t1],yobs[t0:t1])
+
+        t0 = othertime.findNearest(time0,tmod)
+        t1 = othertime.findNearest(time1,tmod)
+        self.TSmod = timeseries(tmod[t0:t1],ymod[t0:t1])
 
         # Interpolate the observed value onto the model
-        tobs_i, yobs_i = TSobs.interp(tmod,axis=0)
+        tobs_i, yobs_i = TSobs.interp(tmod[t0:t1],axis=0)
         self.TSobs = timeseries(tobs_i, yobs_i)
 
         self.N = self.TSmod.t.shape[0]
@@ -639,6 +700,9 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
         return ts, meta        
     else:
         return ts
+
+
+    
 
 def stackplot(t,y,scale=None,gap=0.2,ax=None,fig=None,units='',labels=None,**kwargs):
     """
@@ -1052,4 +1116,23 @@ def eofsvd(M):
 
     return PC,s*s,E
 
+
+def loadtxt(txtfile):
+    """
+    Loads a text file with two columns
+    Column 1 is time: seconds since 1990-1-1
+    Column 2 is the data.
+    """
+    f = open(txtfile,'r')
+    
+    t=[]
+    y=[]
+    for line in f.readlines():
+        line = line.strip()
+        ll = line.split(',')
+        t.append(datetime.strptime(ll[0],'%Y-%m-%d %H:%M:%S'))
+        y.append(float(ll[1]))
+        
+    f.close()
+    return timeseries(t,np.array(y))
 
