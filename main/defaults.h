@@ -156,6 +156,12 @@ const REAL range_DEFAULT = 1e5;
 //Output data to netcdf format (0 - binary, 1 - netcdf)
 const int outputNetcdf_DEFAULT = 0;
 
+// Number of steps to write to each netcdf file (mergeArray=1 only)
+const int nstepsperncfile_DEFAULT = 999999;
+
+// File number of first netcdf output file (mergeArray=1 only)
+const int ncfilectr_DEFAULT = 0;
+
 //Light extinction depth [m]
 const REAL Lsw_DEFAULT = 2.0;
 

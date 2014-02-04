@@ -189,8 +189,11 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
     }
     // 2D cell-centred variables
     average->h[i]+=phys->h[i];
-    average->s_dz[i]+=sdz;
-    average->T_dz[i]+=Tdz;
+    //average->s_dz[i]+=sdz;
+    //average->T_dz[i]+=Tdz;
+    average->h[i]=phys->h[i];
+    average->s_dz[i]=sdz;
+    average->T_dz[i]=Tdz;
     if(prop->metmodel>0 && prop->metmodel<4){
 	average->Uwind[i]+=met->Uwind[i];
 	average->Vwind[i]+=met->Vwind[i];
@@ -225,7 +228,7 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
   /*
    * Compute salinity and temperature fluxes using TVD scheme
    */
-  if(prop->TVD && prop->horiTVD){
+  if(prop->TVD ){
 
     //Salt
     // Compute the scalar on the vertical faces (for horiz. advection)
@@ -238,7 +241,8 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
 	  //flx = phys->u[j][k]*grid->dzf[j][k]*grid->df[j]; 
 	  //See equation 85 in SUNTANS paper
 	  flx = (theta*phys->u[j][k] + (1.0-theta)*phys->utmp2[j][k])*grid->dzf[j][k]*grid->df[j]; 
-	  if(phys->u[j][k]>0)
+	  //if(phys->u[j][k]>0)
+	  if(phys->utmp2[j][k]>0)
 	    average->s_F[j][k]+=phys->SfHp[j][k] * flx;
 	  else
 	    average->s_F[j][k]+=phys->SfHm[j][k] * flx;
@@ -254,13 +258,16 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
       for(k=grid->etop[j];k<grid->Nke[j];k++){
 	  //flx = phys->u[j][k]*grid->dzf[j][k]*grid->df[j]; 
 	  flx = (theta*phys->u[j][k] + (1.0-theta)*phys->utmp2[j][k])*grid->dzf[j][k]*grid->df[j]; 
-	  if(phys->u[j][k]>0)
+	  //if(phys->u[j][k]>0)
+	  if(phys->utmp2[j][k]>0)
 	    average->T_F[j][k]+=phys->SfHp[j][k] * flx;
 	  else
 	    average->T_F[j][k]+=phys->SfHm[j][k] * flx;
 	}
       }
 
+  }else{ // No TVD
+  
   }//End flux calculation
  /*
    * Compute salinity and temperature fluxes using central-difference
@@ -318,8 +325,8 @@ void ComputeAverageVariables(gridT *grid, averageT *average, physT *phys, metT *
     }
     // 2D cell-centred variables
     average->h[i] *= nt;
-    average->s_dz[i] *= nt;
-    average->T_dz[i] *= nt;
+    //average->s_dz[i] *= nt;
+    //average->T_dz[i] *= nt;
     if(prop->metmodel>0){
 	average->Uwind[i] *= nt;
 	average->Vwind[i] *= nt;

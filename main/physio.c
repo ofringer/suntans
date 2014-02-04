@@ -208,9 +208,11 @@ void OpenFiles(propT *prop, int myproc)
     // No longer writing to verticalgridfile
     
   }else {
-    MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
-    sprintf(str,"%s.%d",filename,myproc);
-    prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+    if(prop->mergeArrays==0){
+	MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
+	sprintf(str,"%s.%d",filename,myproc);
+	prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+    }
   }
 
   if(RESTART) {

@@ -25,7 +25,7 @@
 typedef enum _interpolation {
   nRT1, nRT2,
   tRT1, tRT2,
-  QUAD, PEROT
+  QUAD, PEROT, LSQ
 } interpolation;
 
 /*
@@ -168,6 +168,12 @@ typedef struct _physT {
   REAL *tmpvarW;
   REAL *tmpvarE;
 
+  // Least squares fit arrays
+  REAL **A;
+  REAL **Apr;
+  REAL **AT;
+  REAL *bpr;
+
 } physT;
 
 /*
@@ -191,7 +197,7 @@ typedef struct _propT {
   int metmodel,  varmodel, outputNetcdf,  metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID, calcage, calcaverage;
   int outputNetcdfFileID, averageNetcdfFileID;
   REAL nctime, toffSet;
-  int nctimectr, avgtimectr, avgctr, ntaverage;
+  int nctimectr, avgtimectr, avgctr, ntaverage, nstepsperncfile, ncfilectr;
   REAL nugget, sill, range, Lsw, Cda, Ce, Ch;
   char  starttime[15], basetime[15]; 
 } propT;

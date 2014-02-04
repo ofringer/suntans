@@ -356,21 +356,75 @@ REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2){
  */
 REAL getToffSet(char basetime[15], char starttime[15]){
 	
+    REAL t;
     //char *strptime(const char *buf, const char *format, struct tm *tm) 
     //time_t mktime ( struct tm * timeptr ); 
-    struct tm tm0; 
-    struct tm tm1;
+    //!!!!IMPORTANT!!!!
+    // These structures need to be static on parallel threads
+    // as these libraries do funny things with time zones.
+    // Not sure how this works on other systems/compilers...
+    static struct tm tm0; 
+    static struct tm tm1;
     time_t t0, t1;
-    //const char time1=*basetime;
-    //const char time2=*starttime;
 
     strptime(basetime,"%Y%m%d.%H%M%S",&tm0);
     strptime(starttime,"%Y%m%d.%H%M%S",&tm1);
     
     t0 = mktime(&tm0);
     t1 = mktime(&tm1);
-    return difftime(t1,t0)/86400.0;
+
+    t = difftime(t1,t0)/86400.0;
+    return t;
 
 }//End function
+
+/*
+* Function: linsolve()
+* --------------------
+* Solves a linear system of equations A.x=b
+* 
+* A is a square matrix and b is a vector.
+* The solution x is returned in vector b
+* 
+* Reference:
+* 	Golub and Van Loan, "Matrix Computations", 1999, Ch 3
+*/
+void linsolve(REAL **A, REAL *b, int N){
+
+  int i,j,k;
+  REAL sumi;
+  
+  // Algorithm to find LU decomp - See page 99
+  for(k=0;k<N-1;k++){
+    for(i=k+1;i<N;i++){
+      A[i][k] = A[i][k]/A[k][k];
+      for(j=k+1;j<N;j++){
+	A[i][j] = A[i][j] - A[k][j]*A[i][k];
+      }
+    }
+  }
+
+  // Solve L.y=b via forward substitution (Alg 3.1.1);
+  b[0] = b[0];
+  for(i=1;i<N;i++){
+    sumi=0.0;
+    for(j=0;j<i;j++){
+      sumi = sumi + A[i][j]*b[j];
+    }
+    b[i]=b[i]-sumi;
+  }
+  
+  //Solve U.x=y via backward substitution (Alg 3.1.2)
+  
+  b[N-1] = b[N-1]/A[N-1][N-1];
+  for(i=N-2;i>=0;i--){
+    sumi=0.0;
+    for(j=i+1;j<N;j++){
+      sumi = sumi + A[i][j]*b[j];
+    }
+    b[i] = (b[i] - sumi)/A[i][i];
+  }  
+} // End of linsolve
+
 
 

@@ -17,9 +17,9 @@
 #include "mympi.h"
 
 gridT *mergedGrid;
-int *Nc_all, Nc_max;
-int **mnptr_all, *send3DSize;
-REAL *localTempMergeArray, *merged2DArray, **merged3DArray;
+int *Nc_all, *Ne_all, Nc_max, Ne_max;
+int **mnptr_all, **eptr_all, *send3DSize;
+REAL *localTempMergeArray, *merged2DArray, **merged3DArray, *merged3DVector;
 
 void InitializeMerging(gridT *grid, int numprocs, int myproc, MPI_Comm comm);
 void MergeCellCentered2DArray(REAL *localArray, gridT *grid, int numprocs, int myproc, MPI_Comm comm);
