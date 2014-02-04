@@ -12,7 +12,6 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
 static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL D);
 void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, REAL **Dout);
 void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout);
-void linsolve(REAL **A, REAL *b, int N);
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair);
 static REAL qsat(REAL Tw, REAL Pair);
 static REAL longwave(REAL Ta, REAL Tw, REAL C_cloud);
@@ -85,8 +84,6 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
       if(VERBOSE>3 && myproc==0) printf("Updating netcdf variable at nc timestep: %d\n",t1);
       /* Read in the data two time steps*/
       ReadMetNC(prop, grid, metin, myproc);
-      //Wait for the other processors
-      MPI_Barrier(comm);
 
       metin->t1=t1;
       metin->t0=t1-1;
@@ -381,7 +378,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->WUwind[k][j]=0.0;
       }
-       for(n=0;k<NTmet;n++){
+       for(n=0;n<NTmet;n++){
 	 (*metin)->Uwind[n][j]=0.0;
       }
   }  
@@ -640,55 +637,6 @@ void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout)
       }
   }
 }
-
-/*
-* Function: linsolve()
-* --------------------
-* Solves a linear system of equations A.x=b
-* 
-* A is a square matrix and b is a vector.
-* The solution x is returned in vector b
-* 
-* Reference:
-* 	Golub and Van Loan, "Matrix Computations", 1999, Ch 3
-*/
-void linsolve(REAL **A, REAL *b, int N){
-
-  int i,j,k;
-  REAL sumi;
-  
-  // Algorithm to find LU decomp - See page 99
-  for(k=0;k<N-1;k++){
-    for(i=k+1;i<N;i++){
-      A[i][k] = A[i][k]/A[k][k];
-      for(j=k+1;j<N;j++){
-	A[i][j] = A[i][j] - A[k][j]*A[i][k];
-      }
-    }
-  }
-
-  // Solve L.y=b via forward substitution (Alg 3.1.1);
-  b[0] = b[0];
-  for(i=1;i<N;i++){
-    sumi=0.0;
-    for(j=0;j<i;j++){
-      sumi = sumi + A[i][j]*b[j];
-    }
-    b[i]=b[i]-sumi;
-  }
-  
-  //Solve U.x=y via backward substitution (Alg 3.1.2)
-  
-  b[N-1] = b[N-1]/A[N-1][N-1];
-  for(i=N-2;i>=0;i--){
-    sumi=0.0;
-    for(j=i+1;j<N;j++){
-      sumi = sumi + A[i][j]*b[j];
-    }
-    b[i] = (b[i] - sumi)/A[i][i];
-  }  
-} // End of linsolve
-
 
 /*
 * Function: updateAirSeaFluxes()

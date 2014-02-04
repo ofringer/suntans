@@ -389,6 +389,14 @@ double GetDefaultValue(char *str, int *status) {
     
    return outputNetcdf_DEFAULT;
 
+} else if(!strcmp(str,"nstepsperncfile")) {
+    
+   return nstepsperncfile_DEFAULT;
+
+} else if(!strcmp(str,"ncfilectr")) {
+    
+   return ncfilectr_DEFAULT;
+
 } else if(!strcmp(str,"Lsw")) {
     
    return Lsw_DEFAULT;

@@ -81,6 +81,7 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
     int myproc, int numprocs, MPI_Comm comm);
 inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
 static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid);
+static void ComputeUCLSQ(REAL **u, REAL **uc, REAL **vc, gridT *grid, physT *phys);
 inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc);
 static void ComputeNodalVelocity(physT *phys, gridT *grid, interpolation interp, int myproc);
 static void  ComputeTangentialVelocity(physT *phys, gridT *grid, interpolation ninterp, interpolation tinterp,int myproc);
@@ -335,6 +336,21 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->gradSx[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->gradSy[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
   }
+
+  // Allocate for least squares velocity fitting
+  (*phys)->A = (REAL **)SunMalloc(grid->maxfaces*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->AT = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Apr = (REAL **)SunMalloc(2*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->bpr = (REAL *)SunMalloc(2*sizeof(REAL),"AllocatePhysicalVariables");
+  for(i=0;i<grid->maxfaces;i++){
+      (*phys)->A[i] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocatePhysicalVariables");  
+  }
+  for(i=0;i<2;i++){
+      (*phys)->AT[i] = (REAL *)SunMalloc(grid->maxfaces*sizeof(REAL),"AllocatePhysicalVariables");  
+      (*phys)->Apr[i] = (REAL *)SunMalloc(2*sizeof(REAL),"AllocatePhysicalVariables");  
+  }
+
+
 }
 
 /*
@@ -542,6 +558,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   */
 
   // Initialize the free surface
+  for(i=0;i<Nc;i++) {
+    phys->h[i]=0;
+  }
   if (prop->readinitialnc){
      ReturnFreeSurfaceNC(prop,phys,grid,ncscratch,Nci,T0,myproc);
   }else{
@@ -583,7 +602,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->s0[i][k]=stmp[k];
       }
     SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
-  } else if(prop->readinitialnc){
+  } else if(prop->readinitialnc && prop->beta > 0){
      ReturnSalinityNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
   } else {
     for(i=0;i<Nc;i++) {
@@ -608,9 +627,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->T[i][k]=stmp[k];
 
     SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
-   } else if(prop->readinitialnc){
+   } else if(prop->readinitialnc && prop->gamma > 0){
         ReturnTemperatureNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
-  } else {  
+   } else {  
     for(i=0;i<Nc;i++) {
       z = 0;
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -648,6 +667,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   // on the initialized velocities at the faces.
   ComputeUC(phys->uc, phys->vc, phys, grid, myproc, prop->interp);
   ComputeUC(phys->uold, phys->vold, phys, grid, myproc, prop->interp);
+
 
   // send and receive interprocessor data
   ISendRecvCellData3D(phys->uc,grid,myproc,comm);
@@ -1039,7 +1059,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   if(prop->laxWendroff && prop->nonlinear==2) LaxWendroff(grid,phys,prop,myproc,comm);
 
   // Initialize the Sponge Layer
-  InitSponge(grid,myproc);
+  //InitSponge(grid,myproc);
 
   
   // Initialise the meteorological forcing input fields
@@ -1069,7 +1089,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   }
 
   // Initialise the output netcdf file metadata
-    if(prop->outputNetcdf==1){
+    if(prop->outputNetcdf==1 &&prop->mergeArrays==0){
       InitialiseOutputNCugrid(prop, grid, phys, met, myproc);
     }
 
@@ -1077,7 +1097,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   if(prop->calcaverage>0){
     AllocateAverageVariables(grid,&average,prop);
     ZeroAverageVariables(grid,average,prop);
-    InitialiseAverageNCugrid(prop, grid, average, myproc);
+    if(prop->mergeArrays==0)
+    	InitialiseAverageNCugrid(prop, grid, average, myproc);
   }
   
   // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
@@ -1328,11 +1349,19 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       OutputPhysicalVariables(grid,phys,prop,myproc,numprocs,blowup,comm);
     }else {
       // Output data to netcdf
-      WriteOuputNC(prop, grid, phys, met, blowup, myproc);
+	if(prop->mergeArrays){
+	    WriteOutputNCmerge(prop, grid, phys, met, blowup,numprocs,myproc,comm);
+	}else{
+	    WriteOutputNC(prop, grid, phys, met, blowup, myproc);
+	}
     }
     // Output the average arrays
     if(prop->calcaverage){
-	WriteAverageNC(prop,grid,average,phys,met,blowup,comm,myproc);
+    	if(prop->mergeArrays){
+
+	}else{
+	    WriteAverageNC(prop,grid,average,phys,met,blowup,comm,myproc);
+	}
     }
     InterpData(grid,phys,prop,comm,numprocs,myproc);
 
@@ -3895,26 +3924,150 @@ static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
       uc[n][k]=0;
       vc[n][k]=0;
     }
+    // over all interior cells
+    for(k=grid->ctop[n]+1;k<grid->Nk[n];k++) {
+      // over each face
+      for(nf=0;nf<grid->nfaces[n];nf++) {
+        ne = grid->face[n*grid->maxfaces+nf];
+        if(!(grid->smoothbot) || k<grid->Nke[ne]){
+          uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne]*grid->dzf[ne][k];
+          vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne]*grid->dzf[ne][k];
+        }
+        else{	
+          uc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne]*grid->dzf[ne][grid->Nke[ne]-1];
+          vc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne]*grid->dzf[ne][grid->Nke[ne]-1];
+	}
+      }
+
+      // In case of divide by zero (shouldn't happen)
+      if (grid->dzz[n][k]  > DRYCELLHEIGHT) {
+          uc[n][k]/=(grid->Ac[n]*grid->dzz[n][k]);
+          vc[n][k]/=(grid->Ac[n]*grid->dzz[n][k]);
+      } else {
+          uc[n][k] = 0;
+          vc[n][k] = 0;
+      }
+    }
+
+    //top cell only - don't account for depth
+    k=grid->ctop[n];
+    // over each face
+    for(nf=0;nf<grid->nfaces[n];nf++) {
+	ne = grid->face[n*grid->maxfaces+nf];
+	if(!(grid->smoothbot) || k<grid->Nke[ne]){
+	    uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+	    vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+	}
+	else{	
+	    uc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+	    vc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];        
+	}
+    }
+    uc[n][k]/=grid->Ac[n];
+    vc[n][k]/=grid->Ac[n];
+   
+    // Original SUNTANS
+    /*
     // over the entire depth (cell depth)
     for(k=grid->ctop[n];k<grid->Nk[n];k++) {
       // over each face
       for(nf=0;nf<grid->nfaces[n];nf++) {
         ne = grid->face[n*grid->maxfaces+nf];
         if(!(grid->smoothbot) || k<grid->Nke[ne]){
-          uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
-          vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+	  uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+	  vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
         }
         else{	
-          uc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
-          vc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
-        }
+	  uc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+	  vc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];        
+	}
       }
 
       uc[n][k]/=grid->Ac[n];
       vc[n][k]/=grid->Ac[n];
     }
+    */
   }
 }
+static void ComputeUCLSQ(REAL **u, REAL **uc, REAL **vc, gridT *grid, physT *phys){
+  int k, n, ne, nf, iptr;
+  REAL sum;
+  int ii,jj,kk;
+  REAL **A = phys->A;
+  REAL **AT = phys->AT;
+  REAL **Apr = phys->Apr;
+  REAL *bpr = phys->bpr;
+
+  // for each computational cell (non-stage defined)
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    // get cell pointer transfering from boundary coordinates 
+    // to grid coordinates
+    n=grid->cellp[iptr];
+
+    // initialize over all depths
+    for(k=0;k<grid->Nk[n];k++) {
+      uc[n][k]=0;
+      vc[n][k]=0;
+    }
+    for(nf=0;nf<grid->nfaces[n];nf++) {
+
+        ne = grid->face[n*grid->maxfaces+nf];
+	
+    	// Construct the normal array - A
+	A[nf][0] = grid->n1[ne];
+	A[nf][1] = grid->n2[ne];
+
+	// Construct A transpose
+	AT[0][nf] = A[nf][0];
+	AT[1][nf] = A[nf][1];
+    }
+
+    for(k=grid->ctop[n];k<grid->Nk[n];k++) {
+	
+	// Multiply A' = A^T*A 
+	// This can't be moved outside of this for loop because A' is
+	// modified by linsolve()
+	for(ii=0;ii<2;ii++){
+	    for(jj=0;jj<2;jj++){
+		sum=0;
+		for(nf=0;nf<grid->nfaces[n];nf++) {
+		    sum += AT[ii][nf]*A[nf][jj];
+		}
+		Apr[ii][jj]=sum;
+	    }
+	}
+    	// Compute b' = A^T * b
+	for(ii=0;ii<2;ii++){
+	    sum=0;
+	    for(nf=0;nf<grid->nfaces[n];nf++) {
+		ne = grid->face[n*grid->maxfaces+nf];
+		if(!(grid->smoothbot) || k<grid->Nke[ne]){
+		    sum += AT[ii][nf]*u[ne][k];
+		    //sum += AT[ii][nf]*u[ne][k]*grid->dzf[ne][k];
+		} else{
+		    sum += AT[ii][nf]*u[ne][grid->Nke[ne]-1];
+		    //sum += AT[ii][nf]*u[ne][grid->Nke[ne]-1]*grid->dzf[ne][grid->Nke[ne]-1];
+		}
+	    }
+	    bpr[ii]=sum;
+	}
+	// Now solve the problem (A'A)x = (A'b)
+	linsolve(Apr,bpr,2);
+       
+	uc[n][k]=bpr[0];
+	vc[n][k]=bpr[1];	
+	//if (grid->dzz[n][k]  > 1e-3) {
+	//    uc[n][k]=bpr[0]/grid->dzz[n][k];
+	//    vc[n][k]=bpr[1]/grid->dzz[n][k];
+	//}else{
+	//    uc[n][k]=0;
+	//    vc[n][k]=0;
+	//}
+    }
+
+  }
+}
+
 
 /*
  * Function: ReadProperties
@@ -4026,6 +4179,9 @@ void ReadProperties(propT **prop, gridT *grid, int myproc)
   if((*prop)->outputNetcdf > 0 || (*prop)->netcdfBdy > 0 || (*prop)->readinitialnc > 0){ 
       MPI_GetString((*prop)->starttime,DATAFILE,"starttime","ReadProperties",myproc);
       MPI_GetString((*prop)->basetime,DATAFILE,"basetime","ReadProperties",myproc);
+
+      (*prop)->nstepsperncfile=(int)MPI_GetValue(DATAFILE,"nstepsperncfile","ReadProperties",myproc);
+      (*prop)->ncfilectr=(int)MPI_GetValue(DATAFILE,"ncfilectr","ReadProperties",myproc);
   }
   if((*prop)->nonlinear==2) {
     (*prop)->laxWendroff = MPI_GetValue(DATAFILE,"laxWendroff","ReadProperties",myproc);
@@ -4048,6 +4204,10 @@ void ReadProperties(propT **prop, gridT *grid, int myproc)
     case 1: //Quad
       (*prop)->interp = QUAD;
       break;
+    case 2: //Least-squares
+      (*prop)->interp = LSQ;
+      break;
+ 
     default:
       printf("ERROR: Specification of interpolation type is incorrect!\n");
       MPI_Finalize();
@@ -4305,6 +4465,10 @@ inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc
     case PEROT:
       ComputeUCPerot(phys->u,ui,vi,grid);
       break;
+    case LSQ:
+      ComputeUCLSQ(phys->u,ui,vi,grid,phys);
+      break;
+ 
   }
 
 }
