@@ -1,0 +1,137 @@
+######################################################################.
+#
+#  Input file for SUNTANS.
+#
+########################################################################
+Nkmax			10	# Number of vertical grid layers
+maxFaces		4	# Maximum number of horizontal faces
+stairstep	        0	# 1 if stair-stepping, 0 if partial-stepping
+rstretch		1.0	# Stretching factor for vertical grid (1<=rstretch<1.1)
+CorrectVoronoi		0	# Whether or not to correct Voronoi points
+VoronoiRatio		1	# Adjust the voronoi points by this amount if 1 then = centroid.
+vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
+IntDepth 		0	# 1 if interpdepth, 0 otherwise, 2 read from file
+dzsmall			0.1	# Smallest grid spacing ratio before correction
+minimum_depth 		0.25	# Minimum grid cell depth
+scaledepth 		0 	# Scale the depth by scalefactor
+scaledepthfactor 	0 	# Depth scaling factor (to test deep grids with explicit methods)
+thetaramptime			0	#
+beta			1	# Expansivity of salt
+theta			0.55	# 0: fully explicit, 1: fully implicit
+thetaS			0.55	# For scalar advection
+thetaB			0.55	# For scalar advection
+kappa_s                 0       # Vertical mass diffusivity
+kappa_sH                0       # Horizontal mass diffusivity
+gamma 			1	# Coefficient of expansivity of temperature.
+kappa_T                 1e-5    # Vertical thermal diffusivity
+kappa_TH                1e-5    # Horizontal thermal diffusivity
+nu 			1e-5  	# Laminar viscosity of water (m^2 s^-1)
+nu_H 			1.0	# Horizontal laminar viscosity of water (m^2 s^-1)
+tau_T			0 	# Wind shear stress
+z0T	                0 	# Top roughness
+z0B	                0	# Bottom roughness
+CdT	                0 	# Drag coefficient at surface
+CdB			0.0020	#
+CdW			0.0	# Drag coefficient at sidewalls
+turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
+dt			120	#
+nsteps			1440 #
+Cmax 			1.0	# Maximum permissible Courant number
+ntout			30	#
+ntprog   		1 	# How often to report progress (in %)
+ntconserve 		1	# How often to output conserved data
+nonhydrostatic		0	# 0 = hydrostatic, 1 = nonhydrostatic
+cgsolver		1	# 0 = GS, 1 = CG
+maxiters		1000	# Maximum number of CG iterations
+qmaxiters		2000	# Maximum number of CG iterations for nonhydrostatic pressure
+qprecond		2	# 1 = preconditioned, 0 = not preconditioned
+epsilon			1e-10 	# Tolerance for CG convergence
+qepsilon		1e-5	# Tolerance for CG convergence for nonhydrostatic pressure
+resnorm			0	# Normalized or non-normalized residual
+relax			1	# Relaxation parameter for GS solver.	
+amp 			0.5	# amplitude
+omega 			1e-4	# frequency
+flux 			0	# flux
+timescale		0	# timescale for open boundary condition
+volcheck		0	# Check for volume conservation
+masscheck		0	# Check for mass conservation
+nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+interp			2	# Velocity interpolation
+newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
+wetdry			1       # 1 if wetting and drying, 0 otherwise
+laxWendroff 0   # 
+laxWendroff_Vertical 0   # 
+Coriolis_f              7.05e-5	# Coriolis frequency f=2*Omega*sin(phi)
+sponge_distance	        0 	# Decay distance scale for sponge layer
+sponge_decay	        0	# Decay time scale for sponge layer
+readSalinity		0	# Whether or not to read initial salinity profile from file InitSalinityFile
+readTemperature		0	# Whether or not to read initial temperature profile from file InitTemperatureFile
+########################################################################
+#
+# NetCDF / Meteorological / Boundary parameters
+#
+########################################################################
+outputNetcdf	 	1	  # Output data to netcdf format (0 - binary, 1 - netcdf)
+outputNetcdfFile	Plume.nc	#
+metfile			Galveston_NARR_2010.nc # Input meteorological netcdf file
+#metfile		Galveston_Winds_2009_UTM.nc #
+starttime		20100402.000000	#
+basetime	 	19900101.000000   #   Base time used for reference in netcdf files
+metmodel  		0  # 0 - no meteorological input; 1 - Wood et al heat flux, 2 - COARE3.0, short and longwave radiation calculated, 3 - constant flux coefficients, 4 - wind only
+varmodel  		1   	  # Kriging variogram model. 0 - use inverse distance weighting, 1 - spherical model
+range  			50000    # kriging range. Grid units
+nugget  		0.05   	  # kriging nugget parameter
+sill  			0.95       # kriging sill parameter
+Lsw			0.5	  # Solar radiation extinction depth [m] (the light extinction coefficient, k = 1/Lsw)
+Cda			0.0015    # Wind drag coefficient (metmodel=3 only)
+Ch			0.0015    # Stanton number / sensible heat flux coefficient (metmodel=3 only)
+Ce			0.0015	  # Dalton number / latent heat flux coefficient (metmodel=3 only)
+netcdfBdy		1	  # 1 - Read the open boundary data from a netcdf file
+netcdfBdyFile		Plume_BC.nc	#
+readinitialnc		0	  # 1 - Read initial conditions from a netcdf file, 0 otherwise
+initialNCfile		Plume_IC.nc	#
+calcage        		0   # Turn on the age calculation
+calcaverage		0	  # Calculate averages
+ntaverage		120	  # 
+averageNetcdfFile	GalvCoarse_20100401_AVG.nc	#
+########################################################################
+#
+#  Grid Files
+#
+########################################################################
+pslg   twod.dat 	# Planar straight line graph (input)
+points points.dat	# Vertices file (input)
+edges edges.dat		# Edge file (input)
+cells cells.dat		# Cell centered file (input)
+depth depths.dat		# Depth file for interpolation (if INTERPDEPTH=1) (input)
+nodes nodes.dat   # Node topology information (output)
+celldata celldata.dat	# Cell-centered output (output)
+edgedata edgedata.dat	# Edge-centered output (output)
+vertspace vertspace.dat	# Vertical grid spacing (output)
+topology topology.dat	# Grid topology data
+########################################################################
+#
+#  Output Data Files
+#
+########################################################################
+FreeSurfaceFile   	fs.dat
+HorizontalVelocityFile 	u.dat
+VerticalVelocityFile 	w.dat
+SalinityFile 		s.dat
+BGSalinityFile 		s0.dat
+TemperatureFile		T.dat
+PressureFile		q.dat
+VerticalGridFile 	g.dat
+ConserveFile		e.dat
+ProgressFile	        step.dat
+StoreFile		store.dat
+StartFile		start.dat
+EddyViscosityFile	nut.dat
+ScalarDiffusivityFile	kappat.dat
+########################################################################
+#
+# Input Data Files
+#
+########################################################################
+InitSalinityFile	sinit.dat
+InitTe0mperatureFile	Tinit.dat

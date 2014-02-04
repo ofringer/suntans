@@ -1,0 +1,4 @@
+break mynetcdf.c:228
+run -g --datadir=data
+run -s --datadir=data
+

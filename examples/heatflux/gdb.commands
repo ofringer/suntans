@@ -1,0 +1,2 @@
+break phys.c:744
+run -g -s -vvv --datadir=data
