@@ -1,0 +1,22 @@
+This is the same as the ../tides example except it employs
+10 restart runs.  You will need to obtain the tidecomponents.dat.* files
+from ../tides by running tides.m in that directory and placing
+tidecomponents.dat.* into rundata/.  (or just copy over from
+./tide_data).
+----------------------------------------------------------------
+1) Edit ../../Makefile.in
+
+2) Run the example
+
+make test
+
+3) This will create 10 data{1,2,3,...,10} directories, each with
+output from the 10 runs.  It will also create data/fs.dat.prof and
+data/u.dat.prof, which is a concatiation of all of the files in
+each of the individual data* directories.  The results in each of
+the data/*.dat.prof files can then be checked by moving them to
+../tides/data (along with the appropriate files necessary to run
+tides_compare.m) and comparing to otis data using tides_compare.m
+in the ../tides/ directory.
+
+

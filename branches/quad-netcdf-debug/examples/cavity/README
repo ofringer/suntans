@@ -1,0 +1,26 @@
+This test case computes a lid-driven cavity flow on triangular and 
+quadrilateral grids.  There are four cases:
+
+Default: "make test" runs testXY
+
+make testXY
+     Flow is in the x-y (unstructured) plane and forced at u(y=0)=1, with
+     all other boundaries no-slip.
+     Grid: Unstructured in x-y, with high-resolution at boundary layers with
+     	   a total of 4016 cells.
+
+make testXY-quad:
+     Same as make testXY but with quadrilateral cells.
+     Grid: 30X30 Cartesian grid with Chebychev stretching at the boundaries.
+
+make testXZ:
+     Flow is in the x-z plane and forced at w(x=0)=-1, with
+     all other boundaries no-slip.  
+     Grid: 128 Constant-width equilateral triangles in x, 128 equispaced
+     	   z-levels.
+
+make testXZ-quad:
+     Same as testXZ but with quadrilaterals in the x-direction.
+     Grid: 30 Chebychev quadrilaterals in both x and z.
+
+To compare the output to published results, use mfiles/compare_results.m.

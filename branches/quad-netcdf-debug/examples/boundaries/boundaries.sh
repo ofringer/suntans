@@ -1,0 +1,45 @@
+#!/bin/sh
+########################################################################
+#
+# Shell script to run a suntans test case.
+#
+########################################################################
+
+SUNTANSHOME=../../main
+SUN=$SUNTANSHOME/sun
+SUNPLOT=$SUNTANSHOME/sunplot
+
+. $SUNTANSHOME/Makefile.in
+
+maindatadir=rundata
+datadir=data
+
+NUMPROCS=$1
+
+if [ -z "$MPIHOME" ] ; then
+    EXEC=$SUN
+else
+    EXEC="$MPIHOME/bin/mpirun -np $NUMPROCS $SUN"
+fi
+
+if [ -z "$TRIANGLEHOME" ] ; then
+    echo Error: This example will not run without the triangle libraries.
+    echo Make sure TRIANGLEHOME is set in $SUNTANSHOME/Makefile.in
+    exit 1
+fi
+
+if [ ! -d $datadir ] ; then
+    cp -r $maindatadir $datadir
+    echo Creating grid...
+    if [ -f $maindatadir/cells.dat ] ; then
+	$EXEC -g --datadir=$datadir
+    else
+	$EXEC -t -g --datadir=$datadir
+    fi
+else
+    cp $maindatadir/suntans.dat $datadir/.
+fi
+
+echo Running suntans...
+$EXEC -s -vv --datadir=$datadir
+
