@@ -144,8 +144,11 @@ double getfield(FILE *file, char *str)
   c = fgetc(file);
 
   if(c==EOF) {
-    if(VERBOSE > 2)
+    if(VERBOSE > 1) {
       printf("End of file obtained, if  an error follows it is possible geometry is not consistent.\n");
+      printf("Make sure there are no dangling white spaces or carriage returns at end of input files suntans.dat\n");
+      printf("     and dataxy.dat (if used).\n");
+    }
     return;
   }
 
@@ -188,6 +191,38 @@ int getsize(char *filename)
   while((c=fgetc(infile))!=EOF)
     if(c=='\n') N++;
   
+  return N;
+}
+
+/*
+ * Function: getNumColumns();
+ * Usage: N = getNumColumns(filename);
+ * -----------------------------------
+ * Returns the number of columns in a file.
+ *
+ */
+int getNumColumns(char *filename)
+{
+  int N;
+  char c, c_old;
+  FILE *infile = fopen(filename,"r");
+  if(!infile)
+    printf("Error opening %s\n",filename);
+
+  N=1;
+  c_old='\0';
+  while((c=fgetc(infile))!=EOF){
+    // Don't add another column for multiple white spaces or tabs or if the first column is a white space
+    if((c==' ' | c=='\t') && !(c_old == ' ' | c_old == '\t' | c_old == '\0'))  
+      N++;
+    if(c=='\n') {
+      if(c_old==' ')
+	N--;
+      break;
+    }
+    c_old=c;
+  }
+  fclose(infile);
   return N;
 }
 
@@ -318,7 +353,80 @@ double GetDefaultValue(char *str, int *status) {
 
     return smoothbot_DEFAULT;
 
-  } else {
+ } else if(!strcmp(str,"mergeArrays")) {
+
+    return mergeArrays_DEFAULT;
+
+ } else if(!strcmp(str,"computeSediments")) {
+
+    return computeSediments_DEFAULT;
+  
+ } else if(!strcmp(str,"latitude")) {
+    
+   return latitude_DEFAULT;
+   
+ } else if(!strcmp(str,"metmodel")) {
+    
+   return metmodel_DEFAULT;
+ 
+ } else if(!strcmp(str,"varmodel")) {
+    
+   return varmodel_DEFAULT;
+   
+ } else if(!strcmp(str,"nugget")) {
+    
+   return nugget_DEFAULT;
+ 
+ } else if(!strcmp(str,"sill")) {
+    
+   return sill_DEFAULT;
+ 
+ } else if(!strcmp(str,"range")) {
+    
+   return range_DEFAULT;
+   
+} else if(!strcmp(str,"outputNetcdf")) {
+    
+   return outputNetcdf_DEFAULT;
+
+} else if(!strcmp(str,"Lsw")) {
+    
+   return Lsw_DEFAULT;
+ 
+} else if(!strcmp(str,"Cda")) {
+    
+   return Cda_DEFAULT;    
+ 
+} else if(!strcmp(str,"Ce")) {
+    
+   return Ce_DEFAULT; 
+  
+} else if(!strcmp(str,"Ch")) {
+    
+   return Ch_DEFAULT;   
+
+} else if(!strcmp(str,"netcdfBdy")) {
+    
+   return netcdfBdy_DEFAULT;   
+
+} else if(!strcmp(str,"readinitialnc")) {
+    
+   return readinitialnc_DEFAULT;   
+
+} else if(!strcmp(str,"calcage")) {
+    
+   return calcage_DEFAULT;   
+
+} else if(!strcmp(str,"calcaverage")) {
+    
+   return calcaverage_DEFAULT;   
+
+} else if(!strcmp(str,"maxFaces")) {
+    
+   return maxFaces_DEFAULT;   
+
+
+}else {
     *status=0;
     return 0;
   }

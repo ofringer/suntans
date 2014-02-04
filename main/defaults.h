@@ -66,13 +66,13 @@ const int TVDturb_DEFAULT=0;
    1: Set eddy-viscosity values when using nonlinear=2 to those dictated by the lax-wendroff
    scheme.
 */
-const int laxWendroff_DEFAULT = 1;
+const int laxWendroff_DEFAULT = 0;
    
 /* laxWendroff_Vertical: 
    0: Do not employ Lax-Wendroff coefficient for vertical advection.
    1: Employ it.
 */
-const REAL laxWendroff_Vertical_DEFAULT = 1;
+const REAL laxWendroff_Vertical_DEFAULT = 0;
 
 /* hprecond:
    0: No preconditioner for free-surface solver
@@ -118,4 +118,67 @@ const int wetdry_DEFAULT = 0;
 */
 const REAL smoothbot_DEFAULT = 0.0;
 
+/* mergeArrays
+   If mergeArrays=1 then merge output data into one file.  Otherwise output into separate
+   files on each processor with suffix file.processor_number
+*/
+const int mergeArrays_DEFAULT = 1;
 
+/* computeSediments
+   Whether or not to compute sediments.  Off by default.
+*/
+const int computeSediments_DEFAULT = 0;
+
+/* 
+ *  Heat flux model and meteorological IO netcdf Parameters
+ */
+// Latitude - required by solar radiation function
+const int latitude_DEFAULT = 29.0;
+
+// 0 - no meteorological input; 1 - COARE3.0, short and longwave radiation calculated
+const int metmodel_DEFAULT = 0; 
+
+// Time offset parameter in days
+const REAL toffSet_DEFAULT = 0.0;
+
+// Interpolation model. 0 - inverse distance weighting; 1 - kriging with spherical variogram
+const int varmodel_DEFAULT = 1;
+
+// variogram nugget parameter. Covariance = 1 - nugget @ distance = 0
+const REAL nugget_DEFAULT = 0.1;
+
+// variogram sill parameter. Covariance = 1 - sill @ distance = range
+const REAL sill_DEFAULT = 0.9;
+
+// variogram range parameter. Decorrelation length scale.
+const REAL range_DEFAULT = 1e5;
+
+//Output data to netcdf format (0 - binary, 1 - netcdf)
+const int outputNetcdf_DEFAULT = 0;
+
+//Light extinction depth [m]
+const REAL Lsw_DEFAULT = 2.0;
+
+//Drag and heat flux coefficients
+const REAL Cda_DEFAULT = 1.1e3;
+const REAL Ch_DEFAULT = 1.4e3;
+const REAL Ce_DEFAULT = 1.4e3;
+
+//Start and base time string
+const char *starttime_DEFAULT = "19900101.000000";
+const char *basetime_DEFAULT =  "19900101.000000";
+
+// NetCDF boundary conidtion default
+const int netcdfBdy_DEFAULT = 0;
+
+// Read initial condition netcdf
+const int readinitialnc_DEFAULT = 0;
+
+// Calculate Age variables
+const int calcage_DEFAULT = 0;
+
+// Calculate average quantities
+const int calcaverage_DEFAULT = 0;
+
+// Maximum number of faces 
+const int maxFaces_DEFAULT = DEFAULT_NFACES;

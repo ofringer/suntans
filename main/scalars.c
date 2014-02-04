@@ -72,7 +72,8 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
 
   // Add on boundary fluxes, using stmp2 as the temporary storage
   // variable
-  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+  //for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
 
     for(k=grid->ctop[i];k<grid->Nk[i];k++)
@@ -93,10 +94,12 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
   }
 
   // Compute the scalar on the vertical faces (for horiz. advection)
+
   if(prop->TVD && prop->horiTVD)
     HorizontalFaceScalars(grid,phys,prop,scal,boundary_scal,prop->TVD,comm,myproc); 
 
-  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+  //for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
     Ac = grid->Ac[i];
 
@@ -245,9 +248,9 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
     for(k=0;k<grid->Nk[i];k++)
       ap[k]=0;
 
-    for(nf=0;nf<NFACES;nf++) {
-      ne = grid->face[i*NFACES+nf];
-      normal = grid->normal[i*NFACES+nf];
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      ne = grid->face[i*grid->maxfaces+nf];
+      normal = grid->normal[i*grid->maxfaces+nf];
       df = grid->df[ne];
       dg = grid->dg[ne];
       nc1 = grid->grad[2*ne];
@@ -255,7 +258,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
       if(nc1==-1) nc1=nc2;
       if(nc2==-1) {
         nc2=nc1;
-	if(boundary_scal && grid->mark[ne]==2)
+        if(boundary_scal && (grid->mark[ne]==2 || grid->mark[ne]==3))
           sp=phys->stmp2[nc1];
         else
           sp=phys->stmp[nc1];
@@ -350,13 +353,14 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
         printf("Minimum scalar: %.2f, maximum: %.2f\n",smin_value,smax_value);
     }      
 
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    //for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
       i = grid->cellp[iptr];
 
       flag=0;
-      for(nf=0;nf<NFACES;nf++) {
-	if(grid->mark[grid->face[i*NFACES+nf]]==2 || 
-	   grid->mark[grid->face[i*NFACES+nf]]==3) {
+      for(nf=0;nf<grid->nfaces[i];nf++) {
+        if(grid->mark[grid->face[i*grid->maxfaces+nf]]==2 || 
+            grid->mark[grid->face[i*grid->maxfaces+nf]]==3) {
           flag=1;
           break;
         }
@@ -369,10 +373,10 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
           div_da+=grid->Ac[i]*(grid->dzz[i][k]-grid->dzzold[i][k])/prop->dt;
 
           div_local=0;
-	  for(nf=0;nf<NFACES;nf++) {
-	    ne=grid->face[i*NFACES+nf];
+          for(nf=0;nf<grid->nfaces[i];nf++) {
+            ne=grid->face[i*grid->maxfaces+nf];
             div_local+=(theta*phys->u[ne][k]+(1-theta)*phys->utmp2[ne][k])
-	      *grid->dzf[ne][k]*grid->normal[i*NFACES+nf]*grid->df[ne];
+              *grid->dzf[ne][k]*grid->normal[i*grid->maxfaces+nf]*grid->df[ne];
           }
           div_da+=div_local;
           div_local+=grid->Ac[i]*(theta*(wnew[i][k]-wnew[i][k+1])+
@@ -394,12 +398,13 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
     maxcount=0;
     smin=INFTY;
     smax=-INFTY;
-    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    //for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
       i = grid->cellp[iptr];
 
       flag=0;
-      for(nf=0;nf<NFACES;nf++) {
-	if(grid->mark[grid->face[i*NFACES+nf]]==2 || grid->mark[grid->face[i*NFACES+nf]]==3) {
+      for(nf=0;nf<grid->nfaces[i];nf++) {
+        if(grid->mark[grid->face[i*grid->maxfaces+nf]]==2 || grid->mark[grid->face[i*grid->maxfaces+nf]]==3) {
           flag=1;
           break;
         }

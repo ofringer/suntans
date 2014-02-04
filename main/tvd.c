@@ -49,10 +49,10 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, R
       sumQ[i][k]=0;
       sumQC[i][k]=0;
 
-      for(mf=0;mf<NFACES;mf++) {
-	ne = grid->face[i*NFACES+mf];
-	neigh = grid->neigh[i*NFACES+mf];
-	normal = grid->normal[i*NFACES+mf];
+      for(mf=0;mf<grid->nfaces[i];mf++) {
+	ne = grid->face[i*grid->maxfaces+mf];
+	neigh = grid->neigh[i*grid->maxfaces+mf];
+	normal = grid->normal[i*grid->maxfaces+mf];
 
 	u_nptheta = normal*(prop->theta*phys->u[ne][k]+(1-prop->theta)*phys->utmp2[ne][k]);
 	Qminus = 0.5*grid->dzf[ne][k]*grid->df[ne]*fabs(u_nptheta-fabs(u_nptheta));
@@ -102,8 +102,8 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, R
     }
   }
 
-  // Type 2 boundary specifies flux at faces
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+  // Type 2/3 boundary specifies flux at faces
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[4];jptr++) {
     j = grid->edgep[jptr];
     
     ib = grid->grad[2*j];
@@ -240,9 +240,9 @@ void HorizontalFaceU(REAL **uc, gridT *grid, physT *phys, propT *prop, int TVD,
     }
 
     // Loop through all faces of the current cell
-    for(nf=0;nf<NFACES;nf++) {
-      ne = grid->face[i*NFACES+nf];
-      normal = grid->normal[i*NFACES+nf];
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      ne = grid->face[i*grid->maxfaces+nf];
+      normal = grid->normal[i*grid->maxfaces+nf];
       df = grid->df[ne];
       nc1 = grid->grad[2*ne];
       nc2 = grid->grad[2*ne+1];
@@ -275,9 +275,9 @@ void HorizontalFaceU(REAL **uc, gridT *grid, physT *phys, propT *prop, int TVD,
   for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
     i = grid->cellp[iptr];
 
-    for(nf=0;nf<NFACES;nf++) {
-      ne = grid->face[i*NFACES+nf];
-      normal = grid->normal[i*NFACES+nf];
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      ne = grid->face[i*grid->maxfaces+nf];
+      normal = grid->normal[i*grid->maxfaces+nf];
       df = grid->df[ne];
       dg = grid->dg[ne];
       nc1 = grid->grad[2*ne];

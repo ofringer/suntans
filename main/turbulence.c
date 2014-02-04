@@ -91,8 +91,8 @@ void my25(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **q, REAL **l
     CdAvgT=0;
     CdAvgB=0;
     tauAvgT=0;
-    for(nf=0;nf<NFACES;nf++) {
-      ne = grid->face[i*NFACES+nf];
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      ne = grid->face[i*grid->maxfaces+nf];
       CdAvgT+=phys->CdT[ne]/3;
       CdAvgB+=phys->CdB[ne]/3;
       tauAvgT+=fabs(phys->tau_T[ne])/3;

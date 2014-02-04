@@ -75,6 +75,15 @@ double getelement(FILE *ifile);
 double getfield(FILE *file, char *str);
 
 /*
+ * Function: getNumColumns();
+ * Usage: N = getNumColumns(filename);
+ * -----------------------------------
+ * Returns the number of columns in a file.
+ *
+ */
+int getNumColumns(char *filename);
+
+/*
  * Function: getsize();
  * Usage: N = getsize(filename);
  * -----------------------------

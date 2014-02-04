@@ -30,7 +30,7 @@ extern REAL Timer(void) {
  * Initializes the timer (tic-toc timer)
  * 
  */
-void Tic(void) {
+inline void Tic(void) {
   t_tictoc = (REAL)MPI_Wtime();
 }
 
@@ -41,6 +41,6 @@ void Tic(void) {
  * initialization.
  * 
  */
-REAL Toc(void) {
+inline REAL Toc(void) {
   return ((REAL)MPI_Wtime() - t_tictoc);
 }
