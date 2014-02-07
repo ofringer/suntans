@@ -24,11 +24,11 @@
 
 #define DATA "data"
 #define REFDATA "rundata/errors.dat"
-#define UFILE "u.dat.0"
-#define WFILE "w.dat.0"
-#define SFILE "s.dat.0"
-#define QFILE "q.dat.0"
-#define HFILE "fs.dat.0"
+#define UFILE "u.dat"
+#define WFILE "w.dat"
+#define SFILE "s.dat"
+#define QFILE "q.dat"
+#define HFILE "fs.dat"
 #define DTFILE "data/dt.txt"
 
 #define REFERENCE 0
