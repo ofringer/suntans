@@ -3,6 +3,7 @@
  *
  */
 #include "boundaries.h"
+#include "sediments.h"
 #include "fileio.h"
 #include "tides.h"
 
@@ -136,3 +137,4 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 
 void InitBoundaryData(propT *prop, gridT *grid, int myproc){}
 void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){}
+void BoundarySediment(gridT *grid, physT *phys, propT *prop) {}
