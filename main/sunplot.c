@@ -3073,6 +3073,8 @@ void ReadData(dataT *data, int nstep, int numprocs) {
     if(data->sedi==1){
       data->Nsize=(int)GetValue(DATAFILE,"Nsize",&status);
       data->tbmax=(int)GetValue(DATAFILE,"TBMAX",&status);      
+    } else {
+      data->Nsize=1;
     }
     data->taub =  (float **)malloc(numprocs*sizeof(float *));
     data->sediC = (float ****)malloc(numprocs*sizeof(float ***));
