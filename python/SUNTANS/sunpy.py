@@ -51,6 +51,8 @@ class Grid(object):
             self.infile = infile
             self.ncfile = infile
             self.__loadGrdNc()
+        
+        self.maskgrid()
 
         # Find the grid limits
         self.xlims = [self.xp.min(),self.xp.max()]
@@ -197,7 +199,24 @@ class Grid(object):
 #            ''
         
         #nc.close()
+        
+    def maskgrid(self):
+        """
+        Mask the cells, face and neigh arrays
+        """
+        self.cellmask = self.cells<0
+        for ii in range(self.Nc):
+            self.cellmask[ii,self.nfaces[ii]::]=True
+            
+        self.cells[self.cellmask]=0
+        self.cells = np.ma.masked_array(self.cells,mask=self.cellmask)
+        
+        if self.__dict__.has_key('face'):
+            self.face = np.ma.masked_array(self.face,mask=self.cellmask)
+            
+        self.neigh = np.ma.masked_array(self.neigh,mask=self.cellmask)
              
+        
     def plot(self,**kwargs):
         """
           Plot the unstructured grid data
@@ -413,6 +432,30 @@ class Grid(object):
         dy=y1-y2
         
         self.dg = np.sqrt( dx*dx + dy*dy )
+        
+    def calc_tangent(self):
+        """
+        Calculate the tangential vector for the edges of each cell
+        """
+        if not self.__dict__.has_key('_tx'):
+            dx = np.zeros(self.cells.shape)    
+            dy = np.zeros(self.cells.shape)  
+    
+            dx[:,0:-1] = self.xp[self.cells[:,1::]] - self.xp[self.cells[:,0:-1]]               
+            dy[:,0:-1] = self.yp[self.cells[:,1::]] - self.yp[self.cells[:,0:-1]]               
+    
+            for ii in range(self.Nc):
+                dx[ii,self.nfaces[ii]-1] = self.xp[self.cells[ii,0]] - self.xp[self.cells[ii,self.nfaces[ii]-1]]  
+                dy[ii,self.nfaces[ii]-1] = self.yp[self.cells[ii,0]] - self.yp[self.cells[ii,self.nfaces[ii]-1]]  
+    
+            
+            mag = np.sqrt(dx*dx + dy*dy)
+            
+            self._tx = dx/mag
+            self._ty = dy/mag
+            self._mag = mag
+                     
+        return self._tx, self._ty, self._mag
 
     def calc_edgecoord(self):
         """
@@ -550,7 +593,7 @@ class Grid(object):
             cellind = np.arange(self.Nc,dtype=np.int)
             
         node_scalar = self.cell2nodekind(cell_scalar,cellind,k=k)
-        
+        self.nc.variables[varname].dimensions
         xA = self.xp[self.cells[cellind,0]]
         yA = self.yp[self.cells[cellind,0]]
         xB = self.xp[self.cells[cellind,1]]
@@ -858,7 +901,7 @@ class Spatial(Grid):
         if variable=='speed':
             return self.loadSpeed()
         elif variable=='vorticity':
-            self.data = self.vorticity()
+            self.data = self.vorticity_circ(k=self.klayer[0])
             self.long_name = 'Vertical vorticity'
             self.units = 's-1'
             return
@@ -1023,6 +1066,11 @@ class Spatial(Grid):
         for vv in self.nc.variables.keys():
             if hasattr(self.nc.variables[vv],'coordinates'):
                 vname.append(vv)
+                
+        # Derived variables that can also be computed
+        if 'vc' in vname and 'uc' in vname:
+            vname.append('speed')
+            vname.append('vorticity')
         return vname
  
     
@@ -1485,7 +1533,12 @@ class Spatial(Grid):
         """
         Tests if a variable contains a dimension
         """
-        return dimname in self.nc.variables[varname].dimensions
+        if varname in ['speed','vorticity']:
+            dimensions = ['Nt','Nc','Nk']
+        else:
+            dimensions = self.nc.variables[varname].dimensions
+        
+        return dimname in dimensions
         #try:
         #    self.nc.dimensions[dimname].__len__()
         #    return True
@@ -1517,10 +1570,76 @@ class Spatial(Grid):
                 data[:,k] = du_dy + dv_dx
                 
         return data
+    
+    def vorticity_circ(self,k=0):
+        """
+        Calculate vertical vorticity component using the 
+        circulation method
+        """
+        # Load the velocity
+        u,v,w = self.getVector()
+                             
+        def _AverageAtFace(phi,jj,k):
+            
+            grad1 = self.grad[:,0]
+            grad2 = self.grad[:,1]
+            nc1 = grad1[jj]
+            nc2 = grad2[jj]
+                    
+            # check for edges (use logical indexing)
+            ind1 = nc1==-1
+            nc1[ind1]=nc2[ind1]
+            ind2 = nc2==-1
+            nc2[ind2]=nc1[ind2]
+            
+            # check depths (walls)
+            indk = operator.or_(k>=self.Nk[nc1], k>=self.Nk[nc2])
+            ind3 = operator.and_(indk, self.Nk[nc2]>self.Nk[nc1])
+            nc1[ind3]=nc2[ind3]
+            ind4 = operator.and_(indk, self.Nk[nc1]>self.Nk[nc2])
+            nc2[ind4]=nc1[ind4]
+            
+            # Average the values at the face          
+            return 0.5*(phi[nc1]+phi[nc2]) 
+            
+        # Calculate the edge u and v
+        ne = self.face #edge-indices
+        
+        ue = _AverageAtFace(u,ne,k)
+        ve = _AverageAtFace(v,ne,k)
+        ue[self.cellmask]=0
+        ve[self.cellmask]=0
+        
+        tx,ty,mag = self.calc_tangent()
+
+        
+        tx[self.cellmask]=0
+        ty[self.cellmask]=0
+        
+        # Now calculate the vorticity
+        return np.sum( (ue*tx + ve*ty )*mag,axis=-1)/self.Ac
+        
+    
+        # Plot the result
+#        fig = plt.gcf()
+#        ax = fig.gca()
+#        self.plotmesh(edgecolors='b')
+#        scale = 1e-3
+#        ind = 330
+#        plt.quiver(self.xe[self.face[ind,:]],self.ye[self.face[ind,:]],tx[ind,:],ty[ind,:],scale=scale,scale_units='xy',color='r')
+#        ax.set_aspect('equal')
+#        plt.show()
+#        
+#        pdb.set_trace()
+
+        
+        
         
     def vorticity(self):
         """
         Calculate the vertical vorticity component
+        
+        Uses gradient method
         """
         
         u,v,w = self.getVector()
