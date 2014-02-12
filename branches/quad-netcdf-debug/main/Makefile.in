@@ -16,9 +16,9 @@
 # Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
 # University. All Rights Reserved.
 #
-MPIHOME=
-PARMETISHOME=
-TRIANGLEHOME=
-NETCDF4HOME=
+MPIHOME=/opt/intel/openmpi
+PARMETISHOME=/home/mrayson/Downloads/ParMetis-3.1
+TRIANGLEHOME=/opt/intel/triangles
+NETCDF4HOME=/opt/intel/netcdf4-parallel
 
 
