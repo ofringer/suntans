@@ -210,7 +210,7 @@ void OpenFiles(propT *prop, int myproc)
   }else {
     if(prop->mergeArrays==0){
 	MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
-	sprintf(str,"%s.%d",filename,myproc);
+	sprintf(str,"%s.nc.%d",filename,myproc);
 	prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
     }
   }

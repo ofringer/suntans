@@ -350,8 +350,8 @@ void WriteOutputNCmerge(propT *prop, gridT *grid, physT *phys, metT *met, int bl
    int ncid;
    int varid, retval, k;
    // Start and count vectors for one, two and three dimensional arrays
-   const size_t startone[] = {prop->nctimectr};
-   const size_t countone[] = {1};
+   size_t startone[] = {prop->nctimectr};
+   size_t countone[] = {1};
    size_t starttwo[] = {prop->nctimectr,0};
    size_t counttwo[] = {1,grid->Nc};
    size_t startthree[] = {prop->nctimectr,0,0};
@@ -383,7 +383,8 @@ void WriteOutputNCmerge(propT *prop, gridT *grid, physT *phys, metT *met, int bl
 	MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
 	sprintf(str,"%s_%04d.nc",filename,prop->ncfilectr);
 	if(myproc==0){
-	    prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+	    //prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+	    prop->outputNetcdfFileID = MPI_NCOpen(str,NC_CLASSIC_MODEL|NC_NETCDF4,"OpenFiles",myproc);
 	}else{
 	    prop->outputNetcdfFileID=-1;
 	}
@@ -396,6 +397,7 @@ void WriteOutputNCmerge(propT *prop, gridT *grid, physT *phys, metT *met, int bl
 	prop->nctimectr = 0;
 
 	prop->ncfilectr += 1;
+	startone[0] = prop->nctimectr;
     }
     ncid = prop->outputNetcdfFileID;
 
@@ -743,6 +745,7 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
    const int DEFLATE=1;
    const int DEFLATELEVEL=2;
    const REAL FILLVALUE = (REAL)EMPTY;
+   int num_unlimdims;
 
 
    //REAL *tmpvar;
@@ -762,16 +765,15 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
     *
     **************/
    if(VERBOSE>1 && myproc==0) printf("Initialising output netcdf files...");
-   
-   
-   /* Define the global attributes - this should be expanded to include model input parameters*/
-   nc_addattr(ncid, NC_GLOBAL,"title","SUNTANS NetCDF output file");
-   
+
+
+      
    /********************************************************************** 
     *
     * Define the dimensions
     *
     **********************************************************************/
+
    if ((retval = nc_def_dim(ncid, "Nc", mergedGrid->Nc, &dimid_Nc)))
 	ERR(retval);
    if ((retval = nc_def_dim(ncid, "Np", grid->Np, &dimid_Np)))
@@ -788,7 +790,17 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
 	ERR(retval);
    if ((retval = nc_def_dim(ncid, "time", NC_UNLIMITED, &dimid_time)))
 	ERR(retval);
-   
+
+   //if ((retval = nc_inq_unlimdims(ncid,  &num_unlimdims,NULL)))
+   //     ERR(retval);
+   //printf("Number of unlimited dimension = %d.NC_UNLIMITED=%d\n",num_unlimdims,NC_UNLIMITED);
+
+
+   /*
+    * Define the global attributes - this should be expanded to include model input parameters 
+    *
+    */
+   nc_addattr(ncid, NC_GLOBAL,"title","SUNTANS NetCDF output file");
     /********************************************************************** 
     *
     * Define the grid topology variables and attributes
@@ -1303,19 +1315,19 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
     nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
    }
 
-  // //U
-  // dimidthree[2] = dimid_Ne;
-  // if ((retval = nc_def_var(ncid,"U",NC_DOUBLE,3,dimidthree,&varid)))
-  //   ERR(retval); 
-  // if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
-  //    ERR(retval);
-  // if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-  //    ERR(retval);
-  // nc_addattr(ncid, varid,"long_name","Edge normal velocity");
-  // nc_addattr(ncid, varid,"units","m s-1");
-  // nc_addattr(ncid, varid,"mesh","suntans_mesh");
-  // nc_addattr(ncid, varid,"location","edge");
-  // nc_addattr(ncid, varid,"coordinates","time z_r ye xe");  
+   //U
+   dimidthree[2] = dimid_Ne;
+   if ((retval = nc_def_var(ncid,"U",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval); 
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Edge normal velocity");
+   nc_addattr(ncid, varid,"units","m s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","edge");
+   nc_addattr(ncid, varid,"coordinates","time z_r ye xe");  
 
    // Meteorological variables (2-D) //
    
@@ -1467,11 +1479,11 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
    ****************************************************************/
    
    nc_write_intvar(ncid,"cells",mergedGrid,mergedGrid->cells,myproc);
-   //nc_write_intvar(ncid,"face",grid,grid->face,myproc);
+   nc_write_intvar(ncid,"face",grid,mergedGrid->face,myproc);
    nc_write_int(ncid,"nfaces",mergedGrid->nfaces,myproc);
-   ////nc_write_int(ncid,"edges",grid->edges,myproc);
+   nc_write_int(ncid,"edges",mergedGrid->edges,myproc);
    //nc_write_intvar(ncid,"neigh",grid,grid->neigh,myproc);
-   //nc_write_int(ncid,"grad",grid->grad,myproc);
+   nc_write_int(ncid,"grad",mergedGrid->grad,myproc);
    //nc_write_int(ncid,"gradf",grid->gradf,myproc);
    //nc_write_int(ncid,"mark",grid->mark,myproc);
    //nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
@@ -1479,16 +1491,16 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
    //
    nc_write_double(ncid,"xv",mergedGrid->xv,myproc);
    nc_write_double(ncid,"yv",mergedGrid->yv,myproc);
-   //nc_write_double(ncid,"xe",grid->xe,myproc);
-   //nc_write_double(ncid,"ye",grid->ye,myproc);
+   nc_write_double(ncid,"xe",mergedGrid->xe,myproc);
+   nc_write_double(ncid,"ye",mergedGrid->ye,myproc);
    nc_write_double(ncid,"xp",grid->xp,myproc);
    nc_write_double(ncid,"yp",grid->yp,myproc);
 
    //nc_write_intvar(ncid,"normal",grid,grid->normal,myproc);
-   //nc_write_double(ncid,"n1",grid->n1,myproc);
-   //nc_write_double(ncid,"n2",grid->n2,myproc);
-   //nc_write_double(ncid,"df",grid->df,myproc);
-   //nc_write_double(ncid,"dg",grid->dg,myproc);
+   nc_write_double(ncid,"n1",mergedGrid->n1,myproc);
+   nc_write_double(ncid,"n2",mergedGrid->n2,myproc);
+   nc_write_double(ncid,"df",mergedGrid->df,myproc);
+   nc_write_double(ncid,"dg",mergedGrid->dg,myproc);
    //nc_write_doublevar(ncid,"def",grid,grid->def,myproc);
    nc_write_double(ncid,"Ac",mergedGrid->Ac,myproc);
 
@@ -1496,7 +1508,7 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
    nc_write_double(ncid,"z_r",z_r,myproc);
    nc_write_double(ncid,"z_w",z_w,myproc);
    nc_write_int(ncid,"Nk",mergedGrid->Nk,myproc);
-   //nc_write_int(ncid,"Nke",grid->Nke,myproc);
+   nc_write_int(ncid,"Nke",grid->Nke,myproc);
    nc_write_double(ncid,"dv",mergedGrid->dv,myproc);
 
 
