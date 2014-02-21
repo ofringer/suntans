@@ -24,7 +24,7 @@
  */
 void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int myproc);
 static int IsOnGrid(REAL x, REAL y, REAL *xp, REAL *yp, 
-		    int *cells, int *celldist, int *cellp, int Np, int Nc);
+		    int *cells, int *celldist, int *cellp, int *nfaces, int maxfaces, int Np, int Nc);
 static int InPolygon(REAL x, REAL y, REAL *xg, REAL *yg, int N);
 static void OpenDataFiles(int myproc);
 static void CloseDataFiles(void);
@@ -150,17 +150,19 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   MPI_GetFile(str,DATAFILE,"cells","InitializeOutputIndices",myproc);
   sprintf(filename,"%s.%d",str,myproc);
 
-  cells = (int *)SunMalloc(3*grid->Nc*sizeof(int),"InitializeOutputIndices");
+  cells = (int *)SunMalloc(grid->maxfaces*grid->Nc*sizeof(int),"InitializeOutputIndices");
 
   ifid = fopen(filename,"r");
   for(i=0;i<grid->Nc;i++) {
     getfield(ifid,str);
     getfield(ifid,str);
-    for(nf=0;nf<NFACES;nf++) 
-      cells[i*NFACES+nf]=(int)getfield(ifid,str);
     getfield(ifid,str);
-    getfield(ifid,str);
-    getfield(ifid,str);
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      cells[i*grid->maxfaces+nf]=(int)getfield(ifid,str);
+      //printf("%d,%d\n",(i*grid->maxfaces+nf),cells[i*grid->maxfaces+nf]);
+    }
+    for(nf=0;nf<grid->nfaces[i];nf++)
+      getfield(ifid,str);
   }
   fclose(ifid);
 
@@ -182,7 +184,7 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   // Load in the x-y coordinates of the profile locations.
   MPI_GetFile(filename,DATAFILE,"DataLocations","InitializeOutputIndices",myproc);
   numTotalDataPoints = MPI_GetSize(filename,"InitializeOutputIndices",myproc);
-  
+
   // dataIndices contains the index of the current data point in its original location
   // in the DataLocations file.  This is in order to output the data in the same order
   // in which it was loaded.  dataXY contains the x-y coordinates loaded in from the file.
@@ -194,7 +196,7 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   for(i=0;i<numTotalDataPoints;i++) {
     x = getfield(ifid,str);
     y = getfield(ifid,str);
-    if(IsOnGrid(x,y,xp,yp,cells,grid->celldist,grid->cellp,Np,grid->Nc)) {
+    if(IsOnGrid(x,y,xp,yp,cells,grid->celldist,grid->cellp,grid->nfaces,grid->maxfaces,Np,grid->Nc)) {
       dataIndices[numLocalDataPoints]=i;
       dataXY[2*numLocalDataPoints]=x;
       dataXY[2*numLocalDataPoints+1]=y;
@@ -227,34 +229,23 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   total3dtemp = NkmaxProfs*numLocalDataPoints*numInterpPoints;
 
   // All processors need to know how much data they store
-#if defined(MPICH2)
-// #error "MPICH2!"
-  total2d[myproc]=total2dtemp;
-  if(myproc==0)
-    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,total2d,1,MPI_INT,0,comm); 
-  else
-    MPI_Gather(&total2dtemp,1,MPI_INT,total2d,1,MPI_INT,0,comm); 
-#elif defined(_mympi_h)
-// #error "MPI1"
-  MPI_Gather(&total2dtemp,1,MPI_INT,total2d,1,MPI_INT,0,comm); 
-#else
-#error "Error: Could not recognize MPI version!"
-#endif
+  // Don't use mpi_gather since it is buggy depending on mpich version
+  if(myproc!=0) 
+    MPI_Send(&total2dtemp,1,MPI_INT,0,1,comm);     
+  else {
+    total2d[0]=total2dtemp;
+    for(proc=1;proc<numprocs;proc++)
+      MPI_Recv(&(total2d[proc]),1,MPI_INT,proc,1,comm,MPI_STATUS_IGNORE);    
+  }
   MPI_Bcast(total2d,numprocs,MPI_INT,0,comm);
 
-#if defined(MPICH2)
-// #error "MPICH2!"
-  total3d[myproc]=total3dtemp;
-  if(myproc==0)
-    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,total3d,1,MPI_INT,0,comm); 
-  else
-    MPI_Gather(&total3dtemp,1,MPI_INT,total3d,1,MPI_INT,0,comm); 
-#elif defined(_mympi_h)
-// #error "MPI1"
-  MPI_Gather(&total3dtemp,1,MPI_INT,total3d,1,MPI_INT,0,comm); 
-#else
-#error "Error: Could not recognize MPI version!"
-#endif
+  if(myproc!=0) 
+    MPI_Send(&total3dtemp,1,MPI_INT,0,1,comm);     
+  else {
+    total3d[0]=total3dtemp;
+    for(proc=1;proc<numprocs;proc++)
+      MPI_Recv(&(total3d[proc]),1,MPI_INT,proc,1,comm,MPI_STATUS_IGNORE);    
+  }
   MPI_Bcast(total3d,numprocs,MPI_INT,0,comm);
 
   // all2d is the total number of points to be output on all processors.
@@ -273,7 +264,7 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
   // Only free up space associated with the grid since this is no longer needed.
   SunFree(xp,Np*sizeof(REAL),"InitializeOutputIndices");
   SunFree(yp,Np*sizeof(REAL),"InitializeOutputIndices");
-  SunFree(cells,3*grid->Nc*sizeof(int),"InitializeOutputIndices");
+  SunFree(cells,grid->maxfaces*grid->Nc*sizeof(int),"InitializeOutputIndices");
 }
 
 /*
@@ -284,20 +275,21 @@ void InitializeOutputIndices(gridT *grid, MPI_Comm comm, int numprocs, int mypro
  * If so, it returns 1, otherwise 0.
  *
  */
-static int IsOnGrid(REAL x, REAL y, REAL *xp, REAL *yp, int *cells, int *celldist, int *cellp, int Np, int Nc) {
+static int IsOnGrid(REAL x, REAL y, REAL *xp, REAL *yp, int *cells, int *celldist, int *cellp, int *nfaces, int maxfaces, int Np, int Nc) {
   int i, iptr, nf;
-  REAL xg[NFACES], yg[NFACES];
+  REAL xg[maxfaces], yg[maxfaces];
 
   // Need to make sure only check the computational cells, not the interprocessor boundary
   // cells.
   for(iptr=celldist[0];iptr<celldist[2];iptr++) {
     i = cellp[iptr];
-
-    for(nf=0;nf<NFACES;nf++) {
-      xg[nf]=xp[cells[i*NFACES+nf]];
-      yg[nf]=yp[cells[i*NFACES+nf]];
+    for(nf=0;nf<nfaces[i];nf++) {
+      //printf("%d, %d\n",nf,cells[(i*maxfaces+nf)]);
+      xg[nf]=xp[cells[i*maxfaces+nf]];
+      yg[nf]=yp[cells[i*maxfaces+nf]]; 
     }
-    if(InPolygon(x,y,xg,yg,NFACES))
+
+    if(InPolygon(x,y,xg,yg,nfaces[i]))
       return 1;
   }
   return 0;
@@ -465,7 +457,7 @@ static void CloseDataFiles(void) {
  * 
  */
 static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int numprocs, int myproc) {
-  int i, ni, *allN, *tmp_int, *tmp_int2, size, proc, totalDataPoints;
+  int i, ni, *allN, *tmp_int, *tmp_int2, size, proc, totalDataPoints, temp_int;
   REAL *tmp_real, *tmp_real2;
   tmp_real = (REAL *)SunMalloc(2*all2d*sizeof(REAL),"AllInitialWriteToFiles");
   tmp_real2 = (REAL *)SunMalloc(2*all2d*sizeof(REAL),"AllInitialWriteToFiles");
@@ -486,36 +478,27 @@ static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int 
   
   // Indices of data points indicating their locations in the original data file.  This
   // is used to reorder the data once it is sent back to processor 0.
-  allN[myproc]=numLocalDataPoints;
-#if defined(MPICH2)
-// #error "MPICH2!"
-  if(myproc==0)
-    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,allN,1,MPI_INT,0,comm);   
-  else
-    MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);       
-#elif defined(_mympi_h)
-// #error "MPI1"
-  MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);   
-#else
-#error "Error: Could not recognize MPI version!"
-#endif
+  if(myproc!=0) 
+    MPI_Send(&numLocalDataPoints,1,MPI_INT,0,1,comm);     
+  else {
+    allN[myproc]=numLocalDataPoints;
+    for(proc=1;proc<numprocs;proc++)
+      MPI_Recv(&(allN[proc]),1,MPI_INT,proc,1,comm,MPI_STATUS_IGNORE);    
+  }
+  MPI_Bcast(allN,numprocs,MPI_INT,0,comm);
   size=Merge2dIntData(dataIndices,numLocalDataPoints,allIndices,allN,comm,numprocs,myproc);
   if(myproc==0) fwrite(allIndices,sizeof(int),size,ProfileDataFID);
 
   // Original data points specified in the file ProfileData in suntans.dat.
-  allN[myproc]=2*numLocalDataPoints;
-#if defined(MPICH2)
-// #error "MPICH2!"
-  if(myproc==0)
-    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,allN,1,MPI_INT,0,comm);   
-  else
-    MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);       
-#elif defined(_mympi_h)
-// #error "MPI1"
-  MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);   
-#else
-#error "Error: Could not recognize MPI version!"
-#endif
+  temp_int=2*numLocalDataPoints;
+  if(myproc!=0) 
+    MPI_Send(&temp_int,1,MPI_INT,0,1,comm);     
+  else {
+    allN[myproc]=temp_int;
+    for(proc=1;proc<numprocs;proc++)
+      MPI_Recv(&(allN[proc]),1,MPI_INT,proc,1,comm,MPI_STATUS_IGNORE);    
+  }
+  MPI_Bcast(allN,numprocs,MPI_INT,0,comm);
   size=Merge2dRealData(dataXY,2*numLocalDataPoints,tmp_real,allN,comm,numprocs,myproc);
   if(myproc==0) {
     ResortRealData(tmp_real,tmp_real2,allIndices,numTotalDataPoints,2);
@@ -523,19 +506,15 @@ static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int 
   }
 
   // x-coordinates of nearest-neighbors.
-  allN[myproc]=numInterpPoints*numLocalDataPoints;
-#if defined(MPICH2)
-// #error "MPICH2!"
-  if(myproc==0)
-    MPI_Gather(MPI_IN_PLACE,1,MPI_INT,allN,1,MPI_INT,0,comm);   
-  else
-    MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);   
-#elif defined(_mympi_h)
-// #error "MPI1"
-  MPI_Gather(&(allN[myproc]),1,MPI_INT,allN,1,MPI_INT,0,comm);   
-#else
-#error "Error: Could not recognize MPI version!"
-#endif
+  temp_int=numInterpPoints*numLocalDataPoints;
+  if(myproc!=0) 
+    MPI_Send(&temp_int,1,MPI_INT,0,1,comm);     
+  else {
+    allN[myproc]=temp_int;
+    for(proc=1;proc<numprocs;proc++)
+      MPI_Recv(&(allN[proc]),1,MPI_INT,proc,1,comm,MPI_STATUS_IGNORE);    
+  }
+  MPI_Bcast(allN,numprocs,MPI_INT,0,comm);
   for(i=0;i<numLocalDataPoints;i++)
     for(ni=0;ni<numInterpPoints;ni++) 
       tmp_real2[i*numInterpPoints+ni] = grid->xv[interpIndices[i*numInterpPoints+ni]];

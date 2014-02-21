@@ -59,7 +59,16 @@ do
   echo "nsteps $nsteps \#" >> $datadir/suntans.dat
 
   $EXEC -t -g -s -vvv --datadir=$datadir >& $datadir/t$np/run.out
-  'cp' $datadir/{fs.dat.0,q.dat.0,s.dat.0,u.dat.0,w.dat.0} $datadir/t$np
+
+  if [ `grep mergeArrays $maindatadir/suntans.in | grep -c 1` -eq 0 ] ; then
+      'cp' $datadir/{fs.dat,q.dat,s.dat,u.dat,w.dat} $datadir/t$np
+  else
+      'cp' $datadir/fs.dat.0 $datadir/t$np/fs.dat
+      'cp' $datadir/q.dat.0 $datadir/t$np/q.dat
+      'cp' $datadir/s.dat.0 $datadir/t$np/s.dat
+      'cp' $datadir/u.dat.0 $datadir/t$np/u.dat
+      'cp' $datadir/w.dat.0 $datadir/t$np/w.dat
+  fi
   
   nsteps=`calc "$nsteps * 2"`
   n=`expr $n + 1`

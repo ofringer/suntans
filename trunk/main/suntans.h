@@ -13,15 +13,16 @@
 #define _suntans_h
 
 #include "math.h"
+#include "time.h"
 
 // number of faces (for triangle)
-#define NFACES 3
 #define REAL double
 #define BUFFERLENGTH 256
 #define NUMEDGECOLUMNS 3
 #define BREAK printf("%d\n",*((int *)0));
 #define PI 3.141592654
 #define RHO0 1000.0
+#define GRAV 9.81
 #define INFTY 1e20
 #define CONSERVED 1e-5
 #define EMPTY 999999
@@ -29,6 +30,7 @@
 #define CHECKCONSISTENCY 0
 #define DRYCELLHEIGHT 1e-10
 #define BUFFERHEIGHT 1e-2
+#define DEFAULT_NFACES 3
 
 // Error/Exit codes
 #define EXIT_WRITING 1
@@ -49,6 +51,6 @@ char DATADIR[BUFFERLENGTH],
   VERTSPACEFILE[BUFFERLENGTH], 
   TOPOLOGYFILE[BUFFERLENGTH];
 // define global variables
-int TRIANGULATE, GRID, SOLVE, VERBOSE, WARNING, ASCII, RESTART;
+int TRIANGULATE, GRID, SOLVE, VERBOSE, WARNING, ASCII, RESTART, NUMPROCS, STEPSPERFILE;
 
 #endif

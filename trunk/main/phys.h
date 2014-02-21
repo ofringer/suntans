@@ -129,6 +129,10 @@ typedef struct _physT {
   REAL **wtmp;
   REAL **wtmp2;
   REAL **qtmp;
+  //GLS Turbulence variables
+  REAL **TP;
+  REAL **TB;
+  REAL **TD;
 
   REAL *ap;
   REAL *am;
@@ -153,6 +157,16 @@ typedef struct _physT {
   REAL *wm;
   REAL **gradSx;
   REAL **gradSy; 
+  
+  //Variables for heat flux model
+  REAL *Tsurf;
+  REAL *dT;
+  REAL **Ttmp;
+
+  // Variables for netcdf write
+  REAL *tmpvar;
+  REAL *tmpvarW;
+  REAL *tmpvarE;
 
 } physT;
 
@@ -164,15 +178,22 @@ typedef struct _propT {
   REAL dt, Cmax, rtime, amp, omega, flux, timescale, theta0, theta, thetaM, 
        thetaS, thetaB, nu, nu_H, tau_T, z0T, CdT, z0B, CdB, CdW, relax, epsilon, qepsilon, resnorm, 
        dzsmall, beta, kappa_s, kappa_sH, gamma, kappa_T, kappa_TH, grav, Coriolis_f, CmaxU, CmaxW, 
-       laxWendroff_Vertical;
+       laxWendroff_Vertical, latitude;
   int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, 
       qmaxiters, hprecond, qprecond, volcheck, masscheck, nonlinear, linearFS, newcells, wetdry, sponge_distance, 
-      sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
-    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum, conserveMomentum;
+    sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
+    TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum, conserveMomentum,
+    mergeArrays, computeSediments;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID, *SalinityFID, *BGSalinityFID, 
        *InitSalinityFID, *InitTemperatureFID, *TemperatureFID, *PressureFID, *VerticalGridFID, *ConserveFID,    
-       *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID;
+       *StoreFID, *StartFID, *EddyViscosityFID, *ScalarDiffusivityFID; 
   interpolation interp; int prettyplot;
+  int metmodel,  varmodel, outputNetcdf,  metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID, calcage, calcaverage;
+  int outputNetcdfFileID, averageNetcdfFileID;
+  REAL nctime, toffSet;
+  int nctimectr, avgtimectr, avgctr, ntaverage;
+  REAL nugget, sill, range, Lsw, Cda, Ce, Ch;
+  char  starttime[15], basetime[15]; 
 } propT;
 
 
@@ -185,12 +206,13 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop);
 void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop);
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void InitializeVerticalGrid(gridT **grid,int myproc);
-void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
-void OpenFiles(propT *prop, int myproc);
-void ReadProperties(propT **prop, int myproc);
+void ReadProperties(propT **prop, gridT *grid, int myproc);
 void SetDragCoefficients(gridT *grid, physT *phys, propT *prop);
 REAL DepthFromDZ(gridT *grid, physT *phys, int i, int kind);
 REAL InterpToFace(int j, int k, REAL **phi, REAL **u, gridT *grid);
-void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) ;
+inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) ;
+void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option);
+void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_Comm comm);
+void SetDensity(gridT *grid, physT *phys, propT *prop);
 
 #endif

@@ -3,6 +3,7 @@
  *
  */
 #include "boundaries.h"
+#include "sediments.h"
 
 static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag);
 
@@ -45,7 +46,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
  * This will set the values of the scalars at the open boundaries.
  * 
  */
-void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
+void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm) {
   int jptr, j, ib, k;
   REAL z, Tb;
 
@@ -71,7 +72,7 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop) {
  * This will set the values of u,v,w, and h at the boundaries.
  * 
  */
-void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc) {
+void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm) {
   int jptr, j, ib, k;
   REAL z, utheta, r, u, v, x0, y0;
 
@@ -144,7 +145,7 @@ static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int bo
  * Set the wind stress.
  *
  */
-void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
+void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
   int j, jptr;
 
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
@@ -154,3 +155,7 @@ void WindStress(gridT *grid, physT *phys, propT *prop, int myproc) {
     phys->tau_B[j]=0;
   }
 }
+
+void InitBoundaryData(propT *prop, gridT *grid, int myproc){}
+void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){}
+void BoundarySediment(gridT *grid, physT *phys, propT *prop) {}

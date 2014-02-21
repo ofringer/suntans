@@ -26,6 +26,7 @@ void ParseFlags(int argc, char *argv[], int myproc)
   WARNING=0;
   ASCII=0;
   RESTART=0;
+  STEPSPERFILE=-1;
 
   sprintf(DATADIR,".");
   sprintf(DATAFILE,"%s/%s",DATADIR,DEFAULTDATAFILE);
@@ -64,9 +65,17 @@ void ParseFlags(int argc, char *argv[], int myproc)
 	    val[j-js]=argv[i][j];
 	  val[j-js]='\0';
 
+	  //printf("%s, %s\n",str,val);
+
 	  if(!strcmp(str,"datadir")) {
 	    sprintf(DATADIR,"%s",val);
 	    sprintf(DATAFILE,"%s/%s",DATADIR,DEFAULTDATAFILE);
+	  } else if(!strcmp("np",str)){
+		NUMPROCS=atoi(val);
+	   	printf("np = %d\n",NUMPROCS);
+	  } else if(!strcmp("steps",str)){
+		STEPSPERFILE=atoi(val);
+	   	printf("nt = %d\n",STEPSPERFILE);
 	  } else {
 	    GetValue(DATAFILE,str,&status);
 	    if(!status) {
@@ -160,13 +169,13 @@ void ReportConnectivity(gridT *grid, gridT *maingrid, int myproc)
     for(j=0;j<grid->Nc;j++) {
       printf("Cell %d (BC type %d) (%d): ",j,
 	     IsBoundaryCell(grid->mnptr[j],maingrid,myproc),grid->mnptr[j]);
-      for(nf=0;nf<NFACES;nf++) {
-	mgptr = grid->neigh[j*NFACES+nf];
+      for(nf=0;nf<grid->nfaces[j];nf++) {
+	mgptr = grid->neigh[j*grid->maxfaces+nf];
 	if(mgptr!=-1)
-	  printf("%d (%d) ",grid->neigh[j*NFACES+nf],
+	  printf("%d (%d) ",grid->neigh[j*grid->maxfaces+nf],
 		 grid->mnptr[mgptr]);
 	else
-	  printf("%d (-1) ",grid->neigh[j*NFACES+nf]);
+	  printf("%d (-1) ",grid->neigh[j*grid->maxfaces+nf]);
       }
       printf("\n");
     }

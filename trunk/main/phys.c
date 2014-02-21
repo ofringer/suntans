@@ -24,11 +24,17 @@
 #include "state.h"
 #include "diffusion.h"
 #include "sources.h"
+#include "mynetcdf.h"
+#include "met.h"
+#include "age.h"
+#include "physio.h"
+#include "merge.h"
+#include "sediments.h"
+
 /*
  * Private Function declarations.
  *
  */
-static void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option);
 static void UPredictor(gridT *grid, physT *phys, 
     propT *prop, int myproc, int numprocs, MPI_Comm comm);
 static void Corrector(REAL **qc, gridT *grid, physT *phys, propT *prop, int myproc, 
@@ -65,8 +71,6 @@ static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid,
     physT *phys, propT *prop);
 static void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop);
 void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop);
-static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, 
-    int numprocs, MPI_Comm comm);
 static void EddyViscosity(gridT *grid, physT *phys, propT *prop, REAL **wnew, 
     MPI_Comm comm, int myproc);
 static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
@@ -75,7 +79,7 @@ static void StoreVariables(gridT *grid, physT *phys);
 static void NewCells(gridT *grid, physT *phys, propT *prop);
 static void WPredictor(gridT *grid, physT *phys, propT *prop,
     int myproc, int numprocs, MPI_Comm comm);
-void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
+inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
 static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid);
 inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc);
 static void ComputeNodalVelocity(physT *phys, gridT *grid, interpolation interp, int myproc);
@@ -89,19 +93,15 @@ static void BarycentricCoordsFromCartesian(gridT *grid, int cell,
     REAL x, REAL y, REAL* lambda);
 static void BarycentricCoordsFromCartesianEdge(gridT *grid, int cell, 
     REAL x, REAL y, REAL* lambda);
-static void OutputData(gridT *grid, physT *phys, propT *prop,
-//void OutputData(gridT *grid, physT *phys, propT *prop,
-    int myproc, int numprocs, int blowup, MPI_Comm comm);
 static REAL UFaceFlux(int j, int k, REAL **phi, REAL **u, gridT *grid, REAL dt, 
     int method);
 static REAL HFaceFlux(int j, int k, REAL *phi, REAL **u, gridT *grid, REAL dt, 
     int method);
-static void SetDensity(gridT *grid, physT *phys, propT *prop);
 //static void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
 void SetFluxHeight(gridT *grid, physT *phys, propT *prop);
-static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop,
-				  MPI_Comm comm, int myproc, int nonlinear);
-
+static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc, int nonlinear);
+static void getTsurf(gridT *grid, physT *phys);
+static void getchangeT(gridT *grid, physT *phys);
 /*
  * Function: AllocatePhysicalVariables
  * Usage: AllocatePhysicalVariables(grid,phys,prop);
@@ -167,17 +167,18 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     MPI_Finalize();
     exit(0);
   }
-
   // cell-centered physical variables in plan (no vertical direction)
   (*phys)->h = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->hcorr = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->active = (unsigned char *)SunMalloc(Nc*sizeof(char),"AllocatePhysicalVariables");
   (*phys)->hold = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
-  (*phys)->htmp = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->htmp = (REAL *)SunMalloc(10*Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->htmp2 = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->htmp3 = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->hcoef = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
-  (*phys)->hfcoef = (REAL *)SunMalloc(NFACES*Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->hfcoef = (REAL *)SunMalloc(grid->maxfaces*Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->Tsurf = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->dT = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
 
   // cell-centered values that are also depth-varying
   (*phys)->w = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -188,9 +189,10 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->Cn_W2 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables"); //AB3
   (*phys)->q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->qc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->qtmp = (REAL **)SunMalloc(NFACES*Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->qtmp = (REAL **)SunMalloc(grid->maxfaces*Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->T = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->Ttmp = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->s0 = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->rho = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_R = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -201,7 +203,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->nu_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->kappa_tv = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->nu_lax = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
-  if(prop->turbmodel==1) {
+  if(prop->turbmodel>=1) {
     (*phys)->qT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
     (*phys)->lT = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
     (*phys)->Cn_q = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -234,7 +236,11 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->nRT2v[i] = (REAL *)SunMalloc(grid->Nkp[i]*sizeof(REAL),
         "AllocatePhysicalVariables");
   }
-
+  // Netcdf write variables
+  (*phys)->tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->tmpvarE = (REAL *)SunMalloc(grid->Ne*grid->Nkmax*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->tmpvarW = (REAL *)SunMalloc(grid->Nc*(grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
+ 
   // for each cell allocate memory for the number of layers at that location
   for(i=0;i<Nc;i++) {
     (*phys)->uc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -250,15 +256,16 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->Cn_W2[i] = (REAL *)SunMalloc((grid->Nk[i]+1)*sizeof(REAL),"AllocatePhysicalVariables"); //AB3
     (*phys)->q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->qc[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-    for(nf=0;nf<NFACES;nf++)
-      (*phys)->qtmp[i*NFACES+nf] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    for(nf=0;nf<grid->nfaces[i];nf++)
+      (*phys)->qtmp[i*grid->maxfaces+nf] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
+    (*phys)->Ttmp[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->s0[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->rho[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_R[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->Cn_T[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
-    if(prop->turbmodel==1) {
+    if(prop->turbmodel>=1) {
       (*phys)->Cn_q[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->Cn_l[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
       (*phys)->qT[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -271,7 +278,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->kappa_tv[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->nu_lax[i] = (REAL *)SunMalloc(grid->Nk[i]*sizeof(REAL),"AllocatePhysicalVariables");
   }
-
+ 
   // allocate boundary value memory
   (*phys)->boundary_u = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->boundary_v = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -293,7 +300,7 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
     (*phys)->boundary_T[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_tmp[jptr-grid->edgedist[2]] = (REAL *)SunMalloc((grid->Nke[j]+1)*sizeof(REAL),"AllocatePhysicalVariables");
     (*phys)->boundary_rho[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
-  }
+    }
 
   // allocate coefficients
   (*phys)->ap = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"AllocatePhysicalVariables");
@@ -385,15 +392,15 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
     free(phys->Cn_W2[i]); //AB3
     free(phys->q[i]);
     free(phys->qc[i]);
-    for(nf=0;nf<NFACES;nf++)
-      free(phys->qtmp[i*NFACES+nf]);
+    for(nf=0;nf<grid->maxfaces;nf++)
+      free(phys->qtmp[i*grid->maxfaces+nf]);
     free(phys->s[i]);
     free(phys->T[i]);
     free(phys->s0[i]);
     free(phys->rho[i]);
     free(phys->Cn_R[i]);
     free(phys->Cn_T[i]);
-    if(prop->turbmodel==1) {
+    if(prop->turbmodel>=1) {
       free(phys->Cn_q[i]);
       free(phys->Cn_l[i]);
       free(phys->qT[i]);
@@ -432,7 +439,7 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
   free(phys->rho);
   free(phys->Cn_R);
   free(phys->Cn_T);
-  if(prop->turbmodel==1) {
+  if(prop->turbmodel>=1) {
     free(phys->Cn_q);
     free(phys->Cn_l);
     free(phys->qT);
@@ -487,105 +494,6 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
 }
 
 /*
- * Function: ReadPhysicalVariables
- * Usage: ReadPhysicalVariables(grid,phys,prop,myproc);
- * ----------------------------------------------------
- * This function reads in physical variables for a restart run
- * from the restart file defined by prop->StartFID.
- *
- */
-void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm) {
-
-  int i, j;
-
-  if(VERBOSE>1 && myproc==0) printf("Reading from rstore...\n");
-  //fixdzz
-  UpdateDZ(grid,phys,prop,-1); 
-
-  if(fread(&(prop->nstart),sizeof(int),1,prop->StartFID) != 1)
-    printf("Error reading prop->nstart\n");
-
-  if(fread(phys->h,sizeof(REAL),grid->Nc,prop->StartFID) != grid->Nc)
-    printf("Error reading phys->h\n");
-  for(j=0;j<grid->Ne;j++) 
-    if(fread(phys->Cn_U[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j])
-      printf("Error reading phys->Cn_U[j]\n");
-  for(j=0;j<grid->Ne;j++) 
-    if(fread(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j]) //AB3
-      printf("Error reading phys->Cn_U2[j]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->Cn_W[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->Cn_W[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->Cn_W2[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->Cn_W[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->Cn_R[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->Cn_T[i]\n");
-
-  if(prop->turbmodel==1) {
-    for(i=0;i<grid->Nc;i++) 
-      if(fread(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-        printf("Error reading phys->Cn_q[i]\n");
-    for(i=0;i<grid->Nc;i++) 
-      if(fread(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-        printf("Error reading phys->Cn_l[i]\n");
-
-    for(i=0;i<grid->Nc;i++) 
-      if(fread(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-        printf("Error reading phys->qT[i]\n");
-    for(i=0;i<grid->Nc;i++) 
-      if(fread(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-        printf("Error reading phys->lT[i]\n");
-  }
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->nu_tv[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->kappa_tv[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->kappa_tv[i]\n");
-
-  for(j=0;j<grid->Ne;j++) 
-    if(fread(phys->u[j],sizeof(REAL),grid->Nke[j],prop->StartFID) != grid->Nke[j])
-      printf("Error reading phys->u[j]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StartFID) != grid->Nk[i]+1)
-      printf("Error reading phys->w[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->q[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->qc[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->qc[i]\n");
-
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->s[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->T[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->T[i]\n");
-  for(i=0;i<grid->Nc;i++) 
-    if(fread(phys->s0[i],sizeof(REAL),grid->Nk[i],prop->StartFID) != grid->Nk[i])
-      printf("Error reading phys->s0[i]\n");
-  fclose(prop->StartFID);
-
-  UpdateDZ(grid,phys,prop, 0);
-
-  // cell centered velocity computed so that this does not 
-  // need to be reconsidered 
-  ComputeUC(phys->uc, phys->vc, phys,grid, myproc, prop->interp);
-
-  ISendRecvCellData3D(phys->uc,grid,myproc,comm);
-  ISendRecvCellData3D(phys->vc,grid,myproc,comm);
-
-  // Set the density from s and T using the equation of state
-  SetDensity(grid,phys,prop);
-}
-
-/*
  * Function: InitializePhyiscalVariables
  * Usage: InitializePhyiscalVariables(grid,phys,prop,myproc,comm);
  * ---------------------------------------------------------------
@@ -595,11 +503,27 @@ void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MP
  */
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm)
 {
-  int i, j, k, Nc=grid->Nc;
+  int i, j, k, ktop, Nc=grid->Nc;
   REAL z, *stmp;
+  REAL *ncscratch;
+  int Nci, Nki, T0;
+
 
   prop->nstart=0;
+  
+  // Initialise the netcdf time
+  prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+  prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
 
+  if (prop->readinitialnc>0){
+    ReadInitialNCcoord(prop,grid,&Nci,&Nki,&T0,myproc);
+
+    printf("myproc: %d, Nci: %d, Nki: %d, T0: %d\n",myproc,Nci,Nki,T0);
+
+    // Initialise a scratch variable for reading arrays
+    ncscratch = (REAL *)SunMalloc(Nki*Nci*sizeof(REAL),"InitializePhysicalVariables");
+
+  }
   // Need to update the vertical grid and fix any cells in which
   // dzz is too small when h=0.
    UpdateDZ(grid,phys,prop, -1);
@@ -618,10 +542,14 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   */
 
   // Initialize the free surface
-  for(i=0;i<Nc;i++) {
-    phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
-    if(phys->h[i]<-grid->dv[i] + DRYCELLHEIGHT) 
-      phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
+  if (prop->readinitialnc){
+     ReturnFreeSurfaceNC(prop,phys,grid,ncscratch,Nci,T0,myproc);
+  }else{
+    for(i=0;i<Nc;i++) {
+      phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
+      if(phys->h[i]<-grid->dv[i] + DRYCELLHEIGHT) 
+        phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
+    }
   }
 
   // Need to update the vertical grid after updating the free surface.
@@ -643,7 +571,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   // Initialize the temperature, salinity, and background salinity
   // distributions.  Since z is not stored, need to use dz[k] to get
   // z[k].
-  if(prop->readSalinity) {
+  if(prop->readSalinity && prop->readinitialnc == 0) {
     stmp = (REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
     if(fread(stmp,sizeof(REAL),grid->Nkmax,prop->InitSalinityFID) != grid->Nkmax)
       printf("Error reading stmp first\n");
@@ -654,9 +582,10 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->s[i][k]=stmp[k];
         phys->s0[i][k]=stmp[k];
       }
-    SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
-  } 
-  else {
+    SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
+  } else if(prop->readinitialnc){
+     ReturnSalinityNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
+  } else {
     for(i=0;i<Nc;i++) {
       z = 0;
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -668,7 +597,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     }
   }
 
-  if(prop->readTemperature) {
+  if(prop->readTemperature && prop->readinitialnc == 0) {
     stmp = (REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
     if(fread(stmp,sizeof(REAL),grid->Nkmax,prop->InitTemperatureFID) != grid->Nkmax)
       printf("Error reading stmp second\n");
@@ -678,9 +607,10 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       for(k=grid->ctop[i];k<grid->Nk[i];k++) 
         phys->T[i][k]=stmp[k];
 
-    SunFree(stmp,grid->Nkmax,"InitializePhysicalVariables");
-  } 
-  else {
+    SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
+   } else if(prop->readinitialnc){
+        ReturnTemperatureNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
+  } else {  
     for(i=0;i<Nc;i++) {
       z = 0;
       for(k=grid->ctop[i];k<grid->Nk[i];k++) {
@@ -690,7 +620,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       }
     }
   }
-
+ 
   // Initialize the velocity field 
   for(j=0;j<grid->Ne;j++) {
     z = 0;
@@ -701,6 +631,18 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       z-=grid->dz[k]/2;
     }
   }
+  
+  // Initialise the heat flux arrays
+  for(i=0;i<Nc;i++) {
+    ktop = grid->ctop[i];
+    phys->Tsurf[i] = phys->T[i][ktop];
+    phys->dT[i] = 0.001; // Needs to be != 0
+    
+    for(k=0;k<grid->Nk[i];k++){
+	phys->Ttmp[i][k]=phys->T[i][k];
+    }
+  }
+
 
   // Need to compute the velocity vectors at the cell centers based
   // on the initialized velocities at the faces.
@@ -737,7 +679,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     }
   }
 
-  if(prop->turbmodel==1) {
+  if(prop->turbmodel>=1) {
     for(i=0;i<grid->Nc;i++) {
       for(k=0;k<grid->Nk[i];k++) {
         phys->qT[i][k]=0;
@@ -745,6 +687,11 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       }
     }
   }
+  // Free the scratch array
+  if (prop->readinitialnc>0)
+      SunFree(ncscratch,Nki*Nci*sizeof(REAL),"InitializePhyiscalVariables");
+      //Close the initial condition netcdf file
+      //MPI_NCClose(prop->initialNCfileID );
 }
 
 /*
@@ -768,8 +715,12 @@ void SetDragCoefficients(gridT *grid, physT *phys, propT *prop) {
     for(j=0;j<grid->Ne;j++) 
       phys->CdB[j]=prop->CdB;
   else
-    for(j=0;j<grid->Ne;j++) 
+    for(j=0;j<grid->Ne;j++) {
       phys->CdB[j]=pow(log(0.5*grid->dzf[j][grid->Nke[j]-1]/prop->z0B)/KAPPA_VK,-2);
+      //printf("phys->CdB[%d]=%f, dzf = %f, z0B = %f\n",j,phys->CdB[j],grid->dzf[j][grid->Nke[j]-1],prop->z0B);
+    }
+
+
 
   for(j=0;j<grid->Ne;j++)
     if(grid->dzf[j][grid->Nke[j]-1]<BUFFERHEIGHT && grid->etop[j]==grid->Nke[j]-1){
@@ -841,7 +792,7 @@ void InitializeVerticalGrid(gridT **grid,int myproc)
  *   thereafter.
  *
  */
-static void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option)
+void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option)
 {
   int i, j, k, ne1, ne2, Nc=grid->Nc, Ne=grid->Ne, flag, nc1, nc2;
   REAL z, dzz1, dzz2;
@@ -1035,6 +986,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 {
   int i, k, n, blowup=0;
   REAL t0;
+  metinT *metin;
+  metT *met;
+  averageT *average;
+  
 
   // Compute the initial quantities for comparison to determine conservative properties
   prop->n=0;
@@ -1055,15 +1010,26 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   prop->n=prop->nstart;
   // initialize the time (often used for boundary/initial conditions)
   prop->rtime=prop->nstart*prop->dt;
+ 
+  // Initialise the netcdf time (moved to InitializePhysicalVariables)
+  // Get the toffSet property
+  //printf("myproc: %d, starttime: %s\n",prop->starttime);
+  //prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+  //prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
+  //printf("myproc: %d, toffSet = %f (%s, %s)\n",myproc,prop->toffSet,&prop->basetime,&prop->starttime);
+
+  // Initialise the boundary data from a netcdf file
+  if(prop->netcdfBdy==1){
+    AllocateBoundaryData(prop, grid, &bound, myproc);
+    InitBoundaryData(prop, grid, myproc);
+  }
 
   // get the boundary velocities (boundaries.c)
-  BoundaryVelocities(grid,phys,prop,myproc); 
+  BoundaryVelocities(grid,phys,prop,myproc, comm); 
   // get the openboundary flux (boundaries.c)
   OpenBoundaryFluxes(NULL,phys->u,NULL,grid,phys,prop);
   // get the boundary scalars (boundaries.c)
-  BoundaryScalars(grid,phys,prop);
-  // get the windstress (boundaries.c)
-  WindStress(grid,phys,prop,myproc);
+  BoundaryScalars(grid,phys,prop,myproc,comm);
   // set the height of the face bewteen cells to compute the flux
   SetFluxHeight(grid,phys,prop);
   // set the drag coefficients for bottom friction
@@ -1075,13 +1041,67 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   // Initialize the Sponge Layer
   InitSponge(grid,myproc);
 
+  
+  // Initialise the meteorological forcing input fields
+    if(prop->metmodel>0){
+      if (prop->gamma==0.0){
+	if(myproc==0) printf("Warning gamma must be > 1 for heat flux model.\n");
+      }else{
+	if(myproc==0) printf("Initial temperature = %f.\n",phys->T[0][0]);
+      }
+      AllocateMetIn(prop,grid,&metin,myproc);
+      AllocateMet(prop,grid,&met,myproc);
+      InitialiseMetFields(prop, grid, metin, met,myproc);
+      
+      // Initialise the heat flux variables
+      updateMetData(prop, grid, metin, met, myproc, comm); 
+     if(prop->metmodel>=2) {      
+	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
+
+	//Communicate across processors
+	ISendRecvCellData2D(met->Hs,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hl,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hsw,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
+    }
+  }
+
+  // Initialise the output netcdf file metadata
+    if(prop->outputNetcdf==1){
+      InitialiseOutputNCugrid(prop, grid, phys, met, myproc);
+    }
+
+  // Initialise the average arrays and netcdf file
+  if(prop->calcaverage>0){
+    AllocateAverageVariables(grid,&average,prop);
+    ZeroAverageVariables(grid,average,prop);
+    InitialiseAverageNCugrid(prop, grid, average, myproc);
+  }
+  
+  // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
+  WindStress(grid,phys,prop,met,myproc);
+
+  // Set up arrays to merge output
+  if(prop->mergeArrays) {
+    if(VERBOSE>2 && myproc==0) printf("Initializing arrays for merging...\n");
+    InitializeMerging(grid,numprocs,myproc,comm);
+  }
+
   // main time loop
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
 
     prop->n = n;
     // compute the runtime 
     prop->rtime = n*prop->dt;
+    
+    // netcdf file time
+    prop->nctime = prop->toffSet*86400.0 + n*prop->dt;
+    //prop->nctime +=  n*prop->dt;
+    //prop->nctime += prop->rtime;
 
+    // Set nsteps<0 for debugging i/o without hydro/seds/etc...
     if(prop->nsteps>0) {
 
       // Ramp down theta from 1 to the value specified in suntans.dat over
@@ -1104,6 +1124,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // laxWendroff central differencing
       if(prop->laxWendroff && prop->nonlinear==2) 
         LaxWendroff(grid,phys,prop,myproc,comm);
+    
       // compute the horizontal source terms (like 
       /* 
        * 1) Old nonhydrostatic pressure gradient with theta method
@@ -1141,29 +1162,85 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       EddyViscosity(grid,phys,prop,phys->wnew,comm,myproc);
       t_turb+=Timer()-t0;
 
-      // Update the salinity only if beta is nonzero in suntans.dat
-      if(prop->beta) {
-        t0=Timer();
-        UpdateScalars(grid,phys,prop,phys->wnew,phys->s,phys->boundary_s,phys->Cn_R,
-            prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
-            NULL,NULL,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
-        ISendRecvCellData3D(phys->s,grid,myproc,comm);
-        t_transport+=Timer()-t0;
+      // Update the meteorological data
+      if(prop->metmodel>0){
+	updateMetData(prop, grid, metin, met, myproc, comm);
+	//if(prop->metmodel==2){
+	//    updateAirSeaFluxes(prop, grid, phys, met, phys->T);
+        //}
       }
-
+      
+     // Update the age (passive) tracers
+      if(prop->calcage>0){
+        UpdateAge(grid,phys,prop,comm,myproc);
+      }
+     
       // Update the temperature only if gamma is nonzero in suntans.dat
       if(prop->gamma) {
         t0=Timer();
-
-        HeatSource(phys->wtmp,phys->uold,grid,phys,prop);
-
+	
+	getTsurf(grid,phys); // Find the surface temperature
+	
+        HeatSource(phys->wtmp,phys->uold,grid,phys,prop,met, myproc, comm);
         UpdateScalars(grid,phys,prop,phys->wnew,phys->T,phys->boundary_T,phys->Cn_T,
             prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->theta,
             phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDtemp);
+	
+	getchangeT(grid,phys); // Get the change in surface temp
         ISendRecvCellData3D(phys->T,grid,myproc,comm);
+	
+	ISendRecvCellData3D(phys->Ttmp,grid,myproc,comm);
+        ISendRecvCellData2D(phys->dT,grid,myproc,comm);
+        ISendRecvCellData2D(phys->Tsurf,grid,myproc,comm);
+
         t_transport+=Timer()-t0;
       }
 
+      // Update the air-sea fluxes --> these are used for the previous time step source term and for the salt flux implicit term (salt tracer solver therefore needs to go next)
+      if(prop->metmodel>=2){
+	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
+
+	//Communicate across processors
+	
+	ISendRecvCellData2D(met->Hs,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hl,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hsw,grid,myproc,comm);
+	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
+	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
+
+      }
+      
+      // Update the salinity only if beta is nonzero in suntans.dat
+      if(prop->beta) {
+        t0=Timer();
+	if(prop->metmodel>0){
+	    SaltSource(phys->wtmp,phys->uold,grid,phys,prop,met);
+	    UpdateScalars(grid,phys,prop,phys->wnew,phys->s,phys->boundary_s,phys->Cn_R,
+		prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
+		phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
+	}else{ 
+	     UpdateScalars(grid,phys,prop,phys->wnew,phys->s,phys->boundary_s,phys->Cn_R,
+		prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
+		NULL,NULL,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
+	}
+	ISendRecvCellData3D(phys->s,grid,myproc,comm);
+
+	if(prop->metmodel>0){
+	  //Communicate across processors
+	  ISendRecvCellData2D(met->EP,grid,myproc,comm);
+	}
+
+        t_transport+=Timer()-t0;
+      }
+
+      // Compute sediment transport when prop->computeSediments=1
+      if(prop->computeSediments){
+        t0=Timer(); 
+        ComputeSediments(grid,phys,prop,myproc,numprocs,blowup,comm);
+        t_transport+=Timer()-t0;
+      }
+      
       // Compute vertical momentum and the nonhydrostatic pressure
       t0=Timer();
       if(prop->nonhydrostatic && !blowup) {
@@ -1212,8 +1289,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       // BoundaryVelocities and OpenBoundaryFluxes were called in UPredictor to set the
       // boundary velocities to the new time step values for use in the 
       // free surface calculation.
-      BoundaryScalars(grid,phys,prop);
-      WindStress(grid,phys,prop,myproc);
+      BoundaryScalars(grid,phys,prop,myproc,comm);
+      WindStress(grid,phys,prop,met,myproc);
       SetDragCoefficients(grid,phys,prop);
 
       if(prop->beta || prop->gamma)
@@ -1221,6 +1298,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
       // u now contains velocity on all edges at the new time step
       ComputeUC(phys->uc, phys->vc, phys,grid, myproc, prop->interp);
+      //printf("Done (%d).\n",myproc);
       
       // now send interprocessor data
       ISendRecvCellData3D(phys->uc,grid,myproc,comm);
@@ -1234,6 +1312,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       NewCells(grid,phys,prop);
       ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
     }
+    // Compute average
+    if(prop->calcaverage){
+	UpdateAverageVariables(grid,average,phys,met,prop,comm,myproc);	
+    }
 
     // Check whether or not run is blowing up
     t0=Timer();
@@ -1241,14 +1323,52 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     t_check+=Timer()-t0;
     // Output data based on ntout specified in suntans.dat
     t0=Timer();
-    OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
+    if (prop->outputNetcdf==0){
+      // Write to binary
+      OutputPhysicalVariables(grid,phys,prop,myproc,numprocs,blowup,comm);
+    }else {
+      // Output data to netcdf
+      WriteOuputNC(prop, grid, phys, met, blowup, myproc);
+    }
+    // Output the average arrays
+    if(prop->calcaverage){
+	WriteAverageNC(prop,grid,average,phys,met,blowup,comm,myproc);
+    }
     InterpData(grid,phys,prop,comm,numprocs,myproc);
+
     t_io+=Timer()-t0;
     // Output progress
     Progress(prop,myproc,numprocs);
 
     if(blowup)
       break;
+
+    //Close all open netcdf file
+    /*
+    if(prop->n==prop->nsteps+prop->nstart) {
+      if(prop->outputNetcdf==1){
+	//printf("Closing output netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->outputNetcdfFileID);
+      }
+      if(prop->netcdfBdy==1){
+	//printf("Closing boundary netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->netcdfBdyFileID);
+      }
+      if(prop->readinitialnc==1){
+	//printf("Closing initial netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->initialNCfileID );
+      }
+      if(prop->metmodel>0){
+	//printf("Closing met netcdf file on processor: %d\n",myproc);
+      	MPI_NCClose(prop->metncid);
+      }
+    }
+    */
+  }
+
+  if(prop->mergeArrays) {
+    if(VERBOSE>2 && myproc==0) printf("Freeing merging arrays...\n");
+    FreeMergingArrays(grid,myproc);
   }
 }
 
@@ -1315,6 +1435,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 
  // Adams Bashforth coefficients
   if(prop->n==1 || prop->wetdry) {
+//  if(prop->n==1){
     fab1=1;
     fab2=fab3=0;
 
@@ -1472,22 +1593,22 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       }
 
       // for each face
-      for(nf=0;nf<NFACES;nf++) {
+      for(nf=0;nf<grid->nfaces[i];nf++) {
 
         // get the edge pointer
-        ne = grid->face[i*NFACES+nf];
+        ne = grid->face[i*grid->maxfaces+nf];
 
         // for all but the top cell layer
         for(k=grid->ctop[i];k<grid->Nk[i];k++) 
           // this is basically Eqn 50, u-component
           phys->stmp[i][k]+=
-            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/(a[k]*grid->Ac[i]);
+            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
 
         // Top cell is filled with momentum from neighboring cells
 	if(prop->conserveMomentum)
 	  for(k=grid->etop[ne];k<grid->ctop[i];k++) 
 	    phys->stmp[i][grid->ctop[i]]+=
-	      phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/(a[grid->ctop[i]]*grid->Ac[i]);
+	      phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[grid->ctop[i]]*grid->Ac[i]);
       }
     }
 
@@ -1519,20 +1640,20 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	  a[k]=1.0;
       }
 
-      for(nf=0;nf<NFACES;nf++) {
+      for(nf=0;nf<grid->nfaces[i];nf++) {
 
-        ne = grid->face[i*NFACES+nf];
+        ne = grid->face[i*grid->maxfaces+nf];
 
         for(k=grid->ctop[i];k<grid->Nk[i];k++)
           // Eqn 50, v-component
           phys->stmp2[i][k]+=
-            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/(a[k]*grid->Ac[i]);
+            phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
 
         // Top cell is filled with momentum from neighboring cells
 	if(prop->conserveMomentum)
 	  for(k=grid->etop[ne];k<grid->ctop[i];k++) 
 	    phys->stmp2[i][grid->ctop[i]]+=
-	      phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/(a[k]*grid->Ac[i]);
+	      phys->ut[ne][k]*phys->u[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
       }
     }
 
@@ -1718,8 +1839,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       phys->stmp[i][k]=phys->stmp2[i][k]=0;
 
     sum=0;
-    for(nf=0;nf<NFACES;nf++) {
-      if((nc=grid->neigh[i*NFACES+nf])!=-1) {
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      if((nc=grid->neigh[i*grid->maxfaces+nf])!=-1) {
         sum+=grid->Ac[nc];
         for(k=grid->ctop[nc2];k<grid->Nk[nc2];k++) {
           // get fluxes from other non-boundary cells
@@ -1746,8 +1867,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     if(nc2==-1) nc2=nc1;
 
     // Note that dgf==dg only when the cells are orthogonal!
-    def1 = grid->def[nc1*NFACES+grid->gradf[2*j]];
-    def2 = grid->def[nc2*NFACES+grid->gradf[2*j+1]];
+    def1 = grid->def[nc1*grid->maxfaces+grid->gradf[2*j]];
+    def2 = grid->def[nc2*grid->maxfaces+grid->gradf[2*j+1]];
     dgf = def1+def2;
 
     if(grid->ctop[nc1]>grid->ctop[nc2])
@@ -1779,12 +1900,12 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     nc1 = grid->grad[2*j];
     k0=grid->ctop[nc1];
 
-    for(nf=0;nf<NFACES;nf++) {
-      if((nc2=grid->neigh[nc1*NFACES+nf])!=-1) {
-        ne=grid->face[nc1*NFACES+nf];
+    for(nf=0;nf<grid->nfaces[nc1];nf++) {
+      if((nc2=grid->neigh[nc1*grid->maxfaces+nf])!=-1) {
+        ne=grid->face[nc1*grid->maxfaces+nf];
         for(k=k0;k<grid->Nk[nc1];k++) {
           phys->Cn_U[ne][k]-=
-            grid->def[nc1*NFACES+nf]/grid->dg[ne]*
+            grid->def[nc1*grid->maxfaces+nf]/grid->dg[ne]*
             prop->dt*(
                 phys->stmp[nc2][k]*grid->n1[ne]+phys->stmp2[nc2][k]*grid->n2[ne]);
         }
@@ -1968,18 +2089,18 @@ static void WPredictor(gridT *grid, physT *phys, propT *prop,
 	  a[k]=1.0;
       }
 
-      for(nf=0;nf<NFACES;nf++) {
+      for(nf=0;nf<grid->nfaces[i];nf++) {
 
-        ne = grid->face[i*NFACES+nf];
+        ne = grid->face[i*grid->maxfaces+nf];
 
         for(k=grid->ctop[i];k<grid->Nk[i];k++)
           // this is basically Eqn 50, w-component
-          phys->stmp[i][k]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/(a[k]*grid->Ac[i]);
+          phys->stmp[i][k]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
 
         // Top cell is filled with momentum from neighboring cells
 	if(prop->conserveMomentum)
 	  for(k=grid->etop[ne];k<grid->ctop[i];k++) 
-	    phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*NFACES+nf]/(a[k]*grid->Ac[i]);
+	    phys->stmp[i][grid->ctop[i]]+=phys->ut[ne][k]*phys->utmp2[ne][k]*grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/(a[k]*grid->Ac[i]);
       }
 
       // Vertical advection; note that in this formulation first-order upwinding is not implemented.
@@ -2213,16 +2334,16 @@ static void ComputeQSource(REAL **src, gridT *grid, physT *phys, propT *prop, in
 
     /* HORIZONTAL CONTRIBUTION */
     // over each face to get the horizontal contributions to the source term
-    for(nf=0;nf<NFACES;nf++) {
+    for(nf=0;nf<grid->nfaces[i];nf++) {
 
       // get the edge pointer
-      ne = grid->face[i*NFACES+nf];
+      ne = grid->face[i*grid->maxfaces+nf];
 
       // for each of the defined edges over depth
       for(k=grid->ctop[i];k<grid->Nke[ne];k++) 
         // compute the horizontal source term via the (D_H)(u^*)
         src[i][k]+=(phys->u[ne][k]+thetafactor*phys->utmp2[ne][k])*grid->dzf[ne][k]*
-          grid->normal[i*NFACES+nf]*grid->df[ne];
+          grid->normal[i*grid->maxfaces+nf]*grid->df[ne];
     }
 
     // divide final result by dt
@@ -2483,6 +2604,8 @@ static void UPredictor(gridT *grid, physT *phys,
   // alpha=0 is second-order central.  Always do first-order upwind when doing
   // vertically-implicit momentum advection
   alpha=1;
+  //alpha=0;
+
 
   // for each of the computational edges
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
@@ -2790,7 +2913,7 @@ static void UPredictor(gridT *grid, physT *phys,
   // will comprise the source term for the free-surface solver.  Before we
   // do this we need to set the new velocity at the open boundary faces and
   // place them into utmp.  
-  BoundaryVelocities(grid,phys,prop,myproc);
+  BoundaryVelocities(grid,phys,prop,myproc,comm);
   OpenBoundaryFluxes(NULL,phys->utmp,NULL,grid,phys,prop);
 
   // for computational cells
@@ -2798,10 +2921,10 @@ static void UPredictor(gridT *grid, physT *phys,
     i = grid->cellp[iptr];
 
     sum = 0;
-    for(nf=0;nf<NFACES;nf++) {
+    for(nf=0;nf<grid->nfaces[i];nf++) {
 
-      ne = grid->face[i*NFACES+nf];
-      normal = grid->normal[i*NFACES+nf];
+      ne = grid->face[i*grid->maxfaces+nf];
+      normal = grid->normal[i*grid->maxfaces+nf];
 
       for(k=grid->etop[ne];k<grid->Nke[ne];k++) 
         sum+=((1-theta)*phys->u[ne][k]+theta*phys->utmp[ne][k])*
@@ -2898,15 +3021,15 @@ static void UPredictor(gridT *grid, physT *phys,
   // this is for type 3 boundary conditions
   for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
     i = grid->cellp[iptr];
-    for(nf=0;nf<NFACES;nf++) {
-      ne = grid->face[i*NFACES+nf];
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      ne = grid->face[i*grid->maxfaces+nf];
       if(grid->mark[ne]==3) {
         for(k=grid->etop[ne];k<grid->Nke[ne];k++) {
           phys->u[ne][k] = 0;
           sum=0;
-          for(nf1=0;nf1<NFACES;nf1++)
-            sum+=phys->u[grid->face[i*NFACES+nf1]][k]*grid->df[grid->face[i*NFACES+nf1]]*grid->normal[i*NFACES+nf1];
-          phys->u[ne][k]=-sum/grid->df[ne]/grid->normal[i*NFACES+nf];
+          for(nf1=0;nf1<grid->nfaces[i];nf1++)
+            sum+=phys->u[grid->face[i*grid->maxfaces+nf1]][k]*grid->df[grid->face[i*grid->maxfaces+nf1]]*grid->normal[i*grid->maxfaces+nf1];
+          phys->u[ne][k]=-sum/grid->df[ne]/grid->normal[i*grid->maxfaces+nf];
         }
       }
     }
@@ -3096,12 +3219,12 @@ static void HCoefficients(REAL *coef, REAL *fcoef, gridT *grid, physT *phys, pro
     i = grid->cellp[iptr];
 
     coef[i] = grid->Ac[i];
-    for(nf=0;nf<NFACES;nf++) 
-      if(grid->neigh[i*NFACES+nf]!=-1) {
-        ne = grid->face[i*NFACES+nf];
+    for(nf=0;nf<grid->nfaces[i];nf++) 
+      if(grid->neigh[i*grid->maxfaces+nf]!=-1) {
+        ne = grid->face[i*grid->maxfaces+nf];
 
-        fcoef[i*NFACES+nf]=tmp*phys->D[ne]*grid->df[ne]/grid->dg[ne];
-        coef[i]+=fcoef[i*NFACES+nf];
+        fcoef[i*grid->maxfaces+nf]=tmp*phys->D[ne]*grid->df[ne]/grid->dg[ne];
+        coef[i]+=fcoef[i*grid->maxfaces+nf];
       }
   }
 }
@@ -3179,9 +3302,9 @@ static void OperatorH(REAL *x, REAL *y, REAL *coef, REAL *fcoef, gridT *grid, ph
     i = grid->cellp[iptr];
 
     y[i] = coef[i]*x[i];
-    for(nf=0;nf<NFACES;nf++) 
-      if(grid->neigh[i*NFACES+nf]!=-1)
-        y[i]-=fcoef[i*NFACES+nf]*x[grid->neigh[i*NFACES+nf]];
+    for(nf=0;nf<grid->nfaces[i];nf++) 
+      if(grid->neigh[i*grid->maxfaces+nf]!=-1)
+        y[i]-=fcoef[i*grid->maxfaces+nf]*x[grid->neigh[i*grid->maxfaces+nf]];
   }
 
 }
@@ -3213,10 +3336,10 @@ static void OperatorQC(REAL **coef, REAL **fcoef, REAL **x, REAL **y, REAL **c, 
       y[i][k]=-x[i][k];
 
     // over each face
-    for(nf=0;nf<NFACES;nf++) {
-      if((nc=grid->neigh[i*NFACES+nf])!=-1) {
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      if((nc=grid->neigh[i*grid->maxfaces+nf])!=-1) {
 
-        ne = grid->face[i*NFACES+nf];
+        ne = grid->face[i*grid->maxfaces+nf];
 
         if(grid->ctop[nc]>grid->ctop[i])
           kmin = grid->ctop[nc];
@@ -3225,7 +3348,7 @@ static void OperatorQC(REAL **coef, REAL **fcoef, REAL **x, REAL **y, REAL **c, 
 
         // now sum over depth too
         for(k=kmin;k<grid->Nke[ne];k++) 
-          y[i][k]+=x[nc][k]*fcoef[i*NFACES+nf][k];
+          y[i][k]+=x[nc][k]*fcoef[i*grid->maxfaces+nf][k];
       }
     }
 
@@ -3273,10 +3396,10 @@ static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid,
         coef[i][k] = 2*grid->Ac[i]/(grid->dzz[i][k]+grid->dzz[i][k-1])/(c[i][k]*c[i][k-1]);
 
       // over all the faces 
-      for(nf=0;nf<NFACES;nf++) 
-        if((nc=grid->neigh[i*NFACES+nf])!=-1) {
+      for(nf=0;nf<grid->nfaces[i];nf++) 
+        if((nc=grid->neigh[i*grid->maxfaces+nf])!=-1) {
 
-          ne = grid->face[i*NFACES+nf];
+          ne = grid->face[i*grid->maxfaces+nf];
 
           if(grid->ctop[nc]>grid->ctop[i])
             kmin = grid->ctop[nc];
@@ -3286,7 +3409,7 @@ static void QCoefficients(REAL **coef, REAL **fcoef, REAL **c, gridT *grid,
           // over the edge depths
           for(k=kmin;k<grid->Nke[ne];k++) 
             // compute the face coefficients
-            fcoef[i*NFACES+nf][k]=grid->dzz[i][k]*phys->D[ne]/(c[i][k]*c[nc][k]);
+            fcoef[i*grid->maxfaces+nf][k]=grid->dzz[i][k]*phys->D[ne]/(c[i][k]*c[nc][k]);
         }
     }
   }
@@ -3334,12 +3457,12 @@ static void OperatorQ(REAL **coef, REAL **x, REAL **y, REAL **c, gridT *grid, ph
       y[i][k]=0;
 
     // over each face
-    for(nf=0;nf<NFACES;nf++) 
+    for(nf=0;nf<grid->nfaces[i];nf++) 
       // we only apply this to non-boundary cells 
       // (meaning phys->D implicitly 0 at this point)
-      if((nc=grid->neigh[i*NFACES+nf])!=-1) {
+      if((nc=grid->neigh[i*grid->maxfaces+nf])!=-1) {
 
-        ne = grid->face[i*NFACES+nf];
+        ne = grid->face[i*grid->maxfaces+nf];
 
         // determine the minimal k based on each cell over edge
         if(grid->ctop[nc]>grid->ctop[i])
@@ -3475,10 +3598,10 @@ static void ConditionQ(REAL **x, gridT *grid, physT *phys, propT *prop, int mypr
     for(k=grid->ctop[i];k<grid->Nk[i];k++) 
       x[i][k]=0;
 
-    for(nf=0;nf<NFACES;nf++) 
-      if((nc=grid->neigh[i*NFACES+nf])!=-1) {
+    for(nf=0;nf<grid->nfaces[i];nf++) 
+      if((nc=grid->neigh[i*grid->maxfaces+nf])!=-1) {
 
-        ne = grid->face[i*NFACES+nf];
+        ne = grid->face[i*grid->maxfaces+nf];
 
         if(grid->ctop[nc]>grid->ctop[i])
           kmin = grid->ctop[nc];
@@ -3586,14 +3709,14 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
       h[i] = hsrc[i];
 
       coef=1;
-      for(nf=0;nf<NFACES;nf++) 
-        if(grid->neigh[i*NFACES+nf]!=-1) {
-          ne = grid->face[i*NFACES+nf];
+      for(nf=0;nf<grid->nfaces[i];nf++) 
+        if(grid->neigh[i*grid->maxfaces+nf]!=-1) {
+          ne = grid->face[i*grid->maxfaces+nf];
 
           // coef is the diagonal coefficient term
           coef+=tmp*phys->D[ne]*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
           h[i]+=relax*tmp*phys->D[ne]*grid->df[ne]/grid->dg[ne]*
-            phys->h[grid->neigh[i*NFACES+nf]]/grid->Ac[i];
+            phys->h[grid->neigh[i*grid->maxfaces+nf]]/grid->Ac[i];
         }
       // divide by diagonal coefficient term
       h[i]/=coef;
@@ -3609,12 +3732,12 @@ static void GSSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
       hold[i] = hsrc[i];
 
       coef=1;
-      for(nf=0;nf<NFACES;nf++) 
-        if(grid->neigh[i*NFACES+nf]!=-1) {
-          ne = grid->face[i*NFACES+nf];
+      for(nf=0;nf<grid->nfaces[i];nf++) 
+        if(grid->neigh[i*grid->maxfaces+nf]!=-1) {
+          ne = grid->face[i*grid->maxfaces+nf];
           coef+=tmp*phys->D[ne]*grid->df[ne]/grid->dg[ne]/grid->Ac[i];
           hold[i]+=tmp*phys->D[ne]*grid->df[ne]/grid->dg[ne]*
-            phys->h[grid->neigh[i*NFACES+nf]]/grid->Ac[i];
+            phys->h[grid->neigh[i*grid->maxfaces+nf]]/grid->Ac[i];
         }
       // compute the residual
       myresid+=pow(hold[i]/coef-h[i],2);
@@ -3670,12 +3793,12 @@ void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop)
       // wtmp2 is the old value for w (basically at timestep n) where
       // w in this context is for n+1
       w[i][k] = w[i][k+1] - (1-theta)/theta*(phys->wtmp2[i][k]-phys->wtmp2[i][k+1]);
-      for(nf=0;nf<NFACES;nf++) {
-        ne = grid->face[i*NFACES+nf];
+      for(nf=0;nf<grid->nfaces[i];nf++) {
+        ne = grid->face[i*grid->maxfaces+nf];
 
         if(k<grid->Nke[ne])
           w[i][k]-=(theta*phys->u[ne][k]+(1-theta)*phys->utmp2[ne][k])*
-            grid->df[ne]*grid->normal[i*NFACES+nf]/grid->Ac[i]/theta*grid->dzf[ne][k];
+            grid->df[ne]*grid->normal[i*grid->maxfaces+nf]/grid->Ac[i]/theta*grid->dzf[ne][k];
       }
     }
   }
@@ -3690,8 +3813,8 @@ void Continuity(REAL **w, gridT *grid, physT *phys, propT *prop)
  * the tolerance CONSERVED specified in suntans.h 
  *
  */
-static void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
-    MPI_Comm comm)
+void ComputeConservatives(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs,
+			  MPI_Comm comm)
 {
   int i, iptr, k;
   REAL mass, volume, volh, height, Ep;
@@ -3775,15 +3898,15 @@ static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
     // over the entire depth (cell depth)
     for(k=grid->ctop[n];k<grid->Nk[n];k++) {
       // over each face
-      for(nf=0;nf<NFACES;nf++) {
-        ne = grid->face[n*NFACES+nf];
+      for(nf=0;nf<grid->nfaces[n];nf++) {
+        ne = grid->face[n*grid->maxfaces+nf];
         if(!(grid->smoothbot) || k<grid->Nke[ne]){
-          uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
-          vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+          uc[n][k]+=u[ne][k]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+          vc[n][k]+=u[ne][k]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
         }
         else{	
-          uc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
-          vc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*NFACES+nf]*grid->df[ne];
+          uc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+          vc[n][k]+=u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
         }
       }
 
@@ -3793,373 +3916,16 @@ static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid) {
   }
 }
 
-
-/*
- * Function: OutputData
- * Usage: OutputData(grid,phys,prop,myproc,numprocs,blowup,comm);
- * --------------------------------------------------------------
- * Output the data every ntout steps as specified in suntans.dat
- * If this is the last time step or if the run is blowing up (blowup==1),
- * then output the data to the restart file specified by the file pointer
- * prop->StoreFID.
- *
- * If ASCII is specified then the data is output in ascii format, otherwise
- * it is output in binary format.  This variable is specified in suntans.h.
- *
- */
-
-
-// this was done for debugging purposes and should go back to the way 
-// it was for the final release to prevent aliasing of the function
-// with grid.c 
-//static void OutputData(gridT *grid, physT *phys, propT *prop,
-static void OutputData(gridT *grid, physT *phys, propT *prop,
-    int myproc, int numprocs, int blowup, MPI_Comm comm)
-{
-  int i, j, jptr, k, nwritten;
-  char str[BUFFERLENGTH], filename[BUFFERLENGTH];
-  REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData");
-
-  if(!(prop->n%prop->ntconserve) && !blowup) {
-    ComputeConservatives(grid,phys,prop,myproc,numprocs,comm);
-    if(myproc==0)
-      fprintf(prop->ConserveFID,"%e %e %e %e %e %e %e %e\n",prop->rtime,phys->mass,phys->volume,
-          phys->Ep-phys->Ep0,phys->Eflux1,phys->Eflux2,phys->Eflux3,phys->Eflux4);
-  }
-
-  if(!(prop->n%prop->ntout) || prop->n==1+prop->nstart || blowup) {
-
-    if(myproc==0 && VERBOSE>1) 
-      if(!blowup) 
-        printf("Outputting data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-      else
-        printf("Outputting blowup data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-
-
-    if(ASCII) 
-      for(i=0;i<grid->Nc;i++)
-        fprintf(prop->FreeSurfaceFID,"%f\n",phys->h[i]);
-    else {
-      nwritten=fwrite(phys->h,sizeof(REAL),grid->Nc,prop->FreeSurfaceFID);
-      if(nwritten!=grid->Nc) {
-        printf("Error outputting free-surface data!\n");
-        exit(EXIT_WRITING);
-      }
-    }
-    fflush(prop->FreeSurfaceFID);
-
-    // compute quadratic interpolated estimates for velocity using pretty plot and don't redo work
-    if(prop->prettyplot==1 && prop->interp != QUAD) {
-      ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
-      ComputeUC(phys->uc, phys->vc, phys,grid, myproc, QUAD);
-    }
-
-    // ut stores the tangential component of velocity on the faces.
-    if(ASCII) 
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i];k++) 
-          fprintf(prop->HorizontalVelocityFID,"%e %e %e\n",
-              phys->uc[i][k],phys->vc[i][k],0.5*(phys->w[i][k]+phys->w[i][k+1]));
-        for(k=grid->Nk[i];k<grid->Nkmax;k++)
-          fprintf(prop->HorizontalVelocityFID,"0.0 0.0 0.0\n");
-      }
-    else 
-      for(k=0;k<grid->Nkmax;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i]) 
-            tmp[i]=phys->uc[i][k];
-          else
-            tmp[i]=0;
-        }
-        nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting Horizontal Velocity data!\n");
-          exit(EXIT_WRITING);
-        }
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            tmp[i]=phys->vc[i][k];
-          else
-            tmp[i]=0;
-        }
-        nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting Horizontal Velocity data!\n");
-          exit(EXIT_WRITING);
-        }
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            tmp[i]=0.5*(phys->w[i][k]+phys->w[i][k+1]);
-          else
-            tmp[i]=0;
-        }
-        nwritten=fwrite(tmp,sizeof(REAL),grid->Nc,prop->HorizontalVelocityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting Face Velocity data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-    fflush(prop->HorizontalVelocityFID);
-
-    if(ASCII)
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i]+1;k++)
-          fprintf(prop->VerticalVelocityFID,"%e\n",phys->w[i][k]);
-        for(k=grid->Nk[i]+1;k<grid->Nkmax+1;k++)
-          fprintf(prop->VerticalVelocityFID,"0.0\n");
-      }
-    else {
-      for(k=0;k<grid->Nkmax+1;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i]+1)
-            phys->htmp[i]=phys->w[i][k];
-          else
-            phys->htmp[i]=EMPTY;
-        }
-        nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->VerticalVelocityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting vertical velocity data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-    }
-    fflush(prop->VerticalVelocityFID);
-
-    if(ASCII) {
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i];k++)
-          fprintf(prop->SalinityFID,"%e\n",phys->s[i][k]);
-        for(k=grid->Nk[i];k<grid->Nkmax;k++)
-          fprintf(prop->SalinityFID,"0.0\n");
-      }
-      if(prop->n==1+prop->nstart) {
-        for(i=0;i<grid->Nc;i++) {
-          for(k=0;k<grid->Nk[i];k++)
-            fprintf(prop->BGSalinityFID,"%e\n",phys->s0[i][k]);
-          for(k=grid->Nk[i];k<grid->Nkmax;k++)
-            fprintf(prop->BGSalinityFID,"0.0\n");
-        }
-      }
-    } else {
-      for(k=0;k<grid->Nkmax;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            phys->htmp[i]=phys->s[i][k];
-          else
-            phys->htmp[i]=EMPTY;
-        }
-        nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->SalinityFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting salinity data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-      if(prop->n==1+prop->nstart) {
-        for(k=0;k<grid->Nkmax;k++) {
-          for(i=0;i<grid->Nc;i++) {
-            if(k<grid->Nk[i])
-              phys->htmp[i]=phys->s0[i][k];
-            else
-              phys->htmp[i]=EMPTY;
-          }
-          nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->BGSalinityFID);
-          if(nwritten!=grid->Nc) {
-            printf("Error outputting background salinity data!\n");
-            exit(EXIT_WRITING);
-          }
-        }
-      }
-    }
-    fflush(prop->SalinityFID);
-
-    if(ASCII) 
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i];k++)
-          fprintf(prop->TemperatureFID,"%e\n",phys->T[i][k]);
-        for(k=grid->Nk[i];k<grid->Nkmax;k++)
-          fprintf(prop->TemperatureFID,"0.0\n");
-      }
-    else 
-      for(k=0;k<grid->Nkmax;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            phys->htmp[i]=phys->T[i][k];
-          else
-            phys->htmp[i]=EMPTY;
-        }
-        nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->TemperatureFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting temperature data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-    fflush(prop->TemperatureFID);
-
-    if(ASCII) 
-      for(i=0;i<grid->Nc;i++) {
-        for(k=0;k<grid->Nk[i];k++)
-          fprintf(prop->PressureFID,"%e\n",phys->q[i][k]);
-        for(k=grid->Nk[i];k<grid->Nkmax;k++)
-          fprintf(prop->PressureFID,"0.0\n");
-      }
-    else 
-      for(k=0;k<grid->Nkmax;k++) {
-        for(i=0;i<grid->Nc;i++) {
-          if(k<grid->Nk[i])
-            phys->htmp[i]=phys->q[i][k];
-          else
-            phys->htmp[i]=EMPTY;
-        }
-        nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->PressureFID);
-        if(nwritten!=grid->Nc) {
-          printf("Error outputting pressure data!\n");
-          exit(EXIT_WRITING);
-        }
-      }
-    fflush(prop->PressureFID);
-
-    if(prop->turbmodel) {
-      if(ASCII) 
-        for(i=0;i<grid->Nc;i++) {
-          for(k=0;k<grid->Nk[i];k++)
-            fprintf(prop->EddyViscosityFID,"%e\n",phys->nu_tv[i][k]);
-          for(k=grid->Nk[i];k<grid->Nkmax;k++)
-            fprintf(prop->EddyViscosityFID,"0.0\n");
-        }
-      else 
-        for(k=0;k<grid->Nkmax;k++) {
-          for(i=0;i<grid->Nc;i++) {
-            if(k<grid->Nk[i])
-              phys->htmp[i]=phys->nu_tv[i][k];
-            else
-              phys->htmp[i]=EMPTY;
-          }
-          nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->EddyViscosityFID);
-          if(nwritten!=grid->Nc) {
-            printf("Error outputting eddy viscosity data!\n");
-            exit(EXIT_WRITING);
-          }
-        }
-      fflush(prop->EddyViscosityFID);
-
-      if(ASCII) 
-        for(i=0;i<grid->Nc;i++) {
-          for(k=0;k<grid->Nk[i];k++)
-            fprintf(prop->ScalarDiffusivityFID,"%e\n",phys->kappa_tv[i][k]);
-          for(k=grid->Nk[i];k<grid->Nkmax;k++)
-            fprintf(prop->ScalarDiffusivityFID,"0.0\n");
-        }
-      else 
-        for(k=0;k<grid->Nkmax;k++) {
-          for(i=0;i<grid->Nc;i++) {
-            if(k<grid->Nk[i])
-              phys->htmp[i]=phys->kappa_tv[i][k];
-            else
-              phys->htmp[i]=EMPTY;
-          }
-          nwritten=fwrite(phys->htmp,sizeof(REAL),grid->Nc,prop->ScalarDiffusivityFID);
-          if(nwritten!=grid->Nc) {
-            printf("Error outputting scalar diffusivity data!\n");
-            exit(EXIT_WRITING);
-          }
-        }
-      fflush(prop->ScalarDiffusivityFID);
-    }
-
-    for(i=0;i<grid->Nc;i++) {
-      for(k=0;k<grid->Nk[i];k++)
-        fprintf(prop->VerticalGridFID,"%e\n",grid->dzz[i][k]);
-      for(k=grid->Nk[i];k<grid->Nkmax;k++)
-        fprintf(prop->VerticalGridFID,"0.0\n");
-    }
-  }
-  fflush(prop->VerticalGridFID);
-
-  if(prop->n==1)
-    fclose(prop->BGSalinityFID);
-
-  if(prop->n==prop->nsteps+prop->nstart) {
-    fclose(prop->FreeSurfaceFID);
-    fclose(prop->HorizontalVelocityFID);
-    fclose(prop->VerticalVelocityFID);
-    fclose(prop->SalinityFID);
-    fclose(prop->VerticalGridFID);
-    if(myproc==0) fclose(prop->ConserveFID);
-  }
-
-  // probably should change to make a distinction between blowup and restarts
-  if(!(prop->n%prop->ntoutStore) || blowup) {
-    if(VERBOSE>1 && myproc==0) 
-      printf("Outputting restart data at step %d\n",prop->n);
-
-    MPI_GetFile(filename,DATAFILE,"StoreFile","OutputData",myproc);
-    sprintf(str,"%s.%d",filename,myproc);
-    prop->StoreFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-    nwritten=fwrite(&(prop->n),sizeof(int),1,prop->StoreFID);
-
-    fwrite(phys->h,sizeof(REAL),grid->Nc,prop->StoreFID);
-    for(j=0;j<grid->Ne;j++) 
-      fwrite(phys->Cn_U[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
-    for(j=0;j<grid->Ne;j++) 
-      fwrite(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_W[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_W2[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-    if(prop->turbmodel==1) {
-      for(i=0;i<grid->Nc;i++) 
-        fwrite(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-      for(i=0;i<grid->Nc;i++) 
-        fwrite(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-      for(i=0;i<grid->Nc;i++) 
-        fwrite(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-      for(i=0;i<grid->Nc;i++) 
-        fwrite(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    }
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->kappa_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-    for(j=0;j<grid->Ne;j++) 
-      fwrite(phys->u[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->qc[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-    for(i=0;i<grid->Nc;i++) 
-      fwrite(phys->s0[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
-
-    fclose(prop->StoreFID);
-  }
-
-  SunFree(tmp,grid->Ne*sizeof(REAL),"OutputData");
-}
-
 /*
  * Function: ReadProperties
- * Usage: ReadProperties(prop,myproc);
+ * Usage: ReadProperties(prop,grid,myproc);
  * -----------------------------------
  * This function reads in the properties specified in the suntans.dat
  * data file.  Note that if an entry does not exist, a default can be used.
  *
  */
-void ReadProperties(propT **prop, int myproc)
-{
+void ReadProperties(propT **prop, gridT *grid, int myproc)
+{ 
   // allocate memory
   *prop = (propT *)SunMalloc(sizeof(propT),"ReadProperties");
 
@@ -4225,7 +3991,9 @@ void ReadProperties(propT **prop, int myproc)
   (*prop)->TVDmomentum = MPI_GetValue(DATAFILE,"TVDmomentum","ReadProperties",myproc); 
   (*prop)->conserveMomentum = MPI_GetValue(DATAFILE,"conserveMomentum","ReadProperties",myproc); 
   (*prop)->thetaM = MPI_GetValue(DATAFILE,"thetaM","ReadProperties",myproc); 
-  (*prop)->wetdry = MPI_GetValue(DATAFILE,"wetdry","ReadProperties",myproc); 
+  (*prop)->newcells = MPI_GetValue(DATAFILE,"newcells","ReadProperties",myproc); 
+  (*prop)->mergeArrays = MPI_GetValue(DATAFILE,"mergeArrays","ReadProperties",myproc); 
+  (*prop)->computeSediments = MPI_GetValue(DATAFILE,"computeSediments","ReadProperties",myproc); 
 
   // When wetting and drying is desired:
   // -Do nonconservative momentum advection (conserveMomentum=0)
@@ -4233,10 +4001,32 @@ void ReadProperties(propT **prop, int myproc)
   // -Update new cells (newcells=1)
   if((*prop)->wetdry) {
     (*prop)->conserveMomentum = 0;
-    (*prop)->thetaM = 1;
+    (*prop)->thetaM = 1;//Fully implicit
+    //(*prop)->thetaM = 0.5;
     (*prop)->newcells = 1;
   }
-
+  
+  (*prop)->calcage = MPI_GetValue(DATAFILE,"calcage","ReadProperties",myproc);
+  (*prop)->calcaverage = MPI_GetValue(DATAFILE,"calcaverage","ReadProperties",myproc);
+  if ((*prop)->calcaverage)
+      (*prop)->ntaverage = (int)MPI_GetValue(DATAFILE,"ntaverage","ReadProperties",myproc);
+  (*prop)->latitude = MPI_GetValue(DATAFILE,"latitude","ReadProperties",myproc);
+  (*prop)->metmodel = (int)MPI_GetValue(DATAFILE,"metmodel","ReadProperties",myproc);
+  (*prop)->varmodel = (int)MPI_GetValue(DATAFILE,"varmodel","ReadProperties",myproc);
+  (*prop)->nugget = MPI_GetValue(DATAFILE,"nugget","ReadProperties",myproc);
+  (*prop)->sill = MPI_GetValue(DATAFILE,"sill","ReadProperties",myproc);
+  (*prop)->range = MPI_GetValue(DATAFILE,"range","ReadProperties",myproc);
+  (*prop)->outputNetcdf = (int)MPI_GetValue(DATAFILE,"outputNetcdf","ReadProperties",myproc);
+  (*prop)->netcdfBdy = (int)MPI_GetValue(DATAFILE,"netcdfBdy","ReadProperties",myproc);
+  (*prop)->readinitialnc = (int)MPI_GetValue(DATAFILE,"readinitialnc","ReadProperties",myproc);
+  (*prop)->Lsw = MPI_GetValue(DATAFILE,"Lsw","ReadProperties",myproc);
+  (*prop)->Cda = MPI_GetValue(DATAFILE,"Cda","ReadProperties",myproc);
+  (*prop)->Ce = MPI_GetValue(DATAFILE,"Ce","ReadProperties",myproc);
+  (*prop)->Ch = MPI_GetValue(DATAFILE,"Ch","ReadProperties",myproc);
+  if((*prop)->outputNetcdf > 0 || (*prop)->netcdfBdy > 0 || (*prop)->readinitialnc > 0){ 
+      MPI_GetString((*prop)->starttime,DATAFILE,"starttime","ReadProperties",myproc);
+      MPI_GetString((*prop)->basetime,DATAFILE,"basetime","ReadProperties",myproc);
+  }
   if((*prop)->nonlinear==2) {
     (*prop)->laxWendroff = MPI_GetValue(DATAFILE,"laxWendroff","ReadProperties",myproc);
     if((*prop)->laxWendroff!=0)
@@ -4264,86 +4054,20 @@ void ReadProperties(propT **prop, int myproc)
       exit(EXIT_FAILURE);
       break;
   }
+  if((*prop)->interp==QUAD && grid->maxfaces>DEFAULT_NFACES) {
+    printf("Warning in ReadProperties...interp set to PEROT for use with quad or hybrid grid.\n");
+    (*prop)->interp=PEROT;
+  }
 
   // additional data for pretty plot methods
   (*prop)->prettyplot = MPI_GetValue(DATAFILE,"prettyplot","ReadProperties",myproc);
+  if((*prop)->prettyplot!=0 && grid->maxfaces>DEFAULT_NFACES) {
+    printf("Warning in ReadProperties...prettyplot set to zero for use with quad or hybrid grid.\n");
+    (*prop)->prettyplot=0;
+  }
 
   // addition for linearized free surface where dzz=dz
   (*prop)->linearFS = (int)MPI_GetValue(DATAFILE,"linearFS","ReadProperties",myproc);
-
-}
-
-/* 
- * Function: OpenFiles
- * Usage: OpenFiles(prop,myproc);
- * ------------------------------
- * Open all of the files used for i/o to store the file pointers.
- *
- */
-void OpenFiles(propT *prop, int myproc)
-{
-  char str[BUFFERLENGTH], filename[BUFFERLENGTH];
-
-  if(prop->readSalinity) {
-    MPI_GetFile(filename,DATAFILE,"InitSalinityFile","OpenFiles",myproc);
-    prop->InitSalinityFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
-  }
-  if(prop->readTemperature) {
-    MPI_GetFile(filename,DATAFILE,"InitTemperatureFile","OpenFiles",myproc);
-    prop->InitTemperatureFID = MPI_FOpen(filename,"r","OpenFiles",myproc);
-  }
-
-  MPI_GetFile(filename,DATAFILE,"FreeSurfaceFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->FreeSurfaceFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"HorizontalVelocityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->HorizontalVelocityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"VerticalVelocityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->VerticalVelocityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"SalinityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->SalinityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"BGSalinityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->BGSalinityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"TemperatureFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->TemperatureFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"PressureFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->PressureFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"EddyViscosityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->EddyViscosityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"ScalarDiffusivityFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->ScalarDiffusivityFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  MPI_GetFile(filename,DATAFILE,"VerticalGridFile","OpenFiles",myproc);
-  sprintf(str,"%s.%d",filename,myproc);
-  prop->VerticalGridFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-
-  if(RESTART) {
-    MPI_GetFile(filename,DATAFILE,"StartFile","OpenFiles",myproc);
-    sprintf(str,"%s.%d",filename,myproc);
-    prop->StartFID = MPI_FOpen(str,"r","OpenFiles",myproc);
-  }
-
-  if(myproc==0) {
-    MPI_GetFile(filename,DATAFILE,"ConserveFile","OpenFiles",myproc);
-    sprintf(str,"%s",filename);
-    prop->ConserveFID = MPI_FOpen(str,"w","OpenFiles",myproc);
-  }
 }
 
 /*
@@ -4422,7 +4146,7 @@ static REAL UFaceFlux(int j, int k, REAL **phi, REAL **u, gridT *grid, REAL dt, 
  * at the boundaries.
  *
  */
-static void SetDensity(gridT *grid, physT *phys, propT *prop) {
+void SetDensity(gridT *grid, physT *phys, propT *prop) {
   int i, j, k, jptr, ib;
   REAL z, p;
 
@@ -4623,10 +4347,31 @@ inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, i
     // possible mistake here- make sure to the get the right value for the start
     // of the loop (etop?)
     //    if(myproc==0) printf("ComputeQuadraticInterp\n");
+    if(grid->nfaces[n]==3){
     for(k=grid->ctop[n];k<grid->Nk[n];k++) {
       // now we can compute the quadratic interpolated velocity from these results
       ComputeQuadraticInterp(grid->xv[n], grid->yv[n], n, k, ui, 
           vi, phys, grid, nRT2, tRT2, myproc);
+    }
+    } else {
+       // over the entire depth (cell depth)
+       for(k=grid->ctop[n];k<grid->Nk[n];k++) {
+        // over each face
+        for(nf=0;nf<grid->nfaces[n];nf++) {
+          ne = grid->face[n*grid->maxfaces+nf];
+          if(!(grid->smoothbot) || k<grid->Nke[ne]){
+            phys->uc[n][k]+=phys->u[ne][k]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+            phys->vc[n][k]+=phys->u[ne][k]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+          }
+          else{	
+            phys->uc[n][k]+=phys->u[ne][grid->Nke[ne]-1]*grid->n1[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+            phys->vc[n][k]+=phys->u[ne][grid->Nke[ne]-1]*grid->n2[ne]*grid->def[n*grid->maxfaces+nf]*grid->df[ne];
+          }
+        }
+
+        phys->uc[n][k]/=grid->Ac[n];
+        phys->vc[n][k]/=grid->Ac[n];
+      }
     }
   } 
 }
@@ -4653,22 +4398,22 @@ static void  ComputeQuadraticInterp(REAL x, REAL y, int ic, int ik, REAL **uc,
   // we need to be able to quickly compute the area subsets in the triangle
   // A12, A13, A23; we need nodal velocity vectors (nRT2), and tangential
   // velocity vectors
-  REAL points[2][NUMEDGECOLUMNS];
-  REAL xt[NUMEDGECOLUMNS], yt[NUMEDGECOLUMNS];
-  REAL SubArea[NUMEDGECOLUMNS];
-  REAL nu[NUMEDGECOLUMNS], nv[NUMEDGECOLUMNS];
-  REAL eu[NUMEDGECOLUMNS], ev[NUMEDGECOLUMNS];
-  int np[NUMEDGECOLUMNS], ne[NUMEDGECOLUMNS], nf, ie, ip;
+  REAL points[2][grid->nfaces[ic]];
+  REAL xt[3], yt[3];
+  REAL SubArea[grid->nfaces[ic]];
+  REAL nu[grid->nfaces[ic]], nv[grid->nfaces[ic]];
+  REAL eu[grid->nfaces[ic]], ev[grid->nfaces[ic]];
+  int np[grid->nfaces[ic]], ne[grid->nfaces[ic]], nf, ie, ip;
   const REAL TotalArea = grid->Ac[ic];
 
   // loop over each of the faces 
   // possible error if NUMEDGECOLUMNS != NFACES!!
-  for( nf=0; nf < NUMEDGECOLUMNS; nf ++) {
+  for( nf=0; nf < grid->nfaces[ic]; nf ++) {
     // get the index for the vertex of the cell
-    np[nf] = grid->cells[NUMEDGECOLUMNS*ic + nf];
+    np[nf] = grid->cells[grid->maxfaces*ic + nf];
     // get the index for the cell edge
-    ne[nf] = grid->face[NFACES*ic + nf];
-
+    ne[nf] = grid->face[grid->maxfaces*ic + nf];
+    //printf("np is %d, ne is %d\n",np[nf],ne[nf]);
     // get the coordinates for the points for the vertex
     // to compute the area of the subtriangle
     points[0][nf] = grid->xp[np[nf]];
@@ -4683,13 +4428,13 @@ static void  ComputeQuadraticInterp(REAL x, REAL y, int ic, int ik, REAL **uc,
   // use the formula after getting the vector values for the 
   // velocities at each of the points
 
-  for( nf=0; nf < NUMEDGECOLUMNS; nf++) {
+  for( nf=0; nf < grid->nfaces[ic]; nf++) {
     // get the points for each vertex of the triangle
     xt[0] = points[0][nf];
     yt[0] = points[1][nf];
     // wrap the next one if it goes out of bounds
-    xt[1] = points[0][(nf+1)%NUMEDGECOLUMNS]; 
-    yt[1] = points[1][(nf+1)%NUMEDGECOLUMNS];
+    xt[1] = points[0][(nf+1)%grid->nfaces[ic]]; 
+    yt[1] = points[1][(nf+1)%grid->nfaces[ic]];
     // the interpolated center
     xt[2] = x;
     yt[2] = y;
@@ -4697,12 +4442,12 @@ static void  ComputeQuadraticInterp(REAL x, REAL y, int ic, int ik, REAL **uc,
     // get the area from the points where 
     // nf=0 => A12, nf=1 => A23, nf=2 => A13 from Wang et al 2011
     // note that this is normalized
-    SubArea[nf] = GetArea(xt, yt, NUMEDGECOLUMNS)/TotalArea;
+    SubArea[nf] = GetArea(xt, yt, 3)/TotalArea;
     //          printf("nf = %d Area=%e\n", nf, SubArea[nf]);
   }
 
   // get the nodal and edge velocities projected unto global x,y coords
-  for (nf=0; nf < NUMEDGECOLUMNS; nf++) {
+  for (nf=0; nf < grid->nfaces[ic]; nf++) {
     // node and edge indexes
     ip = np[nf]; ie = ne[nf];
     // get the nodal velocity components 
@@ -4940,6 +4685,39 @@ static REAL HFaceFlux(int j, int k, REAL *phi, REAL **u, gridT *grid, REAL dt, i
 }
 
 /*
+ * Function: getTsurf
+ * ----------------------------------------------------------------
+ * Returns the temperature at the surface cell
+ */
+static void getTsurf(gridT *grid, physT *phys){
+  int i, iptr, ktop;
+  int Nc = grid->Nc;
+  
+  //for(i=0;i<Nc;i++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+    ktop = grid->ctop[i];
+    phys->Tsurf[i] = phys->T[i][ktop];
+  }
+}
+
+/*
+ * Function: getchangeT
+ * ----------------------------------------------------------------
+ * Returns the change in temperature at the surface cell
+ */
+static void getchangeT(gridT *grid, physT *phys){
+  int i, iptr, ktop;
+  int Nc = grid->Nc;
+  
+  //for(i=0;i<Nc;i++) {
+  for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+    i = grid->cellp[iptr];
+    ktop = grid->ctop[i];
+    phys->dT[i] = phys->T[i][ktop] - phys->Tsurf[i];
+  }
+}
+ /*
  *
  */
 static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, REAL **U, gridT *grid, physT *phys, propT *prop,
@@ -5030,9 +4808,9 @@ static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, R
     for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
       i = grid->cellp[iptr];
 
-      for(nf=0;nf<NFACES;nf++) {
-        if((ne=grid->neigh[i*NFACES+nf])!=-1) {
-          j=grid->face[i*NFACES+nf];
+      for(nf=0;nf<grid->nfaces[i];nf++) {
+        if((ne=grid->neigh[i*grid->maxfaces+nf])!=-1) {
+          j=grid->face[i*grid->maxfaces+nf];
 
           nc1 = grid->grad[2*j];
           nc2 = grid->grad[2*j+1];
@@ -5056,15 +4834,3 @@ static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, R
       }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-

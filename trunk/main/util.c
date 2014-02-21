@@ -47,29 +47,85 @@ int *ReSize(int *a, int N)
   return new;
 }
 
-void ReOrderRealArray(REAL *a, int *order, REAL *tmp, int N, int Num)
+void ReOrderRealArray(REAL *a, int *order, REAL *tmp, int N, int Num, int *nfaces, int *grad, int maxfaces)
 {
-  int n, j;
-
-  for(n=0;n<N;n++)
-    for(j=0;j<Num;j++) 
-      tmp[n*Num+j]=a[n*Num+j];
-
-  for(n=0;n<N;n++)
-    for(j=0;j<Num;j++)
-      a[n*Num+j]=tmp[order[n]*Num+j];
+  int n, j, grad1, grad2, enei;
+ 
+  if(Num==1 || Num==2 || Num==NUMEDGECOLUMNS){
+    for(n=0;n<N;n++)
+      for(j=0;j<Num;j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    for(n=0;n<N;n++)
+      for(j=0;j<Num;j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    return;
+  }
+  if(Num==maxfaces){
+    for(n=0;n<N;n++)
+      for(j=0;j<nfaces[n];j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    for(n=0;n<N;n++)
+      for(j=0;j<nfaces[order[n]];j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    return;
+  }
+  if(Num==(2*(maxfaces-1))){
+    for(n=0;n<N;n++){
+      grad1=grad[2*n];
+      grad2=grad[2*n+1];
+      enei=grad1+grad2-2;
+      for(j=0;j<enei;j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    }
+    for(n=0;n<N;n++){
+      grad1=grad[2*order[n]];
+      grad2=grad[2*order[n]+1];
+      enei=grad1+grad2-2;
+      for(j=0;j<enei;j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    }
+    return;
+  } 
 }
-
-void ReOrderIntArray(int *a, int *order, int *tmp, int N, int Num)
+// corrected, make it to include all the possibility
+void ReOrderIntArray(int *a, int *order, int *tmp, int N, int Num, int *nfaces, int *grad, int maxfaces)
 {
-  int n, j;
-
-  for(n=0;n<N;n++)
-    for(j=0;j<Num;j++)
-      tmp[n*Num+j]=a[n*Num+j];
-  for(n=0;n<N;n++)
-    for(j=0;j<Num;j++)
-      a[n*Num+j]=tmp[order[n]*Num+j];
+  int n, j, grad1, grad2, enei;
+  if(Num==1 || Num==2 || Num==NUMEDGECOLUMNS){
+    for(n=0;n<N;n++)
+      for(j=0;j<Num;j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    for(n=0;n<N;n++)
+      for(j=0;j<Num;j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    return;
+  }
+  if(Num==maxfaces){
+    for(n=0;n<N;n++)
+      for(j=0;j<nfaces[n];j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    for(n=0;n<N;n++)
+      for(j=0;j<nfaces[order[n]];j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    return;
+  }
+  if(Num==(2*(maxfaces-1))){
+    for(n=0;n<N;n++){
+      grad1=grad[2*n];
+      grad2=grad[2*n+1];
+      enei=grad1+grad2-2;
+      for(j=0;j<enei;j++)
+	tmp[n*Num+j]=a[n*Num+j];
+    }
+    for(n=0;n<N;n++){
+      grad1=grad[2*order[n]];
+      grad2=grad[2*order[n]+1];
+      enei=grad1+grad2-2;
+      for(j=0;j<enei;j++)
+	a[n*Num+j]=tmp[order[n]*Num+j];
+    }
+    return;
+  }
 }
 
 int IsMember(int i, int *points, int numpoints)
@@ -80,9 +136,9 @@ int IsMember(int i, int *points, int numpoints)
   return -1;
 }    
 
-void Interp(REAL *x, REAL *y, REAL *z, int N, REAL *xi, REAL *yi, REAL *zi, int Ni)
+void Interp(REAL *x, REAL *y, REAL *z, int N, REAL *xi, REAL *yi, REAL *zi, int Ni, int maxFaces)
 {
-  int j, n, numpoints=NFACES+1, *points=(int *)malloc(numpoints*sizeof(int));
+  int j, n, numpoints=maxFaces+1, *points=(int *)malloc(numpoints*sizeof(int));
   REAL r, r0, dist;
 
   for(n=0;n<Ni;n++) {
@@ -198,10 +254,10 @@ void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction) {
     for(k=0;k<grid->Nk[i];k++)
       gradient[i][k]=0;
 
-    for(nf=0;nf<NFACES;nf++) {
-      if((neigh=grid->neigh[i*NFACES+nf])!=-1) {
+    for(nf=0;nf<grid->nfaces[i];nf++) {
+      if((neigh=grid->neigh[i*grid->maxfaces+nf])!=-1) {
 
-        ne=grid->face[i*NFACES+nf];
+        ne=grid->face[i*grid->maxfaces+nf];
         nc1 = grid->grad[2*ne];
         nc2 = grid->grad[2*ne+1];
 
@@ -216,14 +272,14 @@ void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction) {
           coordinate=grid->n2[ne];
 
         for(k=kmin;k<grid->Nke[ne];k++) 
-          gradient[i][k]+=0.5/grid->Ac[i]*(phi[nc1][k]+phi[nc2][k])*coordinate*grid->normal[i*NFACES+nf]*grid->df[ne];
+          gradient[i][k]+=0.5/grid->Ac[i]*(phi[nc1][k]+phi[nc2][k])*coordinate*grid->normal[i*grid->maxfaces+nf]*grid->df[ne];
       }
     }
   }
 }
 
 // function that will bring in two lists and return the first shared value it finds
-int SharedListValue(int *list1, int *list2, int listsize) {
+inline int SharedListValue(int *list1, int *list2, int listsize) {
   int i, j, li;
   // iterate over each element of each list and compare with all the values of the other list
   for(i=0; i < listsize; i++) {
@@ -267,8 +323,54 @@ void PrintVectorToFile(enum Type etype, void *Vector, int M, char *filename, int
   }
 }
 
-// function definition for max
-int max(int a, int b) {
+// inline function definition for max
+inline int max(int a, int b) {
   return a > b ? a : b;
 }
+
+/*
+* Function: QuadInterp()
+* ---------------------
+* 1-D quadratic interpolation function between 3 points (x0,x1,x2) with values (y0,y1,y2);
+*/ 
+
+REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2){
+    REAL L0, L1, L2;
+
+//    printf("x: %f, x0: %f, x1: %f, x2: %f, y0: %f, y1: %f, y2: %f\n",x,x0,x1,x2,y0,y1,y2);
+
+    L0 = (x-x1) * (x-x2) / ( (x0-x1)*(x0-x2) );
+    L1 = (x-x0) * (x-x2) / ( (x1-x0)*(x1-x2) );
+    L2 = (x-x0) * (x-x1) / ( (x2-x0)*(x2-x1) );
+
+    return y0*L0 + y1*L1 + y2*L2;
+
+}//End Function
+
+/* Function getToffSet()
+ * ------------------
+ * Returns the time offset in days between two time strings - starttime and basetime
+ * 
+ * The time string format is: yyyymmdd.HHMMSS (15 characters)
+ * Uses the time.h libraries
+ */
+REAL getToffSet(char basetime[15], char starttime[15]){
+	
+    //char *strptime(const char *buf, const char *format, struct tm *tm) 
+    //time_t mktime ( struct tm * timeptr ); 
+    struct tm tm0; 
+    struct tm tm1;
+    time_t t0, t1;
+    //const char time1=*basetime;
+    //const char time2=*starttime;
+
+    strptime(basetime,"%Y%m%d.%H%M%S",&tm0);
+    strptime(starttime,"%Y%m%d.%H%M%S",&tm1);
+    
+    t0 = mktime(&tm0);
+    t1 = mktime(&tm1);
+    return difftime(t1,t0)/86400.0;
+
+}//End function
+
 

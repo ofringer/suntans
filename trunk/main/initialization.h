@@ -18,5 +18,7 @@ REAL ReturnFreeSurface(REAL x, REAL y, REAL d);
 REAL ReturnSalinity(REAL x, REAL y, REAL z);
 REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth);
 REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z);
+REAL ReturnSediment(REAL x, REAL y, REAL z, int sizeno);
+REAL ReturnBedSedimentRatio(REAL x, REAL y, int layer, int sizeno,int nsize);
 
 #endif

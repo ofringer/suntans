@@ -1,15 +1,26 @@
-Examples can be run with "make test".
+This test case computes a lid-driven cavity flow on triangular and 
+quadrilateral grids.  There are four cases:
 
-This will run both cases of 
+Default: "make test" runs testXY
 
-+ testXY 
-+ testXZ 
+make testXY
+     Flow is in the x-y (unstructured) plane and forced at u(y=0)=1, with
+     all other boundaries no-slip.
+     Grid: Unstructured in x-y, with high-resolution at boundary layers with
+     	   a total of 4016 cells.
 
-These simulate cavity flows in the XY and XZ planes, respectively
-with data in dataXY and dataXZ.  
-CompareResultsXY.m and CompareResultsXZ.m can be used to view data 
-with some results from Zang (1994) data. 
-"make plotXY" and "make plotXZ" can also be used to view the 
-data with sunplot.
+make testXY-quad:
+     Same as make testXY but with quadrilateral cells.
+     Grid: 30X30 Cartesian grid with Chebychev stretching at the boundaries.
 
-PJW, 11/5/2011
+make testXZ:
+     Flow is in the x-z plane and forced at w(x=0)=-1, with
+     all other boundaries no-slip.  
+     Grid: 128 Constant-width equilateral triangles in x, 128 equispaced
+     	   z-levels.
+
+make testXZ-quad:
+     Same as testXZ but with quadrilaterals in the x-direction.
+     Grid: 30 Chebychev quadrilaterals in both x and z.
+
+To compare the output to published results, use mfiles/compare_results.m.
