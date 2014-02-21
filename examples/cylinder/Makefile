@@ -26,27 +26,42 @@ INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
 NUMPROCS = 1
 
-all:	data
+all:	$(SUN)
 
-test:	data
+test:	$(SUN)
 	sh $(EXEC).sh $(NUMPROCS)
 
-data:	$(SUN)
+test-tri: data-tri test
+
+test-quad:	data-quad test
+
+data-tri:	FORCE
+	cp data-files/cells-tri.dat rundata/cells.dat
+	cp data-files/edges-tri.dat rundata/edges.dat
+	cp data-files/points-tri.dat rundata/points.dat
+	cp data-files/suntans-tri.dat rundata/suntans.dat
+
+data-quad: FORCE
+	cp data-files/cells-quad.dat rundata/cells.dat
+	cp data-files/edges-quad.dat rundata/edges.dat
+	cp data-files/points-quad.dat rundata/points.dat
+	cp data-files/suntans-quad.dat rundata/suntans.dat
 
 .c.o:	
-	$(LD) $(CFLAGS) -c $(INCLUDES) $(DEFS) $*.c
+	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 
-$(SUN):	initialization.o boundaries.o state.o sources.o
-	cp initialization.o boundaries.o state.o sources.o $(SUNTANSHOME)
+$(SUN):	initialization.o boundaries.o state.o
+	cp initialization.o boundaries.o state.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
 
-plot:
-	cp -r $(SUNTANSHOME)/cmaps .
-	$(SUNTANSHOME)/sunplot -np $(NUMPROCS) --datadir=data
-
+# Empty target makes it always happen
+FORCE:
 
 clean:
 	rm -f *.o
 
-clobber: clean
+clobber: clean data-tri
 	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/*~
+
+
+

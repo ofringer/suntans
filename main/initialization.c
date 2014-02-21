@@ -14,6 +14,7 @@
 #include "fileio.h"
 #include "suntans.h"
 #include "initialization.h"
+#include "mynetcdf.h"
 
 #define sech 1/cosh
 /*
@@ -75,16 +76,17 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
 REAL ReturnDepth(REAL x, REAL y) {
   REAL length, xmid, shelfdepth, depth;
 
-  length = 10000;
-  xmid = 65000;
-  shelfdepth = 500;
-  depth = 3000;
-  if(x<=xmid-length/2)
-    return depth;
-  else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
-    return depth-(depth-shelfdepth)*(x-xmid+length/2)/length;
-  else
-    return shelfdepth;
+//  length = 10000;
+//  xmid = 65000;
+//  shelfdepth = 500;
+//  depth = 3000;
+//  if(x<=xmid-length/2)
+//    return depth;
+//  else if(x>xmid-length/2 && x<=xmid+length/2 && length>0)
+//    return depth-(depth-shelfdepth)*(x-xmid+length/2)/length;
+//  else
+//    return shelfdepth;
+    return 1;
 }
 
  /*
@@ -142,3 +144,30 @@ REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
   return 0;
 }
 
+/*
+ * Function: ReturnSediment
+ * Usage: SediC[Nsize][n][Nk]=ReturnSediment(grid->xv[n],grid->yv[n],z);
+ * ------------------------------------------------------------
+ * Helper function to create an initial sediment concentration field.  Used
+ * in sediment.c IntitalizeSediment function
+ *
+ */
+REAL ReturnSediment(REAL x, REAL y, REAL z, int sizeno) {
+  if(z>-2)
+    return 1;
+  return 0;
+}
+
+/*
+ * Function: ReturnBedSedimentRatio
+ * Usage: SediC[Nsize][n][Nk]=ReturnBedSedimentRatio(grid->xv[n],grid->yv[n],z);
+ * ------------------------------------------------------------
+ * Helper function to create an initial bed sediment concentration field.  Used
+ * in sediment.c IntitalizeSediment function
+ * the sum of ratio should be 1
+ */
+REAL ReturnBedSedimentRatio(REAL x, REAL y, int layer, int sizeno,int nsize) {
+  REAL a;
+  a=1.0/nsize;
+  return a;
+}

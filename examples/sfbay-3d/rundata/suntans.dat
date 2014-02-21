@@ -3,11 +3,12 @@
 #  Input file for SUNTANS.
 #
 ########################################################################
-Nkmax	 		1	# Number of cells in the vertical
+mergeArrays		0	# Don't merge
+Nkmax	 		30	# Number of cells in the vertical
 stairstep		0	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1.3	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
-prettyplot		0	# Use quadratic for output u and v
+prettyplot		1	# Use quadratic for output u and v
 VoronoiRatio	 	0	# Adjust the voronoi points by this amount if 1 then = centroid.
 vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
 IntDepth 		2	# 1 if interpdepth, 0 otherwise
@@ -22,7 +23,7 @@ thetaS			0.55	# For scalar advection
 thetaB			0.55	# For scalar advection
 kappa_s                 0       # Vertical mass diffusivity
 kappa_sH                0       # Horizontal mass diffusivity
-gamma 			1 	# Coefficient of expansivity of temperature.
+gamma 			0 	# Coefficient of expansivity of temperature.
 kappa_T                 0       # Vertical thermal diffusivity
 kappa_TH                0       # Horizontal thermal diffusivity
 nu 			1e-4 	# Laminar viscosity of water (m^2 s^-1)
@@ -33,11 +34,12 @@ z0B	                0.0025	# Bottom roughness
 CdT	                0.0 	# Drag coefficient at surface
 CdB	                0.0	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
+computeSediments        1       # whether include sediment model
 turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
 dt 			20	# Time step
 Cmax 			1  	# Maximum permissible Courant number
-nsteps 			4500    # Number of steps
-ntout   		150  	# How often to output data
+nsteps 			4320    # Number of steps
+ntout   		180  	# How often to output data
 ntprog   		5 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
 nonhydrostatic		0	# 0 = hydrostatic, 1 = nonhydrostatic
@@ -59,6 +61,7 @@ nonlinear		5	# No momentum advection: 0, first-order upwind: 1, Central-differen
 TVDmomentum		3	# TVD momentum superbee
 laxWendroff     	0       # No Lax Wendroff diffusion coefficients
 laxWendroff_Vertical    0       # No Lax Wendroff diffusion coefficients
+newcells		0	#
 wetdry			1       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              8.95e-5	# Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        0 	# Decay distance scale for sponge layer
@@ -106,6 +109,92 @@ ScalarDiffusivityFile	kappat.dat
 ########################################################################
 InitSalinityFile	sinit.dat
 InitTemperatureFile	Tinit.dat
- 
- 
- 
+########################################################################
+#
+# Sediment parameters
+#
+########################################################################
+Nlayer			3	# Number of bed layers (MAX = 5)
+Nsize                   3       # Number of sediment fractions (Max = 3)
+TBMAX                   1       # whether to output tb for each cell
+SETsediment             0       # When Nlayer>5 or Nsize>3, SETsediment=1 to use SetSediment 
+WSconstant              1       # if 1, ws for sediment = ws0
+readSediment            0       # if 1, read sediment concentration data as IC. only work with Nsize==1
+bedInterval             150     # the interval steps to update bed change
+bedComplex              0       # whether to consider the possibility to flush away a whole layer
+ParabolKappa            0       # whether to use parabolic tubulent diffusivity
+Ds90                  0.000008    # ds90 for calculation of erosion taub
+Ds1                   0.00000057   # sediment diameter for fraction No.1 (m)
+Ds2                   0.0002    # sediment diameter for fraction No.2                   
+Ds3                   0.0002    # sediment diameter for fraction No.3
+Ws01                  0.000001     # constant settling velocity for fraction No.1 (m/s)
+Ws02                  0.00001     # constant settling velocity for fraction No.2
+Ws03                  0.0001     # constant settling velocity for fraction No.3
+Gsedi1                2.65      # relative density for fraction No.1
+Gsedi2                2.65      # relative density for fraction No.2
+Gsedi3                2.65      # relative density for fraction No.3
+Prt1                    1       # Prandtl Number for fraction No.1
+Prt2                    1       # Prandtl Number for fraction No.2
+Prt3                    1       # Prandtl Number for fraction No.3
+Consolid1             0.0002    # Consolidation rate (g/m^2/s) for layer No.1
+Consolid2             0.0002    # Consolidation rate (g/m^2/s) for layer No.2
+Consolid3             0.0001    # Consolidation rate (g/m^2/s) for layer No.3
+Consolid4             0.0001    # Consolidation rate (g/m^2/s) for layer No.4
+Consolid5             0.00005    # Consolidation rate (g/m^2/s) for layer No.5
+E01                   0.1      # Basic Erosion Rate Constant (g/m^2/s) for layer No.1
+E02                   0.01      # Basic Erosion Rate Constant (g/m^2/s) for layer No.2
+E03                   0.005      # Basic Erosion Rate Constant (g/m^2/s) for layer No.3
+E04                   0.005      # Basic Erosion Rate Constant (g/m^2/s) for layer No.4
+E05                   0.001      # Basic Erosion Rate Constant (g/m^2/s) for layer No.5
+Taue1                 0.1       # Erosion Critical Shear Stress (N/m^2) for layer No.1
+Taue2                 0.1       # Erosion Critical Shear Stress (N/m^2) for layer No.2
+Taue3                 0.1       # Erosion Critical Shear Stress (N/m^2) for layer No.3
+Taue4                 1.9       # Erosion Critical Shear Stress (N/m^2) for layer No.4
+Taue5                 1.9       # Erosion Critical Shear Stress (N/m^2) for layer No.5
+Taud1                 0.1       # Deposition Critical Shear Stress (N/m^2) for layer No.1
+Taud2                 0.4       # Deposition Critical Shear Stress (N/m^2) for layer No.2
+Taud3                 0.9       # Deposition Critical Shear Stress (N/m^2) for layer No.3
+Taud4                 0.9       # Deposition Critical Shear Stress (N/m^2) for layer No.4
+Taud5                 0.9       # Deposition Critical Shear Stress (N/m^2) for layer No.5
+Drydensity1           530000    # Dry density (g/m^3) for layer No.1
+Drydensity2           900000    # Dry density (g/m^3) for layer No.2
+Drydensity3           900000    # Dry density (g/m^3) for layer No.3
+Drydensity4           900000    # Dry density (g/m^3) for layer No.4
+Drydensity5           900000    # Dry density (g/m^3) for layer No.5
+Thickness1            1.0      # Thickness (m) for layer No.1
+Thickness2            2.0       # Thickness (m) for layer No.2
+Thickness3            4.0      # Thickness (m) for layer No.3
+Thickness4            5.0       # Thickness (m) for layer No.4
+Thickness5            5.0       # Thickness (m) for layer No.5
+softhard1             1         # 0 soft or hard for layer No.1 to decide how to calculate erosion
+softhard2             1         # 0 soft or hard for layer No.2 to decide how to calculate erosion
+softhard3             1         # 0 soft or hard for layer No.3 to decide how to calculate erosion
+softhard4             1         # 0 soft or hard for layer No.4 to decide how to calculate erosion
+softhard5             1         # 0 soft or hard for layer No.5 to decide how to calculate erosion
+Bedmudratio1          0.8       # Bed mud ratio for layer No.1
+Bedmudratio2          0.7       # Bed mud ratio for layer No.2
+Bedmudratio3          0.6       # Bed mud ratio for layer No.3
+Bedmudratio4          0.5       # Bed mud ratio for layer No.4
+Bedmudratio5          0.5       # Bed mud ratio for layer No.5
+Chind                 1000000   # Concentration (in volumetric fraction) criterion for hindered settling velocity
+Cfloc                 500000    # Concentration (in volumetric fraction) criterion for flocculated settling velcoity
+k                     0.0002    # Constant coefficient for settling velocity as a function of conc.
+########################################################################
+#
+# Input Data Files
+#
+########################################################################
+InputSedimentFile            sediint.dat
+########################################################################
+#
+# Output Data Files
+#
+########################################################################
+Sediment1File           sedi1.dat
+Sediment2File           sedi2.dat
+Sediment3File           sedi3.dat
+Sediment4File           sedi4.dat
+Sediment5File           sedi5.dat
+LayerFile               sedilayer.dat
+tbFile                  Seditb.dat
+tbmaxFile               Seditbmax.dat 

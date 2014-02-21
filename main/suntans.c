@@ -19,6 +19,7 @@
 #include "suntans.h"
 #include "mympi.h"
 #include "grid.h"
+#include "gridio.h"
 #include "phys.h"
 #include "report.h"
 
@@ -38,9 +39,12 @@ main(int argc, char *argv[])
     GetGrid(&grid,myproc,numprocs,comm);
   else
     ReadGrid(&grid,myproc,numprocs,comm);
+  
 
   if(SOLVE) {
-    ReadProperties(&prop,myproc);
+    //read parameters in suntans.dat into the solver
+    ReadProperties(&prop,grid,myproc);
+    // give space and initialize dzf(edge) dzz(center) dzzold(center)
     InitializeVerticalGrid(&grid,myproc);
     AllocatePhysicalVariables(grid,&phys,prop);
     AllocateTransferArrays(&grid,myproc,numprocs,comm);
