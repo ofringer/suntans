@@ -80,6 +80,10 @@ class HybridGrid(object):
             self.make_neigh_from_cells()
         else:
             self.neigh=neigh
+
+
+        # Face->edge connectivity
+        self.face = self.cell_edge_map()
         
         # Calculate the coordintes
         self.edge_centers()
@@ -542,6 +546,34 @@ class HybridGrid(object):
                     self._pnt2cells[self.cells[i,j]].add(i)
         return self._pnt2cells[pnt_i]
         
+    def cell2edges(self,cell_i):
+        if self.cells[cell_i,0] == -1:
+            raise "cell %i has been deleted"%cell_i
+        
+        # return indices to the three edges for this cell:
+        pnts = self.cells[cell_i] # the three vertices
+
+        # the k-th edge is opposite the k-th point, like in CGAL
+        nf = self.nfaces[cell_i]
+        edges = [ self.find_edge( (pnts[(i+1)%nf], pnts[(i+2)%nf]) ) for i in range(nf) ]
+        return edges
+
+    _cell_edge_map = None
+    def cell_edge_map(self):
+        """ cell2edges for the whole grid
+        return an integer valued [Nc,3] array, where [i,k] is the edge index
+        opposite point self.cells[i,k]
+
+        N.B. this is not kept up to date when modifying the grid.
+        """
+        if self._cell_edge_map is None:
+            cem = 999999*np.ones( (self.Ncells(),self.MAXFACES), np.int32)
+
+            for i in xrange(self.Ncells()):
+                cem[i,0:self.nfaces[i]] = self.cell2edges(i)
+            self._cell_edge_map = cem
+        return self._cell_edge_map
+
     def pnt2edges(self,pnt_i):
         if self._pnt2edges is None:
             # print "building pnt2edges"

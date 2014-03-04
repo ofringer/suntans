@@ -51,6 +51,10 @@ class timeseries(object):
         self.tsec = othertime.SecondsSince(self.t,basetime=self.basetime)
         
         self.ny = np.size(self.y)
+
+        # make sure the original data is a masked array
+        mask = ~np.isfinite(self.y)
+        self.y = np.ma.MaskedArray(self.y,mask=mask)
         
         self._checkDT()
         
@@ -76,6 +80,30 @@ class timeseries(object):
             plt.grid(b=1)
         
         return Pyy, frq
+
+    def autocorr(self,normalize=False,axis=-1):
+        """
+        Autocorrelation calculation
+        """
+
+        assert self.isequal,\
+             'Data must be equally spaced to perform this function.'
+
+        N = self.ny
+        M = int(N)/10
+
+        ymean = self.y.mean(axis=axis)
+        y = self.y - ymean
+        k = range(1,M)
+        tau = np.asarray(k,dtype=np.float)*self.dt
+
+        Cyy = [1./(N-kk) * np.sum(y[...,0:-kk]*y[...,kk::],axis=axis) for kk in k ]
+
+        if normalize:
+            return Cyy/y.var(), tau
+        else:
+            return Cyy ,tau
+            
         
     def specgram(self, NFFT=256,noverlap=128,plot=True,vv=29, **kwargs):
         """
@@ -241,7 +269,8 @@ class timeseries(object):
             
         return tmid, amp, phs
             
-    def running_mean(self,windowlength=3*86400.0,overlap=12*3600.0, plot=True):
+    def running_mean(self,windowlength=3*86400.0,overlap=12*3600.0,\
+        plot=True,calcrms=True):
         """
         Running mean and RMS of the time series
         
@@ -262,7 +291,8 @@ class timeseries(object):
             ii+=1
 
             ymean[ii] = self.y[t1:t2].mean()
-            yrms[ii] = crms(self.tsec[t1:t2],self.y[t1:t2]-ymean[ii])
+            if calcrms:
+                yrms[ii] = crms(self.tsec[t1:t2],self.y[t1:t2]-ymean[ii])
             
             # Return the mid time point
             ind = int(np.floor(t1 + (t2-t1)/2))
@@ -299,6 +329,7 @@ class timeseries(object):
         upper - upper value bound
         """
         
+        
         pt1,pt2 = window_index_time(self.t,windowlength,overlap)
 
         for t1,t2 in zip(pt1,pt2):
@@ -308,27 +339,60 @@ class timeseries(object):
             
             ytmp = self.y[t1:t2]
            
-            # only calculate the median with values inside of the range
-            ind = operator.and_(ytmp>=lower,ytmp<=upper)
-            ind2 = operator.and_(ind, ~np.isnan(ytmp))
-            
-            if not any(ind2):
-                ytmp[:] = lower
-                self.y[t1:t2]=ytmp.copy()
-                continue
-            
-            ymedian = np.median(ytmp[ind2])
-            ystd = np.std(ytmp[ind2])
-            if np.isnan(ymedian):
-                print t1,t2
-            
-            ytmp[ytmp >= ymedian + nstd*ystd] = ymedian
-            ytmp[ytmp <= ymedian - nstd*ystd] = ymedian
-            
-            if ymedian>upper or ymedian < lower:
-                print 'Warning median value outside of bounds range...'
+            # Mask any nan's and values outside of the bounds
+            ind = operator.or_(ytmp<=lower,ytmp>=upper)
+            ytmp.mask[ind] = True
+            ind2 =  np.isnan(ytmp)
+            ytmp.mask[ind2] = True
 
+
+            # Now mask any values outside of nstd away from the median
+            ymedian = np.mean(ytmp)
+            ystd = np.std(ytmp)
+            #print ymedian, ytmp.mean(), ystd, type(ymedian)
+            #if type(ymedian) == np.ma.core.MaskedConstant:
+            #    pdb.set_trace()
+            if ~np.any(ytmp.mask==False): # all points are masked
+                self.y[t1:t2]=ytmp.copy()               
+                continue
+
+            ind3 = operator.or_(ytmp >= ymedian + nstd*ystd,\
+                ytmp <= ymedian - nstd*ystd)
+            ytmp.mask[ind3] = True
+            
             self.y[t1:t2]=ytmp.copy()
+
+ 
+#        pt1,pt2 = window_index_time(self.t,windowlength,overlap)
+#
+#        for t1,t2 in zip(pt1,pt2):
+#            
+#            if t1==t2:
+#                continue
+#            
+#            ytmp = self.y[t1:t2]
+#           
+#            # only calculate the median with values inside of the range
+#            ind = operator.and_(ytmp>=lower,ytmp<=upper)
+#            ind2 = operator.and_(ind, ~np.isnan(ytmp))
+#            
+#            if not any(ind2):
+#                ytmp[:] = lower
+#                self.y[t1:t2]=ytmp.copy()
+#                continue
+#            
+#            ymedian = np.median(ytmp[ind2])
+#            ystd = np.std(ytmp[ind2])
+#            if np.isnan(ymedian):
+#                print t1,t2
+#            
+#            ytmp[ytmp >= ymedian + nstd*ystd] = ymedian
+#            ytmp[ytmp <= ymedian - nstd*ystd] = ymedian
+#            
+#            if ymedian>upper or ymedian < lower:
+#                print 'Warning median value outside of bounds range...'
+#
+#            self.y[t1:t2]=ytmp.copy()
             
         
     def plot(self,angle=17,**kwargs):
@@ -413,17 +477,22 @@ class ModVsObs(object):
         time1 = min(tmod[-1],tobs[-1])
         
         # Clip both the model and observation to this daterange
-        t0 = othertime.findNearest(time0,tobs)
-        t1 = othertime.findNearest(time1,tobs)
-        TSobs = timeseries(tobs[t0:t1],yobs[t0:t1])
 
         t0 = othertime.findNearest(time0,tmod)
         t1 = othertime.findNearest(time1,tmod)
-        self.TSmod = timeseries(tmod[t0:t1],ymod[t0:t1])
+        TSmod = timeseries(tmod[t0:t1],ymod[t0:t1])
 
-        # Interpolate the observed value onto the model
-        tobs_i, yobs_i = TSobs.interp(tmod[t0:t1],axis=0)
-        self.TSobs = timeseries(tobs_i, yobs_i)
+        t0 = othertime.findNearest(time0,tobs)
+        t1 = othertime.findNearest(time1,tobs)
+        self.TSobs = timeseries(tobs[t0:t1],yobs[t0:t1])
+
+        # Interpolate the observed value onto the model step
+        #tobs_i, yobs_i = TSobs.interp(tmod[t0:t1],axis=0)
+        #self.TSobs = timeseries(tobs_i, yobs_i)
+
+        # Interpolate the modeled value onto the observation time step
+        tmod_i, ymod_i = TSmod.interp(tobs[t0:t1],axis=0)
+        self.TSmod = timeseries(tmod_i,ymod_i)
 
         self.N = self.TSmod.t.shape[0]
 
@@ -433,6 +502,7 @@ class ModVsObs(object):
         """
         Time-series plots of both data sets with labels
         """
+
 
         h1 = self.TSmod.plot(color=colormod,**kwargs)
 
@@ -525,6 +595,32 @@ class ModVsObs(object):
         else:
             f.write(outstr)
 
+    def crosscorr(self,normalize=False,axis=-1):
+        """
+        Crosscorrelation calculation
+        """
+
+        assert self.TSobs.isequal,\
+             'Data must be equally spaced to perform this function.'
+
+        N = self.TSobs.ny
+        M = int(N)/10
+
+        ymean = self.TSobs.y.mean(axis=axis)
+        y = self.TSobs.y - ymean
+        xmean = self.TSmod.y.mean(axis=axis)
+        x = self.TSmod.y - xmean
+
+        k = range(1,M)
+        tau = np.asarray(k,dtype=np.float)*self.TSobs.dt
+
+        Cxy = [1./(N-kk) * np.sum(y[...,0:-kk]*x[...,kk::],axis=axis) for kk in k ]
+
+        if normalize:
+            return Cxy/(y.std()*x.std()), tau
+        else:
+            return Cxy ,tau
+ 
 
 
 

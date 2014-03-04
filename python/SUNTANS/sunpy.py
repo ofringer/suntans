@@ -19,6 +19,7 @@ from suntans_ugrid import ugrid
 from timeseries import timeseries
 from ufilter import ufilter
 import operator
+from hybridgrid import HybridGrid
 
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection, LineCollection
@@ -193,6 +194,14 @@ class Grid(object):
         
         if not self.__dict__.has_key('nfaces'):
             self.nfaces = self.MAXFACES*np.ones((self.Nc,))
+
+        # If edges, grad or neigh have not been stored then calculate them
+        if not self.__dict__.has_key('edges'):
+            self.reCalcGrid()
+        elif not self.__dict__.has_key('grad'):
+            self.reCalcGrid()
+        elif not self.__dict__.has_key('neigh'):
+            self.reCalcGrid()
 #        try:
 #            #self.Nke-=1
 #        except:
@@ -214,9 +223,24 @@ class Grid(object):
         if self.__dict__.has_key('face'):
             self.face = np.ma.masked_array(self.face,mask=self.cellmask)
             
-        self.neigh = np.ma.masked_array(self.neigh,mask=self.cellmask)
+        if self.__dict__.has_key('neigh'):
+            self.neigh = np.ma.masked_array(self.neigh,mask=self.cellmask)
              
-        
+    def reCalcGrid(self):
+        """
+        Recalculate some of the important grid properties manually
+
+        Method for finding the following arrays: grad,edges,neigh,mark...
+        """
+
+        grd = HybridGrid(self.xp,self.yp,self.cells,nfaces=self.nfaces,\
+            xv=self.xv,yv=self.yv)
+
+        self.edges=grd.edges
+        self.grad=grd.grad
+        self.neigh=grd.neigh
+        self.face=grd.face
+
     def plot(self,**kwargs):
         """
           Plot the unstructured grid data
@@ -833,7 +857,7 @@ class Grid(object):
         #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
         print 'Loading: %s'%self.ncfile
         try: 
-            self.nc = MFDataset(self.ncfile)
+            self.nc = MFDataset(self.ncfile,aggdim='time')
         except:
             if type(self.ncfile)==list:
                 self.ncfile = self.ncfile[0]
@@ -1583,6 +1607,8 @@ class Spatial(Grid):
             
             grad1 = self.grad[:,0]
             grad2 = self.grad[:,1]
+            #Apply mask to jj
+            jj[jj.mask]=0
             nc1 = grad1[jj]
             nc2 = grad2[jj]
                     
