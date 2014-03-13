@@ -64,6 +64,7 @@ else
 fi    
 $EXEC -s -vv --datadir=$datadir
 
-echo Joining output files...
-
-python $PYTHONHOME/SUNTANS/joinsun.py -f SFBay${DIM}D.nc -p $datadir -t 24 -n $NUMPROCS
+##
+# No longer needed...
+#echo Joining output files...
+#python $PYTHONHOME/SUNTANS/joinsun.py -f SFBay${DIM}D.nc -p $datadir -t 24 -n $NUMPROCS

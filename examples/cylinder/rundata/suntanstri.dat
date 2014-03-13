@@ -66,6 +66,7 @@ sponge_distance	        0 	# Decay distance scale for sponge layer
 sponge_decay	        0	# Decay time scale for sponge layer
 readSalinity		0	# Whether or not to read initial salinity profile from file InitSalinityFile
 readTemperature		0	# Whether or not to read initial temperature profile from file InitTemperatureFile
+mergeArrays		0	#
 ########################################################################
 #
 #  Grid Files

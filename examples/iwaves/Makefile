@@ -22,6 +22,7 @@ MATHLIB = -lm
 EXEC = iwaves
 OBJS = 
 SUN = $(SUNTANSHOME)/sun
+datadir = data
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
 NUMPROCS = 1
@@ -36,9 +37,20 @@ data:	$(SUN)
 .c.o:	
 	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 
-$(SUN):	initialization.o boundaries.o sources.o state.o 
-	cp initialization.o boundaries.o sources.o state.o $(SUNTANSHOME)
+$(SUN):	initialization.o boundaries.o state.o sources.o
+	cp initialization.o boundaries.o state.o sources.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)
+
+debug:	data
+	mkdir $(datadir)
+	cp rundata/* $(datadir)
+	$(MPIHOME)/bin/mpirun -np $(NUMPROCS) xterm -e gdb -command=gdbcommands $(SUN)
+
+valgrind: data
+	mkdir $(datadir)
+	cp rundata/* $(datadir)
+	$(MPIHOME)/bin/mpirun -np $(NUMPROCS) ./$(SUN) -g -vv --datadir=$(datadir)
+	$(MPIHOME)/bin/mpirun -np $(NUMPROCS) valgrind --tool=memcheck --leak-check=yes ./$(SUN) -s -vvv --datadir=$(datadir)
 
 clean:
 	rm -f *.o

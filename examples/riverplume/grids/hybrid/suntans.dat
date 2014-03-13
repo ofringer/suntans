@@ -4,7 +4,7 @@
 #
 ########################################################################
 Nkmax			10	# Number of vertical grid layers
-maxFaces		4	# Maximum number of horizontal faces
+maxFaces		7	# Maximum number of horizontal faces
 stairstep	        0	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1.0	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
@@ -34,7 +34,7 @@ CdT	                0 	# Drag coefficient at surface
 CdB			0.0020	#
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
-dt			30	#
+dt			120	#
 nsteps			2880    #
 Cmax 			1.0	# Maximum permissible Courant number
 ntout			60	#
@@ -72,7 +72,9 @@ readTemperature		0	# Whether or not to read initial temperature profile from fil
 #
 ########################################################################
 outputNetcdf	 	1	  # Output data to netcdf format (0 - binary, 1 - netcdf)
-outputNetcdfFile	Plume.nc	#
+mergeArrays		1	  # Turn on/off array merging
+outputNetcdfFile	Plume	  # Basename of the output netcdf file/s
+nstepsperncfile		10	  # Number of time steps to write to each netcdf file
 metfile			Galveston_NARR_2010.nc # Input meteorological netcdf file
 #metfile		Galveston_Winds_2009_UTM.nc #
 starttime		20100402.000000	#
@@ -90,10 +92,10 @@ netcdfBdy		1	  # 1 - Read the open boundary data from a netcdf file
 netcdfBdyFile		Plume_BC.nc	#
 readinitialnc		0	  # 1 - Read initial conditions from a netcdf file, 0 otherwise
 initialNCfile		Plume_IC.nc	#
-calcage        		0   # Turn on the age calculation
-calcaverage		0	  # Calculate averages
-ntaverage		120	  # 
-averageNetcdfFile	GalvCoarse_20100401_AVG.nc	#
+calcage        		1   # Turn on the age calculation
+calcaverage		1	  # Calculate averages
+ntaverage		720	  # 
+averageNetcdfFile	Plume_AVG	#
 ########################################################################
 #
 #  Grid Files
