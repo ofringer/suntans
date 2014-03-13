@@ -1107,7 +1107,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   // Set up arrays to merge output
   if(prop->mergeArrays) {
     if(VERBOSE>2 && myproc==0) printf("Initializing arrays for merging...\n");
-    InitializeMerging(grid,numprocs,myproc,comm);
+    InitializeMerging(grid,prop->outputNetcdf,numprocs,myproc,comm);
   }
 
   // main time loop
@@ -1358,7 +1358,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     // Output the average arrays
     if(prop->calcaverage){
     	if(prop->mergeArrays){
-
+	    WriteAverageNCmerge(prop,grid,average,phys,met,blowup,numprocs,comm,myproc);
 	}else{
 	    WriteAverageNC(prop,grid,average,phys,met,blowup,comm,myproc);
 	}
@@ -1736,7 +1736,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 	}
 	
 	// Always do first-order upwind in bottom cell if partial stepping is on
-	if(prop->stairstep==0) {
+	if(prop->stairstep==0 && grid->Nk[i]>1) {
 	  k = grid->Nk[i]-1;
 	  a[k] = 0.5*(
 		      (phys->w[i][k]+fabs(phys->w[i][k]))*phys->uc[i][k]+

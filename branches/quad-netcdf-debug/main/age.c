@@ -102,15 +102,24 @@ void UpdateAge(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int myproc)
 	InitializeAgeVariables(grid, prop, myproc);
     }
 
-    // Specify age at boundaries for use in updatescalars.  Assume that all incoming turbulence is zero and let outgoing
-    // age flow outward. (same as turbulence quantities)
-    for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
+    // Specify age at boundaries for use in updatescalars. 
+    //Type-2 -set value to 1 
+    for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
         j = grid->edgep[jptr];
         ib = grid->grad[2*j];
         for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
           //age->boundary_tmp[jptr-grid->edgedist[2]][k]=age->agec[ib][k];
 	  age->boundary_age[jptr-grid->edgedist[2]][k]=1;
     }
+    //Type-3 -set value to 0 
+    for(jptr=grid->edgedist[3];jptr<grid->edgedist[5];jptr++) {
+        j = grid->edgep[jptr];
+        ib = grid->grad[2*j];
+        for(k=grid->ctop[ib];k<grid->Nk[ib];k++) 
+	  age->boundary_age[jptr-grid->edgedist[3]][k]=0;
+    }
+
+
 
     //printf("Updating agec...\n");
     //printf("prop->rtime = %f\n",prop->rtime);

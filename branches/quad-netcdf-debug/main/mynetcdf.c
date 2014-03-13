@@ -27,10 +27,11 @@ void nc_write_int(int ncid, char *vname, int *tmparray, int myproc);
 void nc_write_intvar(int ncid, char *vname, gridT *grid, int *tmparray, int myproc);
 void nc_write_doublevar(int ncid, char *vname, gridT *grid, REAL *tmparray, int myproc);
 
-static void nc_write_2D_merge(int ncid, REAL *array, propT *prop, gridT *grid, char *varname, int numprocs, int myproc, MPI_Comm comm);
-static void nc_write_3D_merge(int ncid, REAL **array, propT *prop, gridT *grid, char *varname, int isw, int numprocs, int myproc, MPI_Comm comm);
+static void nc_write_2D_merge(int ncid, int tstep, REAL *array, propT *prop, gridT *grid, char *varname, int numprocs, int myproc, MPI_Comm comm);
+static void nc_write_3D_merge(int ncid, int tstep, REAL **array, propT *prop, gridT *grid, char *varname, int isw, int numprocs, int myproc, MPI_Comm comm);
+static void nc_write_3Dedge_merge(int ncid, int tstep, REAL **array, propT *prop, gridT *grid, char *varname,int isw, int numprocs, int myproc, MPI_Comm comm);
 
-static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, metT *met, int myproc);
+static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, metT *met, int myproc);
 
 /*########################################################
 *
@@ -209,16 +210,16 @@ void nc_write_int(int ncid, char *vname, int *tmparray, int myproc){
  *
  */
 void nc_write_intvar(int ncid, char *vname, gridT *grid, int *tmparray, int myproc){
-    int varid, retval,j,nf;
+    int varid, retval,i,nf;
     int *tmpvar;
     tmpvar = (int *)SunMalloc((grid->Nc*grid->maxfaces)*sizeof(int),"nc_write_intvar");
 
-    for(j=0;j<grid->Nc;j++){
+    for(i=0;i<grid->Nc;i++){
 	for(nf=0;nf<grid->maxfaces;nf++){
-	    if(nf < grid->nfaces[j])
-	    	tmpvar[j*grid->maxfaces+nf]=tmparray[j*grid->maxfaces+nf];
+	    if(nf < grid->nfaces[i])
+	    	tmpvar[i*grid->maxfaces+nf]=tmparray[i*grid->maxfaces+nf];
 	    else
-	    	tmpvar[j*grid->maxfaces+nf]=(int)EMPTY;
+	    	tmpvar[i*grid->maxfaces+nf]=(int)EMPTY;
 	}
     }
     
@@ -279,10 +280,11 @@ int getTimeRec(REAL nctime, REAL *time, int nt){
  * -------------------------------
  * Merges a 2D (time-varying) variable and writes to netcdf
  */
-static void nc_write_2D_merge(int ncid, REAL *array, propT *prop, gridT *grid, char *varname, int numprocs, int myproc, MPI_Comm comm){
+static void nc_write_2D_merge(int ncid, int tstep, REAL *array, propT *prop, gridT *grid, char *varname, int numprocs, int myproc, MPI_Comm comm){
 
    int varid, retval;
-   size_t starttwo[] = {prop->nctimectr,0};
+   //size_t starttwo[] = {prop->nctimectr,0};
+   size_t starttwo[] = {tstep,0};
    size_t counttwo[] = {1,grid->Nc};
 
     MergeCellCentered2DArray(array,grid,numprocs,myproc,comm);
@@ -300,10 +302,11 @@ static void nc_write_2D_merge(int ncid, REAL *array, propT *prop, gridT *grid, c
  * -------------------------------
  * Merges a 3D (time-varying) variable and writes to netcdf
  */
-static void nc_write_3D_merge(int ncid, REAL **array, propT *prop, gridT *grid, char *varname,int isw, int numprocs, int myproc, MPI_Comm comm){
+static void nc_write_3D_merge(int ncid, int tstep, REAL **array, propT *prop, gridT *grid, char *varname,int isw, int numprocs, int myproc, MPI_Comm comm){
 
    int varid, retval,i,k;
-   size_t startthree[] = {prop->nctimectr,0,0};
+   //size_t startthree[] = {prop->nctimectr,0,0};
+   size_t startthree[] = {tstep,0,0};
    size_t countthree[] = {1,grid->Nkmax,grid->Nc};
 
     MergeCellCentered3DArray(array,grid,numprocs,myproc,comm);   
@@ -323,13 +326,40 @@ static void nc_write_3D_merge(int ncid, REAL **array, propT *prop, gridT *grid, 
 	      }
 	    }
         }
-	//ravelMerge(0);
-	//ravel(merged3DArray, merged3DVector, mergedGrid);
-	//if(isw){
-	//    ravelW(merged3DArray, merged3DVector, mergedGrid);
-	//}else{
-	//}
+	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, &merged3DVector[0])))
+	    ERR(retval);
+    }
+}
 
+/*
+ * Function: nc_write_3Dedge_merge()
+ * -------------------------------
+ * Merges a 3D (time-varying) edge variable and writes to netcdf
+ */
+static void nc_write_3Dedge_merge(int ncid, int tstep, REAL **array, propT *prop, gridT *grid, char *varname,int isw, int numprocs, int myproc, MPI_Comm comm){
+
+   int varid, retval,i,k;
+   //size_t startthree[] = {prop->nctimectr,0,0};
+   size_t startthree[] = {tstep,0,0};
+   size_t countthree[] = {1,grid->Nkmax,grid->Nc};
+
+    MergeEdgeCentered3DArray(array,grid,numprocs,myproc,comm);   
+
+    if(myproc==0){
+    	countthree[2]=mergedGrid->Ne;
+	if ((retval = nc_inq_varid(ncid, varname, &varid)))
+	    ERR(retval);
+
+	//Roll the array out into a vector
+        for(i=0;i<mergedGrid->Ne;i++){
+	    for(k=0;k<mergedGrid->Nkmax;k++){
+	      if(k<mergedGrid->Nke[i]){
+		merged3DVector[k*mergedGrid->Ne+i] = merged3DEArray[i][k];
+	      }else{
+		merged3DVector[k*mergedGrid->Ne+i] = (REAL)EMPTY;
+	      }
+	    }
+        }
 	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, &merged3DVector[0])))
 	    ERR(retval);
     }
@@ -380,18 +410,19 @@ void WriteOutputNCmerge(propT *prop, gridT *grid, physT *phys, metT *met, int bl
 	}
 
 	// Open the new netcdf file
-	MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
+	MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","WriteOutputNCmerge",myproc);
+
 	sprintf(str,"%s_%04d.nc",filename,prop->ncfilectr);
 	if(myproc==0){
 	    //prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
-	    prop->outputNetcdfFileID = MPI_NCOpen(str,NC_CLASSIC_MODEL|NC_NETCDF4,"OpenFiles",myproc);
+	    prop->outputNetcdfFileID = MPI_NCOpen(str,NC_CLASSIC_MODEL|NC_NETCDF4,"WriteOutputNCmerge",myproc);
 	}else{
 	    prop->outputNetcdfFileID=-1;
 	}
 	
 	// Initialise a new output file
 	if(myproc==0)
-	    InitialiseOutputNCugridmerge(prop, phys, grid, met, myproc);
+	    InitialiseOutputNCugridMerge(prop, phys, grid, met, myproc);
 		
 	// Reset the time counter
 	prop->nctimectr = 0;
@@ -422,76 +453,58 @@ void WriteOutputNCmerge(propT *prop, gridT *grid, physT *phys, metT *met, int bl
     /* Write to the physical variables*/
 
     // 2D cell-centered variables
-    nc_write_2D_merge(ncid, phys->h, prop, grid, "eta", numprocs, myproc, comm);
+    nc_write_2D_merge(ncid, prop->nctimectr, phys->h, prop, grid, "eta", numprocs, myproc, comm);
     if(prop->metmodel>0){
     	// Atmospheric flux variables
-	nc_write_2D_merge(ncid, met->Uwind, prop, grid, "Uwind", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->Vwind, prop, grid, "Vwind", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->Tair, prop, grid, "Tair", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->Pair, prop, grid, "Pair", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->rain, prop, grid, "rain", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->RH, prop, grid, "RH", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->cloud, prop, grid, "cloud", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->Hs, prop, grid, "Hs", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->Hl, prop, grid, "Hl", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->Hlw, prop, grid, "Hlw", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->Hsw, prop, grid, "Hsw", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->tau_x, prop, grid, "tau_x", numprocs, myproc, comm);
-	nc_write_2D_merge(ncid, met->tau_y, prop, grid, "tau_y", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr, met->Uwind, prop, grid, "Uwind", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->Vwind, prop, grid, "Vwind", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->Tair, prop, grid, "Tair", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->Pair, prop, grid, "Pair", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->rain, prop, grid, "rain", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->RH, prop, grid, "RH", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->cloud, prop, grid, "cloud", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->Hs, prop, grid, "Hs", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->Hl, prop, grid, "Hl", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->Hlw, prop, grid, "Hlw", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->Hsw, prop, grid, "Hsw", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->tau_x, prop, grid, "tau_x", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->nctimectr,  met->tau_y, prop, grid, "tau_y", numprocs, myproc, comm);
 	if(prop->beta > 0)
-	    nc_write_2D_merge(ncid, met->EP, prop, grid, "EP", numprocs, myproc, comm);
+	    nc_write_2D_merge(ncid,prop->nctimectr,  met->EP, prop, grid, "EP", numprocs, myproc, comm);
 
     }
 
     // 3D cell-centered variables
-    nc_write_3D_merge(ncid, phys->uc, prop, grid, "uc",0, numprocs, myproc, comm);
-    nc_write_3D_merge(ncid, phys->vc, prop, grid, "vc",0, numprocs, myproc, comm);
-    nc_write_3D_merge(ncid, phys->nu_tv, prop, grid, "nu_v",0, numprocs, myproc, comm);
+    nc_write_3D_merge(ncid,prop->nctimectr,  phys->uc, prop, grid, "uc",0, numprocs, myproc, comm);
+    nc_write_3D_merge(ncid,prop->nctimectr,  phys->vc, prop, grid, "vc",0, numprocs, myproc, comm);
+    nc_write_3D_merge(ncid,prop->nctimectr,  phys->nu_tv, prop, grid, "nu_v",0, numprocs, myproc, comm);
+
 
     if(prop->beta>0)
-	nc_write_3D_merge(ncid, phys->s, prop, grid, "salt",0, numprocs, myproc, comm);
+	nc_write_3D_merge(ncid,prop->nctimectr,  phys->s, prop, grid, "salt",0, numprocs, myproc, comm);
 
     if(prop->gamma>0)
-	nc_write_3D_merge(ncid, phys->T, prop, grid, "temp",0, numprocs, myproc, comm);
+	nc_write_3D_merge(ncid,prop->nctimectr,  phys->T, prop, grid, "temp",0, numprocs, myproc, comm);
 
     if( (prop->gamma>0) || (prop->beta>0) ) 
-	nc_write_3D_merge(ncid, phys->rho, prop, grid, "rho",0, numprocs, myproc, comm);
+	nc_write_3D_merge(ncid,prop->nctimectr,  phys->rho, prop, grid, "rho",0, numprocs, myproc, comm);
 
     if(prop->calcage){
-	nc_write_3D_merge(ncid, age->agec, prop, grid, "agec",0, numprocs, myproc, comm);
-	nc_write_3D_merge(ncid, age->agealpha, prop, grid, "agealpha",0, numprocs, myproc, comm);
+	nc_write_3D_merge(ncid,prop->nctimectr,  age->agec, prop, grid, "agec",0, numprocs, myproc, comm);
+	nc_write_3D_merge(ncid,prop->nctimectr,  age->agealpha, prop, grid, "agealpha",0, numprocs, myproc, comm);
     }
   
-    // Vertical velocity - TBC...
-    nc_write_3D_merge(ncid, phys->w, prop, grid, "w",1, numprocs, myproc, comm);
+    // Vertical velocity 
+    nc_write_3D_merge(ncid,prop->nctimectr,  phys->w, prop, grid, "w",1, numprocs, myproc, comm);
     
-    // 3D edge-based variables - TBC...
-         
-    /*
-    // write w at cell top and bottom
-    if ((retval = nc_inq_varid(ncid, "w", &varid)))
-	ERR(retval);
-    ravelW(phys->w, phys->tmpvarW, grid);
-    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthreew, phys->tmpvarW )))
-	ERR(retval);
+    // 3D edge-based variables 
+    nc_write_3Dedge_merge(ncid,prop->nctimectr,  phys->u, prop, grid, "U",0, numprocs, myproc, comm);
 
-     // Edge normal velocity
-     if ((retval = nc_inq_varid(ncid, "U", &varid)))
-	ERR(retval);
-     ravelEdge(phys->u, phys->tmpvarE, grid);
-     if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvarE )))
-        ERR(retval);
-
-    */
-
-    
+        
     /* Update the time counter*/
     prop->nctimectr += 1;  
    }
    
-   // Free the temporary vector
-   //SunFree(tmpvar,grid->Nc*grid->Nkmax*sizeof(REAL),"WriteOuputNC");
-   //SunFree(tmpvarE,grid->Ne*grid->Nkmax*sizeof(REAL),"WriteOuputNC");
   
 } // End of function
 
@@ -716,7 +729,7 @@ void WriteOutputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup,
 
 
 /*
-* Function: InitialiseOutputNCugridmerge()
+* Function: InitialiseOutputNCugridMerge()
 * ------------------------------------
 *
 * Initialises the output netcdf file/s
@@ -728,7 +741,7 @@ void WriteOutputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup,
 * The properties of the grid are stored in the global mergedGrid structure.
 * 
 */
-static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, metT *met, int myproc){
+static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, metT *met, int myproc){
    int ncid = prop->outputNetcdfFileID;
    int retval, k, n, j, i;
    int varid;
@@ -791,9 +804,6 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
    if ((retval = nc_def_dim(ncid, "time", NC_UNLIMITED, &dimid_time)))
 	ERR(retval);
 
-   //if ((retval = nc_inq_unlimdims(ncid,  &num_unlimdims,NULL)))
-   //     ERR(retval);
-   //printf("Number of unlimited dimension = %d.NC_UNLIMITED=%d\n",num_unlimdims,NC_UNLIMITED);
 
 
    /*
@@ -831,17 +841,7 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
     //if ((retval = nc_put_var_int(ncid,varid, grid->cells)))
     //  ERR(retval);
 
-    //face
-    dimidtwo[0] = dimid_Nc;
-    dimidtwo[1] = dimid_numsides;
-    if ((retval = nc_def_var(ncid,"face",NC_INT,2,dimidtwo,&varid)))
-      ERR(retval);
-    nc_addattr(ncid, varid,"cf_role","face_edge_connectivity");
-    nc_addattr(ncid, varid,"long_name","Maps every face to its edges");
-    //if ((retval = nc_put_var_int(ncid,varid, grid->face)))
-    //  ERR(retval);
-
-    //nfaces
+        //nfaces
     dimidone[0] = dimid_Nc;
     if ((retval = nc_def_var(ncid,"nfaces",NC_INT,1,dimidone,&varid)))
       ERR(retval);
@@ -851,74 +851,7 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
 
 
 
-    
-    //edges
-    dimidtwo[0] = dimid_Ne;
-    dimidtwo[1] = dimid_Two;
-    if ((retval = nc_def_var(ncid,"edges",NC_INT,2,dimidtwo,&varid)))
-      ERR(retval);
-    nc_addattr(ncid, varid,"cf_role","edge_node_connectivity");
-    nc_addattr(ncid, varid,"long_name","Maps every edge to the two nodes it connects");
-    //if ((retval = nc_put_var_int(ncid,varid, grid->edges)))
-    //  ERR(retval);
-
-    //neigh
-    dimidtwo[0] = dimid_Nc;
-    dimidtwo[1] = dimid_numsides;
-    if ((retval = nc_def_var(ncid,"neigh",NC_INT,2,dimidtwo,&varid)))
-      ERR(retval);
-    nc_addattr(ncid, varid,"cf_role","face_face_connectivity");
-    nc_addattr(ncid, varid,"long_name","Maps every face to its neighbouring faces");
-    //if ((retval = nc_put_var_int(ncid,varid, grid->neigh)))
-    //  ERR(retval);
-
-    //grad
-    dimidtwo[0] = dimid_Ne;
-    dimidtwo[1] = dimid_Two;
-    if ((retval = nc_def_var(ncid,"grad",NC_INT,2,dimidtwo,&varid)))
-      ERR(retval);
-    nc_addattr(ncid, varid,"cf_role","edge_face_connectivity");
-    nc_addattr(ncid, varid,"long_name","Maps every edge to the two faces it connects ");
-    //if ((retval = nc_put_var_int(ncid,varid, grid->grad)))
-    //  ERR(retval);
-
-    //gradf
-    dimidtwo[0] = dimid_Ne;
-    dimidtwo[1] = dimid_Two;
-    if ((retval = nc_def_var(ncid,"gradf",NC_INT,2,dimidtwo,&varid)))
-      ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Index of face number for a particular cell ");
-    //if ((retval = nc_put_var_int(ncid,varid, grid->grad)))
-    //  ERR(retval);
-
-    /*
-    //mark
-    dimidone[0] = dimid_Ne;
-    if ((retval = nc_def_var(ncid,"mark",NC_INT,1,dimidone,&varid)))
-      ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Edge marker type");
-    nc_addattr(ncid, varid,"units","0 - computational; 1 - closed; 2 flux BC; 3 - stage BC; 4 - other BC; 5 - interproc; 6 - ghost cell.");
-    nc_addattr(ncid, varid,"coordinates","xe ye");
-
-
-    //mnptr
-    dimidone[0] = dimid_Nc;
-    if ((retval = nc_def_var(ncid,"mnptr",NC_INT,1,dimidone,&varid)))
-      ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Maps face indices between partitioned and unpartioned grid");
-    //if ((retval = nc_put_var_int(ncid,varid, grid->mnptr)))
-    //  ERR(retval);
-
-    //eptr
-    dimidone[0] = dimid_Ne;
-    if ((retval = nc_def_var(ncid,"eptr",NC_INT,1,dimidone,&varid)))
-      ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Maps edge indices between partitioned and unpartioned grid");
-    //if ((retval = nc_put_var_int(ncid,varid, grid->eptr)))
-    //  ERR(retval);
-    */
-
-   /********************************************************************** 
+       /********************************************************************** 
     *
     * Define the grid coordinate variables and attributes 
     *
@@ -985,34 +918,27 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
     * Define the grid metric variables 
     *
     **********************************************************************/
-
-    
     //normal
     dimidtwo[0] = dimid_Nc;
     dimidtwo[1] = dimid_numsides;
     if ((retval = nc_def_var(ncid,"normal",NC_INT,2,dimidtwo,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Dot product of unique normal with outward normal of each edge");
-    //if ((retval = nc_put_var_int(ncid,varid, grid->normal)))
-    //  ERR(retval);
 
     //n1
     dimidone[0] = dimid_Ne;
     if ((retval = nc_def_var(ncid,"n1",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","x-component of the edge normal");
-    //if ((retval = nc_put_var_double(ncid,varid, grid->n1)))
-    //  ERR(retval);
 
     //n2
     dimidone[0] = dimid_Ne;
     if ((retval = nc_def_var(ncid,"n2",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","y-component of the edge normal");
-    //if ((retval = nc_put_var_double(ncid,varid, grid->n2)))
-    //  ERR(retval);
 
-    //df
+
+       //df
     dimidone[0] = dimid_Ne;
     if ((retval = nc_def_var(ncid,"df",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
@@ -1037,8 +963,14 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Distance between faces and edges");
     nc_addattr(ncid, varid,"units","m");
-    //if ((retval = nc_put_var_double(ncid,varid, grid->def)))
-    //  ERR(retval);
+    
+    //mark
+    dimidone[0] = dimid_Ne;
+    if ((retval = nc_def_var(ncid,"mark",NC_INT,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Edge marker type");
+    nc_addattr(ncid, varid,"units","0 - computational; 1 - closed; 2 flux BC; 3 - stage BC; 4 - other BC; 5 - interproc; 6 - ghost cell.");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
 
     //Ac
     dimidone[0] = dimid_Nc;
@@ -1129,35 +1061,7 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
     //if ((retval = nc_put_var_double(ncid,varid, grid->dv)))
     //  ERR(retval);
 
-    /*
-    //dzz
-    dimidthree[0] = dimid_time;
-    dimidthree[1] = dimid_Nk;
-    dimidthree[2] = dimid_Nc;
-    if ((retval = nc_def_var(ncid,"dzz",NC_DOUBLE,3,dimidthree,&varid)))
-       ERR(retval);
-    if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
-       ERR(retval);
-    if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-       ERR(retval);
-    nc_addattr(ncid, varid,"long_name","z layer spacing at faces");
-    nc_addattr(ncid, varid,"units","m");
-
-    //dzf
-    dimidthree[0] = dimid_time;
-    dimidthree[1] = dimid_Nk;
-    dimidthree[2] = dimid_Ne;
-    if ((retval = nc_def_var(ncid,"dzf",NC_DOUBLE,3,dimidthree,&varid)))
-       ERR(retval);
-    if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
-       ERR(retval);
-    if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
-       ERR(retval);
-    nc_addattr(ncid, varid,"long_name","z layer spacing at edges");
-    nc_addattr(ncid, varid,"units","m");
-
-    */
-   
+       
     
     //time
     dimidone[0] = dimid_time;
@@ -1479,13 +1383,13 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
    ****************************************************************/
    
    nc_write_intvar(ncid,"cells",mergedGrid,mergedGrid->cells,myproc);
-   nc_write_intvar(ncid,"face",grid,mergedGrid->face,myproc);
+   //nc_write_intvar(ncid,"face",mergedGrid,mergedGrid->face,myproc);
    nc_write_int(ncid,"nfaces",mergedGrid->nfaces,myproc);
-   nc_write_int(ncid,"edges",mergedGrid->edges,myproc);
+   //nc_write_int(ncid,"edges",mergedGrid->edges,myproc);
    //nc_write_intvar(ncid,"neigh",grid,grid->neigh,myproc);
-   nc_write_int(ncid,"grad",mergedGrid->grad,myproc);
+   //nc_write_int(ncid,"grad",mergedGrid->grad,myproc);
    //nc_write_int(ncid,"gradf",grid->gradf,myproc);
-   //nc_write_int(ncid,"mark",grid->mark,myproc);
+   nc_write_int(ncid,"mark",mergedGrid->mark,myproc);
    //nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
    //nc_write_int(ncid,"eptr",grid->eptr,myproc);
    //
@@ -1496,7 +1400,7 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
    nc_write_double(ncid,"xp",grid->xp,myproc);
    nc_write_double(ncid,"yp",grid->yp,myproc);
 
-   //nc_write_intvar(ncid,"normal",grid,grid->normal,myproc);
+   nc_write_intvar(ncid,"normal",mergedGrid,mergedGrid->normal,myproc);
    nc_write_double(ncid,"n1",mergedGrid->n1,myproc);
    nc_write_double(ncid,"n2",mergedGrid->n2,myproc);
    nc_write_double(ncid,"df",mergedGrid->df,myproc);
@@ -1508,20 +1412,11 @@ static void InitialiseOutputNCugridmerge(propT *prop, physT *phys, gridT *grid, 
    nc_write_double(ncid,"z_r",z_r,myproc);
    nc_write_double(ncid,"z_w",z_w,myproc);
    nc_write_int(ncid,"Nk",mergedGrid->Nk,myproc);
-   nc_write_int(ncid,"Nke",grid->Nke,myproc);
+   nc_write_int(ncid,"Nke",mergedGrid->Nke,myproc);
    nc_write_double(ncid,"dv",mergedGrid->dv,myproc);
 
 
-   // // Need to convert the edge array that is stored is NUMEDGECOLUMN*Ne where
-   // // NUMEDGECOLUMN=3
-   // for(n=0;n<grid->Ne;n++){
-   // 	for(j=0;j<NUMEDGECOLUMNS-1;j++){
-   //         edges[2*n+j] = grid->edges[NUMEDGECOLUMNS*n+j];
-   //     }
-   // }
-   // nc_write_int(ncid,"edges",edges,myproc);
-
-   // Free the temporary vectors
+      // Free the temporary vectors
    //SunFree(z_r,grid->Nkmax*sizeof(REAL),"InitialiseOutputNCugrid");
    //SunFree(z_w,(grid->Nkmax+1)*sizeof(REAL),"InitialiseOutputNCugrid");
    //SunFree(tmpvar,grid->Nc*grid->Nkmax,"InitialiseOutputNC");
@@ -2323,6 +2218,728 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
 
 }// End function
 
+/*
+* Function: InitialiseAverageNCugridMerge()
+* ------------------------------------
+*
+* Initialises the average netcdf file/s
+* Files conform to the UGRID-0.9 CF conventions
+* 
+* One file per processor
+* The pointer to each file is stored in prop->outputNetcdfFileID
+* 
+*/
+void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, int myproc){
+   int ncid = prop->averageNetcdfFileID;
+   int retval, k;
+   int varid;
+   int dimid_Nc, dimid_Ne , dimid_Np, dimid_time, dimid_numsides, dimid_Two, dimid_Nkw, dimid_Nk; 
+   int dimidone[1];
+   int dimidtwo[2];
+   int dimidthree[3];
+   int nofill=0;
+   const size_t starttwo[] = {0,0};
+   const size_t counttwo[] = {mergedGrid->Nkmax,mergedGrid->Nc};
+   REAL *z_r;
+   REAL *z_w;
+   const int DEFLATE=1;
+   const int DEFLATELEVEL=2;
+   const REAL FILLVALUE = (REAL)EMPTY;
+
+
+   //REAL *tmpvar;
+   // Need to write the 3-D arrays as vectors
+   //tmpvar = (REAL *)SunMalloc(grid->Nc*grid->Nkmax*sizeof(REAL),"InitialiseOutputNC");  
+   
+   /* Initialise the depth arrays */
+   z_r = (REAL *)SunMalloc((grid->Nkmax)*sizeof(REAL),"InitialiseOutputNCugrid");
+   z_w = (REAL *)SunMalloc((grid->Nkmax+1)*sizeof(REAL),"InitialiseOutputNCugrid");
+   
+   /**************
+    *
+    * Start writing...
+    *
+    **************/
+   if(VERBOSE>1 && myproc==0) printf("Initialising output netcdf files...\n");
+   
+   // Set the netcdf time ctr to 0
+   prop->avgtimectr=0;
+   
+   /* Define the global attributes - this should be expanded to include model input parameters*/
+   nc_addattr(ncid, NC_GLOBAL,"title","SUNTANS NetCDF time-averaged file");
+
+   nc_addattr_int(ncid,NC_GLOBAL,"ntaverage",&prop->ntaverage);
+   nc_addattr_real(ncid,NC_GLOBAL,"dt",&prop->dt);
+   
+   /********************************************************************** 
+    *
+    * Define the dimensions
+    *
+    **********************************************************************/
+   if ((retval = nc_def_dim(ncid, "Nc", mergedGrid->Nc, &dimid_Nc)))
+	ERR(retval);
+   if ((retval = nc_def_dim(ncid, "Np", grid->Np, &dimid_Np)))
+	ERR(retval);
+   if ((retval = nc_def_dim(ncid, "Ne", mergedGrid->Ne, &dimid_Ne)))
+	ERR(retval);
+   if ((retval = nc_def_dim(ncid, "Nk", grid->Nkmax, &dimid_Nk)))
+	ERR(retval);
+   if ((retval = nc_def_dim(ncid, "Nkw", grid->Nkmax+1, &dimid_Nkw)))
+	ERR(retval);
+   if ((retval = nc_def_dim(ncid, "numsides", grid->maxfaces, &dimid_numsides)))
+	ERR(retval);
+   if ((retval = nc_def_dim(ncid, "Two", 2, &dimid_Two)))
+	ERR(retval);
+   if ((retval = nc_def_dim(ncid, "time", NC_UNLIMITED, &dimid_time)))
+	ERR(retval);
+   
+    /********************************************************************** 
+    *
+    * Define the grid topology variables and attributes
+    *
+    **********************************************************************/
+
+    //suntans_mesh
+    if ((retval = nc_def_var(ncid,"suntans_mesh",NC_INT,0,0,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","mesh_topology");
+    nc_addattr(ncid, varid,"long_name","Topology data of 2D unstructured mesh");
+    nc_addattr(ncid, varid,"topology_dimension","2");
+    nc_addattr(ncid, varid,"node_coordinates","xp yp");
+    nc_addattr(ncid, varid,"face_node_connectivity","cells");
+    nc_addattr(ncid, varid,"edge_node_connectivity","edges");
+    nc_addattr(ncid, varid,"face_coordinates","xv yv");
+    nc_addattr(ncid, varid,"edge_coordinates","xe ye");
+    nc_addattr(ncid, varid,"face_edge_connectivity","face");
+    nc_addattr(ncid, varid,"edge_face_connectivity","grad");
+
+    // cells
+    dimidtwo[0] = dimid_Nc;
+    dimidtwo[1] = dimid_numsides;
+    if ((retval = nc_def_var(ncid,"cells",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","face_node_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every face to its corner nodes");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->cells)))
+    //  ERR(retval);
+
+    //nfaces
+    dimidone[0] = dimid_Nc;
+    if ((retval = nc_def_var(ncid,"nfaces",NC_INT,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Number of cell faces");
+
+    
+   /********************************************************************** 
+    *
+    * Define the grid coordinate variables and attributes 
+    *
+    **********************************************************************/
+
+    //xv
+    dimidone[0] = dimid_Nc;
+    if ((retval = nc_def_var(ncid,"xv",NC_DOUBLE,1,dimidone,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"standard_name","Easting");
+    nc_addattr(ncid, varid,"long_name","Easting of 2D mesh face");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->xv)))
+    //   ERR(retval);
+      
+    //yv
+    dimidone[0] = dimid_Nc;
+    if ((retval = nc_def_var(ncid,"yv",NC_DOUBLE,1,dimidone,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"standard_name","Northing");
+    nc_addattr(ncid, varid,"long_name","Northing of 2D mesh face");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->yv)))
+    //   ERR(retval);
+       
+    //xp
+    dimidone[0] = dimid_Np;
+    if ((retval = nc_def_var(ncid,"xp",NC_DOUBLE,1,dimidone,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"standard_name","Easting");
+    nc_addattr(ncid, varid,"long_name","Easting of 2D mesh node");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->xp)))
+    //   ERR(retval);
+        
+    //yp
+    dimidone[0] = dimid_Np;
+    if ((retval = nc_def_var(ncid,"yp",NC_DOUBLE,1,dimidone,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"standard_name","Northing");
+    nc_addattr(ncid, varid,"long_name","Northing of 2D mesh node");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->yp)))
+    //   ERR(retval);
+         
+    //xe
+    dimidone[0] = dimid_Ne;
+    if ((retval = nc_def_var(ncid,"xe",NC_DOUBLE,1,dimidone,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"standard_name","Easting");
+    nc_addattr(ncid, varid,"long_name","Easting of 2D mesh edge");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->xe)))
+    //   ERR(retval);
+          
+    //ye
+    dimidone[0] = dimid_Ne;
+    if ((retval = nc_def_var(ncid,"ye",NC_DOUBLE,1,dimidone,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"standard_name","Northing");
+    nc_addattr(ncid, varid,"long_name","Northing of 2D mesh edge");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->ye)))
+    //   ERR(retval);
+        
+    /********************************************************************** 
+    *
+    * Define the grid metric variables 
+    *
+    **********************************************************************/
+
+    //normal
+    dimidtwo[0] = dimid_Nc;
+    dimidtwo[1] = dimid_numsides;
+    if ((retval = nc_def_var(ncid,"normal",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Dot product of unique normal with outward normal of each edge");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->normal)))
+    //  ERR(retval);
+
+    //n1
+    dimidone[0] = dimid_Ne;
+    if ((retval = nc_def_var(ncid,"n1",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","x-component of the edge normal");
+
+    //n2
+    dimidone[0] = dimid_Ne;
+    if ((retval = nc_def_var(ncid,"n2",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","y-component of the edge normal");
+
+
+    //df
+    dimidone[0] = dimid_Ne;
+    if ((retval = nc_def_var(ncid,"df",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","edge length");
+    nc_addattr(ncid, varid,"units","m");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->df)))
+    //  ERR(retval);
+
+    //dg
+    dimidone[0] = dimid_Ne;
+    if ((retval = nc_def_var(ncid,"dg",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","distance between faces on either side of edge");
+    nc_addattr(ncid, varid,"units","m");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->dg)))
+    //  ERR(retval);
+
+    //def
+    dimidtwo[0] = dimid_Nc;
+    dimidtwo[1] = dimid_numsides;
+    if ((retval = nc_def_var(ncid,"def",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Distance between faces and edges");
+    nc_addattr(ncid, varid,"units","m");
+
+    //mark
+    dimidone[0] = dimid_Ne;
+    if ((retval = nc_def_var(ncid,"mark",NC_INT,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Edge marker type");
+    nc_addattr(ncid, varid,"units","0 - computational; 1 - closed; 2 flux BC; 3 - stage BC; 4 - other BC; 5 - interproc; 6 - ghost cell.");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
+
+    //Ac
+    dimidone[0] = dimid_Nc;
+    if ((retval = nc_def_var(ncid,"Ac",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Horizontal area of 2D mesh");
+    nc_addattr(ncid, varid,"units","m2");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","xv yv");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->Ac)))
+    //  ERR(retval);
+
+    /********************************************************************** 
+    *
+    * Define the vertical grid variables and attributes 
+    *
+    **********************************************************************/
+   //dz
+   dimidone[0] = dimid_Nk;   
+   if ((retval = nc_def_var(ncid,"dz",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","z layer spacing");
+   nc_addattr(ncid, varid,"units","m");
+   //if ((retval = nc_put_var_double(ncid,varid, grid->dz)))
+   //  ERR(retval);
+
+   // Calculate and write the vertical coordinate z levels 
+   z_w[0]=0.0;
+   for(k=0;k<grid->Nkmax;k++){
+      z_w[k+1] = z_w[k] + grid->dz[k];
+      if(k==0){
+	 z_r[k] = grid->dz[k]*0.5;
+      }else{
+	 z_r[k] = z_r[k-1]+grid->dz[k];
+      }
+   }
+   //z_r
+   dimidone[0] = dimid_Nk;   
+   if ((retval = nc_def_var(ncid,"z_r",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+   nc_addattr(ncid, varid,"standard_name","ocean_z_coordinate");
+   nc_addattr(ncid, varid,"long_name","depth at layer mid points");
+   nc_addattr(ncid, varid,"units","m");  
+   nc_addattr(ncid, varid,"positive","up");  
+   //if ((retval = nc_put_var_double(ncid,varid, z_r)))
+   //  ERR(retval);
+
+   //z_w
+   dimidone[0] = dimid_Nkw;   
+   if ((retval = nc_def_var(ncid,"z_w",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+   nc_addattr(ncid, varid,"standard_name","ocean_z_coordinate");
+   nc_addattr(ncid, varid,"long_name","depth at layer edges");
+   nc_addattr(ncid, varid,"units","m");  
+   nc_addattr(ncid, varid,"positive","up");  
+   //if ((retval = nc_put_var_double(ncid,varid, z_w)))
+   //  ERR(retval);
+
+   //Nk
+   dimidone[0] = dimid_Nc;   
+   if ((retval = nc_def_var(ncid,"Nk",NC_INT,1,dimidone,&varid)))
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Number of layers at face"); 
+   //if ((retval = nc_put_var_int(ncid,varid, grid->Nk)))
+   //  ERR(retval);
+
+   //Nke
+   dimidone[0] = dimid_Ne;   
+   if ((retval = nc_def_var(ncid,"Nke",NC_INT,1,dimidone,&varid)))
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Number of layers at edge");
+   //if ((retval = nc_put_var_int(ncid,varid, grid->Nke)))
+   //  ERR(retval);
+
+    //dv
+    dimidone[0] = dimid_Nc;
+    if ((retval = nc_def_var(ncid,"dv",NC_DOUBLE,1,dimidone,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"stanford_name","sea_floor_depth_below_geoid");
+    nc_addattr(ncid, varid,"long_name","seafloor depth");
+    nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","xv yv");
+    //if ((retval = nc_put_var_double(ncid,varid, grid->dv)))
+    //  ERR(retval);
+
+    //time
+    dimidone[0] = dimid_time;
+    if ((retval = nc_def_var(ncid,"time",NC_DOUBLE,1,dimidone,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"long_name","time");
+    nc_addattr(ncid, varid,"units","seconds since 1990-01-01 00:00:00");  
+
+  //  //average time
+  //  dimidone[0] = 0;
+  //  if ((retval = nc_def_var(ncid,"average_time",NC_DOUBLE,1,dimidone,&varid)))
+  //     ERR(retval);
+  //  nc_addattr(ncid, varid,"long_name","Averaging time interval");
+  //  nc_addattr(ncid, varid,"units","seconds");  
+
+
+   /********************************************************************** 
+    * 
+    * Define the physical variables and attributes 
+    *
+    **********************************************************************/
+   
+   dimidtwo[0] = dimid_time;
+   dimidtwo[1] = dimid_Nc;
+   
+   dimidthree[0] = dimid_time;
+   dimidthree[1] = dimid_Nk;
+   dimidthree[2] = dimid_Nc;
+   
+   // eta
+   if ((retval = nc_def_var(ncid,"eta",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged Sea surface elevation");
+   nc_addattr(ncid, varid,"units","m");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","face");
+   nc_addattr(ncid, varid,"coordinates","time yv xv");
+    
+   //u
+   if ((retval = nc_def_var(ncid,"uc",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval);
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged Eastward water velocity component");
+   nc_addattr(ncid, varid,"units","m s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","face");
+   nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+
+   //v
+   if ((retval = nc_def_var(ncid,"vc",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval);   
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged Northward water velocity component");
+   nc_addattr(ncid, varid,"units","m s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","face");
+   nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+   
+   //w
+   dimidthree[1] = dimid_Nkw;
+   if ((retval = nc_def_var(ncid,"w",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval); 
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged Vertical water velocity component");
+   nc_addattr(ncid, varid,"units","m s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","face");
+   nc_addattr(ncid, varid,"coordinates","time z_w yv xv");  
+
+   dimidthree[1] = dimid_Nk;
+   
+   //nu_v
+   if ((retval = nc_def_var(ncid,"nu_v",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval); 
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged Vertical eddy viscosity");
+   nc_addattr(ncid, varid,"units","m2 s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","face");
+   nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+   
+   //salinity
+   if(prop->beta>0){
+     if ((retval = nc_def_var(ncid,"salt",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval);
+     if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+     if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Time-averaged Salinity");
+    nc_addattr(ncid, varid,"units","ppt");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+
+    // Depth-integrated salinity
+    if ((retval = nc_def_var(ncid,"s_dz",NC_DOUBLE,2,dimidtwo,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Time-averaged depth-integrated salinity");
+    nc_addattr(ncid, varid,"units","psu m");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+    
+   }
+   
+   //temperature
+   if(prop->gamma>0){
+     if ((retval = nc_def_var(ncid,"temp",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval); 
+     if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+     if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Time-averaged Water temperature");
+    nc_addattr(ncid, varid,"units","degrees C");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+
+     // Depth-integrated temperature
+    if ((retval = nc_def_var(ncid,"T_dz",NC_DOUBLE,2,dimidtwo,&varid)))
+       ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Time-averaged depth-integrated temperature");
+    nc_addattr(ncid, varid,"units","degrees C m");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+    
+   }
+   
+   //rho
+   if( (prop->gamma>0) || (prop->beta>0) ){
+     if ((retval = nc_def_var(ncid,"rho",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval);
+     if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+     if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Time-averaged Water density");
+    nc_addattr(ncid, varid,"units","kg m-3");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+   }
+   
+   //age
+   if(prop->calcage>0){
+     if ((retval = nc_def_var(ncid,"agemean",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval);
+     if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+     if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Time-averaged mean age");
+    nc_addattr(ncid, varid,"units","seconds");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+    
+   }
+
+   //U_F
+   dimidthree[2] = dimid_Ne;
+   if ((retval = nc_def_var(ncid,"U_F",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval); 
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged edge flux rate");
+   nc_addattr(ncid, varid,"units","m3 s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","edge");
+   nc_addattr(ncid, varid,"coordinates","time z_r ye xe");  
+
+    //s_F
+   dimidthree[2] = dimid_Ne;
+   if ((retval = nc_def_var(ncid,"s_F",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval); 
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged edge salt flux rate");
+   nc_addattr(ncid, varid,"units","psu m3 s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","edge");
+   nc_addattr(ncid, varid,"coordinates","time z_r ye xe");  
+
+    //T_F
+   dimidthree[2] = dimid_Ne;
+   if ((retval = nc_def_var(ncid,"T_F",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval); 
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged edge temperature flux rate");
+   nc_addattr(ncid, varid,"units","degreesC m3 s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","edge");
+   nc_addattr(ncid, varid,"coordinates","time z_r ye xe");  
+
+
+   // Meteorological variables (2-D) //
+   
+   if(prop->metmodel>0){
+    // Uwind
+    if ((retval = nc_def_var(ncid,"Uwind",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Eastward wind velocity component");
+    nc_addattr(ncid, varid,"units","m s-1");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+
+    // Vwind
+    if ((retval = nc_def_var(ncid,"Vwind",NC_DOUBLE,2,dimidtwo,&varid)))
+	ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Eastward wind velocity component");
+    nc_addattr(ncid, varid,"units","m s-1");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+
+    // Tair
+    if ((retval = nc_def_var(ncid,"Tair",NC_DOUBLE,2,dimidtwo,&varid)))
+	ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Time-averaged Air temperature");
+    nc_addattr(ncid, varid,"units","degrees C");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+
+    // Pair
+    if ((retval = nc_def_var(ncid,"Pair",NC_DOUBLE,2,dimidtwo,&varid)))
+	ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Air pressure");
+    nc_addattr(ncid, varid,"units","millibar");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+
+    // rain
+    if ((retval = nc_def_var(ncid,"rain",NC_DOUBLE,2,dimidtwo,&varid)))
+	ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Rain fall rate");
+    nc_addattr(ncid, varid,"units","kg m2 s-1");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+
+    //RH
+    if ((retval = nc_def_var(ncid,"RH",NC_DOUBLE,2,dimidtwo,&varid)))
+	ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Relative humidity");
+    nc_addattr(ncid, varid,"units","Percent (%)");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+
+    //cloud
+    if ((retval = nc_def_var(ncid,"cloud",NC_DOUBLE,2,dimidtwo,&varid)))
+	ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Cloud cover fraction");
+    nc_addattr(ncid, varid,"units","");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");
+    
+    // Surface flux variables //
+    // Hs
+    if ((retval = nc_def_var(ncid,"Hs",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Sensible heat flux");
+    nc_addattr(ncid, varid,"units","W m-2");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");   
+    nc_addattr(ncid, varid,"positive","down");   
+
+    // Hl
+    if ((retval = nc_def_var(ncid,"Hl",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval); 
+     nc_addattr(ncid, varid,"long_name","Time-averaged Latent heat flux");
+    nc_addattr(ncid, varid,"units","W m-2");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");   
+    nc_addattr(ncid, varid,"positive","down");   
+
+    // Hlw
+    if ((retval = nc_def_var(ncid,"Hlw",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval); 
+     nc_addattr(ncid, varid,"long_name","Time-averaged Net longwave radiation flux");
+    nc_addattr(ncid, varid,"units","W m-2");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");      
+    nc_addattr(ncid, varid,"positive","down");   
+
+    // Hsw
+    if ((retval = nc_def_var(ncid,"Hsw",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Net shortwave radiation flux");
+    nc_addattr(ncid, varid,"units","W m-2");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");   
+    nc_addattr(ncid, varid,"positive","down");   
+
+    // tau_x
+    if ((retval = nc_def_var(ncid,"tau_x",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval); 
+    nc_addattr(ncid, varid,"long_name","Time-averaged Eastward component surface wind stress");
+    nc_addattr(ncid, varid,"units","N m-2");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");   
+
+    // tau_y
+    if ((retval = nc_def_var(ncid,"tau_y",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval); 
+     nc_addattr(ncid, varid,"long_name","Time-averaged Northward component surface wind stress");
+    nc_addattr(ncid, varid,"units","N m-2");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time yv xv");   
+
+    //EP
+    if(prop->beta > 0.0){
+	if ((retval = nc_def_var(ncid,"EP",NC_DOUBLE,2,dimidtwo,&varid)))
+	    ERR(retval); 
+	nc_addattr(ncid, varid,"long_name","Time-averaged Evaporation minus precipiaton");
+	nc_addattr(ncid, varid,"units","m s-1");
+	nc_addattr(ncid, varid,"mesh","suntans_mesh");
+	nc_addattr(ncid, varid,"location","face");
+	nc_addattr(ncid, varid,"coordinates","time yv xv");   
+    }
+
+   }
+
+   //End file definition mode
+   if ((retval = nc_enddef(ncid)))
+	ERR(retval);
+
+   
+   /**********************************************************
+   *
+   * Write data (needs to be done out of definition mode for classic model)
+   *
+   ****************************************************************/
+   nc_write_intvar(ncid,"cells",mergedGrid,mergedGrid->cells,myproc);
+   //nc_write_int(ncid,"face",grid->face,myproc);
+   nc_write_int(ncid,"nfaces",mergedGrid->nfaces,myproc);
+   //nc_write_int(ncid,"edges",grid->edges,myproc);
+   //nc_write_int(ncid,"neigh",grid->neigh,myproc);
+   //nc_write_int(ncid,"grad",grid->grad,myproc);
+   nc_write_int(ncid,"mark",mergedGrid->mark,myproc);
+   //nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
+   //nc_write_int(ncid,"eptr",grid->eptr,myproc);
+   
+   nc_write_double(ncid,"xv",mergedGrid->xv,myproc);
+   nc_write_double(ncid,"yv",mergedGrid->yv,myproc);
+   nc_write_double(ncid,"xe",mergedGrid->xe,myproc);
+   nc_write_double(ncid,"ye",mergedGrid->ye,myproc);
+   nc_write_double(ncid,"xp",grid->xp,myproc);
+   nc_write_double(ncid,"yp",grid->yp,myproc);
+
+   nc_write_intvar(ncid,"normal",mergedGrid,mergedGrid->normal,myproc);
+   nc_write_double(ncid,"n1",mergedGrid->n1,myproc);
+   nc_write_double(ncid,"n2",mergedGrid->n2,myproc);
+   nc_write_double(ncid,"df",mergedGrid->df,myproc);
+   nc_write_double(ncid,"dg",mergedGrid->dg,myproc);
+   nc_write_double(ncid,"def",mergedGrid->def,myproc);
+   nc_write_double(ncid,"Ac",mergedGrid->Ac,myproc);
+
+   nc_write_double(ncid,"dz",grid->dz,myproc);
+   nc_write_double(ncid,"z_r",z_r,myproc);
+   nc_write_double(ncid,"z_w",z_w,myproc);
+   nc_write_int(ncid,"Nk",mergedGrid->Nk,myproc);
+   nc_write_int(ncid,"Nke",mergedGrid->Nke,myproc);
+   nc_write_double(ncid,"dv",mergedGrid->dv,myproc);
+
+  // nc_write_double(ncid,"average_time",(float)prop->ntaverage*prop->dt,myproc);
+
+}// End function
+
+
 
 /*
 * Function: InitialiseAverageNCugrid()
@@ -2807,7 +3424,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
     // Depth-integrated salinity
     if ((retval = nc_def_var(ncid,"s_dz",NC_DOUBLE,2,dimidtwo,&varid)))
        ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Time-averaged depth-integrated salinity");
+    nc_addattr(ncid, varid,"long_name","Instantaneous depth-integrated salinity");
     nc_addattr(ncid, varid,"units","psu m");
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
@@ -2832,7 +3449,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
      // Depth-integrated temperature
     if ((retval = nc_def_var(ncid,"T_dz",NC_DOUBLE,2,dimidtwo,&varid)))
        ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Time-averaged depth-integrated temperature");
+    nc_addattr(ncid, varid,"long_name","Instantaneous depth-integrated temperature");
     nc_addattr(ncid, varid,"units","degrees C m");
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
@@ -3096,6 +3713,161 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
   // nc_write_double(ncid,"average_time",(float)prop->ntaverage*prop->dt,myproc);
 
 }// End function
+
+/*
+* Function: WriteAverageNCmerge()
+* -----------------------------
+* Main function for writing SUNTANS output to netcdf file/s
+* 
+*/
+void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phys, metT *met, int blowup, int numprocs, MPI_Comm comm, int myproc){
+   int ncid;// = prop->averageNetcdfFileID;
+   int varid, retval, k;
+   // Start and count vectors for one, two and three dimensional arrays
+   size_t startone[] = {prop->avgtimectr};
+   size_t countone[] = {1};
+   size_t starttwo[] = {prop->avgtimectr,0};
+   size_t counttwo[] = {1,grid->Nc};
+   size_t startthree[] = {prop->avgtimectr,0,0};
+   size_t countthree[] = {1,grid->Nkmax,grid->Nc};
+   const size_t countthreew[] = {1,grid->Nkmax+1,grid->Nc};
+   const REAL time[] = {prop->nctime};
+   int ntaverage=prop->ntaverage;
+    char str[BUFFERLENGTH], filename[BUFFERLENGTH];
+
+   nc_set_log_level(3); // This helps with debugging errors
+   
+   prop->avgctr+=1;
+   // Output the first time step but don't compute the average 
+   if(!(prop->n%ntaverage)) {
+
+    // Work out if we need to open a new averages file or not
+    if(!(prop->avgtimectr%prop->nstepsperncfile) || prop->n==1+prop->nstart){
+	if(prop->avgfilectr>0){
+	    // Close the old netcdf file
+	    if(myproc==0){
+	    	printf("Closing opened output netcdf file...\n");
+		MPI_NCClose(prop->averageNetcdfFileID);
+	    }
+	}
+
+	// Open the new netcdf file
+	MPI_GetFile(filename,DATAFILE,"averageNetcdfFile","OpenFiles",myproc);
+	sprintf(str,"%s_%04d.nc",filename,prop->avgfilectr);
+	if(myproc==0){
+	    prop->averageNetcdfFileID = MPI_NCOpen(str,NC_CLASSIC_MODEL|NC_NETCDF4,"OpenFiles",myproc);
+	}else{
+	    prop->averageNetcdfFileID=-1;
+	}
+	
+	// Initialise a new output file
+	if(myproc==0)
+	    InitialiseAverageNCugridMerge(prop, grid, average, myproc);
+		
+	// Reset the time counter
+	prop->avgtimectr = 0;
+
+	prop->avgfilectr += 1;
+	startone[0] = prop->avgtimectr;
+    }
+    ncid = prop->averageNetcdfFileID;
+
+     
+    //Compute the averages 
+    ComputeAverageVariables(grid,average,phys,met,prop->avgctr,prop);
+
+    //Communicate the values
+    SendRecvAverages(prop,grid,average,comm,myproc); 
+
+    //Reset the counter
+    prop->avgctr=0;
+
+    if(myproc==0 && VERBOSE>1){ 
+      if(!blowup) 
+        printf("Outputting average data to netcdf at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
+      else
+        printf("Outputting blowup averagedata to netcdf at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
+    }
+    
+    /* Write the time data*/
+    if(myproc==0){
+	if ((retval = nc_inq_varid(ncid, "time", &varid)))
+	    ERR(retval);
+	if ((retval = nc_put_vara_double(ncid, varid, startone, countone, time )))
+	    ERR(retval);
+	countthree[2] = mergedGrid->Nc;
+	counttwo[1] = mergedGrid->Nc;
+
+    }
+    /* Write to the physical variables*/
+
+    // 2D cell-centered variables
+    nc_write_2D_merge(ncid,prop->avgtimectr,  average->h, prop, grid, "eta", numprocs, myproc, comm);
+    if(prop->beta>0)
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->s_dz, prop, grid, "s_dz", numprocs, myproc, comm);
+    if(prop->gamma>0)
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->T_dz, prop, grid, "T_dz", numprocs, myproc, comm);
+
+    if(prop->metmodel>0){
+    	// Atmospheric flux variables
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->Uwind, prop, grid, "Uwind", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->Vwind, prop, grid, "Vwind", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->Tair, prop, grid, "Tair", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->Pair, prop, grid, "Pair", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->rain, prop, grid, "rain", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->RH, prop, grid, "RH", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->cloud, prop, grid, "cloud", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->Hs, prop, grid, "Hs", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->Hl, prop, grid, "Hl", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->Hlw, prop, grid, "Hlw", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->Hsw, prop, grid, "Hsw", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->tau_x, prop, grid, "tau_x", numprocs, myproc, comm);
+	nc_write_2D_merge(ncid,prop->avgtimectr,  average->tau_y, prop, grid, "tau_y", numprocs, myproc, comm);
+	if(prop->beta > 0)
+	    nc_write_2D_merge(ncid,prop->avgtimectr,  average->EP, prop, grid, "EP", numprocs, myproc, comm);
+
+    }
+
+    // 3D cell-centered variables
+    nc_write_3D_merge(ncid,prop->avgtimectr,  average->uc, prop, grid, "uc",0, numprocs, myproc, comm);
+    nc_write_3D_merge(ncid,prop->avgtimectr,  average->vc, prop, grid, "vc",0, numprocs, myproc, comm);
+    nc_write_3D_merge(ncid,prop->avgtimectr,  average->nu_v, prop, grid, "nu_v",0, numprocs, myproc, comm);
+
+
+    if(prop->beta>0)
+	nc_write_3D_merge(ncid,prop->avgtimectr,  average->s, prop, grid, "salt",0, numprocs, myproc, comm);
+
+    if(prop->gamma>0)
+	nc_write_3D_merge(ncid,prop->avgtimectr,  average->T, prop, grid, "temp",0, numprocs, myproc, comm);
+
+    if( (prop->gamma>0) || (prop->beta>0) ) 
+	nc_write_3D_merge(ncid,prop->avgtimectr,  average->rho, prop, grid, "rho",0, numprocs, myproc, comm);
+
+    if(prop->calcage){
+	nc_write_3D_merge(ncid,prop->avgtimectr,  average->agemean, prop, grid, "agemean",0, numprocs, myproc, comm);
+    }
+  
+    // Vertical velocity 
+    nc_write_3D_merge(ncid,prop->avgtimectr,  average->w, prop, grid, "w",1, numprocs, myproc, comm);
+    
+    // 3D edge-based variables 
+    nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->U_F, prop, grid, "U_F",0, numprocs, myproc, comm);
+    if(prop->beta>0)
+	nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->s_F, prop, grid, "s_F",0, numprocs, myproc, comm);
+    if(prop->gamma>0)
+	nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->s_F, prop, grid, "T_F",0, numprocs, myproc, comm);
+     
+    // Zero the arrays after they have been written(don't do it for the initial step)
+    if(prop->avgctr>1)
+	ZeroAverageVariables(grid,average,prop);
+
+    /* Update the time counter*/
+    prop->avgtimectr += 1;  
+   }
+  
+} // End of function
+
+
 
 /*
 * Function: WriteAverageNC()

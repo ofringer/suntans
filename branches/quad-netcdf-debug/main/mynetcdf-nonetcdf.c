@@ -59,7 +59,13 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
   exit(EXIT_FAILURE);
 }
 
-void WriteOuputNC(propT *prop, gridT *grid, physT *phys, metT *met,int blowup, int myproc){
+void WriteOutputNC(propT *prop, gridT *grid, physT *phys, metT *met,int blowup, int myproc){
+
+  if(myproc==0) printf("Error: NetCDF Libraries required. Set outputNetcdf = 0\n");
+  MPI_Finalize();
+  exit(EXIT_FAILURE);
+}
+void WriteOutputNCmerge(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, int numprocs, int myproc, MPI_Comm comm){
 
   if(myproc==0) printf("Error: NetCDF Libraries required. Set outputNetcdf = 0\n");
   MPI_Finalize();
@@ -75,6 +81,12 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
 
 void WriteAverageNC(propT *prop, gridT *grid, averageT *average, physT *phys, metT *met, int blowup, MPI_Comm comm, int myproc){
 
+  if(myproc==0) printf("Error: NetCDF Libraries required. Set calcaverage = 0\n");
+  MPI_Finalize();
+  exit(EXIT_FAILURE);
+}
+
+void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phys, metT *met, int blowup, int numprocs, MPI_Comm comm, int myproc){
   if(myproc==0) printf("Error: NetCDF Libraries required. Set calcaverage = 0\n");
   MPI_Finalize();
   exit(EXIT_FAILURE);

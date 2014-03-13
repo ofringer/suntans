@@ -37,6 +37,7 @@ void WriteOutputNC(propT *prop, gridT *grid, physT *phys, metT *met,int blowup, 
 void WriteOutputNCmerge(propT *prop, gridT *grid, physT *phys, metT *met, int blowup, int numprocs, int myproc, MPI_Comm comm);
 void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int myproc);
 void WriteAverageNC(propT *prop, gridT *grid, averageT *average, physT *phys, metT *met, int blowup, MPI_Comm comm, int myproc);
+void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phys, metT *met, int blowup, int numprocs, MPI_Comm comm, int myproc);
 void ReadMetNCcoord(propT *prop, gridT *grid, metinT *metin,int myproc);
 void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc);
 

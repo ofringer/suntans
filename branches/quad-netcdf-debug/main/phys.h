@@ -197,7 +197,7 @@ typedef struct _propT {
   int metmodel,  varmodel, outputNetcdf,  metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID, calcage, calcaverage;
   int outputNetcdfFileID, averageNetcdfFileID;
   REAL nctime, toffSet;
-  int nctimectr, avgtimectr, avgctr, ntaverage, nstepsperncfile, ncfilectr;
+  int nctimectr, avgtimectr, avgctr, avgfilectr, ntaverage, nstepsperncfile, ncfilectr;
   REAL nugget, sill, range, Lsw, Cda, Ce, Ch;
   char  starttime[15], basetime[15]; 
 } propT;

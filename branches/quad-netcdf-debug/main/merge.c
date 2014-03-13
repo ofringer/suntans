@@ -37,7 +37,7 @@ static void InitializeMergeEdges(gridT *grid, int numprocs, int myproc, MPI_Comm
  *  Nc_max: Maximum of Nc_all.
  *
  */
-void InitializeMerging(gridT *grid, int numprocs, int myproc, MPI_Comm comm) {
+void InitializeMerging(gridT *grid, int mergeedges, int numprocs, int myproc, MPI_Comm comm) {
   int i, iptr, p, Nc_computational, Ne_computational, size3D;
   int *mnptr_temp, *Nk_temp, *eptr_temp;
   MPI_Status status;
@@ -120,8 +120,9 @@ void InitializeMerging(gridT *grid, int numprocs, int myproc, MPI_Comm comm) {
     for(p=1;p<numprocs;p++) {
       MPI_Recv(mnptr_all[p],Nc_all[p],MPI_INT,p,1,comm,&status);         
       MPI_Recv(Nk_temp,Nc_all[p],MPI_INT,p,1,comm,&status);         
-      for(i=0;i<Nc_all[p];i++)
+      for(i=0;i<Nc_all[p];i++){
 	mergedGrid->Nk[mnptr_all[p][i]]=Nk_temp[i];
+      }
     }
   }
 
@@ -142,11 +143,13 @@ void InitializeMerging(gridT *grid, int numprocs, int myproc, MPI_Comm comm) {
   }
 
 
+  //Merge the edges and grid if output netcdf only
   // Now do the edge arrays
-  InitializeMergeEdges(grid,numprocs,myproc,comm);
-
-  // Merge all of the grid variables onto one processor
-  MergeGridVariables(grid, numprocs, myproc, comm);
+  if (mergeedges>0){
+      InitializeMergeEdges(grid,numprocs,myproc,comm);
+      // Merge all of the grid variables onto one processor
+      MergeGridVariables(grid, numprocs, myproc, comm);
+  }
 
   SunFree(mnptr_temp,Nc_max*sizeof(int),"InitializeMerging");
   SunFree(Nk_temp,Nc_max*sizeof(int),"InitializeMerging");
@@ -154,14 +157,22 @@ void InitializeMerging(gridT *grid, int numprocs, int myproc, MPI_Comm comm) {
 }
 
 static void InitializeMergeEdges(gridT *grid, int numprocs, int myproc, MPI_Comm comm){
-  int i, iptr, p, Ne_computational;
+  int j, jptr, p, Ne_computational, size3D;
   int *eptr_temp, *Nke_temp;
   MPI_Status status;
 
+  size3D = 0;
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[EDGEMAX];jptr++) {
+    j=grid->edgep[jptr];
+    
+    size3D+=grid->Nke[j];
+  }
+  send3DESize=(int *)SunMalloc(numprocs*sizeof(int),"InitializeMerging");
+ 
   if(myproc!=0) {
     Ne_computational = grid->edgedist[EDGEMAX]-grid->edgedist[0];
     MPI_Send(&(Ne_computational),1,MPI_INT,0,1,comm);     
-    //MPI_Send(&(size3D),1,MPI_INT,0,1,comm);     
+    MPI_Send(&(size3D),1,MPI_INT,0,1,comm);     
   } else {
 
     Ne_all=(int *)SunMalloc(numprocs*sizeof(int),"InitializeMerging");
@@ -174,6 +185,7 @@ static void InitializeMergeEdges(gridT *grid, int numprocs, int myproc, MPI_Comm
     for(p=1;p<numprocs;p++) {
       //Edges
       MPI_Recv(&(Ne_all[p]),1,MPI_INT,p,1,comm,&status);         
+      MPI_Recv(&(send3DESize[p]),1,MPI_INT,p,1,comm,&status);         
 
       if(Ne_all[p]>Ne_max)
         Ne_max=Ne_all[p];
@@ -183,58 +195,91 @@ static void InitializeMergeEdges(gridT *grid, int numprocs, int myproc, MPI_Comm
     }
   }
   MPI_Bcast(&(Ne_max),1,MPI_INT,0,comm);
+  MPI_Bcast(send3DESize,numprocs,MPI_INT,0,comm);
   eptr_temp=(int *)SunMalloc(Ne_max*sizeof(int),"InitializeMerging");
-  Nke_temp=(int *)SunMalloc(Ne_max*sizeof(int),"InitializeMerging");
+//  Nke_temp=(int *)SunMalloc(Ne_max*sizeof(int),"InitializeMerging");
 
   if(myproc==0) {
     eptr_all=(int **)SunMalloc(numprocs*sizeof(int *),"InitializeMerging");
     for(p=0;p<numprocs;p++) {
 
       eptr_all[p]=(int *)SunMalloc(Ne_all[p]*sizeof(int),"InitializeMerging");
-      for(i=0;i<Ne_all[p];i++)
-	eptr_all[p][i]=0;
+      for(j=0;j<Ne_all[p];j++)
+	eptr_all[p][j]=0;
 
     }
-    mergedGrid->Nke=(int *)SunMalloc(mergedGrid->Ne*sizeof(int),"MergeGridVariables");
+//    mergedGrid->Nke=(int *)SunMalloc(mergedGrid->Ne*sizeof(int),"MergeGridVariables");
   }
 
   // Merge the eptr and Nke arrays
   if(myproc!=0) {
-    for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
-      i=grid->edgep[iptr];
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[EDGEMAX];jptr++) {
+      j=grid->edgep[jptr];
 
-      eptr_temp[iptr-grid->edgedist[0]]=grid->eptr[i];
-      Nke_temp[iptr-grid->edgedist[0]]=grid->Nke[i];
+      eptr_temp[jptr-grid->edgedist[0]]=grid->eptr[j];
+//     Nke_temp[jptr-grid->edgedist[0]]=grid->Nke[j];
     }
     MPI_Send(eptr_temp,grid->edgedist[EDGEMAX]-grid->edgedist[0],MPI_INT,0,1,comm);       
-    MPI_Send(Nke_temp,grid->edgedist[EDGEMAX]-grid->edgedist[0],MPI_INT,0,1,comm);       
+//    MPI_Send(Nke_temp,grid->edgedist[EDGEMAX]-grid->edgedist[0],MPI_INT,0,1,comm);       
   } else {
-    for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
-      i=grid->edgep[iptr];
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[EDGEMAX];jptr++) {
+      j=grid->edgep[jptr];
 
-      eptr_all[0][iptr-grid->edgedist[0]]=grid->eptr[i];
-      mergedGrid->Nke[grid->eptr[i]]=grid->Nke[i];
+      eptr_all[0][jptr-grid->edgedist[0]]=grid->eptr[j];
+//      mergedGrid->Nke[grid->eptr[j]]=grid->Nke[j];
     }
 
     for(p=1;p<numprocs;p++) {
       MPI_Recv(eptr_all[p],Ne_all[p],MPI_INT,p,1,comm,&status);         
-      MPI_Recv(Nke_temp,Ne_all[p],MPI_INT,p,1,comm,&status);         
-      for(i=0;i<Ne_all[p];i++)
-	mergedGrid->Nke[eptr_all[p][i]]=Nke_temp[i];
+//      MPI_Recv(Nke_temp,Ne_all[p],MPI_INT,p,1,comm,&status);         
+//      for(j=0;j<Ne_all[p];j++)
+//	mergedGrid->Nke[eptr_all[p][j]]=Nke_temp[j];
     }
   }
+//// Find the maximum value in mnptr for testing
+//  if(myproc==0){
+//      mergedGrid->Ne=0;
+//      // processor 0
+//      for(i=0;i<grid->Nc;i++){
+//         if(grid->mnptr[i]>mergedGrid->Ne)
+//             mergedGrid->Ne = grid->mnptr[i];
+//      }
+//      // other processors
+//      for(p=1;p<numprocs;p++){
+//         for(i=0;i<Nc_all[p];i++){
+//            if(mnptr_all[p][i]>mergedGrid->Ne)
+//            	mergedGrid->Ne = mnptr_all[p][i]+1;
+//         }
+//      }
+//  }
+  // Now go back through and get the maximum value in eptr_all
+  if(myproc==0){
+      mergedGrid->Ne=0;
+      // processor 0
+      for(j=0;j<grid->Ne;j++){
+         if(grid->eptr[j]>mergedGrid->Ne)
+             mergedGrid->Ne = grid->eptr[j]+1;
+      }
+      // other processors
+      for(p=1;p<numprocs;p++){
+         for(j=0;j<Ne_all[p];j++){
+            if(eptr_all[p][j]>mergedGrid->Ne)
+            	mergedGrid->Ne = eptr_all[p][j]+1;
+         }
+      }
+  }
+  localTempEMergeArray=(REAL *)SunMalloc(Ne_max*grid->Nkmax*sizeof(REAL),"InitializeMerging");
   // Only processor 0 needs the temporary array storing the entire grid
   if(myproc==0) {
     merged3DEArray=(REAL **)SunMalloc(mergedGrid->Ne*sizeof(REAL *),"InitializeMerging");
-    for(i=0;i<mergedGrid->Nc;i++)
-      merged3DEArray[i]=(REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializeMerging");
+    for(j=0;j<mergedGrid->Ne;j++)
+      merged3DEArray[j]=(REAL *)SunMalloc(grid->Nkmax*sizeof(REAL),"InitializeMerging");
     //This is necessary for netcdf write
     merged3DVector=(REAL *)SunMalloc(mergedGrid->Ne*(grid->Nkmax)*sizeof(REAL),"InitializeMerging");
 
   }
 
-
-  //SunFree(eptr_temp,Ne_max*sizeof(int),"InitializeMerging");
+  SunFree(eptr_temp,Ne_max*sizeof(int),"InitializeMerging");
   //SunFree(Nke_temp,Ne_max*sizeof(int),"InitializeMerging");
 
 
@@ -301,6 +346,38 @@ void MergeCellCentered3DArray(REAL **localArray, gridT *grid, int numprocs, int 
   }
 }
 
+void MergeEdgeCentered3DArray(REAL **localArray, gridT *grid, int numprocs, int myproc, MPI_Comm comm) {
+  int j, k, m, p, jptr;
+  MPI_Status status;
+
+  if(myproc!=0) {
+    m=0;
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[EDGEMAX];jptr++) {
+      j=grid->edgep[jptr];
+      for(k=0;k<grid->Nke[j];k++)
+      	localTempEMergeArray[m++]=localArray[j][k];
+    }
+    MPI_Send(&(localTempEMergeArray[0]),send3DESize[myproc],MPI_DOUBLE,0,1,comm);       
+  } else {
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[EDGEMAX];jptr++) {
+      j=grid->edgep[jptr];
+
+      for(k=0;k<grid->Nke[j];k++) 
+	//merged3DEArray[eptr_all[0][j]][k]=localArray[j][k];
+	merged3DEArray[grid->eptr[j]][k]=localArray[j][k];
+    }
+
+    for(p=1;p<numprocs;p++) {
+      MPI_Recv(&(localTempEMergeArray[0]),send3DESize[p],MPI_DOUBLE,p,1,comm,&status);         
+
+      m=0;
+      for(j=0;j<Ne_all[p];j++) {
+	for(k=0;k<mergedGrid->Nke[eptr_all[p][j]];k++)
+	  merged3DEArray[eptr_all[p][j]][k]=localTempEMergeArray[m++];
+      }
+    }
+  }
+}
 /*
  *MergeGridVariables()()
  *----------------------------
@@ -350,10 +427,11 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
     mergedGrid->xe = (REAL *)SunMalloc(mergedGrid->Ne*sizeof(REAL),"MergeGridVariables");
     mergedGrid->ye = (REAL *)SunMalloc(mergedGrid->Ne*sizeof(REAL),"MergeGridVariables");
   
-    mergedGrid->Nke = (int *)SunMalloc(mergedGrid->Ne*sizeof(int),"MergeGridVariables");
     mergedGrid->grad = (int *)SunMalloc(2*mergedGrid->Ne*sizeof(int),"MergeGridVariables");
     mergedGrid->gradf = (int *)SunMalloc(2*mergedGrid->Ne*sizeof(int),"MergeGridVariables");
     mergedGrid->edges = (int *)SunMalloc(2*mergedGrid->Ne*sizeof(int),"MergeGridVariables");
+    mergedGrid->mark = (int *)SunMalloc(mergedGrid->Ne*sizeof(int),"MergeGridVariables");
+    mergedGrid->Nke=(int *)SunMalloc(mergedGrid->Ne*sizeof(int),"MergeGridVariables");
   }
   
   // Now go through and merge each variable individually. This cannot
@@ -509,6 +587,8 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
       i=grid->cellp[iptr];
       for(nf=0;nf<grid->nfaces[i];nf++){
 	  mergedGrid->face[grid->mnptr[i]*grid->maxfaces+nf]=grid->eptr[grid->face[i*grid->maxfaces+nf]];
+	  //mergedGrid->face[grid->mnptr[i]*grid->maxfaces+nf]=grid->face[i*grid->maxfaces+nf];
+	  //mergedGrid->face[grid->mnptr[i]*grid->maxfaces+nf]=0;
       }
     }
 
@@ -518,34 +598,73 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
          nff = mergedGrid->nfaces[mnptr_all[p][i]];
 	 for(nf=0;nf<nff;nf++){
 	    mergedGrid->face[mnptr_all[p][i]*grid->maxfaces+nf]=eptr_all[p][NcNs_int[i*grid->maxfaces+nf]];
+	    //mergedGrid->face[mnptr_all[p][i]*grid->maxfaces+nf]=p;
+	 }
+      }
+    }
+  }
+  // normal - outward normal for each edge
+  if(myproc!=0) {
+    for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
+      i=grid->cellp[iptr];
+      for(nf=0;nf<grid->nfaces[i];nf++){
+	  NcNs_int[(iptr-grid->celldist[0])*grid->maxfaces+nf]=grid->normal[i*grid->maxfaces+nf];
+      }
+    }
+    MPI_Send(NcNs_int,(grid->celldist[2]-grid->celldist[0])*grid->maxfaces,MPI_INT,0,1,comm);       
+  } else {//myproc==0
+    for(iptr=grid->celldist[0];iptr<grid->celldist[2];iptr++) {
+      i=grid->cellp[iptr];
+      for(nf=0;nf<grid->nfaces[i];nf++){
+	  mergedGrid->normal[grid->mnptr[i]*grid->maxfaces+nf]=grid->normal[i*grid->maxfaces+nf];
+      }
+    }
+    for(p=1;p<numprocs;p++) {
+      MPI_Recv(NcNs_int,Nc_all[p]*grid->maxfaces,MPI_INT,p,1,comm,&status);         
+      for(i=0;i<Nc_all[p];i++){
+         nff = mergedGrid->nfaces[mnptr_all[p][i]];
+	 for(nf=0;nf<nff;nf++){
+	    mergedGrid->normal[mnptr_all[p][i]*grid->maxfaces+nf]=NcNs_int[i*grid->maxfaces+nf];
 	 }
       }
     }
   }
 
   /* Integer variables size: [Ne, 2]*/
+  /*
   //grad - edge_face_connectivity
   if(myproc!=0) {
-    for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
-      i=grid->edgep[iptr];
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[EDGEMAX];jptr++) {
+      j=grid->edgep[jptr];
       for(nf=0;nf<2;nf++){
-	  Ne2_int[(iptr-grid->edgedist[0])*2+nf]=grid->grad[i*2+nf];
+	  Ne2_int[(jptr-grid->edgedist[0])*2+nf]=grid->grad[j*2+nf];
       }
     }
     MPI_Send(Ne2_int,(grid->edgedist[EDGEMAX]-grid->edgedist[0])*2,MPI_INT,0,1,comm);       
   } else {//myproc==0
-    for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
-      i=grid->edgep[iptr];
+    	
+    for(jptr=grid->edgedist[0];jptr<grid->edgedist[EDGEMAX];jptr++) {
+      j=grid->edgep[jptr];
       for(nf=0;nf<2;nf++){
-	  mergedGrid->grad[grid->eptr[i]*2+nf]=grid->mnptr[grid->grad[i*2+nf]];
+	  //mergedGrid->grad[grid->eptr[i]*2+nf]=grid->mnptr[grid->grad[i*2+nf]];
+	  if(grid->grad[j*2+nf]==-1){
+	      mergedGrid->grad[grid->eptr[j]*2+nf]=-1;
+	  }else{
+	      mergedGrid->grad[grid->eptr[j]*2+nf]=mnptr_all[0][grid->grad[j*2+nf]];
+	  }
       }
     }
 
     for(p=1;p<numprocs;p++) {
       MPI_Recv(Ne2_int,Ne_all[p]*2,MPI_INT,p,1,comm,&status);         
-      for(i=0;i<Ne_all[p];i++){
+      for(j=0;j<Ne_all[p];j++){
 	 for(nf=0;nf<2;nf++){
-	    mergedGrid->grad[eptr_all[p][i]*2+nf]=mnptr_all[p][Ne2_int[i*2+nf]];
+	    //mergedGrid->grad[eptr_all[p][i]*2+nf]=mnptr_all[p][Ne2_int[i*2+nf]];
+	    if(Ne2_int[j*2+nf]==-1){
+	      mergedGrid->grad[grid->eptr[j]*2+nf]=-1;
+	    }else{
+	      mergedGrid->grad[eptr_all[p][j]*2+nf]=mnptr_all[p][Ne2_int[j*2+nf]];
+	    }
 	 }
       }
     }
@@ -577,7 +696,7 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
       }
     }
   }
-
+*/
 
   /*Real variables size: Ne */
   //xe
@@ -590,7 +709,7 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
   } else {//myproc==0
     for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
       i=grid->edgep[iptr];
-      mergedGrid->xe[grid->eptr[i]]=grid->xe[i];
+      mergedGrid->xe[eptr_all[0][i]]=grid->xe[i];
     }
 
     for(p=1;p<numprocs;p++) {
@@ -610,7 +729,7 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
   } else {//myproc==0
     for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
       i=grid->edgep[iptr];
-      mergedGrid->ye[grid->eptr[i]]=grid->ye[i];
+      mergedGrid->ye[eptr_all[0][i]]=grid->ye[i];
     }
 
     for(p=1;p<numprocs;p++) {
@@ -630,7 +749,7 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
   } else {//myproc==0
     for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
       i=grid->edgep[iptr];
-      mergedGrid->df[grid->eptr[i]]=grid->df[i];
+      mergedGrid->df[eptr_all[0][i]]=grid->df[i];
     }
 
     for(p=1;p<numprocs;p++) {
@@ -650,7 +769,7 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
   } else {//myproc==0
     for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
       i=grid->edgep[iptr];
-      mergedGrid->dg[grid->eptr[i]]=grid->dg[i];
+      mergedGrid->dg[eptr_all[0][i]]=grid->dg[i];
     }
 
     for(p=1;p<numprocs;p++) {
@@ -670,7 +789,7 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
   } else {//myproc==0
     for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
       i=grid->edgep[iptr];
-      mergedGrid->n1[grid->eptr[i]]=grid->n1[i];
+      mergedGrid->n1[eptr_all[0][i]]=grid->n1[i];
     }
 
     for(p=1;p<numprocs;p++) {
@@ -690,7 +809,7 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
   } else {//myproc==0
     for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
       i=grid->edgep[iptr];
-      mergedGrid->n2[grid->eptr[i]]=grid->n2[i];
+      mergedGrid->n2[eptr_all[0][i]]=grid->n2[i];
     }
 
     for(p=1;p<numprocs;p++) {
@@ -699,9 +818,47 @@ static void MergeGridVariables(gridT *grid, int numprocs, int myproc, MPI_Comm c
 	mergedGrid->n2[eptr_all[p][i]]=Ne_real[i];
     }
   }
+  /* Integer variables - size Ne */
+  //Nke
+  if(myproc!=0) {
+    for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
+      i=grid->edgep[iptr];
+      Ne_int[iptr-grid->edgedist[0]]=grid->Nke[i];
+    }
+    MPI_Send(Ne_int,grid->edgedist[EDGEMAX]-grid->edgedist[0],MPI_INT,0,1,comm);       
+  } else {//myproc==0
+    for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
+      i=grid->edgep[iptr];
+      mergedGrid->Nke[eptr_all[0][i]]=grid->Nke[i];
+    }
+
+    for(p=1;p<numprocs;p++) {
+      MPI_Recv(Ne_real,Ne_all[p],MPI_INT,p,1,comm,&status);         
+      for(i=0;i<Ne_all[p];i++)
+	mergedGrid->Nke[eptr_all[p][i]]=Ne_int[i];
+    }
+  }
 
 
+  //mark
+  if(myproc!=0) {
+    for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
+      i=grid->edgep[iptr];
+      Ne_int[iptr-grid->edgedist[0]]=grid->mark[i];
+    }
+    MPI_Send(Ne_int,grid->edgedist[EDGEMAX]-grid->edgedist[0],MPI_INT,0,1,comm);       
+  } else {//myproc==0
+    for(iptr=grid->edgedist[0];iptr<grid->edgedist[EDGEMAX];iptr++) {
+      i=grid->edgep[iptr];
+      mergedGrid->mark[eptr_all[0][i]]=grid->mark[i];
+    }
 
+    for(p=1;p<numprocs;p++) {
+      MPI_Recv(Ne_int,Ne_all[p],MPI_INT,p,1,comm,&status);         
+      for(i=0;i<Ne_all[p];i++)
+	mergedGrid->mark[eptr_all[p][i]]=Ne_real[i];
+    }
+  }
 
   // Free up the swap arrays
   SunFree(Nc_int,Nc_max*sizeof(int),"MergeGridVariables");
