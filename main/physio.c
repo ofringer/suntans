@@ -135,7 +135,7 @@ void OpenFiles(propT *prop, int myproc)
     prop->metncid = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
   }
 
-  if(prop->calcaverage){
+  if(prop->calcaverage && prop->mergeArrays==0){
     MPI_GetFile(filename,DATAFILE,"averageNetcdfFile","OpenFiles",myproc);
     sprintf(str,"%s.%d",filename,myproc);
     prop->averageNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);

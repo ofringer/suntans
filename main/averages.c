@@ -21,6 +21,10 @@ void AllocateAverageVariables(gridT *grid, averageT **average, propT *prop)
   int flag=0, i, j, jptr, ib, Nc=grid->Nc, Ne=grid->Ne, Np=grid->Np, nf, k;
 
 
+  prop->avgctr=0;
+  prop->avgtimectr=0;
+  prop->avgfilectr=0;
+
   // allocate averageical structure
   *average = (averageT *)SunMalloc(sizeof(averageT),"AllocateAverageVariables");
 
@@ -191,9 +195,9 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
     average->h[i]+=phys->h[i];
     //average->s_dz[i]+=sdz;
     //average->T_dz[i]+=Tdz;
-    average->h[i]=phys->h[i];
-    average->s_dz[i]=sdz;
-    average->T_dz[i]=Tdz;
+    //average->h[i]=phys->h[i];
+    average->s_dz[i]=sdz; //Instantaneous values (used for scalar budget)
+    average->T_dz[i]=Tdz; // Instantaneous values 
     if(prop->metmodel>0 && prop->metmodel<4){
 	average->Uwind[i]+=met->Uwind[i];
 	average->Vwind[i]+=met->Vwind[i];
