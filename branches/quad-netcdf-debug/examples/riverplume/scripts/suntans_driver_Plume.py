@@ -77,9 +77,9 @@ sun.smoothnear=4 # No. of points to use for smoothing
 ####
 sun.opt_bcseg = 'constant' # Segment boundary condition option: 'constant' or 'file'
 sun.opt_bctype2 = 'constant' # Type 2 boundary condition option: 'constant'
-sun.opt_bctype3 = 'OTIS' # Type 3 boundary condition option: 'constant', ,'file','OTIS', 'ROMS', 'ROMSOTIS','ROMSFILE'
+sun.opt_bctype3 = 'constant' # Type 3 boundary condition option: 'constant', ,'file','OTIS', 'ROMS', 'ROMSOTIS','ROMSFILE'
 
-sun.bcpolygonfile = 'janet/BoundaryPolygon.shp' # Shape file with fields 'marker' and 'edge_id'
+sun.bcpolygonfile = 'gis/BoundaryPolygon.shp' # Shape file with fields 'marker' and 'edge_id'
 sun.bcfile = 'Plume_BC.nc' # Input boundary condition file
     
 # IF opt_bcseg = 'consant

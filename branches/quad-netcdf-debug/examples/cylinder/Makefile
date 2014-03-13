@@ -20,11 +20,12 @@ CFLAGS =
 MATHLIB = -lm
 
 EXEC = cylinder
+datadir = data
 OBJS = 
 SUN = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
-NUMPROCS = 1
+NUMPROCS = 2
 
 all:	$(SUN)
 
@@ -47,6 +48,22 @@ data-quad: FORCE
 	cp data-files/points-quad.dat rundata/points.dat
 	cp data-files/suntans-quad.dat rundata/suntans.dat
 
+debug:	all
+	cp data-files/cells-tri.dat rundata/cells.dat
+	cp data-files/edges-tri.dat rundata/edges.dat
+	cp data-files/points-tri.dat rundata/points.dat
+	cp data-files/suntans-tri.dat rundata/suntans.dat
+	cp -r rundata data
+	$(MPIHOME)/bin/mpirun -np $(NUMPROCS) xterm -e gdb -command=gdbcommands $(SUN)
+
+valgrind:	all
+	cp data-files/cells-tri.dat rundata/cells.dat
+	cp data-files/edges-tri.dat rundata/edges.dat
+	cp data-files/points-tri.dat rundata/points.dat
+	cp data-files/suntans-tri.dat rundata/suntans.dat
+	cp -r rundata data
+	$(MPIHOME)/bin/mpirun -np $(NUMPROCS) ./$(SUN) -g -vv --datadir=$(datadir)
+	$(MPIHOME)/bin/mpirun -np $(NUMPROCS) valgrind --tool=memcheck --leak-check=yes ./$(SUN) -s -vvv --datadir=$(datadir)
 .c.o:	
 	$(LD) -c $(INCLUDES) $(DEFS) $*.c
 

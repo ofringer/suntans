@@ -209,6 +209,9 @@ if makeinitial:
 
     # Initialise the class
     IC = InitialCond(suntanspath,starttime)
+
+    #Set the depth
+    IC.dv = grd.dv
     
     # the initial condition arrays are stored in the following fields in the class:
     #   h, uc, vc, T, S

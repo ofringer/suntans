@@ -73,7 +73,7 @@ readTemperature		0	# Whether or not to read initial temperature profile from fil
 #
 ########################################################################
 outputNetcdf	 	1	  # Output data to netcdf format (0 - binary, 1 - netcdf)
-outputNetcdfFile SFBay3D.nc 	# Name of the output netcdf file
+outputNetcdfFile SFBay3D 	# Name of the output netcdf file
 metfile	windfile.nc # Input meteorological netcdf file
 #metfile		Galveston_Winds_2009_UTM.nc #
 starttime	20130101.120000   # Model start time string format yyyymmdd.HHMMSS
