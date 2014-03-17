@@ -341,7 +341,7 @@ static void nc_write_3Dedge_merge(int ncid, int tstep, REAL **array, propT *prop
    int varid, retval,i,k;
    //size_t startthree[] = {prop->nctimectr,0,0};
    size_t startthree[] = {tstep,0,0};
-   size_t countthree[] = {1,grid->Nkmax,grid->Nc};
+   size_t countthree[] = {1,grid->Nkmax,grid->Ne};
 
     MergeEdgeCentered3DArray(array,grid,numprocs,myproc,comm);   
 
@@ -849,6 +849,45 @@ static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, 
     nc_addattr(ncid, varid,"units","");
     nc_addattr(ncid, varid,"coordinates","xv yv");
 
+    //face
+    dimidtwo[0] = dimid_Nc;
+    dimidtwo[1] = dimid_numsides;
+    if ((retval = nc_def_var(ncid,"face",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","face_edge_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every face to its edges");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->face)))
+    //  ERR(retval);
+
+    //edges
+    dimidtwo[0] = dimid_Ne;
+    dimidtwo[1] = dimid_Two;
+    if ((retval = nc_def_var(ncid,"edges",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","edge_node_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every edge to the two nodes it connects");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->edges)))
+    //  ERR(retval);
+
+    //neigh
+    dimidtwo[0] = dimid_Nc;
+    dimidtwo[1] = dimid_numsides;
+    if ((retval = nc_def_var(ncid,"neigh",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","face_face_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every face to its neighbouring faces");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->neigh)))
+    //  ERR(retval);
+
+    //grad
+    dimidtwo[0] = dimid_Ne;
+    dimidtwo[1] = dimid_Two;
+    if ((retval = nc_def_var(ncid,"grad",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","edge_face_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every edge to the two faces it connects ");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->grad)))
+    //  ERR(retval);
 
 
        /********************************************************************** 
@@ -1383,11 +1422,11 @@ static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, 
    ****************************************************************/
    
    nc_write_intvar(ncid,"cells",mergedGrid,mergedGrid->cells,myproc);
-   //nc_write_intvar(ncid,"face",mergedGrid,mergedGrid->face,myproc);
+   nc_write_intvar(ncid,"face",mergedGrid,mergedGrid->face,myproc);
    nc_write_int(ncid,"nfaces",mergedGrid->nfaces,myproc);
-   //nc_write_int(ncid,"edges",mergedGrid->edges,myproc);
+   nc_write_int(ncid,"edges",mergedGrid->edges,myproc);
    //nc_write_intvar(ncid,"neigh",grid,grid->neigh,myproc);
-   //nc_write_int(ncid,"grad",mergedGrid->grad,myproc);
+   nc_write_int(ncid,"grad",mergedGrid->grad,myproc);
    //nc_write_int(ncid,"gradf",grid->gradf,myproc);
    nc_write_int(ncid,"mark",mergedGrid->mark,myproc);
    //nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
@@ -2329,7 +2368,45 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Number of cell faces");
 
-    
+    //face
+    dimidtwo[0] = dimid_Nc;
+    dimidtwo[1] = dimid_numsides;
+    if ((retval = nc_def_var(ncid,"face",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","face_edge_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every face to its edges");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->face)))
+    //  ERR(retval);
+
+    //edges
+    dimidtwo[0] = dimid_Ne;
+    dimidtwo[1] = dimid_Two;
+    if ((retval = nc_def_var(ncid,"edges",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","edge_node_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every edge to the two nodes it connects");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->edges)))
+    //  ERR(retval);
+
+    //neigh
+    dimidtwo[0] = dimid_Nc;
+    dimidtwo[1] = dimid_numsides;
+    if ((retval = nc_def_var(ncid,"neigh",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","face_face_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every face to its neighbouring faces");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->neigh)))
+    //  ERR(retval);
+
+    //grad
+    dimidtwo[0] = dimid_Ne;
+    dimidtwo[1] = dimid_Two;
+    if ((retval = nc_def_var(ncid,"grad",NC_INT,2,dimidtwo,&varid)))
+      ERR(retval);
+    nc_addattr(ncid, varid,"cf_role","edge_face_connectivity");
+    nc_addattr(ncid, varid,"long_name","Maps every edge to the two faces it connects ");
+    //if ((retval = nc_put_var_int(ncid,varid, grid->grad)))
+    //  ERR(retval);
    /********************************************************************** 
     *
     * Define the grid coordinate variables and attributes 
@@ -2567,15 +2644,24 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
    dimidthree[1] = dimid_Nk;
    dimidthree[2] = dimid_Nc;
    
-   // eta
-   if ((retval = nc_def_var(ncid,"eta",NC_DOUBLE,2,dimidtwo,&varid)))
+   // eta average
+   if ((retval = nc_def_var(ncid,"eta_avg",NC_DOUBLE,2,dimidtwo,&varid)))
       ERR(retval);
-   nc_addattr(ncid, varid,"long_name","Time-averaged Sea surface elevation");
+   nc_addattr(ncid, varid,"long_name","Time-averaged sea surface elevation");
    nc_addattr(ncid, varid,"units","m");
    nc_addattr(ncid, varid,"mesh","suntans_mesh");
    nc_addattr(ncid, varid,"location","face");
    nc_addattr(ncid, varid,"coordinates","time yv xv");
     
+   // eta
+   if ((retval = nc_def_var(ncid,"eta",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Instantaneous sea surface elevation");
+   nc_addattr(ncid, varid,"units","m");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","face");
+   nc_addattr(ncid, varid,"coordinates","time yv xv");
+ 
    //u
    if ((retval = nc_def_var(ncid,"uc",NC_DOUBLE,3,dimidthree,&varid)))
       ERR(retval);
@@ -2648,7 +2734,7 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
     // Depth-integrated salinity
     if ((retval = nc_def_var(ncid,"s_dz",NC_DOUBLE,2,dimidtwo,&varid)))
        ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Time-averaged depth-integrated salinity");
+    nc_addattr(ncid, varid,"long_name","Instantaneous depth-integrated salinity");
     nc_addattr(ncid, varid,"units","psu m");
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
@@ -2673,7 +2759,7 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
      // Depth-integrated temperature
     if ((retval = nc_def_var(ncid,"T_dz",NC_DOUBLE,2,dimidtwo,&varid)))
        ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Time-averaged depth-integrated temperature");
+    nc_addattr(ncid, varid,"long_name","Instantaneous depth-integrated temperature");
     nc_addattr(ncid, varid,"units","degrees C m");
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
@@ -2904,11 +2990,11 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
    *
    ****************************************************************/
    nc_write_intvar(ncid,"cells",mergedGrid,mergedGrid->cells,myproc);
-   //nc_write_int(ncid,"face",grid->face,myproc);
+   nc_write_intvar(ncid,"face",mergedGrid,mergedGrid->face,myproc);
    nc_write_int(ncid,"nfaces",mergedGrid->nfaces,myproc);
-   //nc_write_int(ncid,"edges",grid->edges,myproc);
-   //nc_write_int(ncid,"neigh",grid->neigh,myproc);
-   //nc_write_int(ncid,"grad",grid->grad,myproc);
+   nc_write_int(ncid,"edges",mergedGrid->edges,myproc);
+   //nc_write_int(ncid,"neigh",mergedGrid->neigh,myproc);
+   nc_write_int(ncid,"grad",mergedGrid->grad,myproc);
    nc_write_int(ncid,"mark",mergedGrid->mark,myproc);
    //nc_write_int(ncid,"mnptr",grid->mnptr,myproc);
    //nc_write_int(ncid,"eptr",grid->eptr,myproc);
@@ -3803,6 +3889,7 @@ void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phy
 
     // 2D cell-centered variables
     nc_write_2D_merge(ncid,prop->avgtimectr,  average->h, prop, grid, "eta", numprocs, myproc, comm);
+    nc_write_2D_merge(ncid,prop->avgtimectr,  average->h_avg, prop, grid, "eta_avg", numprocs, myproc, comm);
     if(prop->beta>0)
 	nc_write_2D_merge(ncid,prop->avgtimectr,  average->s_dz, prop, grid, "s_dz", numprocs, myproc, comm);
     if(prop->gamma>0)
@@ -3851,11 +3938,11 @@ void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phy
     nc_write_3D_merge(ncid,prop->avgtimectr,  average->w, prop, grid, "w",1, numprocs, myproc, comm);
     
     // 3D edge-based variables 
-    nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->U_F, prop, grid, "U_F",0, numprocs, myproc, comm);
+    nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->U_F, prop, grid, "U_F", 0, numprocs, myproc, comm);
     if(prop->beta>0)
-	nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->s_F, prop, grid, "s_F",0, numprocs, myproc, comm);
+	nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->s_F, prop, grid, "s_F", 0, numprocs, myproc, comm);
     if(prop->gamma>0)
-	nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->s_F, prop, grid, "T_F",0, numprocs, myproc, comm);
+	nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->T_F, prop, grid, "T_F", 0, numprocs, myproc, comm);
      
     // Zero the arrays after they have been written(don't do it for the initial step)
     if(prop->avgctr>1)

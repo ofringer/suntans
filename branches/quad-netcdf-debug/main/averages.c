@@ -38,6 +38,7 @@ void AllocateAverageVariables(gridT *grid, averageT **average, propT *prop)
   (*average)->rho = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocateAverageVariables");
 
   // Edge variables
+  (*average)->edge_area = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocateAverageVariables");
   (*average)->U_F = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocateAverageVariables");
   (*average)->s_F = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocateAverageVariables");
   (*average)->T_F = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocateAverageVariables");
@@ -47,6 +48,7 @@ void AllocateAverageVariables(gridT *grid, averageT **average, propT *prop)
 
   // cell-centered averageical variables in plan (no vertical direction)
   (*average)->h = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateAverageVariables");
+  (*average)->h_avg = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateAverageVariables");
   (*average)->s_dz = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateAverageVariables");
   (*average)->T_dz = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocateAverageVariables");
 
@@ -84,6 +86,7 @@ void AllocateAverageVariables(gridT *grid, averageT **average, propT *prop)
   
   // Allocate edge variables
   for(j=0;j<Ne;j++){
+      (*average)->edge_area[j] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocateAverageVariables");
       (*average)->U_F[j] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocateAverageVariables");
       (*average)->s_F[j] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocateAverageVariables");
       (*average)->T_F[j] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocateAverageVariables");
@@ -122,6 +125,7 @@ void ZeroAverageVariables(gridT *grid, averageT *average, propT *prop){
     }
     // 2D cell-centred variables
     average->h[i]=0;
+    average->h_avg[i]=0;
     average->s_dz[i]=0;
     average->T_dz[i]=0;
     if(prop->metmodel>0){
@@ -144,6 +148,7 @@ void ZeroAverageVariables(gridT *grid, averageT *average, propT *prop){
 
   for(j=0;j<Ne;j++){
       for(k=0;k<grid->Nke[j];k++){
+	  average->edge_area[j][k]=0;
 	  average->U_F[j][k]=0;
 	  average->s_F[j][k]=0;
 	  average->T_F[j][k]=0;
@@ -192,12 +197,12 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
       Tdz+=phys->T[i][k]*grid->dzz[i][k];
     }
     // 2D cell-centred variables
-    average->h[i]+=phys->h[i];
-    //average->s_dz[i]+=sdz;
-    //average->T_dz[i]+=Tdz;
-    //average->h[i]=phys->h[i];
-    average->s_dz[i]=sdz; //Instantaneous values (used for scalar budget)
-    average->T_dz[i]=Tdz; // Instantaneous values 
+    average->h_avg[i]+=phys->h[i];
+    //Instantaneous values (used for scalar budget)
+    average->h[i]=phys->h[i];
+    average->s_dz[i]=sdz; 
+    average->T_dz[i]=Tdz; 
+
     if(prop->metmodel>0 && prop->metmodel<4){
 	average->Uwind[i]+=met->Uwind[i];
 	average->Vwind[i]+=met->Vwind[i];
@@ -216,10 +221,8 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
     }
   }
 
-//  for(j=0;j<Ne;j++){
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
       j = grid->edgep[jptr]; 
-//     for(k=0;k<grid->Nke[j];k++){
       for(k=grid->etop[j];k<grid->Nke[j];k++){
           //flx = phys->u[j][k]*grid->dzf[j][k]*grid->df[j]; 
 	  // Flux needs to be consistent with continuity equation
@@ -237,12 +240,9 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
     //Salt
     // Compute the scalar on the vertical faces (for horiz. advection)
     HorizontalFaceScalars(grid,phys,prop,phys->s,phys->boundary_s,prop->TVDsalt,comm,myproc); 
-//      for(j=0;j<Ne;j++){
-//   	for(k=0;k<grid->Nke[j];k++) {
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
       j = grid->edgep[jptr]; 
       for(k=grid->etop[j];k<grid->Nke[j];k++){
-	  //flx = phys->u[j][k]*grid->dzf[j][k]*grid->df[j]; 
 	  //See equation 85 in SUNTANS paper
 	  flx = (theta*phys->u[j][k] + (1.0-theta)*phys->utmp2[j][k])*grid->dzf[j][k]*grid->df[j]; 
 	  //if(phys->u[j][k]>0)
@@ -255,12 +255,9 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
 
      //Temperature
     HorizontalFaceScalars(grid,phys,prop,phys->T,phys->boundary_T,prop->TVDtemp,comm,myproc); 
-//      for(j=0;j<Ne;j++){
-//	for(k=0;k<grid->Nke[j];k++) {
   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
       j = grid->edgep[jptr]; 
       for(k=grid->etop[j];k<grid->Nke[j];k++){
-	  //flx = phys->u[j][k]*grid->dzf[j][k]*grid->df[j]; 
 	  flx = (theta*phys->u[j][k] + (1.0-theta)*phys->utmp2[j][k])*grid->dzf[j][k]*grid->df[j]; 
 	  //if(phys->u[j][k]>0)
 	  if(phys->utmp2[j][k]>0)
@@ -328,7 +325,7 @@ void ComputeAverageVariables(gridT *grid, averageT *average, physT *phys, metT *
       }
     }
     // 2D cell-centred variables
-    average->h[i] *= nt;
+    average->h_avg[i] *= nt;
     //average->s_dz[i] *= nt;
     //average->T_dz[i] *= nt;
     if(prop->metmodel>0){

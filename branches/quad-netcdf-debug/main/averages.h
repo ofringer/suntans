@@ -27,11 +27,13 @@ typedef struct _averageT {
   REAL **nu_v;
 
   REAL *h;
+  REAL *h_avg;
 
   // Flux variables
   REAL **U_F; // volume flux
   REAL **s_F; //Salt flux @ face
-  REAL ** T_F; // Temperature flux @ faceL
+  REAL **T_F; // Temperature flux @ faceL
+  REAL **edge_area; // Edge wet area
 
   // Depth-integrated T/S (for budgets)
   REAL *s_dz;
