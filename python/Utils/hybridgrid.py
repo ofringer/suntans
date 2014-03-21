@@ -62,8 +62,8 @@ class HybridGrid(object):
             self.nfaces = 3*np.ones((self.Nc,),np.int)
             self.MAXFACES = 3
         else:
-            self.nfaces = np.array(nfaces)
-            self.MAXFACES = max(nfaces)
+            self.nfaces = np.array(nfaces,dtype=np.int)
+            self.MAXFACES = max(self.nfaces)
             
         # Make sure the nodes are rotated counter-clockwise
         self.cells = self.ensure_ccw()

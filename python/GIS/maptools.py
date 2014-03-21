@@ -41,11 +41,15 @@ def ll2utm(LL,zone,CS='WGS84',north=True):
     
     npt=np.size(LL,0)
     if npt > 2:
+        xy = ct.TransformPoints(LL)
         XY=np.zeros((npt,2))
-        for ii in range(0,npt):
-            X,Y,z =  ct.TransformPoint(LL[ii,0],LL[ii,1])
-            XY[ii,0]=X
-            XY[ii,1]=Y
+        #[ XY[ii,0],XY[ii,1]=tmp[0],tmp[1] for ii,tmp in enumerate(xy)]
+        for ii,tmp in enumerate(xy):
+            XY[ii,0],XY[ii,1]=tmp[0],tmp[1]  
+        #for ii in range(0,npt):
+        #    X,Y,z =  ct.TransformPoint(LL[ii,0],LL[ii,1])
+        #    XY[ii,0]=X
+        #    XY[ii,1]=Y
     else:
         XY=np.zeros((1,2))
         X,Y,z = ct.TransformPoint(LL[0],LL[1])

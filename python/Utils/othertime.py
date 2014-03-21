@@ -59,6 +59,15 @@ def MinutesSince(timein,basetime = datetime(1970,1,1)):
     """
     return SecondsSince(timein, basetime = basetime)/60.0
 
+def DaysSince(timein,basetime = datetime(1970,1,1)):
+    """
+    Converts a list or array of datetime object into an array of seconds since "basetime"
+    
+    Useful for interpolation and storing in netcdf format
+    """
+    return SecondsSince(timein, basetime = basetime)/86400.0
+
+
 def datenum2datetime(timein):
     """
     Convert a matlab datenum float type to a python datetime object

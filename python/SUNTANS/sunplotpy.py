@@ -21,7 +21,9 @@ from matplotlib.backends.backend_wxagg import \
     FigureCanvasWxAgg as FigCanvas, \
     NavigationToolbar2WxAgg as NavigationToolbar
 
-from sunpy import Spatial
+from sunpy import Spatial, Grid
+from untrim_tools import untrim_gridvars, untrim_griddims, UNTRIMSpatial
+from ptm_tools import PtmBin
 from datetime import datetime
 import numpy as np
 
@@ -29,7 +31,7 @@ import pdb
 
 
 
-class SunPlotPy(wx.Frame, Spatial):
+class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
     """ 
     The main frame of the application
     """
@@ -58,18 +60,46 @@ class SunPlotPy(wx.Frame, Spatial):
     def create_menu(self):
         self.menubar = wx.MenuBar()
         
+        ###
+        # File Menu
+        ###
         menu_file = wx.Menu()
+        # Load a hydro output file
         m_expt = menu_file.Append(-1, "&Open file\tCtrl-O", "Open netcdf file")
         self.Bind(wx.EVT_MENU, self.on_open_file, m_expt)
+
+        # Load a grid file
+        m_grid = menu_file.Append(-1, "&Load grid\tCtrl-G", "Load SUNTANS grid from folder")
+        self.Bind(wx.EVT_MENU, self.on_load_grid, m_grid)
+
+        # Load a particle file
+        m_part = menu_file.Append(-1, "&Load PTM file\tCtrl-Shift-P", "Load a PTM file")
+        self.Bind(wx.EVT_MENU, self.on_load_ptm, m_part)
+
         menu_file.AppendSeparator()
+        # Exit
         m_exit = menu_file.Append(-1, "E&xit\tCtrl-X", "Exit")
         self.Bind(wx.EVT_MENU, self.on_exit, m_exit)
+
+        ###
+        # Tools menu
+        ###
+        menu_tools = wx.Menu()
+        m_gridstat = menu_tools.Append(-1, "&Plot grid size statistics", "SUNTANS grid size")
+        self.Bind(wx.EVT_MENU, self.on_plot_gridstat, m_gridstat)
+
         
+        ###
+        # Help Menu
+        ###
         menu_help = wx.Menu()
         m_about = menu_help.Append(-1, "&About\tF1", "About the demo")
         self.Bind(wx.EVT_MENU, self.on_about, m_about)
         
+        
+        # Add all of the menu bars
         self.menubar.Append(menu_file, "&File")
+        self.menubar.Append(menu_tools, "&Tools")
         self.menubar.Append(menu_help, "&Help")
         self.SetMenuBar(self.menubar)
 
@@ -272,9 +302,9 @@ class SunPlotPy(wx.Frame, Spatial):
                 float(self.climhigh.GetValue())]
  
         # check whether it is cell or edge type
-        if self.hasDim(self.variable,'Ne'):
+        if self.hasDim(self.variable,self.griddims['Ne']):
             self.collectiontype='edges'
-        elif self.hasDim(self.variable,'Nc'):
+        elif self.hasDim(self.variable,self.griddims['Nc']):
             self.collectiontype='cells'
 
         # Create a new figure if the variable has gone from cell to edge of vice
@@ -331,7 +361,7 @@ class SunPlotPy(wx.Frame, Spatial):
         # Check if the variable has a depth coordinate
         depthstr = ['']
         # If so populate the vertical layer box
-        if self.hasDim(self.variable,'Nk'):
+        if self.hasDim(self.variable,self.griddims['Nk']):
             depthstr = ['%3.1f'%self.z_r[k] for k in range(self.Nkmax)]
         elif self.hasDim(self.variable,'Nkw'):
             depthstr = ['%3.1f'%self.z_w[k] for k in range(self.Nkmax+1)]
@@ -342,16 +372,23 @@ class SunPlotPy(wx.Frame, Spatial):
         self.update_figure()
 
 
+
     def on_select_time(self, event):
         tindex = event.GetSelection()
         # Update the object time index and reload the data
-        if not self.tstep==tindex:
-            self.tstep=tindex
-            self.loadData()
-            self.flash_status_message("Selecting variable: %s..."%event.GetString())
+        if self.plot_type=='hydro':
+            if not self.tstep==tindex:
+                self.tstep=tindex
+                self.loadData()
+                self.flash_status_message("Selecting variable: %s..."%event.GetString())
 
-            # Update the plot
-            self.update_figure()
+                # Update the plot
+                self.update_figure()
+        elif self.plot_type=='particles':
+            self.PTM.plot(tindex,ax=self.axes,\
+                xlims=self.axes.get_xlim(),ylims=self.axes.get_ylim())
+        
+            self.canvas.draw()
 
 
     def on_select_depth(self, event):
@@ -365,7 +402,7 @@ class SunPlotPy(wx.Frame, Spatial):
             self.update_figure()
 
     def on_open_file(self, event):
-        file_choices = "NetCDF (*.nc)|*.nc*|All Files (*.*)|*.*"
+        file_choices = "SUNTANS NetCDF (*.nc)|*.nc*|UnTRIM NetCDF (*.nc)|*.nc*|All Files (*.*)|*.*"
         
         dlg = wx.FileDialog(
             self, 
@@ -376,11 +413,20 @@ class SunPlotPy(wx.Frame, Spatial):
             style= wx.FD_MULTIPLE)
         
         if dlg.ShowModal() == wx.ID_OK:
+            self.plot_type='hydro'
+
             path = dlg.GetPaths()
-            self.flash_status_message("Opening file: %s" % path)
-            
+
             # Initialise the class
-            Spatial.__init__(self,path)
+            if dlg.GetFilterIndex() == 0: #SUNTANS
+                self.flash_status_message("Opening SUNTANS file: %s" % path)
+                Spatial.__init__(self,path)
+                startvar='dv'
+            if dlg.GetFilterIndex()==1: #UnTRIM
+                self.flash_status_message("Opening UnTRIMS file: %s" % path)
+                #Spatial.__init__(self,path,gridvars=untrim_gridvars,griddims=untrim_griddims)
+                UNTRIMSpatial.__init__(self,path)
+                startvar='Mesh2_face_depth'
             
             # Populate the drop down menus
             vnames = self.listCoordVars()
@@ -391,10 +437,64 @@ class SunPlotPy(wx.Frame, Spatial):
             self.time_list.SetItems(self.timestr)
 
             # Draw the depth
-            if 'dv' in vnames:
-                self.variable='dv'
+            if startvar in vnames:
+                self.variable=startvar
                 self.loadData()
                 self.create_figure()
+
+    def on_load_grid(self, event):
+        
+        dlg = wx.DirDialog(
+            self, 
+            message="Open SUNTANS grid from folder...",
+            defaultPath=os.getcwd(),
+            style= wx.DD_DEFAULT_STYLE)
+        
+        if dlg.ShowModal() == wx.ID_OK:
+            path = dlg.GetPath()
+
+            # Initialise the class
+            self.flash_status_message("Opening SUNTANS grid from folder: %s" % path)
+            Grid.__init__(self,path)
+
+            # Plot the Grid
+            self.axes,self.collection = self.plotmesh(ax=self.axes,edgecolors='y')
+
+            # redraw the figure
+            self.canvas.draw()
+
+    def on_load_ptm(self, event):
+        file_choices = "PTM Binary (*_bin.out)|*_bin.out|All Files (*.*)|*.*"
+        
+        dlg = wx.FileDialog(
+            self, 
+            message="Open PTM file...",
+            defaultDir=os.getcwd(),
+            defaultFile="",
+            wildcard=file_choices,
+            style= wx.FD_MULTIPLE)
+        
+        if dlg.ShowModal() == wx.ID_OK:
+            self.plot_type = 'particles'
+            path = dlg.GetPath()
+
+            # Initialise the class
+            self.flash_status_message("Opening PTM binary file: %s" % path)
+            self.PTM = PtmBin(path)
+            
+            # Update the time drop down list
+            self.timestr = [datetime.strftime(tt,'%d-%b-%Y %H:%M:%S') for tt in self.PTM.time]
+            self.time_list.SetItems(self.timestr)
+
+            # Plot the first time step
+            if self.__dict__.has_key('xlims'):
+                self.PTM.plot(self.PTM.nt-1,ax=self.axes,xlims=self.xlims,\
+                ylims=self.ylims,fontcolor='w')
+            else:
+                self.PTM.plot(self.PTM.nt-1,ax=self.axes,fontcolor='w')
+            # redraw the figure
+            self.canvas.draw()
+
         
     def on_show_edges(self,event):
         sender=event.GetEventObject()
@@ -443,6 +543,15 @@ class SunPlotPy(wx.Frame, Spatial):
         dlg.ShowModal()
         dlg.Destroy()
    
+    def on_plot_gridstat(self, event):
+        """
+        Plot the grid size histogram in a new figure
+        """
+        matplotlib.pyplot.figure()
+        self.plothist()
+        matplotlib.pyplot.show()
+
+
     def create_status_bar(self):
         self.statusbar = self.CreateStatusBar()
 

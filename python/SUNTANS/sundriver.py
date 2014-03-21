@@ -8,7 +8,7 @@ April 2013
 """
 
 from sunpy import Grid, Spatial
-from sundepths import DepthDriver
+from sundepths import DepthDriver, adjust_channel_depth
 from sunboundary import modifyBCmarker, Boundary, InitialCond
 from metfile import SunMet, metfile
 import timeseries
@@ -59,6 +59,9 @@ class sundriver(object):
     
     # Interpolation options
     NNear=3
+
+    # Interpolate to nodes then take maximum depth for cell
+    interpnodes=False
     
     # IF interpmethod = 'idw' 
     p = 1.0 #  power for inverse distance weighting
@@ -73,6 +76,10 @@ class sundriver(object):
     smooth=True
     smoothmethod='kriging' # USe kriging or idw for smoothing
     smoothnear=4 # No. of points to use for smoothing
+
+    # Option to adjust channel depths using a shapefile
+    adjust_depths=False
+    channel_shpfile='channel.shp'
 
 
     ####
@@ -193,9 +200,18 @@ class sundriver(object):
             convert2utm=self.convert2utm,utmzone=self.utmzone,isnorth=self.isnorth,vdatum=self.vdatum,\
             smooth=self.smooth,smoothmethod=self.smoothmethod,smoothnear=self.smoothnear)
             
-            D(self.suntanspath,depthmax=self.depthmax)
+            D(self.suntanspath,depthmax=self.depthmax,interpnodes=self.interpnodes)
             
             self.grd = D.grd
+
+            # Now go through and adjust the channel depths from a shapefile
+            if self.adjust_depths:
+                self.grd = adjust_channel_depth(self.grd,self.channel_shpfile)
+                # Write the depths to file
+                print 'Writing depths.dat (again)...'
+                self.grd.saveBathy(self.suntanspath+'/depths.dat-voro')
+                print 'Data (re-)saved to %s.'%self.suntanspath+'/depths.dat-voro'
+ 
             
             print 'SUNTANS depths saved to: %s'%(self.suntanspath+'/depths.dat-voro')
         

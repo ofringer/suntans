@@ -31,6 +31,7 @@ class DepthDriver(object):
     
     # Interpolation options
     NNear=3
+
     p = 1.0 #  power for inverse distance weighting
     # kriging options
     varmodel = 'spherical'
@@ -55,7 +56,7 @@ class DepthDriver(object):
         self.__dict__.update(kwargs)
         
         # Parse the depth data into an object
-        self.indata = Inputs(depthfile,convert2utm=False,CS=self.CS,utmzone=self.utmzone,\
+        self.indata = Inputs(depthfile,convert2utm=self.convert2utm,CS=self.CS,utmzone=self.utmzone,\
         isnorth=self.isnorth,vdatum=self.vdatum)
 
 
@@ -215,5 +216,54 @@ class AverageDepth(Grid):
         toc = time.clock()
         print 'Search time: %f seconds.'%(toc-tic)
             
+def adjust_channel_depth(grd,shpfile,lcmax=500.):
+    """
+    Adjusts the depths of a suntans grid object using a line shapefile.
+
+    The shapefile must have an attribute called "contour"
+    """
+    from shapely import geometry, speedups
+    from maptools import readShpPointLine
+
+    if speedups.available:
+        speedups.enable()
+
+    print 'Adjusting depths in channel regions with a shapefile...'
         
-            
+    # Load the shapefile
+    xyline,contour = readShpPointLine(shpfile,FIELDNAME='contour')
+    
+    # Load all of the points into shapely type geometry
+    
+    # Distance method won't work with numpy array
+    #P = geometry.asPoint(xy)
+    
+    P = [geometry.Point(grd.xv[i],grd.yv[i]) for i in range(grd.Nc)]
+    
+    L=[]
+    for ll in xyline:
+        L.append(geometry.asLineString(ll))
+     
+    nlines = len(L)
+    weight_all = np.zeros((grd.Nc,nlines))
+    for n in range(nlines):
+        print 'Calculating distance from line %d...'%n
+        
+        dist = [L[n].distance(P[i]) for i in range(grd.Nc)]
+        dist = np.array(dist)
+
+        # Calculate the weight from the distance
+        weight = -dist/lcmax+1.
+        weight[dist>=lcmax]=0.
+        
+        weight_all[:,n] = weight
+
+    # Now go through and re-calculate the depths
+    dv =  grd.dv*(1-weight_all.sum(axis=-1))
+    for n in range(nlines):
+        dv += weight_all[:,n]*contour[n]
+        
+    grd.dv=dv   
+    return grd
+
+

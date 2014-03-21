@@ -29,10 +29,50 @@ import matplotlib.animation as animation
 import pdb
 
 ###############################################################        
+# Dictionary with lookup table between object variable name and netcdf file
+# variable name
+suntans_gridvars = {'xp':'xp',\
+                    'yp':'yp',\
+                    'xv':'xv',\
+                    'yv':'yv',\
+                    'xe':'xe',\
+                    'ye':'ye',\
+                    'cells':'cells',\
+                    'face':'face',\
+                    'nfaces':'nfaces', \
+                    'edges':'edges',\
+                    'neigh':'neigh',\
+                    'grad':'grad',\
+                    'gradf':'gradf',\
+                    'mark':'mark',\
+                    'normal':'normal',\
+                    'n1':'n1',\
+                    'n2':'n2',\
+                    'df':'df',\
+                    'dg':'dg',\
+                    'def':'def',\
+                    'Ac':'Ac',\
+                    'dv':'dv',\
+                    'dz':'dz',\
+                    'z_r':'z_r',\
+                    'z_w':'z_w',\
+                    'Nk':'Nk',\
+                    'Nke':'Nke',\
+                    'time':'time'\
+                    }
+suntans_dimvars = {'Np':'Np',\
+                   'Ne':'Ne',\
+                   'Nc':'Nc',\
+                   'Nkmax':'Nk',\
+                   'maxfaces':'numsides'\
+                   }
+
 class Grid(object):
     """ Class for handling SUNTANS grid data"""
 
     MAXFACES=3 # Default number of faces
+    gridvars = suntans_gridvars
+    griddims = suntans_dimvars
     def __init__(self,infile ,**kwargs):
                
         self.__dict__.update(kwargs)
@@ -146,6 +186,7 @@ class Grid(object):
             vertspace=0.0
             
         self.setDepth(vertspace)
+
     def __loadGrdNc(self):
         
         """
@@ -158,42 +199,32 @@ class Grid(object):
         'gradf','mark','normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke'
         """
         
-        #try: 
-        #    nc = MFDataset(self.infile, 'r')
-        #except:
-        #    nc = Dataset(self.infile, 'r')     
         self.__openNc()
         nc=self.nc
-        
+
         # Get the dimension sizes
-        self.Nc = nc.dimensions['Nc'].__len__()
-        self.Np = nc.dimensions['Np'].__len__()
-        try:
-           self.Ne = nc.dimensions['Ne'].__len__()
-        except:
-            print 'Edge dimension not found'
-            
-        self.Nkmax = nc.dimensions['Nk'].__len__()
-        self.maxFaces = nc.dimensions['numsides'].__len__()
-        
-        gridvars = ['xp','yp','xv','yv','xe','ye','cells','face','nfaces', \
-        'edges','neigh','grad','gradf','mark',\
-        'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
-        
-        for vv in gridvars:
+        for vv in self.griddims.keys():
+           try:
+               setattr(self,vv,nc.dimensions[self.griddims[vv]].__len__())
+           except:
+               print 'Cannot find dimension: %s'%self.griddims[vv]
+       
+       
+        for vv in self.gridvars.keys():
             try:
                 if vv=='def': # Cannot have this attribute name in python!
-                    setattr(self,'DEF',nc.variables[vv][:])
+                    setattr(self,'DEF',nc.variables[self.gridvars[vv]][:])
                 else:
-                    setattr(self,vv,nc.variables[vv][:])
+                    setattr(self,vv,nc.variables[self.gridvars[vv]][:])
             except:
-                print 'Cannot find variable: %s'%vv
+                print 'Cannot find variable: %s'%self.gridvars[vv]
          
-        #if self.Nk.max()==self.Nkmax:
-        self.Nk-=1 #These need to be zero based
+        if self.__dict__.has_key('Nk'):
+            self.Nk-=1 #These need to be zero based
         
         if not self.__dict__.has_key('nfaces'):
-            self.nfaces = self.MAXFACES*np.ones((self.Nc,))
+            self.MAXFACES = self.cells.shape[1]
+            self.nfaces = self.MAXFACES*np.ones((self.Nc,),np.int)
 
         # If edges, grad or neigh have not been stored then calculate them
         if not self.__dict__.has_key('edges'):
@@ -202,13 +233,7 @@ class Grid(object):
             self.reCalcGrid()
         elif not self.__dict__.has_key('neigh'):
             self.reCalcGrid()
-#        try:
-#            #self.Nke-=1
-#        except:
-#            ''
-        
-        #nc.close()
-        
+       
     def maskgrid(self):
         """
         Mask the cells, face and neigh arrays
@@ -232,6 +257,7 @@ class Grid(object):
 
         Method for finding the following arrays: grad,edges,neigh,mark...
         """
+        print 'Re-calculating the grid variables...'
 
         grd = HybridGrid(self.xp,self.yp,self.cells,nfaces=self.nfaces,\
             xv=self.xv,yv=self.yv)
@@ -240,6 +266,7 @@ class Grid(object):
         self.grad=grd.grad
         self.neigh=grd.neigh
         self.face=grd.face
+        self.mark=grd.mark
 
     def plot(self,**kwargs):
         """
@@ -284,22 +311,18 @@ class Grid(object):
         plt.legend(('Node','Edge','Marker=1','Marker=2','Marker=3','Marker=4'))
         plt.axis('equal')
     
-    def plotmesh(self,facecolors='none',linewidths=0.2,**kwargs):
+    def plotmesh(self,ax=None,facecolors='none',linewidths=0.2,**kwargs):
         """
         Plots the outline of the grid mesh
         """
         fig = plt.gcf()
-        ax = fig.gca()
+        if ax==None:
+            ax = fig.gca()
     
         xlim=self.xlims
         ylim=self.ylims
         collection = PolyCollection(self.xy,facecolors=facecolors,\
             linewidths=linewidths,**kwargs)
-        #collection.set_array(np.array(self.dv))
-        #collection.set_linewidth(0)
-        #collection.set_edgecolors(collection.to_rgba(np.array(z))) 
-        
-        #collection.set_facecolors('w')
         
         ax.add_collection(collection)
     
@@ -415,6 +438,25 @@ class Grid(object):
                 f.write('%d %d  %d  %d  %d\n'%(e1,e2,m,g1,g2))
             
         f.close()
+
+    def saveGrid(self,outpath):
+        """
+        Saves the suntnas grid ascii files to the specified path
+        """
+        self.saveCells(outpath+'/cells.dat')
+        self.saveEdges(outpath+'/edges.dat')
+
+        # Save to points.dat
+        f = open(outpath+'/points.dat','w')
+    
+        for x,y in zip(self.xp,self.yp):
+            f.write('%10.6f %10.6f  0\n'%(x,y))
+    
+        f.close()
+
+        print 'Complete - grid saved to folder: %s'%outpath
+
+
         
     def findNearest(self,xy,NNear=1):
         """
@@ -471,7 +513,7 @@ class Grid(object):
             for ii in range(self.Nc):
                 dx[ii,self.nfaces[ii]-1] = self.xp[self.cells[ii,0]] - self.xp[self.cells[ii,self.nfaces[ii]-1]]  
                 dy[ii,self.nfaces[ii]-1] = self.yp[self.cells[ii,0]] - self.yp[self.cells[ii,self.nfaces[ii]-1]]  
-    
+   
             
             mag = np.sqrt(dx*dx + dy*dy)
             
@@ -949,7 +991,20 @@ class Spatial(Grid):
                 # Calculate dzz internally
                 eta = self.loadDataRaw(variable='eta')
                 return self.getdzz(eta)
-                
+
+        elif variable=='dzf':
+            eta = self.loadDataRaw(variable='eta')
+            return self.getdzf(eta)
+
+        elif variable=='ctop':
+            eta = self.loadDataRaw(variable='eta')
+            return self.getctop(eta)
+
+        elif variable=='etop':
+            eta = self.loadDataRaw(variable='eta')
+            etop,etaedge = self.getetop(eta)
+            return etop
+
         else:
             return self.loadDataRaw(variable=variable)
         
@@ -962,9 +1017,9 @@ class Spatial(Grid):
         if variable==None:
             variable=self.variable
 	
-        if self.hasDim(variable,'Ne') and self.j==None:
+        if self.hasDim(variable,self.griddims['Ne']) and self.j==None:
             j=range(self.Ne)
-        elif self.hasDim(variable,'Nc') and self.j==None:
+        elif self.hasDim(variable,self.griddims['Nc']) and self.j==None:
             j=range(self.Nc)
         else:
             j = self.j
@@ -1067,7 +1122,7 @@ class Spatial(Grid):
          """
          #nc = Dataset(self.ncfile, 'r', format='NETCDF4') 
          nc = self.nc
-         t = nc.variables['time']
+         t = nc.variables[self.gridvars['time']]
          self.time = num2date(t[:],t.units)
          
          self.Nt = self.time.shape[0]
@@ -1637,7 +1692,6 @@ class Spatial(Grid):
         ve[self.cellmask]=0
         
         tx,ty,mag = self.calc_tangent()
-
         
         tx[self.cellmask]=0
         ty[self.cellmask]=0
@@ -1911,12 +1965,10 @@ class Spatial(Grid):
         on the free surface height only
         """
 
-        # Find the layer of the top cell
-        ctop = np.searchsorted(self.z_w,-eta)
-        ctop[ctop>0] -= 1
+        ctop = self.getctop(eta)
 
         # Find dzz of the top cell
-        dztop = self.z_r[ctop]+eta
+        dztop = self.dz[ctop]+eta
 
         dzz = np.repeat(self.dz[:,np.newaxis],self.Nc,axis=1)
 
@@ -1928,7 +1980,98 @@ class Spatial(Grid):
             dzz[self.Nk[ii]::,ii]=0.0
 
         return dzz
+
+    def getdzf(self,eta):
+        """
+        Calculate the edge-centred vertical grid spacing based
+        on the free surface height only
+        """
+
+        etop,etaedge = self.getetop(eta)
+
+        # Find dzz of the top cell
+        dztop = self.dz[etop]+etaedge
+
+        dzf = np.repeat(self.dz[:,np.newaxis],self.Ne,axis=1)
+
+        dzf[etop,range(self.Ne)]=dztop
+
+        # Mask the cells
+        for ii in range(self.Ne):
+            dzf[0:etop[ii],ii]=0.0
+            dzf[self.Nke[ii]::,ii]=0.0
+
+        return dzf
+
+
+    def getctop(self,eta):
+        """
+        Return the layer of the top cell
+        """
         
+        # Find the layer of the top cell
+        ctop = np.searchsorted(self.z_w,-eta)
+        ctop[ctop>0] -= 1
+        return ctop
+
+    def getetop(self,eta):
+        """
+        Return the layer of the top edge
+        """
+        eta_edge = self.get_edgevar(eta)
+        
+        # Find the layer of the top cell
+        etop = np.searchsorted(self.z_w,-eta_edge)
+        etop[etop>0] -= 1
+        return etop, eta_edge
+
+
+
+    def get_edgevar(self,phi,k=0,U=None,method='max'):
+        """
+        Return the edge value of a cell-based variable
+
+        Method can be one of:
+            'max' - maximum value either side
+            'min' - minimum value either side
+            'mean' - average value
+            'linear' - linear interpolated value
+            'upwind' - upwind value. Requires 'U'. 
+        """
+        nc1 = self.grad[:,0]
+        nc2 = self.grad[:,1]
+                
+        # check for edges (use logical indexing)
+        ind1 = nc1==-1
+        nc1[ind1]=nc2[ind1]
+        ind2 = nc2==-1
+        nc2[ind2]=nc1[ind2]
+        
+        # check depths (walls)
+        indk = operator.or_(k>=self.Nk[nc1], k>=self.Nk[nc2])
+        ind3 = operator.and_(indk, self.Nk[nc2]>self.Nk[nc1])
+        nc1[ind3]=nc2[ind3]
+        ind4 = operator.and_(indk, self.Nk[nc1]>self.Nk[nc2])
+        nc2[ind4]=nc1[ind4]
+        
+        if method=='max':
+            tmp = np.zeros((self.Ne,2),dtype=phi.dtype)
+            tmp[:,0]=phi[nc1]
+            tmp[:,1]=phi[nc2]
+            return tmp.max(axis=-1)
+
+        elif method=='min':
+            tmp = np.zeros((self.Ne,2),dtype=phi.dtype)
+            tmp[:,0]=phi[nc1]
+            tmp[:,1]=phi[nc2]
+            return tmp.min(axis=-1)
+
+        elif method=='mean':
+            # Average the values at the face          
+            return 0.5*(phi[nc1]+phi[nc2]) 
+
+        else:
+            raise Exception, 'Method: %s not implemented.'%method
 
     def genTitle(self,tt=None):
         
