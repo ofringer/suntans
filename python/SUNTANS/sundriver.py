@@ -97,8 +97,8 @@ class sundriver(object):
     Q0 = 100.0 # m3/s
     
     # IF opt_bctype2/opt_bctype3 = 'constant'
-    T0 = 30 # Open boundary and initial condition background temperature
-    S0 = 34 # Open boundary and initial condition background salinity
+    T0 = 0 # Open boundary background temperature
+    S0 = 0 # Open boundary background salinity
     
     # IF opt_bctype3 = 'file' or 'ROMSFILE'
     waterlevelstationID = None
@@ -136,16 +136,24 @@ class sundriver(object):
     ####
     # Initial condition options
     ####
-    opt_ic = 'constant', 'depth_profile', 'ROMS'
+    opt_ic = 'constant', 'depth_profile', 'ROMS' , 'SUNTANS'
 
     icfile = 'SUNTANS_IC.nc'
 
     icfilterdx = 0.0 # Filtering length scale
+
+    # Age source term polygon
+    agesourcepoly = None
+
+    # Initial condition temperature and salinity
+    T0ic = 0
+    S0ic = 0
     
     ###
     # Input file names
     ### 
     romsfile = None
+    suntansicfile = None
     otisfile = None
     dbasefile = None
 
@@ -385,9 +393,9 @@ class sundriver(object):
     
         if self.opt_ic=='constant':
             print 'Setting constant initial conditions...'  
-            print 'Setting salinity = %f, temperature = %f'%(self.S0,self.T0)
-            IC.T[:]=self.T0
-            IC.S[:]=self.S0
+            print 'Setting salinity = %f, temperature = %f'%(self.S0ic,self.T0ic)
+            IC.T[:]=self.T0ic
+            IC.S[:]=self.S0ic
             
         elif self.opt_ic=='depth_profile':
             print 'Setting depth-varying initial conditions...'  
@@ -403,6 +411,9 @@ class sundriver(object):
                 #interpmethod=self.interpmethod,NNear=self.NNear,p=self.p,\
                 #varmodel=self.varmodel,nugget=self.nugget,sill=self.sill,\
                 #vrange=self.vrange)
+
+        elif self.opt_ic=='SUNTANS':
+            IC.suntans2ic(self.suntansicfile,setUV=self.useROMSuv,seth=self.useROMSeta)
             
         else:
             print 'Unknown option: opt_ic = %s. Not setting initial conditions.'%self.opt_ic
@@ -411,6 +422,12 @@ class sundriver(object):
         # Filter the variables in space
         if self.icfilterdx>0:
             IC.filteric(self.icfilterdx)
+
+        # Set the age source term from a polygon
+        if not self.agesourcepoly==None:
+            print 'Setting age source term with shapefile: %s...'%self.agesourcepoly
+            IC.setAgeSource(self.agesourcepoly)
+
         # Write the initial condition file
         IC.writeNC(self.suntanspath+'/'+self.icfile,dv=self.grd.dv)
         
@@ -509,10 +526,11 @@ class dumpinputs(object):
         self.tmax = bnd.time[-1]
         
         for vv in varnames:
-            plt.figure()
-            bnd.plot(varname=vv)
-            outfile = '%s/BC_%s_TS.png'%(self.plotdir,vv)
-            bnd.savefig(outfile)   
+            if bnd.__dict__.has_key(vv):
+                plt.figure()
+                bnd.plot(varname=vv)
+                outfile = '%s/BC_%s_TS.png'%(self.plotdir,vv)
+                bnd.savefig(outfile)   
             
         # Boundary segments
         for ii in range(bnd.Nseg):
@@ -525,11 +543,12 @@ class dumpinputs(object):
             
         # Scatter Plots
         for vv in varnames:
-            fig=plt.figure()
-            bnd.scatter(varname=vv)
-            outfile = '%s/BC_%s_scatter.png'%(self.plotdir,vv)
-            bnd.savefig(outfile) 
-            del fig
+            if bnd.__dict__.has_key(vv):
+                fig=plt.figure()
+                bnd.scatter(varname=vv)
+                outfile = '%s/BC_%s_scatter.png'%(self.plotdir,vv)
+                bnd.savefig(outfile) 
+                del fig
             
     def _dumpic(self):
         """

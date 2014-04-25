@@ -12,14 +12,25 @@ import matplotlib
 
 matplotlib.use('WXAgg')
 # Set some default parameters
-#matplotlib.rcParams['savefig.facecolor']=['k']
-matplotlib.rc('savefig',facecolor='k')
+matplotlib.rcParams['text.color']='white'
+matplotlib.rcParams['savefig.facecolor']='black'
+matplotlib.rcParams['savefig.edgecolor']='black'
+matplotlib.rcParams['figure.facecolor']='black'
+matplotlib.rcParams['figure.edgecolor']='black'
+matplotlib.rcParams['axes.facecolor']='black'
+matplotlib.rcParams['axes.edgecolor']='white'
+matplotlib.rcParams['axes.labelcolor']='white'
+matplotlib.rcParams['xtick.color']='white'
+matplotlib.rcParams['ytick.color']='white'
+#matplotlib.rcParams['font.family']='serif'
+#matplotlib.rcParams['font.sans-serif']=['Verdana']
 
 from matplotlib.figure import Figure
 from matplotlib.collections import PolyCollection, LineCollection
 from matplotlib.backends.backend_wxagg import \
     FigureCanvasWxAgg as FigCanvas, \
     NavigationToolbar2WxAgg as NavigationToolbar
+import matplotlib.animation as animation
 
 from sunpy import Spatial, Grid
 from untrim_tools import untrim_gridvars, untrim_griddims, UNTRIMSpatial
@@ -29,9 +40,7 @@ import numpy as np
 
 import pdb
 
-
-
-class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
+class SunPlotPy(wx.Frame, Spatial, Grid ):
     """ 
     The main frame of the application
     """
@@ -47,6 +56,8 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
     # other flags
     collectiontype='cells'
     oldcollectiontype='cells'
+
+    tindex=0 
     
     def __init__(self):
         wx.Frame.__init__(self, None, -1, self.title)
@@ -75,6 +86,16 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
         # Load a particle file
         m_part = menu_file.Append(-1, "&Load PTM file\tCtrl-Shift-P", "Load a PTM file")
         self.Bind(wx.EVT_MENU, self.on_load_ptm, m_part)
+
+        # Save current scene as an animation
+        m_anim = menu_file.Append(-1,"&Save animation of current scene\tCtrl-S","Save animation")
+        self.Bind(wx.EVT_MENU, self.on_save_anim, m_anim)
+
+        # Save the current figure
+        m_prin = menu_file.Append(-1,"&Print current scene\tCtrl-P","Save figure")
+        self.Bind(wx.EVT_MENU, self.on_save_fig, m_prin)
+
+
 
         menu_file.AppendSeparator()
         # Exit
@@ -115,8 +136,10 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
         # 5x4 inches, 100 dots-per-inch
         #
         self.dpi = 100
-        self.fig = Figure((7.0, 6.0), dpi=self.dpi,facecolor=self.bgcolor)
+        #self.fig = Figure((7.0, 6.0), dpi=self.dpi,facecolor=self.bgcolor)
+        self.fig = Figure((7.0, 6.0), dpi=self.dpi)
         self.canvas = FigCanvas(self.panel, -1, self.fig)
+        
         
         # Since we have only one plot, we can use add_axes 
         # instead of add_subplot, but then the subplot
@@ -124,7 +147,7 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
         # work.
         #
         self.axes = self.fig.add_subplot(111)
-        SetAxColor(self.axes,self.textcolor,self.bgcolor)
+        #SetAxColor(self.axes,self.textcolor,self.bgcolor)
         
         # Bind the 'pick' event for clicking on one of the bars
         #
@@ -197,6 +220,12 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
         # Create the navigation toolbar, tied to the canvas
         #
         self.toolbar = NavigationToolbar(self.canvas)
+        #self.toolbar.toolitems[8][3]='my_save_fig'
+
+        #def my_save_fig(self,*args):
+        #    print 'saving figure'
+        #    return "break"
+
         
         #########
         # Layout with box sizers
@@ -275,7 +304,7 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
         self.collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
 
         self.axes.add_collection(self.collection)    
-        title=self.axes.set_title(self.genTitle(),color=self.textcolor)
+        self.title=self.axes.set_title(self.genTitle(),color=self.textcolor)
         self.axes.set_xlabel('Easting [m]')
         self.axes.set_ylabel('Northing [m]')
 
@@ -283,7 +312,7 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
 
         if not self.__dict__.has_key('cbar'):
             self.cbar = self.fig.colorbar(self.collection)
-            SetAxColor(self.cbar.ax.axes,self.textcolor,self.bgcolor)
+            #SetAxColor(self.cbar.ax.axes,self.textcolor,self.bgcolor)
         else:
             #pass
             print 'Updating colorbar...'
@@ -322,9 +351,10 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
                 self.collection.set_edgecolors(self.collection.to_rgba(np.array((self.data[:])))) 
             else:
                 self.collection.set_edgecolors('k')
+                self.collection.set_linewidths(0.2)
 
         # Update the title
-        title=self.axes.set_title(self.genTitle(),color=self.textcolor)
+        self.title=self.axes.set_title(self.genTitle(),color=self.textcolor)
 
         #Update the colorbar
         self.cbar.update_normal(self.collection)
@@ -356,13 +386,15 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
         self.flash_status_message("Selecting variable: %s"%vname)
         # update the spatial object and load the data
         self.variable = vname
-        self.loadData()
+        self.loadData(variable=self.variable)
 
         # Check if the variable has a depth coordinate
         depthstr = ['']
         # If so populate the vertical layer box
         if self.hasDim(self.variable,self.griddims['Nk']):
             depthstr = ['%3.1f'%self.z_r[k] for k in range(self.Nkmax)]
+            depthstr += ['surface','seabed']
+
         elif self.hasDim(self.variable,'Nkw'):
             depthstr = ['%3.1f'%self.z_w[k] for k in range(self.Nkmax+1)]
 
@@ -374,18 +406,18 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
 
 
     def on_select_time(self, event):
-        tindex = event.GetSelection()
+        self.tindex = event.GetSelection()
         # Update the object time index and reload the data
         if self.plot_type=='hydro':
-            if not self.tstep==tindex:
-                self.tstep=tindex
+            if not self.tstep==self.tindex:
+                self.tstep=self.tindex
                 self.loadData()
                 self.flash_status_message("Selecting variable: %s..."%event.GetString())
 
                 # Update the plot
                 self.update_figure()
         elif self.plot_type=='particles':
-            self.PTM.plot(tindex,ax=self.axes,\
+            self.PTM.plot(self.tindex,ax=self.axes,\
                 xlims=self.axes.get_xlim(),ylims=self.axes.get_ylim())
         
             self.canvas.draw()
@@ -394,6 +426,9 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
     def on_select_depth(self, event):
         kindex = event.GetSelection()
         if not self.klayer[0]==kindex:
+            # Check if its the seabed or surface value
+            if kindex>=self.Nkmax:
+                kindex=event.GetString()
             self.klayer = [kindex]
             self.loadData()       
             self.flash_status_message("Selecting depth: %s..."%event.GetString())
@@ -527,7 +562,90 @@ class SunPlotPy(wx.Frame, UNTRIMSpatial,Spatial, Grid ):
         # Update the figure
         self.update_figure()
 
+    def on_save_fig(self,event):
+        """
+        Save a figure of the current scene to a file
+        """
+        file_choices = " (*.png)|*.png| (*.pdf)|*.pdf |(*.jpg)|*.jpg |(*.eps)|*eps "
+        filters=['.png','.pdf','.png','.png']
 
+        
+        dlg = wx.FileDialog(
+            self, 
+            message="Save figure to file...",
+            defaultDir=os.getcwd(),
+            defaultFile="",
+            wildcard=file_choices,
+            style= wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+
+        if dlg.ShowModal() == wx.ID_OK:
+
+            path = dlg.GetPath()
+            ext = filters[dlg.GetFilterIndex()]
+            if ext in path:
+                outfile=path
+            else:
+                outfile = path+ext
+
+            self.fig.savefig(outfile)
+
+            
+
+
+    def on_save_anim(self,event):
+        """
+        Save an animation of the current scene to a file
+        """
+        file_choices = "Quicktime (*.mov)|*.mov| (*.gif)|*.gif| (*.avi)|*.avi |(*.mp4)|*.mp4 "
+        filters=['.mov','.gif','.avi','.mp4']
+
+        
+        dlg = wx.FileDialog(
+            self, 
+            message="Output animation file...",
+            defaultDir=os.getcwd(),
+            defaultFile="",
+            wildcard=file_choices,
+            style= wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+
+        if dlg.ShowModal() == wx.ID_OK:
+
+            path = dlg.GetPath()
+            ext = filters[dlg.GetFilterIndex()]
+            if ext in path:
+                outfile=path
+            else:
+                outfile = path+ext
+            self.flash_status_message("Saving figure to file: %s" %outfile)
+            self.flash_status_message("Saving animation to file: %s" %outfile)
+
+            # Create the animation
+            #self.tstep = range(self.Nt) # Use all time steps for animation
+            #self.animate(cbar=self.cbar,cmap=self.cmap,\
+            #    xlims=self.axes.get_xlim(),ylims=self.axes.get_ylim())
+            def updateScalar(i):
+                self.tstep=[i]
+                self.loadData()
+                self.update_figure()
+                return (self.title,self.collection)
+
+            self.anim = animation.FuncAnimation(self.fig, updateScalar, frames=self.Nt, interval=50, blit=True)
+
+            if ext=='.gif':
+                self.anim.save(outfile,writer='imagemagick',fps=6)
+            else:
+                self.anim.save(outfile,fps=6,bitrate=3600)
+
+            # Return the figure back to its status
+            del self.anim
+            self.tstep=self.tindex
+            self.loadData()
+            self.update_figure()
+
+            # Bring up a dialog box
+            dlg2= wx.MessageDialog(self, 'Animation complete.', "Done", wx.OK)
+            dlg2.ShowModal()
+            dlg2.Destroy()
 
     def on_exit(self, event):
         self.Destroy()

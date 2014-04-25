@@ -8,6 +8,7 @@ Created on Thu May 09 15:17:58 2013
 """
 
 from matplotlib.tri import Triangulation
+from hybridgrid import HybridGrid
 from scipy.spatial import cKDTree
 #from matplotlib.nxutils import points_inside_poly
 from inpolygon import inpolygon
@@ -17,16 +18,26 @@ import operator as op
 import matplotlib.pyplot as plt
 import pdb
 
-class TriSearch(Triangulation):
+class GridSearch(HybridGrid):
     
     verbose=False
     force_inside=False # Force the points to move inside of the polyggon
+
+    nfaces=None
+    edges=None
+    mark=None
+    grad=None
+    neigh=None
+    xv=None
+    yv=None
     
     def __init__(self, x, y, cells,**kwargs):
         
         self.__dict__.update(kwargs)
 
-        Triangulation.__init__(self,x,y,cells)
+        #Triangulation.__init__(self,x,y,cells)
+        HybridGrid.__init__(self,x,y,cells,nfaces=self.nfaces,edges=self.edges,\
+        mark=self.mark,grad=self.grad,neigh=self.neigh,xv=self.xv,yv=self.yv)
         
         self.Nc = cells.shape[0]
         
@@ -64,7 +75,7 @@ class TriSearch(Triangulation):
         
         # Check if the particle has crossed any edges (ie is it in the same cell)
         changedcell, neigh = self.checkEdgeCrossingVec(self.cellind,xnew,ynew,self.xpt,self.ypt)
-        newcell[changedcell] = self.neighbors[self.cellind[changedcell],neigh[changedcell]]
+        newcell[changedcell] = self.neigh[self.cellind[changedcell],neigh[changedcell]]
         
         # Check if particle is actually in new cell
         innewcell[changedcell] = self.inCellVec(newcell[changedcell],xnew[changedcell],ynew[changedcell])
@@ -224,29 +235,6 @@ class TriSearch(Triangulation):
  
         return cellind
         
-    def pnt2cells(self,pnt_i):
-        """
-        Returns the cell indices for a point, pnt_i
-        
-        (Stolen from Rusty's TriGrid class)
-        """
-        if not self.__dict__.has_key('_pnt2cells'):
-            # build hash table for point->cell lookup
-            self._pnt2cells = {}
-            for i in range(self.Nc):
-                for j in range(3):
-                    if not self._pnt2cells.has_key(self.triangles[i,j]):
-                        #self._pnt2cells[self.cells[i,j]] = set()
-                        self._pnt2cells[self.triangles[i,j]] = []
-                    #self._pnt2cells[self.cells[i,j]].add(i)
-                    self._pnt2cells[self.triangles[i,j]].append(i)
-
-        if self._pnt2cells.has_key(pnt_i):
-            return self._pnt2cells[pnt_i]
-        else:
-            return [-1]
-        
-
     def findnearest(self,xy,NNear=1):
         """
         Returns the node indices of the closest points to the nx2 array xy
@@ -255,7 +243,7 @@ class TriSearch(Triangulation):
         """
         
         if not self.__dict__.has_key('kd'):
-            self.kd = cKDTree(np.vstack((self.x,self.y)).T)
+            self.kd = cKDTree(np.vstack((self.xp,self.yp)).T)
     
         # Perform query on all of the points in the grid
         dist,ind=self.kd.query(xy,k=NNear)

@@ -475,6 +475,10 @@ class ModVsObs(object):
         # Set the range inclusive of both observation and model result
         time0 = max(tmod[0],tobs[0])
         time1 = min(tmod[-1],tobs[-1])
+
+        if time1 < time0:
+            print 'Error - the two datasets have no overlapping period.'
+            return None
         
         # Clip both the model and observation to this daterange
 
@@ -515,7 +519,7 @@ class ModVsObs(object):
         plt.title('StationID: %s'%self.stationid)
 
         if legend:
-            plt.legend(('Model','Observation'))
+            plt.legend(('Model','Observation'),loc='lower right')
 
         return h1, h2
         

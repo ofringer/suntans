@@ -14,8 +14,13 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import matplotlib.animation as animation
+from sunpy import unsurf
+
+from gridsearch import GridSearch
+from shapely.geometry import LineString, Point
 
 import pdb
+
 
 class Slice(Spatial):
     """
@@ -75,8 +80,8 @@ class Slice(Spatial):
         h1 = plt.pcolor(self[xaxis],self.zslice,am,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
         
         #Overlay the bed
-	if bathyoverlay:
-	    self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
+        if bathyoverlay:
+            self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
         
         # Set labels etc
         plt.xlabel(self._getXlabel(xaxis))
@@ -120,8 +125,8 @@ class Slice(Spatial):
             h2 = plt.contour(self[xaxis],self.zslice,am,V,colors='k')
             
         #Overlay the bed
-	if bathyoverlay:
-	    self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
+        if bathyoverlay:
+            self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
         
         # Set labels etc
         plt.xlabel(self._getXlabel(xaxis))
@@ -230,10 +235,10 @@ class Slice(Spatial):
         tstep = self.tstep
         slicedata = np.zeros((self.Ntslice,self.Nkmax,self.Npt))
 
-	#if method=='linear':
-	#    cellind3d = np.repeat(self.cellind.reshape((1,self.Npt)),self.Nkmax,axis=0)
-	#    k3d = np.arange(0,self.Nkmax)
-	#    k3d = np.repeat(k3d.reshape((self.Nkmax,1)),self.Npt,axis=1)
+        #if method=='linear':
+        #    cellind3d = np.repeat(self.cellind.reshape((1,self.Npt)),self.Nkmax,axis=0)
+        #    k3d = np.arange(0,self.Nkmax)
+        #    k3d = np.repeat(k3d.reshape((self.Nkmax,1)),self.Npt,axis=1)
 
         for tt in range(self.Ntslice):
             if self.Ntslice>1:
@@ -241,15 +246,6 @@ class Slice(Spatial):
             
             self.tstep=[tstep[tt]]
             rawdata = self.loadData(variable=variable)
-
-#	    if method == 'nearest':
-#		for kk in range(self.Nkmax):
-#                    slicedata[tt,kk,:] = rawdata[kk,self.cellind]
-#	    elif method == 'linear':
-#		slicedata[tt,:] = self.interpLinear(rawdata.ravel(),self.xslice.ravel(),self.yslice.ravel(),cellind3d.ravel(),k=k3d.ravel()).reshape((self.Nkmax,self.Npt))
-#	    else:
-#		raise Exception, ' unknown interpolation method: %s. Must be "nearest" or "linear"'%method
- 
             for kk in range(self.Nkmax):
                 if method == 'nearest':
                     slicedata[tt,kk,:] = rawdata[kk,self.cellind]
@@ -316,7 +312,10 @@ class Slice(Spatial):
         
         self.xslice = Fx(tnew)
         self.yslice = Fy(tnew)
+
+        self._getDistCoords()
         
+    def _getDistCoords(self):
         # Calculate the distance along the slice
         self.distslice = np.zeros_like(self.xslice)
         self.distslice[1:] = np.sqrt( (self.xslice[1:]-self.xslice[:-1]) **2 + \
@@ -375,6 +374,158 @@ class Slice(Spatial):
                 
         return titlestr
         
+class SliceEdge(Slice):
+    """
+    Slice suntans edge-based data at all edges near a line
+
+    Used for e.g. flux calculations along a profile
+    """
+
+    def __init__(self,ncfile,xpt=None,ypt=None,Npt=100,**kwargs):
+        
+        self.Npt=Npt
+
+        Spatial.__init__(self,ncfile,klayer=[-99],**kwargs)
+
+        # Load the grid as a hybridgrid
+        self.grd = GridSearch(self.xp,self.yp,self.cells,nfaces=self.nfaces,\
+            edges=self.edges,mark=self.mark,grad=self.grad,neigh=self.neigh,\
+                xv=self.xv,yv=self.yv)
+
+        # Find the edge indices along the line
+        self.update_xy(xpt,ypt)
+
+    def update_xy(self,xpt,ypt):
+        """
+        Updates the x and y coordinate info in the object
+        """
+        if xpt == None or ypt == None:
+            self._getXYgraphically()
+        else:
+            self.xpt=xpt
+            self.ypt=ypt
+
+        self._getSliceCoords()
+        # List of the edge indices
+        self.j,self.nodelist = self.get_edgeindices()
+
+        # Update the x and y axis of the slice
+        self.xslice=self.xp[self.nodelist]
+        self.yslice=self.yp[self.nodelist]
+
+        self._getDistCoords()
+
+        self.edgexy()
+
+    def edgexy(self):
+        """
+        Nx2 vectors outlining each cell in the edge slice
+        """
+        def closePoly(xp,node,k):
+            #return  np.array([ [xp[self.edges[node,0]],\
+            #    xp[self.edges[node,1]],xp[self.edges[node,1]],\
+            #    xp[self.edges[node,0]],xp[self.edges[node,0]]],\
+            #    [self.z_w[k],self.z_w[k],self.z_w[k+1],self.z_w[k+1],self.z_w[k]],\
+            #    ]).T
+
+            return  np.array([ [xp[node],\
+                xp[node+1],xp[node+1], xp[node],xp[node]],\
+                [-self.z_w[k],-self.z_w[k],-self.z_w[k+1],-self.z_w[k+1],-self.z_w[k]],\
+                ]).T
+
+        self.xye = [closePoly(self.distslice,jj,kk) for kk in range(self.Nkmax) \
+            for jj in range(len(self.j)) ]
+
+    def plot(self,z,titlestr=None,**kwargs):
+        """
+        Pcolor plot of the slice
+        """
+
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(z))
+            self.clim.append(np.max(z))
+        
+        # Set the xy limits
+        xlims=[self.distslice.min(),self.distslice.max()] 
+        ylims=[-self.z_w.max(),-self.z_w.min()]
+        
+        self.fig,self.ax,self.patches,self.cb=unsurf(self.xye,z.ravel(),xlim=xlims,ylim=ylims,\
+            clim=self.clim,**kwargs)
+
+        self.ax.set_aspect('auto')
+
+    def plotedges(self):
+        """
+        plot for testing
+        """
+        self.plotmesh()
+        #plt.plot(self.edgeline.xy,'r')
+        for ee in self.j:
+            plt.plot([self.xp[self.edges[ee,0]],self.xp[self.edges[ee,1]]],\
+                [self.yp[self.edges[ee,0]],self.yp[self.edges[ee,1]]],'m')
+
+
+    def get_edgeindices(self):
+        """
+        Return the indices of the edges (in order) along the line
+        """
+        # Load the line as a shapely object
+        #edgeline = asLineString([self.xslice,self.yslice])
+        xyline = [(self.xslice[ii],self.yslice[ii]) for ii in range(self.Npt)]
+        self.edgeline = LineString(xyline)
+
+        # Find the nearest grid Node to the start and end of the line
+        xy_1 = np.vstack((self.xslice[0],self.yslice[0])).T
+        node0 = self.grd.findnearest(xy_1)
+        xy_2 = np.vstack((self.xslice[-1],self.yslice[-1])).T
+        endnode = self.grd.findnearest(xy_2)
+
+        # This is the list containing all edge nodes
+        nodelist = [node0[0]]
+
+        def connecting_nodes(node,nodelist):
+            """ finds the nodes connecting to the node"""
+            edges = self.grd.pnt2edges(node)
+            cnodes = []
+            for ee in edges:
+                for nn in self.grd.edges[ee]:
+                    if nn not in nodelist:
+                        cnodes.append(nn)
+            return cnodes
+
+        def min_dist(nodes,line):    
+            """Returns the index of the node with the minimum distance
+            to the line"""
+
+            # Convert all nodes to a point object
+            points = [Point((self.xp[nn],self.yp[nn])) for nn in nodes]
+
+            # Calculate the distance
+            dist = [line.distance(pp) for pp in points]
+            for ii,dd in enumerate(dist):
+                if dd == min(dist):
+                    return nodes[ii]
+
+
+        # Loop through and find all of the closest points to the line
+        MAXITER=10000
+        for ii in range(MAXITER):
+            cnodes = connecting_nodes(nodelist[-1],nodelist)
+            newnode = min_dist(cnodes,self.edgeline)
+            #print 'Found new node: %d...'%newnode
+            if newnode==None:
+                break
+            nodelist.append(newnode)
+            if newnode == endnode:
+                #print 'Reached end node.'
+                break
+                
+        # Return the list of edges connecting all of the nodes
+        return [self.grd.find_edge([nodelist[ii],nodelist[ii+1]]) for ii in\
+            range(len(nodelist)-1)], nodelist
+
+
         
 #####
 ## Testing data

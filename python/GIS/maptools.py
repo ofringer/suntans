@@ -17,9 +17,8 @@ import gdal
 from gdalconst import * 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.nxutils as nxutils
-
-
+from inpolygon import inpolygon
+   
 import pdb
 
 
@@ -182,7 +181,7 @@ def readShpBathy(shpfile,FIELDNAME = 'CONTOUR'):
     del Y
     return XY,np.array(Z)
     
-def readShpPointLine(shpfile,FIELDNAME = 'CONTOUR'):
+def readShpPointLine(shpfile,FIELDNAME=None):
     """ Reads a shapefile with line or point geometry and returns x,y,z
     
     See this tutorial:
@@ -202,7 +201,26 @@ def readShpPointLine(shpfile,FIELDNAME = 'CONTOUR'):
         feat_defn = lyr.GetLayerDefn()
         for i in range(feat_defn.GetFieldCount()):
             field_defn = feat_defn.GetFieldDefn(i)
-            if field_defn.GetName() == FIELDNAME:
+
+            if FIELDNAME==None:
+                geom = feat.GetGeometryRef()
+                #ztmp = float(feat.GetField(i))
+                if geom.GetGeometryType() == ogr.wkbPoint: # point
+                    field.append(ztmp)
+                    XY.append([geom.getX(),geom.getY()])
+                elif geom.GetGeometryType() == 2:  # line
+                    xyall=geom.GetPoints()
+                    XY.append(np.asarray(xyall))
+                    #field.append(ztmp)
+                        
+                elif geom.GetGeometryType() == 5:  # multiline
+                    for ii in range(0,geom.GetGeometryCount()):
+                        geom2 = geom.GetGeometryRef(ii)
+                        xyall=geom2.GetPoints()
+                        XY.append(np.asarray(xyall))
+                        #field.append(ztmp)
+
+            elif field_defn.GetName() == FIELDNAME:
                 geom = feat.GetGeometryRef()
                 ztmp = float(feat.GetField(i))
                 if geom.GetGeometryType() == ogr.wkbPoint: # point
@@ -224,7 +242,7 @@ def readShpPointLine(shpfile,FIELDNAME = 'CONTOUR'):
     
     return XY,field
     
-def readShpPoly(shpfile,FIELDNAME = 'marker'):
+def readShpPoly(shpfile,FIELDNAME = None):
     """ Reads a shapefile with polygon geometry and returns x,y and FIELDNAME value
     
     See this tutorial:
@@ -244,7 +262,31 @@ def readShpPoly(shpfile,FIELDNAME = 'marker'):
         feat_defn = lyr.GetLayerDefn()
         for i in range(feat_defn.GetFieldCount()):
             field_defn = feat_defn.GetFieldDefn(i)
-            if field_defn.GetName() == FIELDNAME:
+            if FIELDNAME==None:
+                # Get all of the polygons
+                geom = feat.GetGeometryRef()
+                ztmp = feat.GetField(i)
+               
+                if geom.GetGeometryType() == ogr.wkbPolygon:  # Polygon
+                
+                    for ii in range(0,geom.GetGeometryCount()):
+                        geom2 = geom.GetGeometryRef(ii)
+                        xyall=geom2.GetPoints()
+                        
+                        XY.append(np.asarray(xyall))
+                        
+                if geom.GetGeometryType() == ogr.wkbMultiPolygon:  # Multi Polygon
+                    for ii in range(0,geom.GetGeometryCount()):
+                        geom2 = geom.GetGeometryRef(ii)
+                        for jj in range(0,geom2.GetGeometryCount()):
+                            geom3 = geom2.GetGeometryRef(jj)
+                            xyall=geom3.GetPoints()
+                            
+                            XY.append(np.asarray(xyall))
+        
+
+            
+            elif field_defn.GetName() == FIELDNAME:
                 geom = feat.GetGeometryRef()
                 ztmp = feat.GetField(i)
                
@@ -290,7 +332,8 @@ def maskPoly(X,Y,XYpoly):
     X = X.ravel()
     Y = Y.ravel()
         
-    ind = nxutils.points_inside_poly(np.vstack((X,Y)).T,XYpoly)
+    #ind = nxutils.points_inside_poly(np.vstack((X,Y)).T,XYpoly)
+    ind = inpolygon(np.vstack((X,Y)).T,XYpoly)
     
     mask = np.zeros(sz,dtype=np.int)
     ind = ind.reshape(sz)

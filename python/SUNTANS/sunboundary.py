@@ -23,14 +23,16 @@ Created on Fri Nov 02 15:24:12 2012
 
 
 import sunpy
-from sunpy import Grid
+from sunpy import Grid,Spatial
 from netCDF4 import Dataset, num2date
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
+#import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
+from inpolygon import inpolygon
 from datetime import datetime, timedelta
 import othertime
 import os
+from maptools import readShpPoly
 
 import pdb
 
@@ -490,7 +492,7 @@ class Boundary(object):
         # Include type 3 cells only
         roms = romsio.roms_interp(romsfile,self.xv,self.yv,-self.z,self.time,**kwargs)
         
-        h, T, S, uc, vc = roms.interp()
+        h, T, S, uc, vc = roms.interp(setUV=setUV,seth=seth)
 
         self.T+=T
         self.S+=S
@@ -552,17 +554,17 @@ class Boundary(object):
             z=None
             
         h,U,V,residual = read_otps.tide_pred_correc(otisfile,ll[:,0],ll[:,1],np.array(self.time),dbfile,stationID,z=z,conlist=conlist)
-        
+
         # Update the arrays - note that the values are added to the existing arrays
         self.h += h
+        # Add the residual
+        for ii in range(self.N3):
+            self.h[:,ii] += residual
+
         if setUV:
             for k in range(self.Nk):
                 self.uc[:,k,:] += U
                 self.vc[:,k,:] += V
-
-                # Add the residual
-                for ii in range(self.N3):
-                    self.h[:,ii] += residual
 
         print 'Finished interpolating OTIS tidal data onto boundary arrays.'
 
@@ -600,9 +602,11 @@ class InitialCond(Grid):
         self.S = np.zeros((1,self.Nkmax,self.Nc))
         self.h = np.zeros((1,self.Nc))
         
-	# Age variables
+        # Age variables
         self.agec = np.zeros((1,self.Nkmax,self.Nc))
         self.agealpha = np.zeros((1,self.Nkmax,self.Nc))
+
+        self.agesource = np.zeros((self.Nkmax,self.Nc))
 
     def roms2ic(self,romsfile,setUV=False,seth=False,**kwargs):
         """
@@ -621,6 +625,44 @@ class InitialCond(Grid):
         if not seth:
             self.h *= 0
 
+    def suntans2ic(self,hisfile,setUV=False,seth=False):
+        """
+        Uses data from another suntans file as initial conditions
+
+        Data needs to be on the same grid
+
+        """
+        # Load the history file
+        sunhis = Spatial(hisfile, tstep=-1, klayer=[-99])
+
+        # Set the time step to grab from the history file
+        #...
+        tstep = sunhis.getTstep(self.time,self.time)
+        sunhis.tstep = [tstep[0]]
+        print 'Setting the intial condition with time step: %s\nfrom the file:%s'\
+            %(datetime.strftime(sunhis.time[tstep[0]],\
+            '%Y-%m-%d %H-%M-%S'),hisfile)
+
+        # Npw grab each variable and save in the IC object
+        if seth:
+            self.h = sunhis.loadData(variable='eta').reshape((1,self.h.shape))
+
+        if sunhis.hasVar('temp'):
+            self.T = sunhis.loadData(variable='temp').reshape((1,)+self.T.shape)
+        if sunhis.hasVar('salt'):
+            self.S = sunhis.loadData(variable='salt').reshape((1,)+self.S.shape)
+
+        if setUV:
+            self.uc = sunhis.loadData(variable='uc').reshape((1,)+self.uc.shape)
+            self.vc = sunhis.loadData(variable='vc').reshape((1,)+self.vc.shape)
+
+        # Load the age
+        if sunhis.hasVar('agec'):
+            self.agec = sunhis.loadData(variable='agec').reshape((1,)+self.agec.shape)       
+            self.agealpha = sunhis.loadData(variable='agealpha').reshape((1,)+self.agealpha.shape)       
+
+        print 'Done setting initial condition data from file.'
+
     def filteric(self,dx):
         """
         Apply a spatial low pass filter to all initial condition fields
@@ -636,6 +678,23 @@ class InitialCond(Grid):
             self.S[:,k,:] = self.spatialfilter(self.S[:,k,:].ravel(),dx)
             self.T[:,k,:] = self.spatialfilter(self.T[:,k,:].ravel(),dx)
 
+    def setAgeSource(self,shpfile):
+        """
+        Sets the age source term using a polygon shapefile
+        """
+        # Read the shapefile
+        XY,tmp = readShpPoly(shpfile,FIELDNAME=None)
+        if len(XY)<1:
+            raise Exception, ' could not find any polygons in shapefile: %s'%shpfile
+
+        for xpoly in XY:
+            xycells = np.asarray([self.xv,self.yv])
+            #ind1 = nxutils.points_inside_poly(xycells.T,xpoly)
+            ind1 = inpolygon(xycells.T,xpoly)
+            # Sets all vertical layers for now...
+            self.agesource[:,ind1] = 1.
+
+     
     
     def writeNC(self,outfile,dv=None):
         """
@@ -667,6 +726,9 @@ class InitialCond(Grid):
         self.create_nc_var(outfile,'temp',('time','Nk','Nc'),{'long_name':'Water temperature','units':'degrees C','coordinates':'time z_r yv xv'})
         self.create_nc_var(outfile,'agec',('time','Nk','Nc'),{'long_name':'Age concentration','units':''})
         self.create_nc_var(outfile,'agealpha',('time','Nk','Nc'),{'long_name':'Age alpha parameter','units':'seconds','coordinates':'time z_r yv xv'})
+        self.create_nc_var(outfile,'agesource',('Nk','Nc'),\
+        {'long_name':'Age source grid cell (>0 = source)',\
+        'units':'','coordinates':'z_r yv xv'})
         
         # now write the variables...
         nc = Dataset(outfile,'a')
@@ -678,6 +740,7 @@ class InitialCond(Grid):
         nc.variables['temp'][:]=self.T
         nc.variables['agec'][:]=self.agec
         nc.variables['agealpha'][:]=self.agealpha
+        nc.variables['agesource'][:]=self.agesource
         nc.close()
                 
         print 'Initial condition file written to: %s'%outfile
@@ -689,7 +752,6 @@ def modifyBCmarker(suntanspath,bcfile):
 
     The shapefile must contain polygons with the integer-type field "marker"
     """
-    from maptools import readShpPoly
     
     print '#######################################################'
     print '     Modifying the boundary markers for grid in folder:'
@@ -735,7 +797,8 @@ def modifyBCmarker(suntanspath,bcfile):
         edges = np.asarray([xe[ind0],ye[ind0]])
         mark = grd.mark[ind0]
         
-        ind1 = nxutils.points_inside_poly(edges.T,xpoly)
+        #ind1 = nxutils.points_inside_poly(edges.T,xpoly)
+        ind1 = inpolygon(edges.T,xpoly)
         if bctype==4:
             eflag = grd.edge_id[ind0]
             eflag[ind1]=segmentID

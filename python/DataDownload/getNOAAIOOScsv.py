@@ -8,6 +8,7 @@
 
 import urllib2  # the lib that handles the url stuff
 from datetime import datetime, timedelta
+import othertime
 from xml.dom import minidom
 import numpy as np
 import airsea
@@ -52,8 +53,8 @@ def main(vartype,bbox,timestart,timeend,ncfile,dbfile=None):
     netcdfio.writePointData2Netcdf(ncfile,ncdata,globalatts)
         
     # Write the metadata to a shapefile
-    shpfile = ncfile.split('.')[0]+'.shp'
-    netcdfio.pointNC2shp(ncfile,shpfile)
+    #shpfile = ncfile.split('.')[0]+'.shp'
+    #netcdfio.pointNC2shp(ncfile,shpfile)
     
     # Update the database
     #createObsDB(dbfile)
@@ -67,10 +68,12 @@ def getAllTime(stationID,vartype,timestart,timeend):
     
     # Get the start and end times - can only extract 4-day chunks
     timeList=[]
-    tnow = timestart
-    while tnow <= timeend:
-        timeList.append(tnow)
-        tnow += timedelta(days=4)
+    #
+    #tnow = timestart
+    #while tnow <= timeend:
+    #    timeList.append(tnow)
+    #    tnow += timedelta(days=4)
+    timeList = othertime.TimeVector(timestart,timeend,4*86400.,istimestr=False)
     
     k=0
     for t1s,t2s in zip (timeList[0:-1],timeList[1:]):
@@ -99,24 +102,25 @@ def getAllTime(stationID,vartype,timestart,timeend):
 def getObsfromURL(target_url):
     """ Reads the actual data from the CSV and returns a dictionary"""
     data={}
-    try:
-        csvfile = urllib2.urlopen(target_url) # it's a file like object and works just like a file
-        k=-1
-        
-        for line in csvfile: # files are iterable
-            k+=1
-            if k == 0:
-                # Get the variable names from the header
-                varnames = line.split(',')
-                for vv in varnames:
-                    data.update({vv:[]})
-            else:
-                # Append the data
-                obs = line.split(',')
-                for oo,vv in zip(obs,varnames):
-                    data[vv].append(parseData(oo,vv))
-    except:
-        print 'No data exists for this period'                
+    #try:
+    #print target_url
+    csvfile = urllib2.urlopen(target_url) # it's a file like object and works just like a file
+    k=-1
+    
+    for line in csvfile: # files are iterable
+        k+=1
+        if k == 0:
+            # Get the variable names from the header
+            varnames = line.split(',')
+            for vv in varnames:
+                data.update({vv:[]})
+        else:
+            # Append the data
+            obs = line.split(',')
+            for oo,vv in zip(obs,varnames):
+                data[vv].append(parseData(oo,vv))
+    #except:
+    #    print 'No data exists for this period'                
        
     if len(data)==1:
         print 'No data exists for this period'

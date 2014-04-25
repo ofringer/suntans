@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Tools for dealing with ROMS model output
 
@@ -1213,7 +1212,7 @@ class roms_interp(roms_grid):
         self.Nz_roms = self.s_rho.shape[0]
         self.Nt_roms = self.time.shape[0]
         
-    def interp(self,zinterp='linear',tinterp=3):
+    def interp(self,zinterp='linear',tinterp='linear',setUV=True,seth=True):
         """
         Performs the interpolation in this order:
             1) Interpolate onto the horizontal coordinates
@@ -1239,7 +1238,8 @@ class roms_interp(roms_grid):
             self.ReadData(tstep)
                     
             # Interpolate zeta
-            zetaroms[tstep,:] = self.Frho(self.zeta[self.mask_rho==1])
+            if seth:
+                zetaroms[tstep,:] = self.Frho(self.zeta[self.mask_rho==1])
             
             # Interpolate other 3D variables
             for k in range(0,self.Nz_roms):
@@ -1249,11 +1249,12 @@ class roms_interp(roms_grid):
                 tmp = self.salt[k,:,:]
                 saltold[k,:] = self.Frho(tmp[self.mask_rho==1])
                 
-                tmp = self.u[k,:,:]
-                uold[k,:] = self.Fuv(tmp[self.mask_uv==1])
-                
-                tmp = self.v[k,:,:]
-                vold[k,:] = self.Fuv(tmp[self.mask_uv==1])
+                if setUV:
+                    tmp = self.u[k,:,:]
+                    uold[k,:] = self.Fuv(tmp[self.mask_uv==1])
+                    
+                    tmp = self.v[k,:,:]
+                    vold[k,:] = self.Fuv(tmp[self.mask_uv==1])
     
             # Calculate depths (zeta dependent)
             #zroms = get_depth(self.s_rho,self.Cs_r,self.hc, h, zetaroms[tstep,:], Vtransform=self.Vtransform)
@@ -1270,15 +1271,17 @@ class roms_interp(roms_grid):
                 Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
                 saltroms[tstep,:,ii] = Fz(self.zi)
                 
-                y = uold[:,ii]
-                Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
-                uroms[tstep,:,ii] = Fz(self.zi)
+                if setUV:
+                    y = uold[:,ii]
+                    Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
+                    uroms[tstep,:,ii] = Fz(self.zi)
+                    
+                    y = vold[:,ii]
+                    Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
+                    vroms[tstep,:,ii] = Fz(self.zi)
+                    
                 
-                y = vold[:,ii]
-                Fz = interpolate.interp1d(zroms[:,ii],y,kind=zinterp,bounds_error=False,fill_value=y[0])
-                vroms[tstep,:,ii] = Fz(self.zi)
-            
-        # End time loop
+            # End time loop
         
         # Initialise the output arrays @ output time step
         
@@ -1287,21 +1290,28 @@ class roms_interp(roms_grid):
 	    print 'Temporally interpolating ROMS variables...'
             troms = othertime.SecondsSince(self.time)
             tout = othertime.SecondsSince(self.timei)
-            print '\tzeta...'
-            Ft = interpolate.interp1d(troms,zetaroms,axis=0,kind=tinterp,bounds_error=False)
-            zetaout = Ft(tout)
+            if seth:
+                print '\tzeta...'
+                Ft = interpolate.interp1d(troms,zetaroms,axis=0,kind=tinterp,bounds_error=False)
+                zetaout = Ft(tout)
+            else:
+                zetaout=-1
+
             print '\ttemp...'
             Ft = interpolate.interp1d(troms,temproms,axis=0,kind=tinterp,bounds_error=False)
             tempout = Ft(tout)
             print '\tsalt...'
             Ft = interpolate.interp1d(troms,saltroms,axis=0,kind=tinterp,bounds_error=False)
             saltout = Ft(tout)
-            print '\tu...'
-            Ft = interpolate.interp1d(troms,uroms,axis=0,kind=tinterp,bounds_error=False)
-            uout = Ft(tout)
-            print '\tv...'
-            Ft = interpolate.interp1d(troms,vroms,axis=0,kind=tinterp,bounds_error=False)
-            vout = Ft(tout)
+            if setUV:
+                print '\tu...'
+                Ft = interpolate.interp1d(troms,uroms,axis=0,kind=tinterp,bounds_error=False)
+                uout = Ft(tout)
+                print '\tv...'
+                Ft = interpolate.interp1d(troms,vroms,axis=0,kind=tinterp,bounds_error=False)
+                vout = Ft(tout)
+            else:
+                uout = vout = -1
         else:
             zetaout = zetaroms
             tempout = temproms

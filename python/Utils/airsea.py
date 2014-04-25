@@ -279,10 +279,17 @@ def convertSpeedDirn(theta,rho):
     %      note: theta is in degrees and between 0 and 360.
     """
     
-    if theta >= 0 and theta <90:
-        theta=np.abs(theta-90)
-    elif theta >= 90 and theta <= 360:
-        theta=np.abs(450-theta)
+    try:
+        if theta >= 0 and theta <90:
+            theta=np.abs(theta-90)
+        elif theta >= 90 and theta <= 360:
+            theta=np.abs(450-theta)
+    except:
+        idx = operator.and_(theta>=0.,theta<90.)
+        theta[idx] = np.abs(theta[idx]-90.)
+
+        idx = operator.and_(theta>=90.,theta<=360.)
+        theta[idx] = np.abs(450.-theta)
     
     u,v = pol2cart(theta*np.pi/180,rho)
     

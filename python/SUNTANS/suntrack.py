@@ -16,7 +16,8 @@ from scipy import spatial, sparse
 import numpy as np
 import matplotlib.pyplot as plt
 from netCDF4 import Dataset, num2date
-import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
+#import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
+from inpolygon import inpolygon
 import operator
 
 from time import clock
@@ -60,10 +61,10 @@ class SunTrack(Spatial):
             self.Hinterp = interp3D(self.xv,self.yv,0*self.xv,method='nearest')
             
         elif self.interp_method == 'mesh':
-	    if self.interp_meshmethod == 'nearest':
-		self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D,method='nearest')
-	    elif self.interp_meshmethod == 'linear':
-            	self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D,method='linear',grdfile=self.ncfile)
+            if self.interp_meshmethod == 'nearest':
+                self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D,method='nearest')
+            elif self.interp_meshmethod == 'linear':
+                    self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D,method='linear',grdfile=self.ncfile)
 
 
 
@@ -91,23 +92,23 @@ class SunTrack(Spatial):
         # Initialise the particle dictionary
         self.particles={'X':x,'Y':y,'Z':z,'X0':x,'Y0':y,'Z0':z}
 	
-	# Initialise the age calculation
-	self._calcage = False
-	if not agepoly == None:
-	    self._calcage = True
-	    self.agepoly = agepoly
-	    if age==None:
-	    	age=np.zeros_like(x)
-	    if agemax==None:
-	    	agemax=np.zeros_like(x)
-	    
-	self.particles.update({'age':age,'agemax':agemax})
+        # Initialise the age calculation
+        self._calcage = False
+        if not agepoly == None:
+            self._calcage = True
+            self.agepoly = agepoly
+            if age==None:
+                age=np.zeros_like(x)
+            if agemax==None:
+                agemax=np.zeros_like(x)
+            
+        self.particles.update({'age':age,'agemax':agemax})
 
-	# Set the particle time start and activate if necessary
-	self.initParticleTime(tstart)
+        # Set the particle time start and activate if necessary
+        self.initParticleTime(tstart)
 
-	# Initialse the outut netcdf file
-	if not outfile==None:
+        # Initialse the outut netcdf file
+        if not outfile==None:
             self.initParticleNC(outfile,x.shape[0],age=self._calcage)
 
         if self.verbose:
@@ -121,20 +122,23 @@ class SunTrack(Spatial):
         self.initCurrents()
         
         # Start time stepping
-	tctr=dtout
-	ctr=0
+        tctr=dtout
+        ctr=0
         if runmodel:
             for ii,time in enumerate(self.time_track):
-	    	tctr+=self.dt
+                tctr+=self.dt
                 # Step 1) Advect particles
                 self.advectParticles(time,self.time_track_sec[ii])
 
                 # Write output if needed 
-		if not outfile==None and tctr>=dtout:
-		    self.writeParticleNC(outfile,self.particles['X'],self.particles['Y'],self.particles['Z'],\
-		    	self.time_track_sec[ii],ctr,age=self.particles['age'],agemax=self.particles['agemax'])
-		    tctr=0
-		    ctr+=1
+                if not outfile==None and tctr>=dtout:
+                    self.writeParticleNC(outfile,self.particles['X'],\
+                        self.particles['Y'],self.particles['Z'],\
+                        self.time_track_sec[ii],ctr,age=self.particles['age'],\
+                        agemax=self.particles['agemax'])
+
+                    tctr=0
+                    ctr+=1
     
     def animate(self,x,y,z,timeinfo,agepoly=None,agemax=7.0,xlims=None,ylims=None,outfile=None):
         """
@@ -142,7 +146,7 @@ class SunTrack(Spatial):
         """
         import matplotlib.animation as animation
         
-	agescale = 1.0/86400.0
+        agescale = 1.0/86400.0
 
         # Set the xy limits
         if xlims==None or ylims==None:
@@ -156,15 +160,16 @@ class SunTrack(Spatial):
         self.contourf(z=-self.dv,clevs=30,titlestr='',xlims=xlims,ylims=ylims,cmap='bone')
 	
         
-	plotage=self._calcage
+        plotage=self._calcage
 
         # Plot the particles at the first time step
-	if not plotage:
-	    h1 = plt.plot([],[],'y.',markersize=1.0)
-	    h1 = h1[0]
+        if not plotage:
+            h1 = plt.plot([],[],'y.',markersize=1.0)
+            h1 = h1[0]
 
-	else:
-	    h1 = plt.scatter(self.particles['X'],self.particles['Y'],s=1.0,c=self.particles['age'],vmin=0,vmax=agemax,edgecolors=None)
+        else:
+            h1 = plt.scatter(self.particles['X'],self.particles['Y'],s=1.0,c=self.particles['age'],vmin=0,vmax=agemax,edgecolors=None)
+
 	    self.fig.colorbar(h1)
         
         title=ax.set_title("")
@@ -179,18 +184,18 @@ class SunTrack(Spatial):
             if ii==0:
                 # Re-initialise the particle location
                 self.particles={'X':x,'Y':y,'Z':z}
-		if self._calcage:
-		    self.particles.update({'age':np.zeros_like(x),'agemax':np.zeros_like(x)})
+            if self._calcage:
+                self.particles.update({'age':np.zeros_like(x),'agemax':np.zeros_like(x)})
                 
             self.advectParticles(self.time_track[ii],self.time_track_sec[ii])
-	    if plotage:
-		# Update the scatter object
-		h1.set_offsets(np.vstack([self.particles['X'],self.particles['Y']]).T)
-		h1.set_array(self.particles['age'])*agescale
-		h1.set_edgecolors(h1.to_rgba(np.array(self.particles['age'])))    
-	    else:
-		h1.set_xdata(self.particles['X'])
-		h1.set_ydata(self.particles['Y'])
+            if plotage:
+                # Update the scatter object
+                h1.set_offsets(np.vstack([self.particles['X'],self.particles['Y']]).T)
+                h1.set_array(self.particles['age'])*agescale
+                h1.set_edgecolors(h1.to_rgba(np.array(self.particles['age'])))    
+            else:
+                h1.set_xdata(self.particles['X'])
+                h1.set_ydata(self.particles['Y'])
 
             title.set_text(self.genTitle(ii))
             return (h1,title)
@@ -208,7 +213,7 @@ class SunTrack(Spatial):
         """
         import matplotlib.animation as animation
         
-	agescale = 1.0/86400.0
+        agescale = 1.0/86400.0
         # Set the xy limits
         if xlims==None or ylims==None:
             xlims=self.xlims 
@@ -229,11 +234,12 @@ class SunTrack(Spatial):
         # Plot the particles at the first time step
         if not plotage:
 #	    h1 = plt.plot([],[],'y.',markersize=1.0)
-	    h1 = plt.plot([],[],'.',**kwargs)
-	    h1 = h1[0]
+            h1 = plt.plot([],[],'.',**kwargs)
+            h1 = h1[0]
 
-	else:
-	    h1 = plt.scatter(nc.variables['xp'][0,:],nc.variables['yp'][0,:],s=1.0,c=nc.variables['age'][0,:],vmin=0,vmax=agemax,edgecolors=None)
+        else:
+            h1 = plt.scatter(nc.variables['xp'][0,:],nc.variables['yp'][0,:],s=1.0,c=nc.variables['age'][0,:],vmin=0,vmax=agemax,edgecolors=None)
+
 	    self.fig.delaxes(self.fig.axes[1])
 	    self.cb = self.fig.colorbar(h1)
 	    #self.cb.on_mappable_changed(h1) # Updates the colobar
@@ -241,18 +247,18 @@ class SunTrack(Spatial):
         
         title=ax.set_title("")
         
-	def updateLocation(ii):
-	    xp = nc.variables['xp'][:,ii]
-	    yp = nc.variables['yp'][:,ii]
-	    if plotage:
-		# Update the scatter object
-		h1.set_offsets(np.vstack([xp,yp]).T)
-		age=nc.variables['age'][:,ii]*agescale
-		h1.set_array(age)
-		h1.set_edgecolors(h1.to_rgba(np.array(age)))    
-	    else:
-		h1.set_xdata(xp)
-		h1.set_ydata(yp)
+        def updateLocation(ii):
+            xp = nc.variables['xp'][:,ii]
+            yp = nc.variables['yp'][:,ii]
+            if plotage:
+                # Update the scatter object
+                h1.set_offsets(np.vstack([xp,yp]).T)
+                age=nc.variables['age'][:,ii]*agescale
+                h1.set_array(age)
+                h1.set_edgecolors(h1.to_rgba(np.array(age)))    
+            else:
+                h1.set_xdata(xp)
+                h1.set_ydata(yp)
 
             title.set_text(self.genTitle(ii))
             return (h1,title)
@@ -807,7 +813,8 @@ class SunTrack(Spatial):
 	Calculate the age of a particle inside of the age polygon
 	"""
 	#print '\t\tCalculating the particle age...'
-	inpoly = nxutils.points_inside_poly(np.vstack((self.particles['X'],self.particles['Y'])).T,self.agepoly)
+	#inpoly = nxutils.points_inside_poly(np.vstack((self.particles['X'],self.particles['Y'])).T,self.agepoly)
+	inpoly = inpolygon(np.vstack((self.particles['X'],self.particles['Y'])).T,self.agepoly)
 
 	self.particles['age'][inpoly] = self.particles['age'][inpoly] + self.dt
 	self.particles['age'][inpoly==False]=0.0
@@ -1003,51 +1010,51 @@ class RegGrid(object):
         self.oy = ylims[0]
         self.dx = dx
         self.dy = dy
-	self.xlims=xlims
-	self.ylims=ylims
+        self.xlims=xlims
+        self.ylims=ylims
 
-	#  Construct a 2D mesh of particles
+        #  Construct a 2D mesh of particles
         x = np.arange(xlims[0],xlims[1],dx)
-	y = np.arange(ylims[0],ylims[1],dy)
+        y = np.arange(ylims[0],ylims[1],dy)
 
-	self.X, self.Y = np.meshgrid(x,y)
+        self.X, self.Y = np.meshgrid(x,y)
 
-	shp = self.X.shape
-	self.ny = shp[0]
-	self.nx = shp[1]
+        shp = self.X.shape
+        self.ny = shp[0]
+        self.nx = shp[1]
 	
     def returnij(self,x,y):
         """
-	Returns the i,j (cols,rows) of the points in i,j
+        Returns the i,j (cols,rows) of the points in i,j
 
-	Returns NaNs for points that are out of bounds
-	"""
+        Returns NaNs for points that are out of bounds
+        """
 
-	i = np.ceil( (x-self.ox)/self.dx )
-	j = np.ceil( (y-self.oy)/self.dy )
+        i = np.ceil( (x-self.ox)/self.dx )
+        j = np.ceil( (y-self.oy)/self.dy )
 
-	# Check the bounds
-	ind = x > self.xlims[1]
-	ind = i >= self.nx
-	i[ind]=np.nan
-	j[ind]=np.nan
+        # Check the bounds
+        ind = x > self.xlims[1]
+        ind = i >= self.nx
+        i[ind]=np.nan
+        j[ind]=np.nan
 
-	ind = x < self.ox
-	ind = i < 0
-	i[ind]=np.nan
-	j[ind]=np.nan
+        ind = x < self.ox
+        ind = i < 0
+        i[ind]=np.nan
+        j[ind]=np.nan
 
-	ind = y > self.ylims[1]
-	ind = j >= self.ny
-	i[ind]=np.nan
-	j[ind]=np.nan
+        ind = y > self.ylims[1]
+        ind = j >= self.ny
+        i[ind]=np.nan
+        j[ind]=np.nan
 
-	ind = y < self.oy
-	ind = j < 0
-    	i[ind]=np.nan
-	j[ind]=np.nan
+        ind = y < self.oy
+        ind = j < 0
+        i[ind]=np.nan
+        j[ind]=np.nan
 
-	return i,j
+        return i,j
 
     def griddata(self,x,y,z):
         """
@@ -1081,16 +1088,16 @@ class interp3Dmesh(TriSearch,Grid):
 
     def __init__(self,x,y,z,cells,mask,method='nearest',grdfile=None):
         
-	self.method=method
+        self.method=method
         # Initialise the trisearch array
         TriSearch.__init__(self,x,y,cells,force_inside=True)
 
-	if self.method == 'linear':
-	    Grid.__init__(self,grdfile)
+        if self.method == 'linear':
+            Grid.__init__(self,grdfile)
 	    self.datatmp = np.zeros(mask.shape,dtype=np.double)
         
         self.z = np.sort(z)
-	self.z[-1]=10.0 # Set the surface layer to large
+        self.z[-1]=10.0 # Set the surface layer to large
         self.Nkmax = z.size-1
         
         self.mask3d = mask
@@ -1295,7 +1302,8 @@ def GridParticles(grdfile,dx,dy,nz,xypoly=None,splitvec=1):
 
     # Check which particles are also inside of the polygon
     if not xypoly == None:
-	inpoly = nxutils.points_inside_poly(np.vstack((X,Y)).T,xypoly)
+	#inpoly = nxutils.points_inside_poly(np.vstack((X,Y)).T,xypoly)
+	inpoly = inpolygon(np.vstack((X,Y)).T,xypoly)
 	mask = operator.and_(mask,inpoly)
 
     xout = X[mask]

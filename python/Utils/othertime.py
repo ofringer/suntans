@@ -12,19 +12,27 @@ import numpy as np
 
 import pdb
 
-def TimeVector(starttime,endtime,dt,timeformat ='%Y%m%d.%H%M'):
+def TimeVector(starttime,endtime,dt,istimestr=True,timeformat ='%Y%m%d.%H%M'):
     """
     Create a vector of datetime objects
     """
     # build a list of timesteps
-    t1 = datetime.strptime(starttime,timeformat)
-    t2 = datetime.strptime(endtime,timeformat)
+    if istimestr:
+        t1 = datetime.strptime(starttime,timeformat)
+        t2 = datetime.strptime(endtime,timeformat)
+    else:
+        t1 = starttime
+        t2 = endtime
     
     time = []
     t0=t1
     while t0 <= t2:
         time.append(t0)
         t0 += timedelta(seconds=dt)
+
+    # Make sure the last time step is on the end
+    if time[-1]<t2:
+        time.append(t2)
 
     return np.asarray(time)
     
@@ -166,3 +174,33 @@ def monthlyVector(startyr,endyr,startmth,endmth):
                
     
     return time[0:-1],time[1:]
+
+def window_index_time(t,windowsize,overlap):
+    """
+    Determines the indices for window start and end points of a time vector
+    
+    The window does not need to be evenly spaced
+    
+    Inputs:
+        t - list or array of datetime objects
+        windowsize - length of the window [seconds]
+        overlap - number of overlap points [seconds]
+        
+    Returns: pt1,pt2 the start and end indices of each window
+    """
+    
+    tsec = othertime.SecondsSince(t)
+        
+    t1=tsec[0]
+    t2=t1 + windowsize
+    pt1=[0]
+    pt2=[np.searchsorted(tsec,t2)]
+    while t2 < tsec[-1]:
+        t1 = t2 - overlap
+        t2 = t1 + windowsize
+
+        pt1.append(np.searchsorted(tsec,t1))
+        pt2.append(np.searchsorted(tsec,t2))
+        
+    return pt1, pt2
+ 

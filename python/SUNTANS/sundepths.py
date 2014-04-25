@@ -93,6 +93,7 @@ class DepthDriver(object):
             self.grd.dv = np.zeros_like(self.grd.xv)
             for nn in range(self.grd.Nc):
                 self.grd.dv[nn] = np.max(dv[self.grd.cells[nn,0:self.grd.nfaces[nn] ] ])
+                #self.grd.dv[nn] = np.mean(dv[self.grd.cells[nn,0:self.grd.nfaces[nn] ] ])
                 
         else:
             self.grd.dv = dv

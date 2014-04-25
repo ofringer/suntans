@@ -46,13 +46,18 @@ import shapefile
 import pdb
 
 
-def extractIOOS(varlist,startt,endt,latlon):
+def extractIOOS(varlist,startt,endt,latlon,tformat='%Y%m',findtime=True):
     """ Main function for extracting data from the IOOS server"""
     # Get the station ID's to retrieve
     x,y,stationID,name = queryStations(latlon)
-    
+
     # Build up a list of monthly start and end dates
-    starttime,endtime=getStartEndDates(startt,endt)
+    if findtime:
+        starttime,endtime=getStartEndDates(startt,endt,tformat)
+    else:
+        starttime=[startt]
+        endtime=[endt]
+
     
     # Build up the output data as a list of dictionaries
     meta=[]
@@ -66,30 +71,28 @@ def extractIOOS(varlist,startt,endt,latlon):
             meta.append(attribs)
     
     # Main for loop for extracting data
-    k=-1
     data=[]
+    k=-1
     for vv in varlist:    
-        if k == 0:
-            break
         for ID in stationID: 
-                k=k+1
-                tmp = {vv:meta[k]}
-                ctr=0
-                for t1,t2 in zip(starttime,endtime):
-                    output,t,atts = getData(str(ID),t1,t2,vv)
-                    if ctr==0:                
-                        tmp[vv].update(atts)
-                    
-                    # Append the data to the list array
-                    tmp[vv]['Data'] += output
-                    # Append the time data
-                    ctr=-1
-                    for cc in tmp[vv]['coords']:
-                        ctr+=1
-                        if cc['Name']=='time':
-                            tmp[vv]['coords'][ctr]['Value'] += t 
-                if np.size(tmp[vv]['Data']) > 0:
-                    data.append(tmp)    
+            k+=1
+            tmp = {vv:meta[k]}
+            ctr=0
+            for t1,t2 in zip(starttime,endtime):
+                output,t,atts = getData(str(ID),t1,t2,vv)
+                if ctr==0:                
+                    tmp[vv].update(atts)
+                
+                # Append the data to the list array
+                tmp[vv]['Data'] += output
+                # Append the time data
+                ctr=-1
+                for cc in tmp[vv]['coords']:
+                    ctr+=1
+                    if cc['Name']=='time':
+                        tmp[vv]['coords'][ctr]['Value'] += t 
+            if np.size(tmp[vv]['Data']) > 0:
+                data.append(tmp)    
     
     return data
     
@@ -195,7 +198,7 @@ def getData(station_id,starttime,endtime,outvar):
         url = baseurl + "Wind"
         seqname='WIND_PX'
         varname = 'Wind_Direction'
-        attribs = {'long_name':'Wind direction','units':'m/s'}
+        attribs = {'long_name':'Wind direction','units':'degrees'}
         
         
     # Open the database
@@ -221,7 +224,7 @@ def getData(station_id,starttime,endtime,outvar):
                 (nc[seqname]._BEGIN_DATE ==starttime) & \
                 (nc[seqname]._END_DATE==endtime)] 
         
-        #print "Query ok - downloading data..."        
+        print "Query ok - downloading data..."        
         # Get the data
         #data = np.zeros((len(my_station['DATE_TIME']),1))
         #t = np.zeros((len(my_station['DATE_TIME']),1))
@@ -279,13 +282,13 @@ def queryStations(latlon):
             
     return x, y, stationID, name
     
-def getStartEndDates(startt,endt):
+def getStartEndDates(startt,endt,tformat):
     """
     Create a list of strings with the first day and last day of a month between two dates
     """
     # convert to datetime objects
-    t1 = datetime.strptime(startt,'%Y%m')
-    t2 = datetime.strptime(endt,'%Y%m')
+    t1 = datetime.strptime(startt,tformat)
+    t2 = datetime.strptime(endt,tformat)
         
     tnow = t1
     tnow2 = tnow
@@ -316,8 +319,6 @@ def parseDateOld(tstr):
     """
     # convert the string to a list so that it can be modified
     tlst = list(tstr)
-    
-    pdb.set_trace()
     
     day = tstr[4:6]
     hour = tstr[12:14]

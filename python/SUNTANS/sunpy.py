@@ -28,6 +28,9 @@ import matplotlib.animation as animation
 
 import pdb
 
+# Constants
+GRAV=9.81
+
 ###############################################################        
 # Dictionary with lookup table between object variable name and netcdf file
 # variable name
@@ -43,7 +46,7 @@ suntans_gridvars = {'xp':'xp',\
                     'edges':'edges',\
                     'neigh':'neigh',\
                     'grad':'grad',\
-                    'gradf':'gradf',\
+                    #'gradf':'gradf',\
                     'mark':'mark',\
                     'normal':'normal',\
                     'n1':'n1',\
@@ -64,6 +67,7 @@ suntans_dimvars = {'Np':'Np',\
                    'Ne':'Ne',\
                    'Nc':'Nc',\
                    'Nkmax':'Nk',\
+                   'Nk':'Nk',\
                    'maxfaces':'numsides'\
                    }
 
@@ -104,6 +108,7 @@ class Grid(object):
         #self.grad[self.grad.mask]=0
         #self.face[self.face.mask]=0
         self.xy = self.cellxy()
+
         
     
     def __loadascii(self):
@@ -131,7 +136,7 @@ class Grid(object):
                 self.cells = np.asarray(celldata[:,2:5],int)
                 self.neigh = np.asarray(celldata[:,5:8])
                 self.nfaces = 3*np.ones((self.Nc,),np.int)
-                self.maxFaces=self.MAXFACES
+                self.maxfaces=self.MAXFACES
             elif ncols==9: # New format
                 nfaces = celldata[:,0]
                 self.nfaces = np.zeros((self.Nc,),np.int)
@@ -141,7 +146,7 @@ class Grid(object):
                 self.cells = np.asarray(celldata[:,3:6],int)
                 self.neigh = np.asarray(celldata[:,6:9])
                 self.nfaces = 3*np.ones((self.Nc,),np.int)
-                self.maxFaces=self.MAXFACES
+                self.maxfaces=self.MAXFACES
 
             elif ncols==11: # Quad grid format
                 nfaces = celldata[:,0]
@@ -151,14 +156,14 @@ class Grid(object):
                 self.yv = celldata[:,2]
                 self.cells = np.asarray(celldata[:,3:7],int)
                 self.neigh = np.asarray(celldata[:,7:11])
-                self.maxFaces=4
+                self.maxfaces=4
         else: # Uneven number of cells
             celldata = celldata.tolist()
             nfaces = [ll[0] for ll in celldata]
             self.nfaces=np.array(nfaces,np.int)
-            self.maxFaces=self.nfaces.max()
-            self.cells = -999999*np.ones((self.Nc,self.maxFaces),int)
-            self.neigh = -999999*np.ones((self.Nc,self.maxFaces),int)
+            self.maxfaces=self.nfaces.max()
+            self.cells = -999999*np.ones((self.Nc,self.maxfaces),int)
+            self.neigh = -999999*np.ones((self.Nc,self.maxfaces),int)
             self.xv = np.zeros((self.Nc,))
             self.yv = np.zeros((self.Nc,))
             for ii in range(self.Nc):
@@ -250,6 +255,7 @@ class Grid(object):
             
         if self.__dict__.has_key('neigh'):
             self.neigh = np.ma.masked_array(self.neigh,mask=self.cellmask)
+        
              
     def reCalcGrid(self):
         """
@@ -348,9 +354,32 @@ class Grid(object):
         plt.hist(self.dg[ind],bins=100,log=False)
         textstr='Min = %3.1f m\nMean = %3.1f m\nMedian = %3.1f m\nMax = %3.1f m'%\
            (np.min(self.dg[ind]),np.mean(self.dg[ind]),np.median(self.dg[ind]),np.max(self.dg[ind]))
-        plt.text(0.7,0.8,textstr,transform=ax.transAxes)
+        textstr += '\nNc = %d\nNp = %d\nNe = %d\n'%(self.Nc,self.Np,self.Ne)
+        plt.text(0.7,0.6,textstr,transform=ax.transAxes)
         plt.xlabel('dg [m]')
         plt.ylabel('Edge Count')
+
+    def plotedgedata(self,z,xlims=None,ylims=None,**kwargs):
+        """
+          Plot the unstructured grid edge data
+        """
+
+        assert(z.shape[0] == self.Ne),\
+            ' length of z scalar vector not equal to number of edges, Ne.'
+        
+        # Find the colorbar limits if unspecified
+        if self.clim==None:
+            self.clim=[]
+            self.clim.append(np.min(z))
+            self.clim.append(np.max(z))
+        # Set the xy limits
+        if xlims==None or ylims==None:
+            xlims=self.xlims 
+            ylims=self.ylims
+        
+        xylines = [self.xp[self.edges],self.yp[self.edges]]
+        self.fig,self.ax,self.collection,self.cb=edgeplot(xylines,z,xlim=xlims,ylim=ylims,\
+            clim=self.clim,**kwargs)
             
     def cellxy(self):
         """ 
@@ -529,6 +558,19 @@ class Grid(object):
         """
         self.xe = np.mean(self.xp[self.edges],axis=1)
         self.ye = np.mean(self.yp[self.edges],axis=1)    
+
+    def get_facemark(self):
+        """
+        Finds the cells next to type-2 or type-3 boundaries
+        """
+        mask = self.face.mask
+        face = self.face.copy()
+        face[mask]=0
+        facemark = self.mark[face]
+        facemark[mask]=0
+        return np.min(np.max(facemark,axis=-1),3)
+
+
 
     def setDepth(self,vertspace):
         """
@@ -854,7 +896,7 @@ class Grid(object):
             print 'No dimension: Ne'
         nc.createDimension('Nk', self.Nkmax)
         nc.createDimension('Nkw', self.Nkmax+1)
-        nc.createDimension('numsides', self.maxFaces)
+        nc.createDimension('numsides', self.maxfaces)
         nc.createDimension('two', 2)
         nc.createDimension('time', 0) # Unlimited
         
@@ -868,7 +910,8 @@ class Grid(object):
         gridvars = ['suntans_mesh','cells','face','nfaces','edges','neigh','grad','xp','yp','xv','yv','xe','ye',\
             'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
         
-        self.Nk += 1
+        
+        self.Nk += 1 # Set to one-base in the file (reset to zero-base after)
         self.suntans_mesh=[0]  
         for vv in gridvars:
             if self.__dict__.has_key(vv):
@@ -881,6 +924,7 @@ class Grid(object):
                 write_nc_var(self['DEF'],vv,ugrid[vv]['dimensions'],ugrid[vv]['attributes'],dtype=ugrid[vv]['dtype'])
 
         nc.close()
+        self.Nk -= 1 # set back to zero base
 
     def create_nc_var(self,outfile, name, dimensions, attdict, dtype='f8',zlib=False,complevel=0,fill_value=999999.0):
         
@@ -977,7 +1021,7 @@ class Spatial(Grid):
             self.units = 's-1'
             return
         elif variable=='PEanom':
-            self.data = self.PEanom()
+            self.data = self.calc_PEanom()
         elif variable=='agemean':
         
             self.data = self.agemean()
@@ -989,27 +1033,39 @@ class Spatial(Grid):
                 return self.loadDataRaw(variable='dzz')
             else:
                 # Calculate dzz internally
-                eta = self.loadDataRaw(variable='eta')
+                eta = self.loadDataRaw(variable='eta',setunits=False)
                 return self.getdzz(eta)
 
         elif variable=='dzf':
-            eta = self.loadDataRaw(variable='eta')
+            eta = self.loadDataRaw(variable='eta',setunits=False)
             return self.getdzf(eta)
 
         elif variable=='ctop':
-            eta = self.loadDataRaw(variable='eta')
+            eta = self.loadDataRaw(variable='eta',setunits=False)
             return self.getctop(eta)
 
         elif variable=='etop':
-            eta = self.loadDataRaw(variable='eta')
+            eta = self.loadDataRaw(variable='eta',setunits=False)
             etop,etaedge = self.getetop(eta)
             return etop
+
+        elif variable=='buoyancy':
+            self.data = self.calc_buoyancy()
+            return self.data
+
+        elif variable=='KE':
+            self.data = self.calc_KE()
+            return self.data
+
+        elif variable=='PE':
+            self.data = self.calc_PE()
+            return self.data
 
         else:
             return self.loadDataRaw(variable=variable)
         
     
-    def loadDataRaw(self,variable=None):
+    def loadDataRaw(self,variable=None,setunits=True):
         """ 
             Load the specified suntans variable data as a vector
             
@@ -1017,19 +1073,29 @@ class Spatial(Grid):
         if variable==None:
             variable=self.variable
 	
+        # Get the indices of the horizontal dimension
         if self.hasDim(variable,self.griddims['Ne']) and self.j==None:
             j=range(self.Ne)
         elif self.hasDim(variable,self.griddims['Nc']) and self.j==None:
             j=range(self.Nc)
         else:
             j = self.j
+
+        # Get the indices of the vertical dimension
+        if self.klayer[0] in [-1,-99,'seabed','surface']:
+            klayer = np.arange(0,self.Nkmax)
+        else:
+            klayer = self.klayer
             
         nc = self.nc
-        try:
-            self.long_name = nc.variables[variable].long_name
-        except:
-            self.long_name = ''
-        self.units= nc.variables[variable].units
+        # Set the long_name and units attribute
+        if setunits:
+            try:
+                self.long_name = nc.variables[variable].long_name
+            except:
+                self.long_name = ''
+            self.units= nc.variables[variable].units
+
         #        ndims = len(nc.variables[variable].dimensions)
         ndim = nc.variables[variable].ndim
         if ndim==1:
@@ -1037,29 +1103,40 @@ class Spatial(Grid):
         elif ndim==2:
             #print self.j
             self.data=nc.variables[variable][self.tstep,j]
-        else:
-            if self.klayer[0]==-1: # grab the seabed values
-                klayer = np.arange(0,self.Nkmax)
-
-                #if type(self.tstep)==int:
-                if isinstance(self.tstep,(int,long)):
-                    data=nc.variables[variable][self.tstep,klayer,j]
-                    self.data = data[self.Nk[j],j]
-                else: # need to extract timestep by timestep for animations to save memory
-                    self.data=np.zeros((len(self.tstep),len(j)))
-                    i=-1
-                    for t in self.tstep:
-                        i+=1
-                        data=nc.variables[variable][t,klayer,j]
-                        self.data[i,:] = data[self.Nk[j],j]
-            elif self.klayer[0]==-99: # Grab all layers
-                klayer = np.arange(0,self.Nkmax) 
-                self.data=nc.variables[variable][self.tstep,klayer,j]
-                
-            
+        else: # 3D array
+            data=nc.variables[variable][self.tstep,klayer,j]
+            if self.klayer[0]==-99:
+                self.data=data
+            elif self.klayer[0]=='surface':
+                eta = self.loadDataRaw(variable='eta',setunits=False)
+                self.data = self.get_surfacevar(data.squeeze(),eta)
+            elif self.klayer[0] in [-1,'seabed']:
+                self.data = self.get_seabedvar(data.squeeze())
             else:
-                klayer = self.klayer
-                self.data=nc.variables[variable][self.tstep,klayer,j]
+                self.data=data
+
+            #if self.klayer[0]==-1: # grab the seabed values
+            #    klayer = np.arange(0,self.Nkmax)
+
+            #    #if type(self.tstep)==int:
+            #    if isinstance(self.tstep,(int,long)):
+            #        data=nc.variables[variable][self.tstep,klayer,j]
+            #        self.data = data[self.Nk[j],j]
+            #    else: # need to extract timestep by timestep for animations to save memory
+            #        self.data=np.zeros((len(self.tstep),len(j)))
+            #        i=-1
+            #        for t in self.tstep:
+            #            i+=1
+            #            data=nc.variables[variable][t,klayer,j]
+            #            self.data[i,:] = data[self.Nk[j],j]
+            #elif self.klayer[0]==-99: # Grab all layers
+            #    klayer = np.arange(0,self.Nkmax) 
+            #    self.data=nc.variables[variable][self.tstep,klayer,j]
+            #    
+            #
+            #else:
+            #    klayer = self.klayer
+            #    self.data=nc.variables[variable][self.tstep,klayer,j]
         
         # Mask the data
 #        try:
@@ -1124,6 +1201,7 @@ class Spatial(Grid):
          nc = self.nc
          t = nc.variables[self.gridvars['time']]
          self.time = num2date(t[:],t.units)
+         self.timeraw = t[:]
          
          self.Nt = self.time.shape[0]
 
@@ -1150,6 +1228,14 @@ class Spatial(Grid):
         if 'vc' in vname and 'uc' in vname:
             vname.append('speed')
             vname.append('vorticity')
+            vname.append('KE')
+        if 'rho' in vname:
+            vname.append('PE')
+            vname.append('buoyancy')
+        if 'agec' in vname:
+            vname.append('agemean')
+
+            #vname.append('PEanom')
         return vname
  
     
@@ -1355,7 +1441,7 @@ class Spatial(Grid):
             
         print 'SUNTANS image saved to file:%s'%outfile
     
-    def animate(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4,subsample=10,**kwargs):
+    def     animate(self,xlims=None,ylims=None,vector_overlay=False,scale=1e-4, subsample=10,cbar=None,**kwargs):
         """
         Animates a spatial plot over all time steps
         
@@ -1397,7 +1483,8 @@ class Spatial(Grid):
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
         title=ax.set_title("")
-        fig.colorbar(collection)
+        if cbar==None:
+            fig.colorbar(collection)
         
         qh=plt.quiver([],[],[],[])
         if vector_overlay:
@@ -1423,13 +1510,13 @@ class Spatial(Grid):
   
         self.anim = animation.FuncAnimation(fig, updateScalar, frames=len(self.tstep), interval=50, blit=True)
 
-    def saveanim(self,outfile):
+    def saveanim(self,outfile,fps=15):
         """
         Save the animation object to an mp4 movie
         """
         try:
             print 'Building animation sequence...'
-            self.anim.save(outfile, fps=15,bitrate=3600)
+            self.anim.save(outfile, fps=fps,bitrate=3600)
             print 'Complete - animation saved to: %s'%outfile
         except:
             print 'Error with animation generation - check if either ffmpeg or mencoder are installed.'
@@ -1528,12 +1615,12 @@ class Spatial(Grid):
         """
         tmpvar = self.variable
         
-        u=self.loadDataRaw(variable='uc')
+        u=self.loadDataRaw(variable='uc',setunits=False)
         
-        v=self.loadDataRaw(variable='vc')
+        v=self.loadDataRaw(variable='vc',setunits=False)
         
         try:
-            w=self.loadDataRaw(variable='w')
+            w=self.loadDataRaw(variable='w',setunits=False)
         except:
             w=u*0.0
                                
@@ -1563,7 +1650,10 @@ class Spatial(Grid):
         n1 = othertime.findNearest(t0,self.time)
         n2 = othertime.findNearest(t1,self.time)
         
-        return np.arange(n1,n2)
+        if n1==n2:
+            return np.array((n1,n1))
+        else:
+            return np.arange(n1,n2)
         
     def updateTstep(self):
         """
@@ -1612,7 +1702,16 @@ class Spatial(Grid):
         """
         Tests if a variable contains a dimension
         """
-        if varname in ['speed','vorticity']:
+        derivedvars  =[\
+                      'speed',\
+                      'vorticity',\
+                      'KE',\
+                      'PE',\
+                      'buoyancy',\
+                      'PEanom',\
+                      'agemean',\
+                      ]
+        if varname in derivedvars:
             dimensions = ['Nt','Nc','Nk']
         else:
             dimensions = self.nc.variables[varname].dimensions
@@ -1772,7 +1871,49 @@ class Spatial(Grid):
         # Returns the mean age in days
         return agemean*sec2day
 
-    def PEanom(self):
+    def calc_buoyancy(self):
+        """
+        Returns the buoyancy of the fluid
+        """
+
+        # density is stored as rho' / rho_0
+        rho=self.loadDataRaw(variable='rho')
+
+        self.long_name='buoyancy'
+        self.units='m s-2'
+        return -GRAV*rho
+
+    def calc_PE(self,b=None):
+        """
+        Calculate the potential energy of the fluid
+        """
+        if self.klayer[0]==-99:
+            z = -self.z_r
+        else:   
+            z = -self.z_r[self.klayer]
+
+        if b == None:
+            b = self.calc_buoyancy()
+
+        self.long_name = 'Potential energy'
+        self.units = 'm2 s-2'
+
+        return (b.swapaxes(0,1)*z).swapaxes(0,1)
+
+    def calc_KE(self,u=None,v=None):
+        """
+        Calculate the kinetic energy
+        """
+        if u==None:
+            u=self.loadDataRaw(variable='uc')
+        if v==None:
+            v=self.loadDataRaw(variable='vc')
+
+        self.long_name = 'Kinetic energy'
+        self.units = 'm2 s-2'
+        return 0.5*(u*u + v*v)
+
+    def calc_PEanom(self):
         """
         Calculate the potential energy anomaly as defined by Simpson et al., 1990
         """
@@ -1845,11 +1986,11 @@ class Spatial(Grid):
             h = self.dv
             
         if ndim == 2:
-            return self.depthint(data,dz) / h
+            return self.depthint(data,dz=dz) / h
         elif ndim == 3:
             nt = np.size(data,0)
             h = np.tile(h,(nt,1))
-            return self.depthint(data,dz) / h
+            return self.depthint(data,dz=dz) / h
                 
     def depthint(self,data,dz=None,cumulative=False):
         """
@@ -1965,29 +2106,34 @@ class Spatial(Grid):
         on the free surface height only
         """
 
-        ctop = self.getctop(eta)
-
-        # Find dzz of the top cell
-        dztop = self.dz[ctop]+eta
-
+        z = np.cumsum(self.dz)
         dzz = np.repeat(self.dz[:,np.newaxis],self.Nc,axis=1)
 
+        # Find dzz of the top cell
+        ctop = self.getctop(eta)
+        #dztop = self.dz[ctop]+eta
+        dztop = z[ctop]+eta
         dzz[ctop,range(self.Nc)]=dztop
 
+        # Find dzz at the bottom
+        dzbot = self.dv - z[self.Nk-1] 
+        dzz[self.Nk,range(self.Nc)]=dzbot
+
         # Mask the cells
+        Nk=self.Nk+1
         for ii in range(self.Nc):
             dzz[0:ctop[ii],ii]=0.0
-            dzz[self.Nk[ii]::,ii]=0.0
+            dzz[Nk[ii]::,ii]=0.0
 
         return dzz
 
-    def getdzf(self,eta):
+    def getdzf(self,eta,U=None,method='max'):
         """
         Calculate the edge-centred vertical grid spacing based
         on the free surface height only
         """
 
-        etop,etaedge = self.getetop(eta)
+        etop,etaedge = self.getetop(eta,U=U,method=method)
 
         # Find dzz of the top cell
         dztop = self.dz[etop]+etaedge
@@ -2014,18 +2160,35 @@ class Spatial(Grid):
         ctop[ctop>0] -= 1
         return ctop
 
-    def getetop(self,eta):
+    def getetop(self,eta,method='max',U=None):
         """
         Return the layer of the top edge
         """
-        eta_edge = self.get_edgevar(eta)
+        eta_edge = self.get_edgevar(eta,U=U,method=method)
         
         # Find the layer of the top cell
         etop = np.searchsorted(self.z_w,-eta_edge)
         etop[etop>0] -= 1
         return etop, eta_edge
 
+    def get_surfacevar(self,phi,eta):
+        """
+        Retrieves the surface layer of a 3d array [Nk,Nc]
+        """
+        assert phi.shape==(self.Nkmax,self.Nc),'size mismatch'
 
+        ctop = self.getctop(eta)
+        j = range(self.Nc)
+        return phi[ctop[j],j]
+
+    def get_seabedvar(self,phi):
+        """
+        Retrieves the seabed layer of a 3d array [Nk,Nc]
+        """
+        assert phi.shape==(self.Nkmax,self.Nc),'size mismatch'
+
+        j = range(self.Nc)
+        return phi[self.Nk[j],j]
 
     def get_edgevar(self,phi,k=0,U=None,method='max'):
         """
@@ -2046,13 +2209,16 @@ class Spatial(Grid):
         nc1[ind1]=nc2[ind1]
         ind2 = nc2==-1
         nc2[ind2]=nc1[ind2]
+
         
         # check depths (walls)
-        indk = operator.or_(k>=self.Nk[nc1], k>=self.Nk[nc2])
+        #indk = operator.or_(k>=self.Nk[nc1], k>=self.Nk[nc2])
+        indk = operator.or_(k>self.Nk[nc1], k>self.Nk[nc2]) # Nk is zero-based
         ind3 = operator.and_(indk, self.Nk[nc2]>self.Nk[nc1])
         nc1[ind3]=nc2[ind3]
         ind4 = operator.and_(indk, self.Nk[nc1]>self.Nk[nc2])
         nc2[ind4]=nc1[ind4]
+
         
         if method=='max':
             tmp = np.zeros((self.Ne,2),dtype=phi.dtype)
@@ -2070,6 +2236,14 @@ class Spatial(Grid):
             # Average the values at the face          
             return 0.5*(phi[nc1]+phi[nc2]) 
 
+        elif method=='upwind':
+            if U==None:
+                raise Exception, 'U must be set to use upwind method'
+
+            ind = U>0
+            nc1[ind]=nc2[ind]
+            return phi[nc1]
+
         else:
             raise Exception, 'Method: %s not implemented.'%method
 
@@ -2081,12 +2255,15 @@ class Spatial(Grid):
             else:
                 tt = self.tstep[0]
             
-        if self.klayer[0]>=0:
-            zlayer = '%3.1f [m]'%self.z_r[self.klayer[0]]
-        elif self.klayer[0]==-1:
+        if self.klayer[0] in [-1,'seabed']:
             zlayer = 'seabed'
+        elif self.klayer[0] =='surface':
+            zlayer = 'surface'
         elif self.klayer[0]==-99:
             zlayer = 'depth-averaged'
+        elif self.klayer[0]>=0:
+            zlayer = '%3.1f [m]'%self.z_r[self.klayer[0]]
+
             
         titlestr='%s [%s]\n z: %s, Time: %s'%(self.long_name,self.units,zlayer,\
                 datetime.strftime(self.time[tt],'%d-%b-%Y %H:%M:%S'))
@@ -2663,11 +2840,12 @@ def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
         clim.append(np.max(z))
     
     collection = PolyCollection(xy,**kwargs)
-    collection.set_array(np.array(z))
-    collection.set_array(np.array(z))
+    #collection.set_array(np.array(z))
+    collection.set_array(z)
     collection.set_clim(vmin=clim[0],vmax=clim[1])
     #collection.set_linewidth(0)
-    collection.set_edgecolors(collection.to_rgba(np.array(z)))    
+    #collection.set_edgecolors(collection.to_rgba(np.array(z)))    
+    collection.set_edgecolors(collection.to_rgba(z))    
     
     ax.add_collection(collection)
 

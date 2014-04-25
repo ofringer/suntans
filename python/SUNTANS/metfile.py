@@ -56,14 +56,15 @@ class SunMet(metfile):
     Assumes all variables are on the same grid
     """
     
-    def __init__(self,x,y,z,timeinfo,**kwargs):
+    def __init__(self,x,y,z,timeinfo,tformat='%Y%m%d.%H%M%S',**kwargs):
         
         metfile.__init__(self,mode='create')
         
         self.x = x
         self.y = y
         self.z = z        
-        self.time = otime.TimeVector(timeinfo[0],timeinfo[1],timeinfo[2])
+        self.time =\
+            otime.TimeVector(timeinfo[0],timeinfo[1],timeinfo[2],timeformat=tformat)
         self.nctime = otime.SecondsSince(self.time)
         
         self.varnames = ['Uwind','Vwind','Tair','Pair','RH','rain','cloud']

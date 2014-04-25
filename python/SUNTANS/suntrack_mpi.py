@@ -38,7 +38,7 @@ def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z,agepoly=None,method='neares
         timeinfos.append( (timestart,timeend,dt) )
     
     # Initialise the particle tracking object    
-    #print 'Initialising the particle tracking object on processor: %d...'%(comm.rank)
+    print 'Initialising the particle tracking object on processor: %d...'%(comm.rank)
     sun = SunTrack(ncfile,interp_method='mesh',interp_meshmethod=method)
     
     # Initialise the age values
