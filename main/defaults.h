@@ -183,6 +183,9 @@ const int readinitialnc_DEFAULT = 0;
 // Calculate Age variables
 const int calcage_DEFAULT = 0;
 
+// Age calculation method: 1 use river boundaries, 2 - internal source
+const int agemethod_DEFAULT = 1;
+
 // Calculate average quantities
 const int calcaverage_DEFAULT = 0;
 

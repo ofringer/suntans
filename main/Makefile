@@ -22,8 +22,8 @@ else
   MPIFILE = no-mpi.c
   MPIDEF = -DNOMPI
 endif
-OPTFLAGS = -O2
-#OPTFLAGS = -O2 -mavx -xHost -ipo -static 
+#OPTFLAGS = -O2
+OPTFLAGS = -O2 -mavx -xHost -ipo -static 
 #OPTFLAGS = -O0 -g
 
 XLDFLAGS=-lX11 -lm
