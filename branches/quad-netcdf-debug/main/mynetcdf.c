@@ -969,12 +969,14 @@ static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, 
     if ((retval = nc_def_var(ncid,"n1",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","x-component of the edge normal");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
 
     //n2
     dimidone[0] = dimid_Ne;
     if ((retval = nc_def_var(ncid,"n2",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","y-component of the edge normal");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
 
 
        //df
@@ -983,6 +985,7 @@ static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, 
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","edge length");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->df)))
     //  ERR(retval);
 
@@ -992,6 +995,7 @@ static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, 
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","distance between faces on either side of edge");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->dg)))
     //  ERR(retval);
 
@@ -1001,6 +1005,7 @@ static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, 
     if ((retval = nc_def_var(ncid,"def",NC_DOUBLE,2,dimidtwo,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Distance between faces and edges");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     nc_addattr(ncid, varid,"units","m");
     
     //mark
@@ -1256,7 +1261,28 @@ static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, 
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
     nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
-   }
+
+
+    /*
+    //Age source term
+    dimidtwo[0] = dimid_Nk;
+    dimidtwo[1] = dimid_Nc;
+    if ((retval = nc_def_var(ncid,"agesource",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval);
+    if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+    if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Age source term (>0 =source");
+    nc_addattr(ncid, varid,"units","");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","z_r yv xv");
+    // Set back to time for the other variables
+    dimidtwo[0] = dimid_time;
+    */
+
+  }
 
    //U
    dimidthree[2] = dimid_Ne;
@@ -1734,6 +1760,7 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     if ((retval = nc_def_var(ncid,"n1",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","x-component of the edge normal");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->n1)))
     //  ERR(retval);
 
@@ -1742,6 +1769,7 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     if ((retval = nc_def_var(ncid,"n2",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","y-component of the edge normal");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->n2)))
     //  ERR(retval);
 
@@ -1751,6 +1779,7 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","edge length");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->df)))
     //  ERR(retval);
 
@@ -1760,6 +1789,7 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","distance between faces on either side of edge");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->dg)))
     //  ERR(retval);
 
@@ -1770,6 +1800,7 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Distance between faces and edges");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->def)))
     //  ERR(retval);
 
@@ -2042,6 +2073,25 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
     nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+
+    /*
+    //Age source term
+    dimidtwo[0] = dimid_Nk;
+    dimidtwo[1] = dimid_Nc;
+    if ((retval = nc_def_var(ncid,"agesource",NC_DOUBLE,2,dimidtwo,&varid)))
+      ERR(retval);
+    if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+    if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Age source term (>0 =source");
+    nc_addattr(ncid, varid,"units","");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","z_r yv xv");
+    // Set back to time for the other variables
+    dimidtwo[0] = dimid_time;
+    */
    }
 
    //U
@@ -2487,12 +2537,14 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
     if ((retval = nc_def_var(ncid,"n1",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","x-component of the edge normal");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
 
     //n2
     dimidone[0] = dimid_Ne;
     if ((retval = nc_def_var(ncid,"n2",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","y-component of the edge normal");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
 
 
     //df
@@ -2501,6 +2553,7 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","edge length");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->df)))
     //  ERR(retval);
 
@@ -2510,6 +2563,7 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","distance between faces on either side of edge");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->dg)))
     //  ERR(retval);
 
@@ -2520,6 +2574,7 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Distance between faces and edges");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
 
     //mark
     dimidone[0] = dimid_Ne;
@@ -2717,6 +2772,20 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
    nc_addattr(ncid, varid,"location","face");
    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
    
+   //kappa_tv
+   if ((retval = nc_def_var(ncid,"kappa_tv",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval); 
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged vertical tracer diffusivity");
+   nc_addattr(ncid, varid,"units","m2 s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","face");
+   nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+   
+ 
    //salinity
    if(prop->beta>0){
      if ((retval = nc_def_var(ncid,"salt",NC_DOUBLE,3,dimidthree,&varid)))
@@ -2784,19 +2853,32 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
    
    //age
    if(prop->calcage>0){
-     if ((retval = nc_def_var(ncid,"agemean",NC_DOUBLE,3,dimidthree,&varid)))
+     if ((retval = nc_def_var(ncid,"agec",NC_DOUBLE,3,dimidthree,&varid)))
       ERR(retval);
      if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
       ERR(retval);
      if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
       ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Time-averaged mean age");
-    nc_addattr(ncid, varid,"units","seconds");
+    nc_addattr(ncid, varid,"long_name","Age concentration");
+    nc_addattr(ncid, varid,"units","");
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
     nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
     
+    if ((retval = nc_def_var(ncid,"agealpha",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval);
+    if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+    if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Age alpha parameter");
+    nc_addattr(ncid, varid,"units","seconds");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+
    }
+
 
    //U_F
    dimidthree[2] = dimid_Ne;
@@ -2970,8 +3052,8 @@ void InitialiseAverageNCugridMerge(propT *prop, gridT *grid, averageT *average, 
     if(prop->beta > 0.0){
 	if ((retval = nc_def_var(ncid,"EP",NC_DOUBLE,2,dimidtwo,&varid)))
 	    ERR(retval); 
-	nc_addattr(ncid, varid,"long_name","Time-averaged Evaporation minus precipiaton");
-	nc_addattr(ncid, varid,"units","m s-1");
+	nc_addattr(ncid, varid,"long_name","Time-averaged surface salt flux (S0*EP)");
+	nc_addattr(ncid, varid,"units","psu m s-1");
 	nc_addattr(ncid, varid,"mesh","suntans_mesh");
 	nc_addattr(ncid, varid,"location","face");
 	nc_addattr(ncid, varid,"coordinates","time yv xv");   
@@ -3275,6 +3357,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
     if ((retval = nc_def_var(ncid,"n1",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","x-component of the edge normal");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->n1)))
     //  ERR(retval);
 
@@ -3283,6 +3366,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
     if ((retval = nc_def_var(ncid,"n2",NC_DOUBLE,1,dimidone,&varid)))
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","y-component of the edge normal");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->n2)))
     //  ERR(retval);
 
@@ -3292,6 +3376,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","edge length");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->df)))
     //  ERR(retval);
 
@@ -3301,6 +3386,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","distance between faces on either side of edge");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->dg)))
     //  ERR(retval);
 
@@ -3311,6 +3397,7 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
       ERR(retval);
     nc_addattr(ncid, varid,"long_name","Distance between faces and edges");
     nc_addattr(ncid, varid,"units","m");
+    nc_addattr(ncid, varid,"coordinates","xe ye");
     //if ((retval = nc_put_var_double(ncid,varid, grid->def)))
     //  ERR(retval);
 
@@ -3493,6 +3580,19 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
    nc_addattr(ncid, varid,"location","face");
    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
    
+   //kappa_tv
+   if ((retval = nc_def_var(ncid,"kappa_tv",NC_DOUBLE,3,dimidthree,&varid)))
+     ERR(retval); 
+   if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+   if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+   nc_addattr(ncid, varid,"long_name","Time-averaged vertical tracer diffusivity");
+   nc_addattr(ncid, varid,"units","m2 s-1");
+   nc_addattr(ncid, varid,"mesh","suntans_mesh");
+   nc_addattr(ncid, varid,"location","face");
+   nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+
    //salinity
    if(prop->beta>0){
      if ((retval = nc_def_var(ncid,"salt",NC_DOUBLE,3,dimidthree,&varid)))
@@ -3560,20 +3660,31 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
    
    //age
    if(prop->calcage>0){
-     if ((retval = nc_def_var(ncid,"agemean",NC_DOUBLE,3,dimidthree,&varid)))
+     if ((retval = nc_def_var(ncid,"agec",NC_DOUBLE,3,dimidthree,&varid)))
       ERR(retval);
      if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
       ERR(retval);
      if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
       ERR(retval);
-    nc_addattr(ncid, varid,"long_name","Time-averaged mean age");
-    nc_addattr(ncid, varid,"units","seconds");
+    nc_addattr(ncid, varid,"long_name","Age concentration");
+    nc_addattr(ncid, varid,"units","");
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
     nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
     
-   }
+    if ((retval = nc_def_var(ncid,"agealpha",NC_DOUBLE,3,dimidthree,&varid)))
+      ERR(retval);
+    if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+      ERR(retval);
+    if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+      ERR(retval);
+    nc_addattr(ncid, varid,"long_name","Age alpha parameter");
+    nc_addattr(ncid, varid,"units","seconds");
+    nc_addattr(ncid, varid,"mesh","suntans_mesh");
+    nc_addattr(ncid, varid,"location","face");
+    nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
 
+   }
    //U_F
    dimidthree[2] = dimid_Ne;
    if ((retval = nc_def_var(ncid,"U_F",NC_DOUBLE,3,dimidthree,&varid)))
@@ -3746,8 +3857,8 @@ void InitialiseAverageNCugrid(propT *prop, gridT *grid, averageT *average, int m
     if(prop->beta > 0.0){
 	if ((retval = nc_def_var(ncid,"EP",NC_DOUBLE,2,dimidtwo,&varid)))
 	    ERR(retval); 
-	nc_addattr(ncid, varid,"long_name","Time-averaged Evaporation minus precipiaton");
-	nc_addattr(ncid, varid,"units","m s-1");
+	nc_addattr(ncid, varid,"long_name","Time-averaged surface salt flux (S0*EP)");
+	nc_addattr(ncid, varid,"units","psu m s-1");
 	nc_addattr(ncid, varid,"mesh","suntans_mesh");
 	nc_addattr(ncid, varid,"location","face");
 	nc_addattr(ncid, varid,"coordinates","time yv xv");   
@@ -3919,6 +4030,7 @@ void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phy
     nc_write_3D_merge(ncid,prop->avgtimectr,  average->uc, prop, grid, "uc",0, numprocs, myproc, comm);
     nc_write_3D_merge(ncid,prop->avgtimectr,  average->vc, prop, grid, "vc",0, numprocs, myproc, comm);
     nc_write_3D_merge(ncid,prop->avgtimectr,  average->nu_v, prop, grid, "nu_v",0, numprocs, myproc, comm);
+    nc_write_3D_merge(ncid,prop->avgtimectr,  average->kappa_tv, prop, grid, "kappa_tv",0, numprocs, myproc, comm);
 
 
     if(prop->beta>0)
@@ -3931,7 +4043,8 @@ void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phy
 	nc_write_3D_merge(ncid,prop->avgtimectr,  average->rho, prop, grid, "rho",0, numprocs, myproc, comm);
 
     if(prop->calcage){
-	nc_write_3D_merge(ncid,prop->avgtimectr,  average->agemean, prop, grid, "agemean",0, numprocs, myproc, comm);
+	nc_write_3D_merge(ncid,prop->avgtimectr,  average->agec, prop, grid, "agec",0, numprocs, myproc, comm);
+	nc_write_3D_merge(ncid,prop->avgtimectr,  average->agec, prop, grid, "agealpha",0, numprocs, myproc, comm);
     }
   
     // Vertical velocity 
@@ -3945,8 +4058,9 @@ void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phy
 	nc_write_3Dedge_merge(ncid,prop->avgtimectr,  average->T_F, prop, grid, "T_F", 0, numprocs, myproc, comm);
      
     // Zero the arrays after they have been written(don't do it for the initial step)
-    if(prop->avgctr>1)
-	ZeroAverageVariables(grid,average,prop);
+    //if(prop->avgctr>1)
+    // Always do this!!
+    ZeroAverageVariables(grid,average,prop);
 
     /* Update the time counter*/
     prop->avgtimectr += 1;  
@@ -4046,6 +4160,12 @@ void WriteAverageNC(propT *prop, gridT *grid, averageT *average, physT *phys, me
     ravel(average->nu_v, average->tmpvar, grid);
     if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, average->tmpvar )))
 	ERR(retval);
+
+    if ((retval = nc_inq_varid(ncid, "kappa_tv", &varid)))
+	ERR(retval);
+    ravel(average->kappa_tv, average->tmpvar, grid);
+    if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, average->tmpvar )))
+	ERR(retval);
     
     // Tracers
      if(prop->beta>0){
@@ -4083,9 +4203,15 @@ void WriteAverageNC(propT *prop, gridT *grid, averageT *average, physT *phys, me
      }
 
      if(prop->calcage>0){ 
-	if ((retval = nc_inq_varid(ncid, "agemean", &varid)))
+	if ((retval = nc_inq_varid(ncid, "agec", &varid)))
 	  ERR(retval);
-	ravel(average->agemean, average->tmpvar, grid);
+	ravel(average->agec, average->tmpvar, grid);
+	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, average->tmpvar )))
+	  ERR(retval);
+
+	if ((retval = nc_inq_varid(ncid, "agealpha", &varid)))
+	  ERR(retval);
+	ravel(average->agealpha, average->tmpvar, grid);
 	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, average->tmpvar )))
 	  ERR(retval);
 
@@ -4974,6 +5100,20 @@ void ReturnAgeNC(propT *prop, gridT *grid, REAL *htmp, int Nci, int Nki, int T0,
       //for(k=0;k<grid->Nk[i];k++) {
 	 ind = k*Nci + grid->mnptr[i]; 
 	 age->agealpha[i][k]=htmp[ind];
+      }
+  }
+
+   if(VERBOSE>1 && myproc==0) printf("Reading agesource term from netcdf file...\n");
+    if ((retval = nc_inq_varid(ncid, "agesource", &varid)))
+	ERR(retval);
+    if ((retval = nc_get_var_double(ncid, varid, &htmp[0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      //for(k=0;k<grid->Nk[i];k++) {
+	 ind = k*Nci + grid->mnptr[i]; 
+	 age->agesource[i][k]=htmp[ind];
       }
   }
 

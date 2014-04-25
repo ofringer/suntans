@@ -3396,6 +3396,7 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
       }
       (*grid)->dg[n] = 2 * sqrt(dx*dx + dy*dy);
     }
+
   }
   
   // elm version

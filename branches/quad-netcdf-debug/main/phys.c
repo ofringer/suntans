@@ -1336,6 +1336,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     // Compute average
     if(prop->calcaverage){
 	UpdateAverageVariables(grid,average,phys,met,prop,comm,myproc);	
+ 	UpdateAverageScalars(grid,average,phys,met,prop,comm,myproc);	
     }
 
     // Check whether or not run is blowing up
@@ -4160,6 +4161,7 @@ void ReadProperties(propT **prop, gridT *grid, int myproc)
   }
   
   (*prop)->calcage = MPI_GetValue(DATAFILE,"calcage","ReadProperties",myproc);
+  (*prop)->agemethod = MPI_GetValue(DATAFILE,"agemethod","ReadProperties",myproc);
   (*prop)->calcaverage = MPI_GetValue(DATAFILE,"calcaverage","ReadProperties",myproc);
   if ((*prop)->calcaverage)
       (*prop)->ntaverage = (int)MPI_GetValue(DATAFILE,"ntaverage","ReadProperties",myproc);

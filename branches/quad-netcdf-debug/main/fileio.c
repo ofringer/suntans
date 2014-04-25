@@ -425,6 +425,10 @@ double GetDefaultValue(char *str, int *status) {
     
    return calcage_DEFAULT;   
 
+} else if(!strcmp(str,"agemethod")) {
+    
+   return agemethod_DEFAULT;   
+
 } else if(!strcmp(str,"calcaverage")) {
     
    return calcaverage_DEFAULT;   
