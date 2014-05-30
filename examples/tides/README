@@ -1,31 +1,62 @@
 How to run this example.  For details please see the user guide.
+
+Upon downloading, the tidal component data already exists in the
+rundata directory in the file rundata/tidecomponents.dat.0.  Therefore,
+the steps below outline how to run the example for two cases:
+A) Directly from the repository.
+B) If new tidal data is created (if, for example, the grid or number of 
+processors is changed).
 ----------------------------------------------------------------
+A) DIRECTLY FROM THE REPOSITORY
+
 1) Edit ../../Makefile.in
 
 2) Make sure the paths in the first three lines of setup_tides.m are correct.
 Also make sure the suntides data is uncompressed by entering the suntides
 directory and typing "make".
 
-3) Run suntans and create the tidexy.dat files. 
+3) Run suntans
 
 make test
 
-Error will result, complaining of lack of tidecomponent.dat.* files.
-tidexy.dat.* files are created instead, these contain locations needed by tides.m
-to create tidecomponent.dat.* files.
+4) Compare the output to OTIS with compare_to_otis.m
 
-4) Run tides.m in matlab, i.e.
+----------------------------------------------------------------
+B) IF NEW TIDAL DATA IS NEEDED
+
+1) Edit ../../Makefile.in
+
+2) Make sure the paths in the first three lines of setup_tides.m are correct.
+Also make sure the suntides data is uncompressed by entering the suntides
+directory and typing "make".
+
+3) Remove tidecomponents.dat.* files in rundata (or copy them to another 
+location)
+
+4) Run suntans and create the tidexy.dat files. 
+
+make test
+
+An error will result, complaining of lack of tidecomponent.dat.* files.
+tidexy.dat.* files are created instead, these contain locations needed by tides.m to create tidecomponent.dat.* files.  Note that no error will result
+if the correct tidecomponents.dat.* file(s) exist in rundata/, or if the
+tidecomponents.dat.* files are not removed as in step 3.
+
+5) To create the tidecomponents.dat.* files, run tides.m in matlab, i.e.
 
 matlab < tides.m
 
-If matlab is installed locally then you can type "make tides"
+If matlab is installed locally on unix then you can type "make tides"
 
-5) Run the example again with
+6) Run the example again with
 
 make test
 
-6) Compare the output to OTIS with compare_to_otis.m
+This will use the new tidecomponents.dat.* files.
 
+7) Compare the output to OTIS with compare_to_otis.m
+
+------------------------------------------------------------------------
 Note that the edges-3.dat file in rundata/ contains edges of type 3.  This
 can be used to test tidal boundaries of type 3.
 
