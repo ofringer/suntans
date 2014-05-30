@@ -15,7 +15,7 @@ function value = getvalue(fname,str)
       if(line(1)~='#')
         strs=strread(line,'%s');
         if(strcmp(strs{1},str))
-          value = strs{2};
+          value = str2num(strs{2});
           break;
         end
       end
