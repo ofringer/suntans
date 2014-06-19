@@ -527,6 +527,12 @@ class Grid(object):
         dy=y1-y2
         
         self.dg = np.sqrt( dx*dx + dy*dy )
+
+    def count_cells(self):
+        """
+        Count the total number of 3-D cells
+        """
+        return np.sum(self.Nk+1)
         
     def calc_tangent(self):
         """
@@ -701,7 +707,7 @@ class Grid(object):
             cellind = np.arange(self.Nc,dtype=np.int)
             
         node_scalar = self.cell2nodekind(cell_scalar,cellind,k=k)
-        self.nc.variables[varname].dimensions
+        #self.nc.variables[varname].dimensions
         xA = self.xp[self.cells[cellind,0]]
         yA = self.yp[self.cells[cellind,0]]
         xB = self.xp[self.cells[cellind,1]]
@@ -1307,7 +1313,8 @@ class Spatial(Grid):
             plt.title(titlestr)
  
     def contourf(self, clevs=20,z=None,xlims=None,ylims=None,filled=True,\
-        k=0,cellind=None,vector_overlay=False,scale=1e-4,subsample=10,titlestr=None,**kwargs):
+            k=0,cellind=None,vector_overlay=False,colorbar=True,\
+            scale=1e-4,subsample=10,titlestr=None,**kwargs):
         """
         Filled contour plot of  unstructured grid data
         """
@@ -1358,7 +1365,7 @@ class Spatial(Grid):
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
         
-        if filled:
+        if filled and colorbar:
             self.cb = fig.colorbar(camp)
         
         if titlestr==None:
@@ -1369,6 +1376,8 @@ class Spatial(Grid):
         if vector_overlay:
              u,v,w = self.getVector()
              plt.quiver(self.xv[1::subsample],self.yv[1::subsample],u[1::subsample],v[1::subsample],scale=scale,scale_units='xy')
+
+        return camp
              
             
     def plotvtk(self,vector_overlay=False,scale=1e-3,subsample=1,**kwargs):
@@ -1651,9 +1660,9 @@ class Spatial(Grid):
         n2 = othertime.findNearest(t1,self.time)
         
         if n1==n2:
-            return np.array((n1,n1))
+            return [n1,n2]
         else:
-            return np.arange(n1,n2)
+            return range(n1,n2)
         
     def updateTstep(self):
         """
@@ -2264,9 +2273,13 @@ class Spatial(Grid):
         elif self.klayer[0]>=0:
             zlayer = '%3.1f [m]'%self.z_r[self.klayer[0]]
 
-            
-        titlestr='%s [%s]\n z: %s, Time: %s'%(self.long_name,self.units,zlayer,\
-                datetime.strftime(self.time[tt],'%d-%b-%Y %H:%M:%S'))
+        if self.__dict__.has_key('time'):
+            tstr = datetime.strftime(self.time[tt],\
+                '%Y-%m-%d %H:%M:%S')
+            tstr = 'Time: %s'%tstr
+        else:
+            tstr = ''
+        titlestr='%s [%s]\n z: %s, %s'%(self.long_name,self.units,zlayer,tstr )
                 
         return titlestr
 
@@ -2815,7 +2828,7 @@ def unsurfm(points, cells, z,clim=None,title=None,**kwargs):
     
     return f, h, ug, d, title
     
-def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
+def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,colorbar=True,**kwargs):
     """
     Plot cell-centred data on an unstructured grid as a series of patches
         
@@ -2853,7 +2866,10 @@ def unsurf(xy,z,xlim=[0,1],ylim=[0,1],clim=None,**kwargs):
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
 
-    axcb = fig.colorbar(collection)
+    if colorbar:
+        axcb = fig.colorbar(collection)
+    else:
+        axcb = None
     
     return fig, ax, collection, axcb
 

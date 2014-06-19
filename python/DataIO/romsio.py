@@ -135,14 +135,16 @@ class roms_grid(object):
         write_nc_var(self.pn, 'pn', ('eta_rho', 'xi_rho'), 'degrees')
         
         # Vertical coordinate variables
-        write_nc_var(self.s_rho, 's_rho', ('s_rho'))
-        write_nc_var(self.s_w, 's_w', ('s_w'))
-        write_nc_var(self.Cs_r, 'Cs_r', ('s_rho'))
-        write_nc_var(self.Cs_w, 'Cs_w', ('s_w'))
+        write_nc_var(self.s_rho, 's_rho', ('s_rho',))
+        write_nc_var(self.s_w, 's_w', ('s_w',))
+        write_nc_var(self.Cs_r, 'Cs_r', ('s_rho',))
+        write_nc_var(self.Cs_w, 'Cs_w', ('s_w',))
 
         write_nc_var(self.hc, 'hc', ())
         write_nc_var(self.Vstretching, 'Vstretching', ())
         write_nc_var(self.Vtransform, 'Vtransform', ())
+
+        nc.sync()
 
         
     def nc_add_dimension(self,outfile,name,length):
@@ -166,7 +168,8 @@ class roms_grid(object):
         if long_name is not None:
             nc.variables[name].long_name = long_name
         
-        nc.variables[name][:] = data
+        nc.variables[name][:] = data.copy()
+        nc.sync()
             
         nc.close()
         
@@ -260,6 +263,7 @@ class ROMS(roms_grid):
         # Check the spatial indices of the variable
         self._loadVarCoords()
         
+        self.listCoordVars()
         self._checkCoords(self.varname)
         
         # Check the vertical coordinates                
@@ -273,9 +277,13 @@ class ROMS(roms_grid):
         List all of the variables that have the 'coordinate' attribute
         """
         
+        self.coordvars=[]
         for vv in self.nc.variables.keys():
             if hasattr(self.nc.variables[vv],'coordinates'):
-                print '%s - %s'%(vv,self.nc.variables[vv].long_name)
+                #print '%s - %s'%(vv,self.nc.variables[vv].long_name)
+                self.coordvars.append(vv)
+
+        return self.coordvars
             
     def loadData(self,varname=None,tstep=None):
         """
@@ -311,7 +319,9 @@ class ROMS(roms_grid):
             
             for ii,tt in enumerate(tstep):
                 #Z = self.calcDepth(zeta=self.loadData(varname='zeta',tstep=[tt]))
-                Z = self.calcDepth()
+                Z = self.calcDepth()[:,self.JRANGE[0]:self.JRANGE[1],\
+                    self.IRANGE[0]:self.IRANGE[1]].squeeze()
+
                 if len(Z.shape) > 1:
                     dataz[ii,:,:] = isoslice(data[ii,:,:,:].squeeze(),Z,self.Z)
                 else:
@@ -321,9 +331,10 @@ class ROMS(roms_grid):
                 
             data = dataz
         
-        self._checkCoords(self.varname)            
+        #self._checkCoords(self.varname)            
         # Reduce rank
-        return data.squeeze()
+        self.data = data.squeeze()
+        return self.data
         
     def loadTimeSeries(self,x,y,z=None,varname=None,trange=None):
         """
@@ -474,19 +485,7 @@ class ROMS(roms_grid):
         if not sz[0] == self.Nz:
             raise Exception, 'length of dimension 0 must equal %d (currently %d)'%(self.Nz,sz[0])
         
-#        if not len(sz)==3:
-#            raise Exception, 'only 3-D arrays are supported.'
-          
-#        if grid == 'rho':
-#            h = self.h
-#        elif grid == 'psi':
-#            h = 0.5 (self.h[1:,1:] + self.h[0:-1,0:-1])
-#        elif grid == 'u':
-#            h = 0.5 (self.h[:,1:] + self.h[:,0:-1])
-#        elif grid == 'v':
-#            h = 0.5 (self.h[1:,:] + self.h[0:-1,:])
-
-        
+       
         h = self.h[self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]].squeeze()            
         z_r = get_depth(self.s_rho,self.Cs_r,self.hc,h,Vtransform=self.Vtransform).squeeze()
                 
@@ -546,10 +545,13 @@ class ROMS(roms_grid):
             h = self.h
         elif grid == 'psi':
             h = 0.5 * (self.h[1:,1:] + self.h[0:-1,0:-1])
+            mld =0.5 * (mld[1:,1:] + mld[0:-1,0:-1]) 
         elif grid == 'u':
             h = 0.5 * (self.h[:,1:] + self.h[:,0:-1])
+            mld = 0.5 * (mld[:,1:] + mld[:,0:-1])
         elif grid == 'v':
             h = 0.5 * (self.h[1:,:] + self.h[0:-1,:])
+            mld = 0.5 * (mld[1:,:] + mld[0:-1,:])
             
         z = get_depth(self.s_rho,self.Cs_r,self.hc,h,Vtransform=self.Vtransform).squeeze()
         
@@ -564,7 +566,7 @@ class ROMS(roms_grid):
         
         
 
-    def pcolor(self,data=None,titlestr=None,**kwargs):
+    def pcolor(self,data=None,titlestr=None,colorbar=True,ax=None,fig=None,**kwargs):
         """
         Pcolor plot of the data in variable
         """
@@ -577,13 +579,16 @@ class ROMS(roms_grid):
         else:
             clim=self.clim
             
-        fig = plt.gcf()
-        ax = fig.gca()
+        if fig==None:
+            fig = plt.gcf()
+        if ax==None:
+            ax = fig.gca()
         
-        p1 = plt.pcolor(self.X,self.Y,data,vmin=clim[0],vmax=clim[1],**kwargs)
+        p1 = ax.pcolormesh(self.X,self.Y,data,vmin=clim[0],vmax=clim[1],**kwargs)
         
         ax.set_aspect('equal')
-        plt.colorbar(p1)
+        if colorbar:
+            plt.colorbar(p1)
         
         if titlestr==None:
             plt.title(self._genTitle(self.tstep[0]))
@@ -592,7 +597,7 @@ class ROMS(roms_grid):
         
         return p1
     
-    def contourf(self, data=None, clevs=20, titlestr=None,**kwargs):
+    def contourf(self, data=None, clevs=20, titlestr=None,colorbar=True,**kwargs):
         """
         contour plot of the data in variable
         """
@@ -611,7 +616,8 @@ class ROMS(roms_grid):
         p1 = plt.contourf(self.X,self.Y,data,clevs,vmin=clim[0],vmax=clim[1],**kwargs)
         
         ax.set_aspect('equal')
-        plt.colorbar(p1)
+        if colorbar:
+            plt.colorbar(p1)
         
         if titlestr==None:
             plt.title(self._genTitle(self.tstep[0]))
@@ -646,7 +652,11 @@ class ROMS(roms_grid):
         n1 = othertime.findNearest(t0,self.time)
         n2 = othertime.findNearest(t1,self.time)
         
-        return np.arange(n1,n2)
+        if n1==n2:
+            return [n1,n2]
+        else:
+            return range(n1,n2)
+
     
     def _genTitle(self,tstep):
         """
@@ -664,6 +674,13 @@ class ROMS(roms_grid):
         Load the x and y coordinates of the present variable, self.varname
         """
         #print 'updating coordinate info...'
+        # check if the variable is in the file to begin
+        if varname not in self.coordvars:
+            print 'Warning - variable %s not in file'%varname
+            varname=self.coordvars[0]
+            self.varname=varname
+
+
         C = self.varcoords[varname].split()        
         self.ndim = len(C)
         
@@ -689,6 +706,9 @@ class ROMS(roms_grid):
             
         self.X = self[self.xcoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
         self.Y = self[self.ycoord][self.JRANGE[0]:self.JRANGE[1],self.IRANGE[0]:self.IRANGE[1]]
+
+        self.xlims = [self.X.min(),self.X.max()]
+        self.ylims = [self.Y.min(),self.Y.max()]
             
         # Load the long_name and units from the variable
         try:
@@ -696,7 +716,10 @@ class ROMS(roms_grid):
         except:
             self.long_name = varname
             
-        self.units = self.nc.variables[varname].units
+        try:
+            self.units = self.nc.variables[varname].units
+        except:
+            self.units = ' '
         
         # Set the grid type
         if self.xcoord[-3:]=='rho':
@@ -836,6 +859,7 @@ class roms_timeseries(ROMS, timeseries):
         """
         # 
         self._checkCoords(self.varname)
+
         # Load  I and J indices from the coordinates
         self.setIJ(self.XY)
         
@@ -844,7 +868,10 @@ class roms_timeseries(ROMS, timeseries):
             self.zlayer = True
             
         if self.zlayer == False:
-            self.Z = self.calcDepth()
+            if self.ndim==4:
+                self.Z = self.calcDepth()[:,self.JRANGE[0]:self.JRANGE[1],\
+                        self.IRANGE[0]:self.IRANGE[1]].squeeze()
+
         else:
             self.Z = self.z
             

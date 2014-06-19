@@ -394,7 +394,7 @@ def plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15):
     elif convert=='ll2utm':
         ll=[]
         for xytmp in xy:
-            ll.append(ll2utm(xttmp,zone,CS='WGS84',north=True))
+            ll.append(ll2utm(xytmp,zone,CS='WGS84',north=True))
         xy=ll
         
     # Add the polygons to the current axis as a series of patches
@@ -404,7 +404,7 @@ def plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15):
     collection = PolyCollection(xy)
     collection.set_facecolor(color)
     ax.add_collection(collection)
-    ax.axis('equal')
+    #ax.axis('equal')
     
     return ax, collection
 

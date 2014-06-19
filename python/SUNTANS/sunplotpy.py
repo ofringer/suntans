@@ -35,6 +35,7 @@ import matplotlib.animation as animation
 from sunpy import Spatial, Grid
 from untrim_tools import untrim_gridvars, untrim_griddims, UNTRIMSpatial
 from ptm_tools import PtmBin
+from suntrack import PtmNC
 from datetime import datetime
 import numpy as np
 
@@ -52,6 +53,7 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
     bgcolor='k'
     textcolor='w'
     cmap='jet'
+    particlesize = 0.1
 
     # other flags
     collectiontype='cells'
@@ -109,6 +111,8 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
         m_gridstat = menu_tools.Append(-1, "&Plot grid size statistics", "SUNTANS grid size")
         self.Bind(wx.EVT_MENU, self.on_plot_gridstat, m_gridstat)
 
+        m_countcells = menu_tools.Append(-1, "&Count # grid cells", "Grid cell count")
+        self.Bind(wx.EVT_MENU, self.on_count_cells, m_countcells)
         
         ###
         # Help Menu
@@ -453,7 +457,7 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             path = dlg.GetPaths()
 
             # Initialise the class
-            if dlg.GetFilterIndex() == 0: #SUNTANS
+            if dlg.GetFilterIndex() == 0 or dlg.GetFilterIndex() > 1: #SUNTANS
                 self.flash_status_message("Opening SUNTANS file: %s" % path)
                 Spatial.__init__(self,path)
                 startvar='dv'
@@ -468,7 +472,12 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             self.variable_list.SetItems(vnames)
             
             # Update the time drop down list
-            self.timestr = [datetime.strftime(tt,'%d-%b-%Y %H:%M:%S') for tt in self.time]
+            if self.__dict__.has_key('time'):
+                self.timestr = [datetime.strftime(tt,'%d-%b-%Y %H:%M:%S') for tt in self.time]
+            else:
+                # Assume that it is a harmonic-type file
+                self.timestr = self.nc.Constituent_Names.split()
+
             self.time_list.SetItems(self.timestr)
 
             # Draw the depth
@@ -499,7 +508,9 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             self.canvas.draw()
 
     def on_load_ptm(self, event):
-        file_choices = "PTM Binary (*_bin.out)|*_bin.out|All Files (*.*)|*.*"
+        file_choices = "PTM NetCDF (*.nc)|*.nc|\
+            PTM Binary (*_bin.out)|*_bin.out|\
+            All Files (*.*)|*.*"
         
         dlg = wx.FileDialog(
             self, 
@@ -514,8 +525,12 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             path = dlg.GetPath()
 
             # Initialise the class
-            self.flash_status_message("Opening PTM binary file: %s" % path)
-            self.PTM = PtmBin(path)
+            if dlg.GetFilterIndex() == 0: #SUNTANS
+                self.flash_status_message("Opening PTM netcdf file: %s" % path)
+                self.PTM = PtmNC(path)
+            elif dlg.GetFilterIndex() == 1: #PTM
+                self.flash_status_message("Opening PTM binary file: %s" % path)
+                self.PTM = PtmBin(path)
             
             # Update the time drop down list
             self.timestr = [datetime.strftime(tt,'%d-%b-%Y %H:%M:%S') for tt in self.PTM.time]
@@ -524,7 +539,7 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             # Plot the first time step
             if self.__dict__.has_key('xlims'):
                 self.PTM.plot(self.PTM.nt-1,ax=self.axes,xlims=self.xlims,\
-                ylims=self.ylims,fontcolor='w')
+                ylims=self.ylims,fontcolor='w',markersize=self.particlesize)
             else:
                 self.PTM.plot(self.PTM.nt-1,ax=self.axes,fontcolor='w')
             # redraw the figure
@@ -658,6 +673,12 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             *Created: October 2013
         """
         dlg = wx.MessageDialog(self, msg, "About", wx.OK)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+    def on_count_cells(self,eveny):
+        msg = "Total 3-D grid cells = %d"%(self.count_cells())
+        dlg = wx.MessageDialog(self, msg, "No. cells", wx.OK)
         dlg.ShowModal()
         dlg.Destroy()
    

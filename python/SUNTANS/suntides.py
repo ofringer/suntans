@@ -41,7 +41,7 @@ class suntides(Spatial):
         
         Spatial.__init__(self,ncfile,**kwargs)
         
-        if self.hasDim('Ntide'):
+        if self.hasVar('eta_amp'):
             print 'Loading existing harmonic data...'
             self._loadVars()
             
@@ -272,7 +272,9 @@ class suntides(Spatial):
         widths = [ell[0][ii]*scale for ii in indices]
         heights = [ell[1][ii]*scale for ii in indices]
         angles = [ell[2][ii]*180.0/np.pi for ii in indices]
+        #angles = [ell[2][ii] for ii in indices]
         offsets = [(self.xv[ii],self.yv[ii]) for ii in indices]
+
         
         collection = EllipseCollection(widths,heights,angles,units='xy',\
             offsets=offsets, transOffset=ax.transData,**kwargs)
@@ -282,7 +284,6 @@ class suntides(Spatial):
         collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
         collection.set_edgecolors(collection.to_rgba(np.array(z))) 
         
-        #pdb.set_trace()        
         ax.set_aspect('equal')
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
@@ -292,10 +293,10 @@ class suntides(Spatial):
         
         ax.add_collection(collection)
         # Add a decent looking colorbar
-        cbaxes = fig.add_axes(cbarpos) 
-        cb = fig.colorbar(collection,cax = cbaxes,orientation='vertical')  
-        cb.ax.set_title('[$m s^{-1}$]')
-        
+        if not cbarpos==None:
+            cbaxes = fig.add_axes(cbarpos) 
+            cb = fig.colorbar(collection,cax = cbaxes,orientation='vertical')  
+            cb.ax.set_title('[$m s^{-1}$]')
     
         plt.sca(ax)
         
@@ -304,7 +305,8 @@ class suntides(Spatial):
         return collection
    
         
-    def coRangePlot(self,vname ='eta', k=0, con='M2', clevs=20, phsint=1800.0,xlims=None,ylims=None, **kwargs):
+    def coRangePlot(self,vname ='eta', k=0, con='M2', clevs=20, phsint=1800.0,\
+        cbarpos=[0.15, 0.15, 0.03, 0.3],xlims=None,ylims=None, **kwargs):
         """
         Contour plot of amplitude and phase on a single plot
         
@@ -344,7 +346,15 @@ class suntides(Spatial):
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
         
-        axcb = fig.colorbar(camp)
+        #axcb = fig.colorbar(camp)
+        # Add a decent looking colorbar
+        if not cbarpos==None:
+            cbaxes = fig.add_axes(cbarpos) 
+            cb = fig.colorbar(camp,cax = cbaxes,orientation='vertical')  
+            cb.ax.set_title('[m]')
+    
+        plt.sca(ax)
+ 
         
         #titlestr='%s Amplitude\n%s [%s]\nPhase contours interval: %3.1f hr'%(self.frqnames[ii],self.long_name,self.units,phsint/3600.)
         titlestr='%s Amplitude\nPhase contour interval: %3.1f hr'%(self.frqnames[ii],phsint/3600.)
@@ -406,33 +416,40 @@ class suntides(Spatial):
             ndim = self._returnDim(vv)
             if ndim == 2:
                 dims = ('Ntide','Nc')
+                coords = 'omega xv yv'
             elif ndim == 3:
                 dims = ('Ntide','Nk','Nc')
-	
-	    if vv in ['ubar','vbar']:
-	    	units='m s-1'
-	    else:
-		units = self.nc.variables[vv].units
-                
+                coords = 'omega z_r xv yv'	
+
+            if vv in ['ubar','vbar']:
+                units='m s-1'
+            else:
+                units = self.nc.variables[vv].units
+
             name = vv+'_amp'
             longname = '%s - harmonic amplitude'%vv
-            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':units},\
+            self.create_nc_var(outfile, name, dims,\
+                {'long_name':longname,'units':units,'coordinates':coords},\
                 dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
                 
             name = vv+'_phs'
             longname = '%s - harmonic phase'%vv
-            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':'radians','reference_time':reftime},\
+            self.create_nc_var(outfile, name, dims,\
+                {'long_name':longname,'units':'radians','coordinates':coords,'reference_time':reftime},\
                 dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
                 
             ndim = self._returnDim(vv)
             if ndim == 2:
                 dims = ('Nc')
+                coords = 'omega xv yv'
             elif ndim == 3:
                 dims = ('Nk','Nc')
+                coords = 'omega z_r xv yv'
                 
             name = vv+'_Mean'
             longname = '%s - Temporal mean'%vv
-            self.create_nc_var(outfile, name, dims, {'long_name':longname,'units':units},\
+            self.create_nc_var(outfile, name, dims,\
+                {'long_name':longname,'units':units,'coordinates':coords},\
                 dtype='f8',zlib=1,complevel=1,fill_value=999999.0)
         
         self.create_nc_var(outfile,'omega', ('Ntide',), {'long_name':'frequency','units':'rad s-1'})

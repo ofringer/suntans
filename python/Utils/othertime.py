@@ -12,7 +12,7 @@ import numpy as np
 
 import pdb
 
-def TimeVector(starttime,endtime,dt,istimestr=True,timeformat ='%Y%m%d.%H%M'):
+def TimeVector(starttime,endtime,dt,istimestr=True,timeformat='%Y%m%d.%H%M%S'):
     """
     Create a vector of datetime objects
     """
@@ -131,11 +131,12 @@ def findNearest(t,timevec):
     tnow = SecondsSince(t)
     tvec = SecondsSince(timevec)
     
-    tdist = np.abs(tnow - tvec)
+    #tdist = np.abs(tnow - tvec)
     
-    idx = np.argwhere(tdist == tdist.min())
+    #idx = np.argwhere(tdist == tdist.min())
     
-    return int(idx[0])
+    #return int(idx[0])
+    return np.searchsorted(tvec,tnow)[0]
     
 def findGreater(t,timevec):
     """

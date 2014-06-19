@@ -111,8 +111,8 @@ class GridSearch(HybridGrid):
         nodes = self.findnearest(xy,NNear=2)
 
         # Find the position where this point intersects the line
-        P1 = Point(self.x[nodes[:,0]],self.y[nodes[:,0]])
-        P2 = Point(self.x[nodes[:,1]],self.y[nodes[:,1]])
+        P1 = Point(self.xp[nodes[:,0]],self.yp[nodes[:,0]])
+        P2 = Point(self.xp[nodes[:,1]],self.yp[nodes[:,1]])
         P3 = Point(xy[:,0],xy[:,1])
 
         def magnitude(P1,P2):
@@ -201,7 +201,7 @@ class GridSearch(HybridGrid):
             print 'Finding cells...'
         for nn in range(Np):
             #print '\t%d of %d'%(nn,Np)
-            cell =  self.pnt2cells(node[nn])
+            cell =  self.my_pnt2cells(node[nn])
             for cc in cell:
                 if self.inCell(cc,xyin[nn]):
                     cellind[nn]=cc
@@ -220,8 +220,8 @@ class GridSearch(HybridGrid):
 
         cell = -1*np.ones((Np,MAXNODES),dtype=np.int32)
         for nn in range(Np):
-	    p2c = self.pnt2cells(node[nn])
-	    cell[nn,0:len(p2c)]=p2c
+            p2c = self.my_pnt2cells(node[nn])
+            cell[nn,0:len(p2c)]=p2c
             
         cellind = -1*np.ones((Np,),dtype=np.int32)
         for ii in range(MAXNODES):
@@ -235,6 +235,28 @@ class GridSearch(HybridGrid):
  
         return cellind
         
+    def my_pnt2cells(self,pnt_i):
+        """
+        Returns the cell indices for a point, pnt_i
+        
+        (Stolen from Rusty's TriGrid class)
+        """
+        if not self.__dict__.has_key('_mypnt2cells'):
+            # build hash table for point->cell lookup
+            self._mypnt2cells = {}
+            for i in range(self.Nc):
+                for j in range(self.nfaces[i]):
+                    if not self._mypnt2cells.has_key(self.cells[i,j]):
+                        #self._pnt2cells[self.cells[i,j]] = set()
+                        self._mypnt2cells[self.cells[i,j]] = []
+                    #self._pnt2cells[self.cells[i,j]].add(i)
+                    self._mypnt2cells[self.cells[i,j]].append(i)
+
+        if self._mypnt2cells.has_key(pnt_i):
+            return self._mypnt2cells[pnt_i]
+        else:
+            return [-1]
+     
     def findnearest(self,xy,NNear=1):
         """
         Returns the node indices of the closest points to the nx2 array xy
@@ -258,14 +280,14 @@ class GridSearch(HybridGrid):
         """
         
         xyverts=np.zeros((4,2))                
-        xyverts[:,0]= [self.x[self.triangles[cellind,0]],\
-                        self.x[self.triangles[cellind,1]],\
-                        self.x[self.triangles[cellind,2]],\
-                        self.x[self.triangles[cellind,0]]]
-        xyverts[:,1]= [self.y[self.triangles[cellind,0]],\
-                        self.y[self.triangles[cellind,1]],\
-                        self.y[self.triangles[cellind,2]],\
-                        self.y[self.triangles[cellind,0]] ]
+        xyverts[:,0]= [self.xp[self.cells[cellind,0]],\
+                        self.xp[self.cells[cellind,1]],\
+                        self.xp[self.cells[cellind,2]],\
+                        self.xp[self.cells[cellind,0]]]
+        xyverts[:,1]= [self.yp[self.cells[cellind,0]],\
+                        self.yp[self.cells[cellind,1]],\
+                        self.yp[self.cells[cellind,2]],\
+                        self.yp[self.cells[cellind,0]] ]
                         
         #return points_inside_poly(xy.reshape(1,2),xyverts)
         return inpolygon(xy.reshape(1,2),xyverts)
@@ -279,14 +301,14 @@ class GridSearch(HybridGrid):
         
         nx = x.shape[0]
         xyvertsall=np.zeros((nx,4,2))  
-        xyvertsall[:,0,0]= self.x[self.triangles[cellinds,0]]
-        xyvertsall[:,1,0]= self.x[self.triangles[cellinds,1]]
-        xyvertsall[:,2,0]= self.x[self.triangles[cellinds,2]]
-        xyvertsall[:,3,0]= self.x[self.triangles[cellinds,0]]
-        xyvertsall[:,0,1]= self.y[self.triangles[cellinds,0]]
-        xyvertsall[:,1,1]= self.y[self.triangles[cellinds,1]]
-        xyvertsall[:,2,1]= self.y[self.triangles[cellinds,2]]
-        xyvertsall[:,3,1]= self.y[self.triangles[cellinds,0]] 
+        xyvertsall[:,0,0]= self.xp[self.cells[cellinds,0]]
+        xyvertsall[:,1,0]= self.xp[self.cells[cellinds,1]]
+        xyvertsall[:,2,0]= self.xp[self.cells[cellinds,2]]
+        xyvertsall[:,3,0]= self.xp[self.cells[cellinds,0]]
+        xyvertsall[:,0,1]= self.yp[self.cells[cellinds,0]]
+        xyvertsall[:,1,1]= self.yp[self.cells[cellinds,1]]
+        xyvertsall[:,2,1]= self.yp[self.cells[cellinds,2]]
+        xyvertsall[:,3,1]= self.yp[self.cells[cellinds,0]] 
         
         
         xyverts=np.zeros((4,2))    
@@ -317,9 +339,9 @@ class GridSearch(HybridGrid):
 
         p1 = Point(xold,yold)
         p2 = Point(xnew,ynew)
-        A = Point(self.x[self.triangles[cell_i,0]],self.y[self.triangles[cell_i,0]])
-        B = Point(self.x[self.triangles[cell_i,1]],self.y[self.triangles[cell_i,1]])
-        C = Point(self.x[self.triangles[cell_i,2]],self.y[self.triangles[cell_i,2]])
+        A = Point(self.xp[self.cells[cell_i,0]],self.yp[self.cells[cell_i,0]])
+        B = Point(self.xp[self.cells[cell_i,1]],self.yp[self.cells[cell_i,1]])
+        C = Point(self.xp[self.cells[cell_i,2]],self.yp[self.cells[cell_i,2]])
         
         if intersect(p1,p2,A,B):
             return True, 0
@@ -339,9 +361,9 @@ class GridSearch(HybridGrid):
 
         p1 = Point(xold,yold)
         p2 = Point(xnew,ynew)
-        A = Point(self.x[self.triangles[cell_i,0]],self.y[self.triangles[cell_i,0]])
-        B = Point(self.x[self.triangles[cell_i,1]],self.y[self.triangles[cell_i,1]])
-        C = Point(self.x[self.triangles[cell_i,2]],self.y[self.triangles[cell_i,2]])
+        A = Point(self.xp[self.cells[cell_i,0]],self.yp[self.cells[cell_i,0]])
+        B = Point(self.xp[self.cells[cell_i,1]],self.yp[self.cells[cell_i,1]])
+        C = Point(self.xp[self.cells[cell_i,2]],self.yp[self.cells[cell_i,2]])
         
         changedcell = np.zeros(xnew.shape,dtype=np.bool)
         neigh = -1*np.ones(xnew.shape,dtype=np.int)

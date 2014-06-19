@@ -16,6 +16,28 @@ import numpy as np
 import operator
 import pdb
 
+def mixedlayer(T,z,h0=-10,Tthresh=0.4,axis=0):
+    """
+    Compute the mixed layer depth using the temperature threshold method.
+
+    Inputs:
+        T - array of temperature values
+        z - vector or array
+    """
+    from scipy.interpolate import interp1d
+    # Find the "surface" temperature 
+    F = interp1d(z,T,axis=axis)
+    T0=F(h0)
+
+    # Now interpolate the other way to find the depth where T = T0-Tthresh
+    sz = T.shape[-1]
+    mld = np.zeros((sz,))
+    for ii in range(sz):
+        F = interp1d(T[:,ii],z,bounds_error=False,fill_value=z[0])
+        mld[ii] = F(T0[ii]-Tthresh)
+
+    return mld
+
 def buoyancyFlux(SSS,SST,Q,EP,dz):
     """
     Calculate the surface buoyancy flux

@@ -9,7 +9,8 @@ Created on Wed Apr 17 09:54:48 2013
 
 from sunpy import Spatial, Grid
 import othertime
-from trisearch import TriSearch
+#from trisearch import TriSearch
+from gridsearch import GridSearch
 
 from datetime import datetime,timedelta
 from scipy import spatial, sparse
@@ -22,6 +23,54 @@ import operator
 
 from time import clock
 import pdb
+
+class PtmNC(object):
+    """
+    Class for handling the NetCDF output particle files
+    """
+    def __init__(self,ncfile,**kwargs):
+        # Open the netcdf file
+        self.nc = Dataset(ncfile,'r')
+
+        # Read the time data into 
+        t = self.nc.variables['tp']
+        self.time = num2date(t[:],t.units)
+        self.nt = t.shape[0]
+
+    def read_step(self,ts,varname):
+        return self.nc.variables[varname][:,ts]
+ 
+    def plot(self,ts,ax=None,xlims=None,ylims=None,fontcolor='k',\
+        marker='.',color='m',**kwargs):
+        """
+        Plots the current time step
+        """
+        
+        # Check for the plot handle
+        if not self.__dict__.has_key('p_handle'):
+            # Initialize the plot
+            if ax==None:
+                ax = plt.gca()
+            h1 = ax.plot([],[],marker=marker,linestyle='None',color=color,**kwargs) 
+            self.p_handle=h1[0]
+            self.title = ax.set_title("",fontdict={'color':fontcolor})
+
+        # Now just update the plot
+        x = self.read_step(ts,'xp')
+        y = self.read_step(ts,'yp')
+        t = self.time[ts]
+
+        if xlims == None:
+            xlims = [x.min(), x.max()]
+        if ylims == None:
+            ylims = [y.min(), y.max()]
+
+        self.p_handle.set_xdata(x)
+        self.p_handle.set_ydata(y)
+        self.title=ax.set_title('Particle positions at %s'%(datetime.strftime(t,'%Y-%m-%d %H:%M:%S')))
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
+        ax.set_aspect('equal')
 
 
 class SunTrack(Spatial):
@@ -62,9 +111,13 @@ class SunTrack(Spatial):
             
         elif self.interp_method == 'mesh':
             if self.interp_meshmethod == 'nearest':
-                self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D,method='nearest')
+                self.UVWinterp = \
+                    interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,\
+                        self.nfaces,self.mask3D,method='nearest')
             elif self.interp_meshmethod == 'linear':
-                    self.UVWinterp = interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.mask3D,method='linear',grdfile=self.ncfile)
+                    self.UVWinterp =\
+                        interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.nfaces,\
+                        self.mask3D,method='linear',grdfile=self.ncfile)
 
 
 
@@ -916,7 +969,6 @@ class SunTrack(Spatial):
 
 	plt.title('Particle Trajectory\n(file name: %s)'%ncfile)
 
-#	plt.show()
 
     def plotAgeMax(self,ncfile,dx,dy,vmax=7,xlims=None,ylims=None,**kwargs):
     	"""
@@ -1077,7 +1129,7 @@ class RegGrid(object):
 
         return np.array(data.todense())
 
-class interp3Dmesh(TriSearch,Grid):
+class interp3Dmesh(GridSearch,Grid):
     """
     3D interpolation class for an unstructured grid
     
@@ -1086,11 +1138,11 @@ class interp3Dmesh(TriSearch,Grid):
     """
 
 
-    def __init__(self,x,y,z,cells,mask,method='nearest',grdfile=None):
+    def __init__(self,x,y,z,cells,nfaces,mask,method='nearest',grdfile=None):
         
         self.method=method
         # Initialise the trisearch array
-        TriSearch.__init__(self,x,y,cells,force_inside=True)
+        GridSearch.__init__(self,x,y,cells,force_inside=True)
 
         if self.method == 'linear':
             Grid.__init__(self,grdfile)
@@ -1116,7 +1168,7 @@ class interp3Dmesh(TriSearch,Grid):
             # The Update the cell index using TriSearch class
             if not self.__dict__.has_key('cellind'):
                 #print ' Finding initial particle index...'
-                TriSearch.__call__(self,X,Y)
+                GridSearch.__call__(self,X,Y)
             else:
                 if np.sum(np.abs(X-self.xpt))>0+1e-8:
                     #print ' updating location index...'
@@ -1286,7 +1338,7 @@ def GridParticles(grdfile,dx,dy,nz,xypoly=None,splitvec=1):
     sun = Grid(grdfile)
 
     # Load a trisearch object    
-    tri = TriSearch(sun.xp,sun.yp,sun.cells,verbose=False)
+    tri = GridSearch(sun.xp,sun.yp,sun.cells,nfaces=sun.nfaces,verbose=False)
     
     # Construct a 2D mesh of particles
     x = np.arange(sun.xlims[0],sun.xlims[1],dx)

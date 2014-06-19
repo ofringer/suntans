@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import matplotlib.animation as animation
 from sunpy import unsurf
+from hybridgrid import Line
+from hybridgrid import Point as GPoint
 
 from gridsearch import GridSearch
 from shapely.geometry import LineString, Point
@@ -100,7 +102,7 @@ class Slice(Spatial):
         
         return h1, axcb
             
-    def contourslice(self,t=0,xaxis='xslice',clevs=20,titlestr=None,bathyoverlay=True,\
+    def contourslice(self,z,t=0,xaxis='xslice',clevs=20,titlestr=None,bathyoverlay=True,\
         filled = True, outline = False,colorbar=True,**kwargs):
         """
         Filled-contour plot of the slice
@@ -108,8 +110,8 @@ class Slice(Spatial):
         Returns a handle to the pcolor object and the colorbar
         """
           
-        a=self.data[t,:].squeeze()
-        am = np.ma.array (a, mask=np.isnan(a))
+        #a=self.data[t,:].squeeze()
+        am = np.ma.array (z, mask=np.isnan(z))
         
         # Find the colorbar limits if unspecified
         if self.clim==None:
@@ -119,14 +121,14 @@ class Slice(Spatial):
         
         V = np.linspace(self.clim[0],self.clim[1],clevs)
         if filled:
-            h1 = plt.contourf(self[xaxis],self.zslice,am,V,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
+            h1 = plt.contourf(self[xaxis],-self.z_r,am,V,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
         
         if outline:
-            h2 = plt.contour(self[xaxis],self.zslice,am,V,colors='k')
+            h2 = plt.contour(self[xaxis],-self.z_r,am,V,colors='k')
             
         #Overlay the bed
         if bathyoverlay:
-            self._overlayBathy(self[xaxis][0,:],facecolor=[0.5,0.5,0.5])
+            self._overlayBathy(self[xaxis][:],facecolor=[0.5,0.5,0.5])
         
         # Set labels etc
         plt.xlabel(self._getXlabel(xaxis))
@@ -294,18 +296,20 @@ class Slice(Spatial):
         # Get the bathymetry along the slice
         self.hslice = -self.dv[self.cellind]
     
-    def _getSliceCoords(self):
+    def _getSliceCoords(self,kind=3):
         """
         Fits a spline through the input slice points
+
+        # Kind is the linear interpolation type
         """
         n = self.xpt.shape[0]
         t = np.linspace(0,1,n)
         tnew = np.linspace(0,1,self.Npt)
         
         if n <= 3:
-            kind='linear'
+            kind='linear' # Spline won't work with <= 3 points
         else:
-            kind=3
+            kind=kind
             
         Fx = interp1d(t,self.xpt,kind=kind)
         Fy = interp1d(t,self.ypt,kind=kind)
@@ -405,9 +409,9 @@ class SliceEdge(Slice):
             self.xpt=xpt
             self.ypt=ypt
 
-        self._getSliceCoords()
+        self._getSliceCoords(kind='linear')
         # List of the edge indices
-        self.j,self.nodelist = self.get_edgeindices()
+        self.j,self.nodelist = self.get_edgeindices(self.xslice,self.yslice)
 
         # Update the x and y axis of the slice
         self.xslice=self.xp[self.nodelist]
@@ -417,17 +421,93 @@ class SliceEdge(Slice):
 
         self.edgexy()
 
+        # The x and y arrys need to be resized
+        self.xslice = 0.5*(self.xslice[1:]+self.xslice[0:-1])
+        self.yslice = 0.5*(self.yslice[1:]+self.yslice[0:-1])
+        self.distslice = 0.5*(self.distslice[1:]+self.distslice[0:-1])
+
+        # Calculate the area
+        self.area = self.calc_area()
+
+        # Calculate the normnal
+        self.ne1, self.ne2, self.enormal = self.calc_normal(self.nodelist,self.j)
+
+        # Get the bathymetry along the slice
+        de = self.get_edgevar(self.dv)
+        self.hslice = -de[self.j]
+
+    def loadData(self,variable=None,setunits=True):
+        """ 
+        Load the specified suntans variable data as a vector
+
+        Overloaded method for edge slicing - it is quicker to load time step by
+        time step in a loop.
+            
+        """
+
+        nc = self.nc
+
+        if variable==None:
+            variable=self.variable
+
+        if setunits:
+            try:
+                self.long_name = nc.variables[variable].long_name
+                self.units= nc.variables[variable].units
+            except:
+                self.long_name = ''
+                self.units=''
+
+        j=self.j
+        if self.hasDim(variable,self.griddims['Ne']):
+            isCell=False
+        elif self.hasDim(variable,self.griddims['Nc']): 
+            isCell=True
+            nc1 = self.grad[j,0]
+            nc2 = self.grad[j,1]
+                
+            # check for edges (use logical indexing)
+            ind1 = nc1==-1
+            nc1[ind1]=nc2[ind1]
+            ind2 = nc2==-1
+            nc2[ind2]=nc1[ind2]
+
+        def ncload(nc,variable,tt):
+            if variable=='agemean':
+                ac = nc.variables['agec'][tt,:,:]
+                aa = nc.variables['agealpha'][tt,:,:]
+                tmp = aa/ac
+                tmp[ac<1e-12]=0.
+                return tmp/86400.
+
+            else:
+                return nc.variables[variable][tt,:,:]
+                
+        # For loop where the data is extracted 
+        nt = len(self.tstep)
+        ne = len(self.j)
+        self.data = np.zeros((nt,self.Nkmax,ne))
+        for ii,tt in enumerate(self.tstep):
+            #tmp=nc.variables[variable][tt,:,:]
+            tmp = ncload(nc,variable,tt)
+            # Return the mean for cell-based variables
+            if isCell:
+                self.data[ii,:,:] = 0.5*(tmp[...,nc1]+tmp[...,nc2])
+            else:
+                self.data[ii,:,:]=tmp[:,self.j]
+
+        fillval = 999999.0
+        self.mask = self.data==fillval
+        self.data[self.mask]=0.
+        self.data = self.data.squeeze()
+        
+        return self.data
+
     def edgexy(self):
         """
         Nx2 vectors outlining each cell in the edge slice
         """
         def closePoly(xp,node,k):
-            #return  np.array([ [xp[self.edges[node,0]],\
-            #    xp[self.edges[node,1]],xp[self.edges[node,1]],\
-            #    xp[self.edges[node,0]],xp[self.edges[node,0]]],\
-            #    [self.z_w[k],self.z_w[k],self.z_w[k+1],self.z_w[k+1],self.z_w[k]],\
-            #    ]).T
-
             return  np.array([ [xp[node],\
                 xp[node+1],xp[node+1], xp[node],xp[node]],\
                 [-self.z_w[k],-self.z_w[k],-self.z_w[k+1],-self.z_w[k+1],-self.z_w[k]],\
@@ -435,6 +515,42 @@ class SliceEdge(Slice):
 
         self.xye = [closePoly(self.distslice,jj,kk) for kk in range(self.Nkmax) \
             for jj in range(len(self.j)) ]
+
+    def calc_normal(self,nodelist,j):
+        """
+        Calculate the edge normal
+        """
+        # Calculate the unit normal along the edge
+        P1 = GPoint(self.xp[nodelist][0:-1],self.yp[nodelist][0:-1])
+        P2 = GPoint(self.xp[nodelist][1:],self.yp[nodelist][1:])
+        L = Line(P1,P2)
+        ne1,ne2 = L.unitnormal()
+
+        # Compute the unique normal of the dot product
+        enormal = np.round(self.n1[j]*ne1 +\
+            self.n2[j]*ne2)
+        return ne1,ne2,enormal
+
+    def mean(self,phi,axis='time'):
+        """
+        Calculate the mean of the sliced data along an axis
+
+        axis: time, depth, area
+            time : returns the time mean. size= (Nk, Nj)
+            depth: returns the time and spatial mean. Size = (Nk)
+            area: returns the area mean. Size = (Nt)
+
+        """
+
+        if axis=='time':
+            return np.mean(phi,axis=0)
+        elif axis=='area':
+            area_norm = self.area / self.area.sum()
+            return np.sum( np.sum(phi*area_norm,axis=-1),axis=-1)
+        elif axis=='depth':
+            dx = self.df[self.j]
+            dx_norm = dx / dx.sum()
+            return np.sum( self.mean(phi,axis='time')*dx_norm,axis=-1)
 
     def plot(self,z,titlestr=None,**kwargs):
         """
@@ -455,7 +571,7 @@ class SliceEdge(Slice):
 
         self.ax.set_aspect('auto')
 
-    def plotedges(self):
+    def plotedges(self,color='m',**kwargs):
         """
         plot for testing
         """
@@ -463,22 +579,34 @@ class SliceEdge(Slice):
         #plt.plot(self.edgeline.xy,'r')
         for ee in self.j:
             plt.plot([self.xp[self.edges[ee,0]],self.xp[self.edges[ee,1]]],\
-                [self.yp[self.edges[ee,0]],self.yp[self.edges[ee,1]]],'m')
+                [self.yp[self.edges[ee,0]],self.yp[self.edges[ee,1]]],color=color,\
+                **kwargs)
 
 
-    def get_edgeindices(self):
+    def calc_area(self):
+        """
+        Calculate thee cross-sectional area of each face
+        """
+        if not self.__dict__.has_key('dzf'):
+            eta = np.zeros((self.Nc,))
+            self.dzf = self.getdzf(eta).squeeze() # Assumes the free-surface is zero
+
+        return self.dzf[:,self.j] * self.df[self.j]
+
+    def get_edgeindices(self,xpt,ypt):
         """
         Return the indices of the edges (in order) along the line
         """
         # Load the line as a shapely object
         #edgeline = asLineString([self.xslice,self.yslice])
-        xyline = [(self.xslice[ii],self.yslice[ii]) for ii in range(self.Npt)]
+        Npt = xpt.shape[0]
+        xyline = [(xpt[ii],ypt[ii]) for ii in range(Npt)]
         self.edgeline = LineString(xyline)
 
         # Find the nearest grid Node to the start and end of the line
-        xy_1 = np.vstack((self.xslice[0],self.yslice[0])).T
+        xy_1 = np.vstack((xpt[0],ypt[0])).T
         node0 = self.grd.findnearest(xy_1)
-        xy_2 = np.vstack((self.xslice[-1],self.yslice[-1])).T
+        xy_2 = np.vstack((xpt[-1],ypt[-1])).T
         endnode = self.grd.findnearest(xy_2)
 
         # This is the list containing all edge nodes
@@ -507,15 +635,98 @@ class SliceEdge(Slice):
                 if dd == min(dist):
                     return nodes[ii]
 
+        def min_dist_line(cnode,nodes,line):    
+            """Returns the index of the node with the minimum distance
+            to the line"""
+
+            # Convert all nodes to a point object
+            points = [Point((0.5*(self.xp[nn]+self.xp[cnode]),\
+                0.5*(self.yp[nn]+self.yp[cnode]))) for nn in nodes]
+            #lines = [LineString([(self.xp[cnode],self.yp[cnode]),\
+            #    (self.xp[nn],self.yp[nn])]) for nn in nodes]
+
+            # Calculate the distance
+            dist = [line.distance(pp) for pp in points]
+            for ii,dd in enumerate(dist):
+                if dd == min(dist):
+                    return nodes[ii]
+
+        def min_dist_angle(cnode,nodes,line):    
+            """Returns the index of the node with the minimum distance
+            to the line"""
+
+            # Convert all nodes to a point object
+            points = [Point((0.5*(self.xp[nn]+self.xp[cnode]),\
+                0.5*(self.yp[nn]+self.yp[cnode]))) for nn in nodes]
+
+            # Calculate the distance
+            dist = [line.distance(pp) for pp in points]
+            dist = np.array(dist)
+
+            # Calculate the angle along the line of the new coordinate
+            def calc_ang(x1,x2,y1,y2):
+                return np.arctan2( (y2-y1),(x2-x1) )
+
+            angle1 = [calc_ang(self.xp[cnode],self.xp[nn],\
+                self.yp[cnode],self.yp[nn]) for nn in nodes]
+
+            # Calculate the heading of the line near the two points
+            def calc_heading(P1,P2,L):
+                d1 = L.project(P1)
+                d2 = L.project(P2)
+                if d1 <= d2:
+                    P3 = L.interpolate(d1)
+                    P4 = L.interpolate(d2)
+                else:
+                    P3 = L.interpolate(d2)
+                    P4 = L.interpolate(d1)
+
+                return calc_ang(P3.xy[0][0],P4.xy[0][0],P3.xy[1][0],P4.xy[1][0])
+
+            P1 = Point((self.xp[cnode],self.yp[cnode]))
+            angle2 = [calc_heading(P1,Point( (self.xp[nn],self.yp[nn]) ),line) \
+                for nn in nodes]
+
+            angdiff = np.array(angle2) - np.array(angle1)
+
+            #w1 = 0.9 # Weight of the distance
+            #w2 = 1-w1 # Weight of the angle
+            #rank = w1*np.argsort(dist) + w2*np.argsort(angdiff)
+            #rank = w1*np.argsort(dist) + w2*np.argsort(angdiff)
+
+            #ii = np.argwhere(rank == rank.min())[0][0]
+            #return nodes[ii]
+
+            # Use the minimum distance unless the point is a u-turn
+            rank = np.argsort(dist)
+            for nn in range(dist.shape[0]):
+                if np.abs(angdiff[rank[nn]]) <= np.pi/2:
+                    return nodes[rank[nn]] 
+            # if they all u-turn return the min dist
+            return nodes[rank[0]]
+
+
+
+            #for ii,dd in enumerate(dist):
+            #    if dd == min(dist):
+            #        return nodes[ii]
+
 
         # Loop through and find all of the closest points to the line
         MAXITER=10000
         for ii in range(MAXITER):
             cnodes = connecting_nodes(nodelist[-1],nodelist)
-            newnode = min_dist(cnodes,self.edgeline)
+            #newnode = min_dist(cnodes,self.edgeline)
+            #newnode = min_dist_line(nodelist[-1],cnodes,self.edgeline)
+            newnode = min_dist_angle(nodelist[-1],cnodes,self.edgeline)
             #print 'Found new node: %d...'%newnode
             if newnode==None:
                 break
+            if ii>1:
+                if self.mark[self.grd.find_edge([newnode,nodelist[-1]])] not in [0,5]:
+                    print 'Warning: reached a boundary cell. Aborting edge finding routine'
+                    break
+
             nodelist.append(newnode)
             if newnode == endnode:
                 #print 'Reached end node.'
@@ -525,7 +736,121 @@ class SliceEdge(Slice):
         return [self.grd.find_edge([nodelist[ii],nodelist[ii+1]]) for ii in\
             range(len(nodelist)-1)], nodelist
 
+class MultiSliceEdge(SliceEdge):
+    """
+    Slice suntans edge-based data at all edges near a line
 
+    Used for e.g. flux calculations along a profile
+    """
+
+    def __init__(self,ncfile,xpt=None,ypt=None,Npt=100,**kwargs):
+        
+        self.Npt=Npt
+
+        Spatial.__init__(self,ncfile,klayer=[-99],**kwargs)
+
+        # Load the grid as a hybridgrid
+        self.grd = GridSearch(self.xp,self.yp,self.cells,nfaces=self.nfaces,\
+            edges=self.edges,mark=self.mark,grad=self.grad,neigh=self.neigh,\
+                xv=self.xv,yv=self.yv)
+
+        # Find the edge indices along the line
+        self.update_xy(xpt,ypt)
+
+    def update_xy(self,xpts,ypts):
+        """
+        Updates the x and y coordinate info in the object
+        """
+        self.slices=[]
+        for xpt,ypt in zip(xpts,ypts):
+            self.xpt=xpt
+            self.ypt=ypt
+            self._getSliceCoords(kind='linear')
+            # List of the edge indices
+            j,nodelist = self.get_edgeindices(self.xslice,self.yslice)
+            self.j = j # Need this to calculate other quantities
+
+            # Update the x and y axis of the slice
+            self.xslice=self.xp[nodelist]
+            self.yslice=self.yp[nodelist]
+            
+
+            self._getDistCoords()
+
+            # Get the area and the normal
+            area = self.calc_area()
+            ne1, ne2, enormal = self.calc_normal(nodelist,j)
+
+            # Store all of the info as a dictionary
+            self.slices.append({'j':j,'nodelist':nodelist,\
+                'xslice':self.xslice,'yslice':self.yslice, \
+                'distslice':self.distslice,'area':area,'normal':enormal})
+
+        # Find the unique j values and sort them
+        j=[]
+        for ss in self.slices:
+            j = j + ss['j']
+
+        j = np.array(j)
+        self.j = np.sort(np.unique(j))
+
+        # Find the index of each slice into this j array
+        for ii,ss in enumerate(self.slices):
+            ind = np.searchsorted(self.j,np.array(ss['j'])) 
+            self.slices[ii].update({'subind':ind})
+
+        self.j = self.j.tolist()
+
+    def loadData(self,**kwargs):
+        """
+        Overloaded method of MultiEdgeSlice
+
+        loads the data and then inserts it into each slice dictionary
+
+        returns a list of 3D arrays
+        """
+        SliceEdge.loadData(self,**kwargs)
+        data=[]
+        for ii,ss in enumerate(self.slices):
+            data.append(self.data[:,:,ss['subind']])
+        return data
+
+    def mean(self,phi,axis='area'):
+        """
+        Calculate the mean of the sliced data along an axis
+
+        axis: depth, area
+            depth: returns the time and spatial mean. Size = (Nslice,Nk)
+            area: returns the area mean. Size = (Nslice,Nt)
+
+        """
+        Nslice = len(self.slices)
+        Nt = len(self.tstep)
+        Nk = self.Nkmax
+
+        if axis=='area':
+            data = np.zeros((Nslice,Nt))
+            for ii,ss in enumerate(self.slices):
+                area_norm = ss['area']/ ss['area'].sum()
+                data[ii,:] = np.sum( np.sum(phi[ii]*area_norm,axis=-1),axis=-1)
+        elif axis=='depth':
+            data = np.zeros((Nslice,Nk))
+            for ii,ss in enumerate(self.slices):
+                phimean = np.mean(phi[ii],axis=0) # time mean
+                dx = self.df[ss['j']]
+                ne = len(ss['j'])
+                dx = np.repeat(dx[np.newaxis,:],Nk,axis=0)
+                dx[phimean==0.]=0
+                dx_sum = dx.sum(axis=-1)
+                dx_sum = np.repeat(dx_sum[:,np.newaxis],ne,axis=-1)
+                dx_norm = dx / dx_sum
+                data[ii,:] =  np.sum( phimean*dx_norm,axis=-1)
+        else:   
+            raise Exception, 'axis = %s not supported'%axis
+
+        return data
+
+           
         
 #####
 ## Testing data

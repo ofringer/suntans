@@ -57,6 +57,12 @@ class timeseries(object):
         self.y = np.ma.MaskedArray(self.y,mask=mask)
         
         self._checkDT()
+
+        self.Nt = self.t.shape[0]
+        
+        # Make sure that time is the last dimension
+        if self.y.shape[-1] != self.Nt:
+            self.y=self.y.T
         
     def psd(self, plot=True,nbandavg=1,**kwargs):
         """
@@ -164,62 +170,16 @@ class timeseries(object):
             # Puts the data onto an hourly matrix
             self._evenly_dist_data(3600.)
             
-        ymean = self.running_mean(windowlength=24*3600.)
+        ymean = self.running_mean(windowlength=filtwidths[0]*3600.)
         self.y = ymean
-        ymean = self.running_mean(windowlength=25*3600.)
+        ymean = self.running_mean(windowlength=filtwidths[1]*3600.)
         self.y = ymean
-        ymean = self.running_mean(windowlength=24*3600.)
+        ymean = self.running_mean(windowlength=filtwidths[0]*3600.)
         self.y = ymean
         
             
-#        # Calculate the weights
-#        dt = self.dt/3600. # time step in hours
-#        nbands = [int(fw/dt) for fw in filtwidths]
-#        nb = map(float,nbands)
-#        window = nbands[0]*2+nbands[1]-2 # number of points in the window
-#        
-#        weights = np.zeros((window,))
-#        weights[0:nbands[0]]=1/nb[0]
-#        weights[nbands[0]-1:nbands[1]+nbands[0]]+=1/nb[1]
-#        weights[nbands[0]+nbands[1]-1::]+=1/nb[0]
-#        weights/=weights.sum()
-#        
-#        # Emery and Thompson weights (assumes hourly data)
-##        weights = np.zeros((36,))
-##        for k in range(12):
-##            weights[k] = 1./28800 * (1200 - (12-k)*(13-k) - (12+k)*(13+k) )
-##            
-##        for k in range(12,36):
-##            weights[k] = 1./28800 * (36-k)*(37-k)
-##        weights = np.hstack((weights[::-1],weights[1::]))
-#        
-#        
-#        # masked values are included in the sum so we
-#        # will just zero them
-#        mask = self.y.mask.copy()
-#        self.y[self.y.mask]=0.
-#        
-#        # Apply the weights along the last axis of a strided array
-#        ytmp = self.y.copy()
-#        ytmp = self._window_matrix(ytmp,window)
-#        ytmp *=weights
-#        ytmp = ytmp.sum(axis=-1)       
-#        
-#        # This result needs to be normalized to account for missing data,
-#        # this is the same as calculating different weights for each section
-#        ntmp= np.ones_like(self.y)
-#        ntmp[mask] = 0.
-#        norm = self._window_matrix(ntmp,window)
-#        norm*=weights
-#        norm = norm.sum(axis=-1)
-#        
-#        ytmp/=norm
-#        
-#        # Update the y variable
-#        self.y = self._update_windowed_data(ytmp,window)
-#        self.y.mask=mask
-            
-    def interp(self,timein,method='linear',timeformat='%Y%m%d.%H%M%S',axis=0):
+           
+    def interp(self,timein,method='linear',timeformat='%Y%m%d.%H%M%S',axis=-1):
         """
         Interpolate the data onto an equally spaced vector
         
@@ -237,7 +197,7 @@ class timeseries(object):
             tstart=timein[0]
             tend=timein[1]
             dt=timein[2]
-            tnew = othertime.TimeVector(tstart,tend,dt,timeformat =timeformat)
+            tnew = othertime.TimeVector(tstart,tend,dt,timeformat=timeformat)
         except:
             tnew=timein
             
@@ -259,7 +219,7 @@ class timeseries(object):
         return tnew, F(t)
         
         
-    def tidefit(self,frqnames=None,basetime=None):
+    def tidefit(self,frqnames=None,basetime=None,axis=-1):
         """
         Perform a tidal harmonic fit to the data
         
@@ -274,11 +234,12 @@ class timeseries(object):
             frq,frqnames = getTideFreq(Fin=frqnames)
             
         # Call the uspectra method
-        U = uspectra(self.tsec,self.y,frq=frq,method='lsqfast')
+        #U = uspectra(self.tsec,self.y,frq=frq,method='lsqfast')
+        #amp,phs = U.phsamp(phsbase=basetime)
+        amp, phs, mean = \
+            harmonic_fit(self.tsec,self.y,frq,phsbase=basetime,axis=axis)
         
-        amp,phs = U.phsamp(phsbase=basetime)
-        
-        return amp, phs, frq, frqnames, U.invfft()   
+        return amp, phs, frq, frqnames,# U.invfft()   
         
     def running_harmonic(self,omega,windowlength=3*86400.0,overlap=12*3600.0, plot=True):
         """
@@ -337,14 +298,11 @@ class timeseries(object):
             
         return tmid, amp, phs
             
-#    def running_mean(self,windowlength=3*86400.0,overlap=12*3600.0,\
-#        plot=True,calcrms=True):
     def running_mean(self,windowlength=3*86400.0):
         """
-        Running mean and RMS of the time series
+        Running mean of the time series
         
         windowlength - length of each time window [seconds]
-        overlap - overlap between windows [seconds]
         """
         mask = self.y.mask.copy()
         self.y[self.y.mask]=0.
@@ -369,44 +327,31 @@ class timeseries(object):
         ytmp2/=norm
                 
         return self._update_windowed_data(ytmp2,windowsize)
+
+    def running_rms(self,windowlength=3*86400.0):
+        """
+        Running RMS of the time series
+
+        windowlength - length of each time window [seconds]
+        """
+        mask = self.y.mask.copy()
+        self.y[self.y.mask]=0.
+        self.y.mask=mask
         
+        windowsize = np.floor(windowlength/self.dt)
+        ytmp = self.y.copy()
+        ytmp = self._window_matrix(ytmp,windowsize)
+        ytmp2 = np.sum(ytmp*ytmp,axis=-1)
+
+        ntmp= np.ones_like(self.y)
+        ntmp[mask] = 0.
+        N = self._window_matrix(ntmp,windowsize)
+        N = N.sum(axis=-1)
+
+        return self._update_windowed_data(np.sqrt( 1./N * ytmp2),windowsize)
 
 
-#        pt1,pt2 = window_index_time(self.t,windowlength,overlap)
-#        npt = len(pt1)
-#        tmid = []
-#        ymean = np.zeros((npt,))
-#        yrms = np.zeros((npt,))
-#
-#        ii=-1
-#        for t1,t2 in zip(pt1,pt2):
-#            ii+=1
-#
-#            ymean[ii] = self.y[t1:t2].mean()
-#            if calcrms:
-#                yrms[ii] = crms(self.tsec[t1:t2],self.y[t1:t2]-ymean[ii])
-#            
-#            # Return the mid time point
-#            ind = int(np.floor(t1 + (t2-t1)/2))
-#            tmid.append(self.t[ind])
-#   
-#        tmid = np.asarray(tmid)
-#        
-#        if plot:
-#            plt.subplot(211)
-#            self.plot()
-#            plt.plot(tmid,ymean,'r')
-#            plt.fill_between(tmid,ymean-yrms,y2=ymean+yrms,color=[0.5,0.5,0.5],alpha=0.5)
-#            plt.legend(('Original Signal','Mean','$\pm$ RMS'))
-#            
-#            ax=plt.subplot(212)
-#            plt.fill_between(tmid,yrms,alpha=0.7)
-#            plt.xticks(rotation=17)
-#            plt.ylabel('RMS')
-#            ax.set_xlim([self.t[0],self.t[-1]])
-#            
-#            
-#        return tmid, ymean, yrms     
+
         
     def despike(self,nstd=4.,windowlength=3*86400.0,overlap=12*3600.0,\
         upper=np.inf,lower=-np.inf,maxdiff=np.inf,fillval=0.):
@@ -471,38 +416,6 @@ class timeseries(object):
             print 'Despiked %d points'%nbad
         
         
-#        pt1,pt2 = window_index_time(self.t,windowlength,overlap)
-#
-#        for t1,t2 in zip(pt1,pt2):
-#            
-#            if t1==t2:
-#                continue
-#            
-#            ytmp = self.y[t1:t2]
-#           
-#            # Mask any nan's and values outside of the bounds
-#            ind = operator.or_(ytmp<=lower,ytmp>=upper)
-#            ytmp.mask[ind] = True
-#            ind2 =  np.isnan(ytmp)
-#            ytmp.mask[ind2] = True
-#
-#
-#            # Now mask any values outside of nstd away from the median
-#            ymedian = np.mean(ytmp)
-#            ystd = np.std(ytmp)
-#            #print ymedian, ytmp.mean(), ystd, type(ymedian)
-#            #if type(ymedian) == np.ma.core.MaskedConstant:
-#            #    pdb.set_trace()
-#            if ~np.any(ytmp.mask==False): # all points are masked
-#                self.y[t1:t2]=ytmp.copy()               
-#                continue
-#
-#            ind3 = operator.or_(ytmp >= ymedian + nstd*ystd,\
-#                ytmp <= ymedian - nstd*ystd)
-#            ytmp.mask[ind3] = True
-#            
-#            self.y[t1:t2]=ytmp.copy()
-
         
     def plot(self,angle=17,**kwargs):
         """
@@ -569,23 +482,25 @@ class timeseries(object):
         if self.VERBOSE:
             print 'inserting the data into an equally-spaced time vector (dt = %f s).'%self.dt
     
-        t = self.tsec - self.tsec[0]
+        t0 = self.tsec[0]
+        t = self.tsec - t0
         # Put the data onto an evenly spaced, masked array
         tout = np.arange(t[0],t[-1]+dt,dt)
         
         tind = np.searchsorted(tout,t)
         
-        yout = np.ma.MaskedArray(np.zeros_like(tout),mask=True)
+        shape = self.y.shape[:-1] + tout.shape
+        yout = np.ma.MaskedArray(np.zeros(shape),mask=True)
 
-        yout[tind] = self.y
+        yout[...,tind] = self.y
         
         def updatetime(tsec):
             return timedelta(seconds=tsec) + self.t[0]
             
-        self.t = map(updatetime,tout)
+        self.t = np.array(map(updatetime,tout))
         self.y = yout
         
-        self.tsec = tout
+        self.tsec = tout+t0
         
         self.ny = np.size(self.y)
         
@@ -598,6 +513,7 @@ class timeseries(object):
         Returns the matrix as a strided array so that 'rolling' operations can
         be performed along the last axis
         """
+        windowsize=int(windowsize)
         shape = y.shape[:-1] + (y.shape[-1] - windowsize + 1, windowsize)
         strides = y.strides + (y.strides[-1],)
         
@@ -613,13 +529,13 @@ class timeseries(object):
         indent = (windowsize-np.mod(windowsize,2))/2
         
         if np.mod(windowsize,2)==1:
-            y[indent:-indent]=ytmp
+            y[...,indent:-indent]=ytmp
         else:
-            y[indent-1:-indent]=ytmp
+            y[...,indent-1:-indent]=ytmp
         
         y = np.ma.MaskedArray(y,mask=self.y.mask)
-        y.mask[0:indent]=True
-        y.mask[-indent:]=True
+        y.mask[...,0:indent]=True
+        y.mask[...,-indent:]=True
         
         return y
 
@@ -662,29 +578,34 @@ class ModVsObs(object):
 
         t0 = othertime.findNearest(time0,tmod)
         t1 = othertime.findNearest(time1,tmod)
-        TSmod = timeseries(tmod[t0:t1],ymod[t0:t1])
+        TSmod = timeseries(tmod[t0:t1],ymod[...,t0:t1])
 
         t0 = othertime.findNearest(time0,tobs)
         t1 = othertime.findNearest(time1,tobs)
-        self.TSobs = timeseries(tobs[t0:t1],yobs[t0:t1])
+        self.TSobs = timeseries(tobs[t0:t1],yobs[...,t0:t1])
 
         # Interpolate the observed value onto the model step
         #tobs_i, yobs_i = TSobs.interp(tmod[t0:t1],axis=0)
         #self.TSobs = timeseries(tobs_i, yobs_i)
 
         # Interpolate the modeled value onto the observation time step
-        tmod_i, ymod_i = TSmod.interp(tobs[t0:t1],axis=0)
+        tmod_i, ymod_i = TSmod.interp(tobs[t0:t1],axis=-1)
         self.TSmod = timeseries(tmod_i,ymod_i)
 
         self.N = self.TSmod.t.shape[0]
+        if self.N==0:
+            print 'Error - zero model points detected'
+            return None
 
         self.calcStats()
 
-    def plot(self,colormod='r',colorobs='b',legend=True,**kwargs):
+    def plot(self,colormod='r',colorobs='b',legend=True,loc='lower right',**kwargs):
         """
         Time-series plots of both data sets with labels
         """
 
+
+        ax = plt.gca()
 
         h1 = self.TSmod.plot(color=colormod,**kwargs)
 
@@ -697,9 +618,9 @@ class ModVsObs(object):
         plt.title('StationID: %s'%self.stationid)
 
         if legend:
-            plt.legend(('Model','Observation'),loc='lower right')
+            plt.legend(('Model','Observation'),loc=loc)
 
-        return h1, h2
+        return h1, h2, ax
         
     def stackplot(self,colormod='r',colorobs='b',scale=None,ax=None,fig=None,**kwargs):
         """
@@ -713,31 +634,59 @@ class ModVsObs(object):
         fig,ax,ll = stackplot(self.TSmod.t,self.TSmod.y,ax=ax,fig=fig,\
             scale=scale,units=self.units,labels=labels,color=colormod,*kwargs)
 
+    def scatter(self,ylims=None,printstats=True,**kwargs):
+        """
+        Scatter plot of the model vs observation
+        """
+        if ylims==None:
+            ylims = [self.TSobs.y.min(), self.TSobs.y.max()]
+
+        h1 = plt.plot(self.TSobs.y.ravel(),self.TSmod.y.ravel(),'.',**kwargs)
+        plt.plot([ylims[0],ylims[1]],[ylims[0],ylims[1]],'k--')
+
+        ax = plt.gca()
+        ax.set_aspect('equal')
+        plt.xlim(ylims)
+        plt.ylim(ylims)
+        ax.autoscale(tight=True)
+        plt.grid(b=True)
+
+        if printstats:
+            textstr = '$r^2$ = %6.2f\nRMSE = %6.2f\n'%(self.cc,self.rmse)
+            plt.text(0.05,0.65,textstr,transform=ax.transAxes)
+
+        return h1, ax
+
+
+
     def calcStats(self):
         """
         Calculates statistics including:
             moments, RMS, CC, skill, ...
         """
-        self.meanObs = np.mean(self.TSobs.y,axis=0)
-        self.meanMod = np.mean(self.TSmod.y,axis=0)
-        self.stdObs = np.std(self.TSobs.y,axis=0)
-        self.stdMod = np.std(self.TSmod.y,axis=0)
+        self.meanObs = self.TSobs.y.mean(axis=-1)
+        self.meanMod = self.TSmod.y.mean(axis=-1)
+        self.stdObs = self.TSobs.y.std(axis=-1)
+        self.stdMod = self.TSmod.y.std(axis=-1)
 
         # RMSE
-        self.rmse = rms(self.TSobs.y-self.TSmod.y,axis=0)
+        self.rmse = rms(self.TSobs.y-self.TSmod.y,axis=-1)
 
         # skill
-        self.skill = 1.0 - np.sum( (self.TSobs.y-self.TSmod.y)**2.,axis=0) / \
-            np.sum( (self.TSobs.y - self.meanObs)**2.,axis=0)
+        self.skill = 1.0 - ((self.TSobs.y-self.TSmod.y)**2.).sum(axis=-1) / \
+            ( (self.TSobs.y.T - self.meanObs)**2.).T.sum(axis=-1)
 
         # Correlation coefficient
-        self.cc = 1.0/float(self.N) * np.sum( (self.TSobs.y-self.meanObs) * \
-            (self.TSmod.y - self.meanMod) ,axis=0) / (self.stdObs * self.stdMod) 
+        self.cc = 1.0/float(self.N) * ( (self.TSobs.y.T-self.meanObs).T * \
+            (self.TSmod.y.T - self.meanMod).T ).sum(axis=-1) / (self.stdObs * self.stdMod) 
 
     def printStats(self,f=None,header=True):
         """
         Prints the statistics to a markdown language style table
         """
+        if not self.__dict__.has_key('meanMod'):
+            self.calcStats()
+
         outstr=''
 
         if header:
@@ -825,7 +774,6 @@ class ModVsObs(object):
             plt.grid(b=1)
         
         return Pyy, frq
-
 
 def harmonic_fit(t,X,frq,mask=None,axis=0,phsbase=None):
     """
@@ -1000,9 +948,6 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
     else:
         return ts
 
-
-    
-
 def stackplot(t,y,scale=None,gap=0.2,ax=None,fig=None,units='',labels=None,**kwargs):
     """
     Vertically stacked time series plot.
@@ -1018,7 +963,7 @@ def stackplot(t,y,scale=None,gap=0.2,ax=None,fig=None,units='',labels=None,**kwa
         ll : plot handles to each line plot [list]
     """
     # Determine the scale factors and the heights of all of the axes
-    ny = y.shape[1]
+    ny = y.shape[0]
         
     if scale==None:
         scale = np.abs(y).max()
@@ -1058,7 +1003,7 @@ def stackplot(t,y,scale=None,gap=0.2,ax=None,fig=None,units='',labels=None,**kwa
         yoffset = N*(gap*yheight) + 0.5*yheight + (N-1)*yheight     
         # scaling factor
         vscale = yheight / (scale+yoffset)
-        l = ax.plot(t,vscale*y[:,N-1]+yoffset,**kwargs)
+        l = ax.plot(t,vscale*y[N-1,:]+yoffset,**kwargs)
         ll.append(l)
         #Adds an axes
         fakeaxes(yoffset,yheight)
@@ -1123,7 +1068,8 @@ def SpeedDirPlot(t,u,v,convention='current',units='m s^{-1}',color1='b',color2='
         
     return ax, h
 
-def ProfilePlot(t,y,z,scale=86400, axis=0,color=[0.5,0.5,0.5]):
+def ProfilePlot(t,y,z,scale=86400,\
+        axis=0,color=[0.5,0.5,0.5],xlim=None,units='m/s',scalebar=1.0):
     """
     Plot a series of vertical profiles as a time series
     
@@ -1166,11 +1112,32 @@ def ProfilePlot(t,y,z,scale=86400, axis=0,color=[0.5,0.5,0.5]):
     ax.add_collection(LC2)
     ax.set_ylim((z.min(),z.max()))
     ax.xaxis.set_major_formatter(formatter)
-    ax.set_xlim((tsec[0],tsec[-1]))
+    if xlim==None:
+        xlim=(tsec[0]-scale/2,tsec[-1]+scale/2)
+    else:
+        xlim=othertime.SecondsSince(xlim)
+    ax.set_xlim(xlim)
     plt.xticks(rotation=17)       
+
+    ###
+    # Add a scale bar    
+    ###
+    
+    # Compute the scale bar size in dimensionless units
+    if not scalebar==None:
+        xscale = scalebar*scale/(xlim[-1]-xlim[0])
+        x0 = 0.1
+        y0 = 0.8
+        dy = 0.02
+        ax.add_line(Line2D([x0,x0+xscale],[y0,y0],linewidth=0.5,color='k',transform=ax.transAxes))
+        #Little caps
+        ax.add_line(Line2D([x0,x0],[y0-dy,y0+dy],linewidth=0.5,color='k',transform=ax.transAxes))
+        ax.add_line(Line2D([x0+xscale,x0+xscale],[y0-dy,y0+dy],linewidth=0.5,color='k',transform=ax.transAxes))
+        plt.text(x0,y0+0.05,'Scale %3.1f %s'%(scalebar,units),\
+            transform=ax.transAxes)
+
     
     return ax
-    
     
 def monthlyhist(t,y,ylim=0.1,xlabel='',ylabel='',title='',**kwargs):
     """
@@ -1220,8 +1187,6 @@ def monthlyhist(t,y,ylim=0.1,xlabel='',ylabel='',title='',**kwargs):
         plt.figtext(0.5,0.95,title,fontsize=14,horizontalalignment='center')
         
     return fig
-    
-    
     
 def window_index(serieslength,windowsize,overlap):
     """
@@ -1361,14 +1326,12 @@ def ap2ep(uamp,uphs,vamp,vphs):
                                
     return SEMA, SEMI, INC, PHA, ECC
     
-    
-    
 def rms(x,axis=None):
     """
     root mean squared
     """
     
-    return np.sqrt(1.0/np.size(x) * np.sum(x**2,axis=axis))
+    return np.sqrt(1.0/np.shape(x)[-1] * np.sum(x**2,axis=axis))
     
 def crms(t,y):
     """
@@ -1415,7 +1378,6 @@ def eofsvd(M):
 
     return PC,s*s,E
 
-
 def loadtxt(txtfile):
     """
     Loads a text file with two columns
@@ -1433,5 +1395,147 @@ def loadtxt(txtfile):
         y.append(float(ll[1]))
         
     f.close()
-    return timeseries(t,np.array(y))
+    return timeseries(np.array(t),np.array(y))
+
+def rotary_spectra(tsec,u,v,K=3,power=2.):
+    """
+    Calculates the rotary spectral kinetic energy from velocity.
+    
+    See Alford and Whitmont, 2007, JPO for details.
+    """
+    
+    M = tsec.shape[0]
+    dt = tsec[1]-tsec[0]
+    t=np.arange(M,dtype=np.double)
+    M_2 = np.floor(M/2)
+    
+    # Put the velocity in rotary form
+    u_r = u+1j*v
+    
+    # Generate the time-domain taper for the FFT
+    h_tk = np.zeros((K,M))
+    for k in range(K):
+        h_tk[k,:] = np.sqrt(2./(M+1.))*np.sin( (k+1)*np.pi*t / (M+1.) ) 
+    
+    # Weight the time-series and perform the fft
+    u_r_t = u_r[...,np.newaxis,:]*h_tk
+    S_k = np.fft.fft(u_r_t,axis=-1)
+    S_k = dt *np.abs(S_k)**power
+    S = np.mean(S_k,axis=-2)
+        
+    omega = np.fft.fftfreq(int(M),d=dt/(2*np.pi))
+    
+    domega = 1/(M*dt)
+    
+    # Extract the clockwise and counter-clockwise component
+    omega_ccw = omega[0:M_2]
+    omega_cw = omega[M_2::] # negative frequencies
+    S_ccw = S[...,0:M_2]
+    S_cw = S[...,M_2::]
+    
+    return omega_cw,omega_ccw,S_cw,S_ccw,domega
+
+def integrate_rotspec(omega_cw,omega_ccw,S_cw,S_ccw,domega,omega_low=None,omega_high=None):
+    """
+    Integrate the kinetic energy of a rotary spectra beween two bands:
+        omega_low and omega_high
+    """
+
+    #find the index limits for the integration range
+    # note that ccw frequencies go from low to high
+    #           cw frequences go from high to low
+    if omega_low==None:
+        t0_ccw=0
+        t0_cw=0
+    else:
+        t0_cw = np.argwhere(omega_cw>=-omega_high)[0]
+        t0_ccw = np.argwhere(omega_ccw>=omega_low)[0]
+    if omega_high==None:
+        t1_cw = omega_cw.shape[0]
+        t1_ccw = omega_ccw.shape[0]
+    else:
+        t1_cw = np.argwhere(omega_cw<=-omega_low)[-1]
+        t1_ccw = np.argwhere(omega_ccw<=omega_high)[-1]
+    
+    # Integrate under the spectrum to get the kinetic energy
+    KE_ccw = 0.5*np.sum(S_ccw[...,t0_ccw:t1_ccw]*domega,axis=-1)
+    KE_cw = 0.5*np.sum(S_cw[...,t0_cw:t1_cw]*domega,axis=-1)
+    
+    return KE_ccw, KE_cw
+ 
+def cross_spec(tsec,u,v,K=3):
+    """
+    Calculates the rotary spectral kinetic energy from velocity.
+    
+    See Alford and Whitmont, 2007, JPO for details.
+    """
+    
+    M = tsec.shape[0]
+    dt = (tsec[1]-tsec[0])/(2*np.pi)
+    t=np.arange(M,dtype=np.double)
+    #M_2 = np.floor(M/2)
+    M_2 = M//2
+    
+    # Put the velocity in rotary form
+    #u_r = u+1j*v
+    
+    # Generate the time-domain taper for the FFT
+    h_tk = np.zeros((K,M))
+    for k in range(K):
+        h_tk[k,:] = np.sqrt(2./(M+1.))*np.sin( (k+1)*np.pi*t / (M+1.) ) 
+    
+    # Weight the time-series and perform the fft
+    S_k_u = np.fft.fft(u[...,np.newaxis,:]*h_tk,axis=-1)
+    S_k_v = np.fft.fft(v[...,np.newaxis,:]*h_tk,axis=-1)
+
+    S_k = np.conjugate(S_k_u) * S_k_v
+
+    # Average across tapers
+    S = np.mean(S_k,axis=-2)
+
+    # Return the co-spectra (see Emery & Thompson Eq 5.8.14, p 584)
+    #C = dt*np.real( np.abs(S) * np.exp(1j*np.angle(S)))
+    C = dt*np.real(S)
+    #Q_k = dt*np.imag( np.abs(S_k) * np.exp(1j*np.angle(S_k)))
+        
+    omega = np.fft.fftfreq(int(M),d=dt)
+    
+    # Extract the clockwise and counter-clockwise component
+    omega_ccw = omega[:M_2]
+    omega_cw = omega[M_2:] # negative frequencies
+    C_ccw = C[...,:M_2]
+    C_cw = C[...,M_2:]
+    
+    return omega_cw,omega_ccw,C_cw,C_ccw
+
+
+
+def integrate_spec(omega_cw,omega_ccw,S_cw,S_ccw,\
+        omega_low=None,omega_high=None):
+    """
+    Integrate the energy of a spectra beween two bands:
+        omega_low and omega_high
+    """
+
+    #integration range
+    if omega_low==None:
+        t0_ccw=0
+        t0_cw=0
+    else:
+        t0_cw = np.argwhere(omega_cw>=-omega_high)[0]
+        t0_ccw = np.argwhere(omega_ccw>=omega_low)[0]
+    if omega_high==None:
+        t1_cw = omega_cw.shape[0]
+        t1_ccw = omega_ccw.shape[0]
+    else:
+        t1_cw = np.argwhere(omega_cw<=-omega_low)[-1]
+        t1_ccw = np.argwhere(omega_ccw<=omega_high)[-1]
+    
+    # Integrate under the spectrum to get the kinetic energy
+    # Needs to be scaled by 0.5 to give the kinetic energy
+    KE_ccw = np.trapz(S_ccw[...,t0_ccw:t1_ccw],x=omega_ccw[t0_ccw:t1_ccw])
+    KE_cw = np.trapz(S_cw[...,t0_cw:t1_cw],x=omega_cw[t0_cw:t1_cw])
+    
+    return KE_ccw, KE_cw
+
 
