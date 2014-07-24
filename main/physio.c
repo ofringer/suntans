@@ -128,7 +128,11 @@ void OpenFiles(propT *prop, int myproc)
   }
   if(prop->netcdfBdy>0){
     MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
-    prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+    if(myproc==0){
+	prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+    }else{
+	prop->netcdfBdyFileID = -1;
+    }
   }
   if(prop->metmodel>0){
     MPI_GetFile(filename,DATAFILE,"metfile","OpenFiles",myproc);
