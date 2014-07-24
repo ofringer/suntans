@@ -137,9 +137,9 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc);
-void InitBoundaryData(propT *prop, gridT *grid, int myproc);
+void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 void BoundarySediment(gridT *grid, physT *phys, propT *prop);
-void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc);
+void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, MPI_Comm comm);
 void UpdateBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 
 #endif

@@ -1040,8 +1040,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
   // Initialise the boundary data from a netcdf file
   if(prop->netcdfBdy==1){
-    AllocateBoundaryData(prop, grid, &bound, myproc);
-    InitBoundaryData(prop, grid, myproc);
+    AllocateBoundaryData(prop, grid, &bound, myproc, comm);
+    InitBoundaryData(prop, grid, myproc, comm);
   }
 
   // get the boundary velocities (boundaries.c)

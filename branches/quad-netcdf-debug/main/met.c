@@ -14,6 +14,9 @@ void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, RE
 void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout);
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair);
 static REAL qsat(REAL Tw, REAL Pair);
+static REAL satvap(REAL Ta, REAL Pair);
+static REAL vappres(REAL Ta, REAL RH, REAL Pair);
+static REAL longwave_berliand(REAL Ta, REAL Tw, REAL C_cloud, REAL RH, REAL Pair);
 static REAL longwave(REAL Ta, REAL Tw, REAL C_cloud);
 static void cor30a(REAL *y);
 static REAL psiu_30(REAL zet);
@@ -695,14 +698,14 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     i = grid->cellp[iptr];  
     ktop = grid->ctop[i];
     // Wind speed
-    Umag = sqrt( pow( (met->Uwind[i]-phys->uc[i][ktop]) ,2) + pow( (met->Vwind[i]-phys->vc[i][ktop]),2) );
-    //Umag = sqrt( pow(met->Uwind[i],2) + pow(met->Vwind[i],2) );
+    //Umag = sqrt( pow( (met->Uwind[i]-phys->uc[i][ktop]) ,2) + pow( (met->Vwind[i]-phys->vc[i][ktop]),2) );
+    Umag = sqrt( pow(met->Uwind[i],2) + pow(met->Vwind[i],2) );
     x[0] = Umag;
 
     // Surface current speed in wind direction
     // This is the projection of the water velocity vector onto the wind velocity vector
-    x[1] = 0.0; 
-    //x[1] = fabs(phys->uc[j][ktop]*met->Uwind[j]/Umag + phys->vc[j][ktop]*met->Vwind[j]/Umag); 
+    //x[1] = 0.0; 
+    x[1] = fabs(phys->uc[i][ktop]*met->Uwind[i]/Umag + phys->vc[i][ktop]*met->Vwind[i]/Umag); 
 
     // Water temperature
     x[2] = T[i][ktop];
@@ -718,6 +721,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     
     // Longwave radiation
     met->Hlw[i] = longwave(met->Tair[i],T[i][ktop],met->cloud[i]);
+    //met->Hlw[i] = longwave_berliand(met->Tair[i],T[i][ktop],met->cloud[i],met->RH[i],met->Pair[i]);
     x[6] = met->Hlw[i];
     
     // Shortwave radiation
@@ -787,8 +791,8 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
       //met->tau_x[j] = x[6] * x[15] * x[14] * (met->Uwind[j] - phys->uc[j][ktop]);
       //met->tau_y[j] = x[6] * x[15] * x[14] * (met->Vwind[j] - phys->vc[j][ktop]);
       // No gust speed in stress term
-      met->tau_x[i] = x[6] * x[15] * Umag * (met->Uwind[i] - phys->uc[i][ktop]);
-      met->tau_y[i] = x[6] * x[15] * Umag * (met->Vwind[i] - phys->vc[i][ktop]);
+      met->tau_x[i] = x[6] * x[10] * Umag * (met->Uwind[i] - phys->uc[i][ktop]);
+      met->tau_y[i] = x[6] * x[10] * Umag * (met->Vwind[i] - phys->vc[i][ktop]);
 
       //No surface current dependence 
       //met->tau_x[j] = x[6] * x[15] * x[14] * met->Uwind[j];
@@ -806,7 +810,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
 
 
     // Check for nans and dump the inputs
-    for(n=0;n<19;n++){
+    for(n=0;n<8;n++){
     	if(x[n]!=x[n]){
 	   printf("Error in COARE3.0 Algorithm at i = %d, x[%d] = nan.\n",i,n);
 	   printf("Uwind[%d] = %6.10f, z_Uwind = %6.10f m\n",i,met->Uwind[i],met->z_Uwind[i]);
@@ -833,18 +837,19 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
 */
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair){
  
- REAL cff;
- //REAL eps=1e-8;
- /*
-  * Compute air saturation vapor pressure (mb), using Teten formula.
-  */
-  cff=(1.0007+3.46E-6*Pair)*6.1121*exp(17.502*Ta/(240.97+Ta+SMALL));
-  
-  /*
-  *  Compute specific humidity at Saturation, Qair (kg/kg).
-  */
-  cff=cff*RH/100;                    // Vapor pres (mb)
-  return (0.62197*(cff/(Pair-0.378*cff+SMALL))); // Spec hum (kg/kg)
+ //REAL cff;
+ ////REAL eps=1e-8;
+ ///*
+ // * Compute air saturation vapor pressure (mb), using Teten formula.
+ // */
+ // cff=(1.0007+3.46E-6*Pair)*6.1121*exp(17.502*Ta/(240.97+Ta+SMALL));
+ // 
+ // /*
+ // *  Compute specific humidity at Saturation, Qair (kg/kg).
+ // */
+ // cff=cff*RH/100;                    // Vapor pres (mb)
+ // return (0.62197*(cff/(Pair-0.378*cff+SMALL))); // Spec hum (kg/kg)
+ return RH*0.01*qsat(Ta,Pair);
 } // End specifichumidity
 
 
@@ -864,6 +869,65 @@ static REAL qsat(REAL Tw, REAL Pair){
  
   return (0.62197*(cff/(Pair-0.378*cff+SMALL)));
 } // End qsat
+
+/*
+ * Function: satvap()
+ * --------------------
+ *  Calculate the saturation vapor pressure
+ *
+ *  Taken from the matlab airsea toolbox
+ */
+static REAL satvap(REAL Ta, REAL Pair){
+    REAL ew, fw;
+
+    ew = pow( (0.7859+0.03477*Ta) / (1.+0.00412*Ta),10.);
+    fw = 1.0 + 1e-6*Pair*(4.5+6e-4*pow(Ta,2));
+
+    return fw*ew;
+}
+/*
+ * Function: vappres()
+ * --------------------
+ *  Calculate the  vapor pressure from relative humidity
+ *
+ *  Taken from the matlab airsea toolbox
+ */
+static REAL vappres(REAL Ta, REAL RH, REAL Pair){
+    REAL ew, rw, r;
+    const REAL eps_air = 0.62197; // molecular weight ratio (water/air)
+
+    ew = satvap(Ta,Pair);
+    rw = eps_air*ew / (Pair-ew);
+    r = (RH*0.01) * rw;
+
+    return r*Pair / (eps_air+r);
+
+}
+/*
+* Function: longwave_berliand()()
+* --------------------
+* Calculate net longwave radiation into water
+*
+* Uses the Berliand (1952) bulk formula
+*
+* Taken from the matlab air sea toolbox
+* 
+*/
+static REAL longwave_berliand(REAL Ta, REAL Tw, REAL C_cloud, REAL RH, REAL Pair){
+  
+  // Constants
+  const REAL T_ref = 273.16;             // conversion from C to K
+  const REAL sigma = 5.6697e-8;         // Boltzmann constant (W m^{-2} K^{-4})
+  const REAL epsilon_w = 0.985;           // emissivity of water
+  
+  REAL e_a;
+
+  e_a = vappres(Ta,RH,Pair);
+  
+  return -epsilon_w*sigma*pow(Ta+T_ref,4.) * (0.39 - 0.05*sqrt(e_a)) * C_cloud -
+  	4*epsilon_w*sigma*pow(Ta+T_ref,3.)*(Tw-Ta);
+  
+}
 
 /*
 * Function: longwave()
@@ -933,6 +997,27 @@ REAL shortwave(REAL time, REAL Lat,REAL C_cloud){
   
 } // End shortwave
 
+/* Function: bulkflux()
+ * ------------------------
+ * Calculates air-sea fluxes using bulk flux formulation
+ *
+ * Adapted from the matlab air-sea toolbox
+ *
+ */
+
+//static void bulkflux(REAL *y){
+//    // Input variables
+//    REAL ur = y[0]; //wind speed [m/s] measured at height zr [m] 
+//    REAL zr = y[1];
+//    REAL Ta = y[2]; //   = air temperature [C] measured at height zt [m]
+//    REAL zt = y[3];
+//    REAL rh = y[4]; //   = relative humidity [%] measured at height zq [m]
+//    REAL zq = y[5];
+//    REAL Pa = y[6]; //   = air pressure [mb]
+//    REAL Ts = y[7]; //   = sea surface temperature [C]
+//
+//
+//}
 
 /* 
 * Function:  cor30a()
@@ -1015,12 +1100,12 @@ static void cor30a(REAL *y){
    zoq=0.0;
    L=0.0;
    /***************   wave parameters  *********/
-   lwave=grav/2/PI*pow(twave,2);
-   cwave=grav/2/PI*twave;
+   //lwave=grav/2/PI*pow(twave,2);
+   //cwave=grav/2/PI*twave;
    
    /**************  compute aux stuff *******/
-   Rns=Rs*.945;
-   Rnl=0.97*(5.67e-8*pow(ts-0.3*jcool+tdk,4)-Rl);
+   //Rns=Rs*.945;
+   //Rnl=0.97*(5.67e-8*pow(ts-0.3*jcool+tdk,4)-Rl);
    
    /***************   Begin bulk loop *******/
    
@@ -1057,8 +1142,10 @@ static void cor30a(REAL *y){
     nits=1;
    }
    usr=ut*von/(log(zu/zo10) - psiu_30(zu/L10));
-   tsr=-(dt-dter*jcool)*von*fdg/(log(zt/zot10)-psit_30(zt/L10));
-   qsr=-(dq-wetc*dter*jcool)*von*fdg/(log(zq/zot10)-psit_30(zq/L10));
+   tsr=-dt*von*fdg/(log(zt/zot10)-psit_30(zt/L10));
+   qsr=-dq*von*fdg/(log(zq/zot10)-psit_30(zq/L10));
+   //tsr=-(dt-dter*jcool)*von*fdg/(log(zt/zot10)-psit_30(zt/L10));
+   //qsr=-(dq-wetc*dter*jcool)*von*fdg/(log(zq/zot10)-psit_30(zq/L10));
    
    tkt=.001;
    
@@ -1074,25 +1161,27 @@ static void cor30a(REAL *y){
   for(i=0;i<nits;i++){
      zet=von*grav*zu/ta*(tsr*(1+0.61*Q)+.61*ta*qsr)/(usr*usr)/(1+0.61*Q);
      //Hard-wire it without waves
-     zo=charn*usr*usr/grav+0.11*visa/usr;
+     zo=charn*usr*usr/grav+0.11*visa/usr; // Eq. 6
 
-//       if((int)jwave==0){
-//           zo=charn*usr*usr/grav+0.11*visa/usr;
-//       }
-//       if((int)jwave==1){
-//           zo=50.0/2.0/PI*lwave*pow(usr/cwave,4.5)+0.11*visa/usr;
-//       } // Oost et al
-//       if((int)jwave==2){
-//           zo=1200.0*hwave*pow(hwave/lwave,4.5)+0.11*visa/usr;
-//       } // Taylor and Yelland
+     //if((int)jwave==0){
+     //    zo=charn*usr*usr/grav+0.11*visa/usr;
+     //}
+     //if((int)jwave==1){
+     //    zo=50.0/2.0/PI*lwave*pow(usr/cwave,4.5)+0.11*visa/usr;
+     //} // Oost et al
+     //if((int)jwave==2){
+     //    zo=1200.0*hwave*pow(hwave/lwave,4.5)+0.11*visa/usr;
+     //} // Taylor and Yelland
       
-      rr=zo*usr/visa;
+      rr=zo*usr/visa; // Roughness reynolds number (see Eq. 7)
       L=zu/zet;
-      zoq=Min(1.15e-4,5.5e-5/pow(rr,0.6));
+      zoq=Min(1.15e-4,5.5e-5/pow(rr,-0.6));// Eq. 28
       zot=zoq;
       usr=ut*von/(log(zu/zo)-psiu_30(zu/L));
-      tsr=-(dt-dter*jcool)*von*fdg/(log(zt/zot)-psit_30(zt/L));
-      qsr=-(dq-wetc*dter*jcool)*von*fdg/(log(zq/zoq)-psit_30(zq/L));
+      tsr=-dt*von*fdg/(log(zt/zot10)-psit_30(zt/L10));
+      qsr=-dq*von*fdg/(log(zq/zot10)-psit_30(zq/L10));
+      //tsr=-(dt-dter*jcool)*von*fdg/(log(zt/zot)-psit_30(zt/L));
+      //qsr=-(dq-wetc*dter*jcool)*von*fdg/(log(zq/zoq)-psit_30(zq/L));
       Bf=-grav/ta*usr*(tsr+.61*ta*qsr);
       
       if (Bf>0){
@@ -1102,9 +1191,10 @@ static void cor30a(REAL *y){
       }
       
       ut=sqrt(du*du+ug*ug);
-      Rnl=0.97*(5.67e-8*pow(ts-dter*jcool+tdk,4)-Rl);
+      //Rnl=0.97*(5.67e-8*pow(ts-dter*jcool+tdk,4)-Rl);
       hsb=-rhoa*cpa*usr*tsr;
       hlb=-rhoa*Le*usr*qsr;
+      /*
       qout=Rnl+hsb+hlb;
       dels=Rns*(.065+11*tkt-6.6e-5/tkt*(1-exp(-tkt/8.0e-4))); 	// Eq.16 Shortwave
       qcol=qout-dels;
@@ -1121,6 +1211,7 @@ static void cor30a(REAL *y){
      
       dter=qcol*tkt/tcw; //  Eq.12 Cool skin
       dqer=wetc*dter;
+      */
      
   }//bulk iter loop
   
@@ -1129,25 +1220,27 @@ static void cor30a(REAL *y){
   hlb=-rhoa*Le*usr*qsr;
   
   
-  /****************   rain heat flux ********/
-  dwat=2.11e-5*pow((t+tdk)/tdk,1.94); // water vapour diffusivity
-  dtmp=(1.+3.309e-3*t-1.44e-6*t*t)*0.02411/(rhoa*cpa); 	//heat diffusivity
-  alfac= 1/(1+(wetc*Le*dwat)/(cpa*dtmp));      	// wet bulb factor
-  RF= rain*alfac*cpw*((ts-t-dter*jcool)+(Qs-Q-dqer*jcool)*Le/cpa)/3600;
-  
-  /****************   Webb et al. correection  ************/
-  wbar=1.61*hlb/Le/(1+1.61*Q)/rhoa+hsb/rhoa/cpa/ta;//formulation in hlb already includes webb
-  hl_webb=rhoa*wbar*Q*Le;
-  
-  /**************   compute transfer coeffs relative to ut @meas. ht **********/
-  Cd=tau/rhoa/ut/max(.1,du);
-  Ch=-usr*tsr/ut/(dt-dter*jcool);
-  Ce=-usr*qsr/(dq-dqer*jcool)/ut;
-  
-  /************  10-m neutral coeff realtive to ut ********/
-  Cdn_10=von*von/log(10/zo)/log(10/zo);
-  Chn_10=von*von*fdg/log(10/zo)/log(10/zot);
-  Cen_10=von*von*fdg/log(10/zo)/log(10/zoq);
+  ///****************   rain heat flux ********/
+  //dwat=2.11e-5*pow((t+tdk)/tdk,1.94); // water vapour diffusivity
+  //dtmp=(1.+3.309e-3*t-1.44e-6*t*t)*0.02411/(rhoa*cpa); 	//heat diffusivity
+  //alfac= 1/(1+(wetc*Le*dwat)/(cpa*dtmp));      	// wet bulb factor
+  //RF= rain*alfac*cpw*((ts-t-dter*jcool)+(Qs-Q-dqer*jcool)*Le/cpa)/3600;
+  //
+  ///****************   Webb et al. correection  ************/
+  //wbar=1.61*hlb/Le/(1+1.61*Q)/rhoa+hsb/rhoa/cpa/ta;//formulation in hlb already includes webb
+  //hl_webb=rhoa*wbar*Q*Le;
+  //
+  ///**************   compute transfer coeffs relative to ut @meas. ht **********/
+  Cd=tau/rhoa/ut/Max(.1,du);
+  Ch=-usr*tsr/ut/(dt);
+  Ce=-usr*qsr/(dq)/ut;
+  //Ch=-usr*tsr/ut/(dt-dter*jcool);
+  //Ce=-usr*qsr/(dq-dqer*jcool)/ut;
+  //
+  ///************  10-m neutral coeff realtive to ut ********/
+  //Cdn_10=von*von/log(10/zo)/log(10/zo);
+  //Chn_10=von*von*fdg/log(10/zo)/log(10/zot);
+  //Cen_10=von*von*fdg/log(10/zo)/log(10/zoq);
   
   /* Output variable back into the input array */
   y[0] = hsb;
@@ -1160,15 +1253,18 @@ static void cor30a(REAL *y){
   y[7] = usr;
   y[8] = tsr;
   y[9] = qsr;
-  y[10] = dter;
-  y[11] = dqer;
-  y[12] = tkt;
-  y[13] = RF;
-  y[14] = ut;
-  y[15] = Cd;
-  y[16] = Ch;
-  y[17] = Ce;
-  y[18] = ug;
+  y[10] = Cd;
+  //y[11] = Ch;
+  //y[12] = Ce;
+  //y[10] = dter;
+  //y[11] = dqer;
+  //y[12] = tkt;
+  //y[13] = RF;
+  //y[14] = ut;
+  //y[15] = Cd;
+  //y[16] = Ch;
+  //y[17] = Ce;
+  //y[18] = ug;
   
   //printf("y[13]:%6.6f, y[14]:%6.6f, y[15]:%6.6f, y[16]:%6.6f, y[17]:%6.6f, y[18]:%6.6f\n",y[13],y[14],y[15],y[16],y[17],y[18]);
   //y=[hsb hlb tau zo zot zoq L usr tsr qsr dter dqer tkt RF wbar Cd Ch Ce Cdn_10 Chn_10 Cen_10 ug ];

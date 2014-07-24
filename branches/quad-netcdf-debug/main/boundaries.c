@@ -371,14 +371,14 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 *
 * This is called from phys.c
 */
-void InitBoundaryData(propT *prop, gridT *grid, int myproc){
+void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 
     // Step 1) Allocate the structure array data
 	// Moved to phys.c
 
     // Step 2) Read in the coordinate info
     if(VERBOSE>1 && myproc==0) printf("Reading netcdf boundary coordinate data...\n");
-    ReadBndNCcoord(prop->netcdfBdyFileID, prop, grid, myproc);
+    ReadBndNCcoord(prop->netcdfBdyFileID, prop, grid, myproc,comm);
 
     // Step 3) Match each boundary point with its local grid point
     if(VERBOSE>1 && myproc==0) printf("Matching boundary points...\n");
@@ -386,7 +386,7 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 
     // Step 4) Read in the forward and backward time steps into the boundary arrays
     if(VERBOSE>1 && myproc==0) printf("Reading netcdf boundary initial data...\n");
-    ReadBdyNC(prop, grid, myproc);
+    ReadBdyNC(prop, grid, myproc,comm);
    
     
  }//end function
@@ -413,7 +413,7 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc){
 	bound->t2=t2;
 	bound->t0=t0;
         //printf("myproc: %d, bound->t0: %d, nctime: %f, rtime: %f \n",myproc,bound->t0, prop->nctime, prop->rtime);
-	ReadBdyNC(prop, grid, myproc);
+	ReadBdyNC(prop, grid, myproc,comm);
 	//Try this to avoid parallel read errors
 	/*
 	for(n=0;n<64;n++){
@@ -664,7 +664,7 @@ int isGhostEdge(int j, gridT *grid, int myproc){
  * -------------------------------
  * Allocate boundary structure arrays.
  */
-void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
+void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, MPI_Comm comm){
 
      int Ntype2, Ntype3, Nseg, Nt, Nk;
      int j, k, i, n;
@@ -674,23 +674,53 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
     if(VERBOSE>1 && myproc==0) printf("Allocating boundary data structure...\n");
       *bound = (boundT *)SunMalloc(sizeof(boundT),"AllocateBoundaryData");
 
+    /*
     // Read in the dimensions
-    if(myproc==0) printf("Reading boundary netcdf dimensions...\n");
-    if(myproc==0) printf("Reading dimension: Ntype3...\n");
-    (*bound)->Ntype3 = returndimlenBC(prop->netcdfBdyFileID,"Ntype3");
-    if(myproc==0) printf("Reading dimension: Ntype2...\n");
-    (*bound)->Ntype2 = returndimlenBC(prop->netcdfBdyFileID,"Ntype2");
-    if(myproc==0) printf("Reading dimension: Nseg...\n");
-    (*bound)->Nseg = returndimlenBC(prop->netcdfBdyFileID,"Nseg");
-    if(myproc==0) printf("Reading dimension: Nt...\n");
-    (*bound)->Nt = returndimlenBC(prop->netcdfBdyFileID,"Nt");
-    if(myproc==0) printf("Reading dimension: Nk...\n");
-    (*bound)->Nk = returndimlenBC(prop->netcdfBdyFileID,"Nk");
+    //if(myproc==0){
+	printf("Reading boundary netcdf dimensions...\n");
+	//printf("Reading dimension: Ntype3...\n");
+	(*bound)->Ntype3 = returndimlenBC(prop->netcdfBdyFileID,"Ntype3");
+	//printf("Reading dimension: Ntype2...\n");
+	(*bound)->Ntype2 = returndimlenBC(prop->netcdfBdyFileID,"Ntype2");
+	//printf("Reading dimension: Nseg...\n");
+	(*bound)->Nseg = returndimlenBC(prop->netcdfBdyFileID,"Nseg");
+	//printf("Reading dimension: Nt...\n");
+	(*bound)->Nt = returndimlenBC(prop->netcdfBdyFileID,"Nt");
+	//printf("Reading dimension: Nk...\n");
+	(*bound)->Nk = returndimlenBC(prop->netcdfBdyFileID,"Nk");
+    //}
+    //MPI_Bcast(&((*bound)->Ntype3),1,MPI_INT,0,comm);
+    //MPI_Bcast(&((*bound)->Ntype2),1,MPI_INT,0,comm);
+    //MPI_Bcast(&((*bound)->Nseg),1,MPI_INT,0,comm);
+    //MPI_Bcast(&((*bound)->Nt),1,MPI_INT,0,comm);
+    //MPI_Bcast(&((*bound)->Nk),1,MPI_INT,0,comm);
+
     Ntype3 = (*bound)->Ntype3;
     Nseg = (*bound)->Nseg;
     Ntype2 = (*bound)->Ntype2;
     Nt = (*bound)->Nt;
     Nk = (*bound)->Nk;
+    */
+    // Read in the dimensions
+    if(myproc==0){
+	printf("Reading boundary netcdf dimensions...\n");
+	Ntype3 = returndimlenBC(prop->netcdfBdyFileID,"Ntype3");
+	Ntype2 = returndimlenBC(prop->netcdfBdyFileID,"Ntype2");
+	Nseg = returndimlenBC(prop->netcdfBdyFileID,"Nseg");
+	Nt = returndimlenBC(prop->netcdfBdyFileID,"Nt");
+	Nk = returndimlenBC(prop->netcdfBdyFileID,"Nk");
+    }
+    MPI_Bcast(&(Ntype3),1,MPI_INT,0,comm);
+    MPI_Bcast(&(Ntype2),1,MPI_INT,0,comm);
+    MPI_Bcast(&(Nseg),1,MPI_INT,0,comm);
+    MPI_Bcast(&(Nt),1,MPI_INT,0,comm);
+    MPI_Bcast(&(Nk),1,MPI_INT,0,comm);
+
+    (*bound)->Ntype3=Ntype3;
+    (*bound)->Nseg=Nseg;
+    (*bound)->Ntype2=Ntype2;
+    (*bound)->Nt=Nt;
+    (*bound)->Nk=Nk;
 
     // Check if boundary types are in the file
     if ((*bound)->Ntype3==0){
@@ -710,6 +740,7 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
     }else{
     	(*bound)->hasSeg=1;
     }
+
     // Print the array sizes
     if(VERBOSE>1 && myproc==0){
 	printf("Ntype 3 = %d\n",Ntype3);
@@ -845,7 +876,7 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
 	(*bound)->z[k]=0.0;
     }
 
-    if((*bound)->hasType2==1){
+    if((*bound)->hasType2>0){
 	for(j=0;j<Ntype2;j++){
 	    (*bound)->edgep[j]=0;
 	    (*bound)->localedgep[j]=-1;
@@ -871,7 +902,7 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
 	}
     }
 
-    if((*bound)->hasSeg==1){
+    if((*bound)->hasSeg>0){
 	for(j=0;j<Ntype2;j++){
 	    (*bound)->segedgep[j]=0;
 	}
@@ -887,7 +918,7 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
     }
     if(myproc==0) printf("Finished Zeroing Type2 boundary arrays...\n");
 
-    if((*bound)->hasType3==1){
+    if((*bound)->hasType3>0){
 	for(j=0;j<Ntype3;j++){
 	    (*bound)->cellp[j]=0;
 	    (*bound)->xv[j]=0.0;

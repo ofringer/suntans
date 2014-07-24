@@ -4044,7 +4044,7 @@ void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phy
 
     if(prop->calcage){
 	nc_write_3D_merge(ncid,prop->avgtimectr,  average->agec, prop, grid, "agec",0, numprocs, myproc, comm);
-	nc_write_3D_merge(ncid,prop->avgtimectr,  average->agec, prop, grid, "agealpha",0, numprocs, myproc, comm);
+	nc_write_3D_merge(ncid,prop->avgtimectr,  average->agealpha, prop, grid, "agealpha",0, numprocs, myproc, comm);
     }
   
     // Vertical velocity 
@@ -4677,8 +4677,8 @@ size_t returndimlen(int ncid, char *dimname){
  * Reads in boundary netcdf data into the forward and back time steps 
  *
  */     
-void ReadBdyNC(propT *prop, gridT *grid, int myproc){
-    int retval, j, k, n;
+void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
+    int retval, j, k, n, p, sendSize;
     int t0, t1;
     int varid;
     char *vname;
@@ -4718,25 +4718,36 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc){
 
 	count[2]=Ntype2;
 
-	vname = "boundary_u";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_u_t );
+	//Only read the data on the first processor
+	if(myproc==0){
+	    vname = "boundary_u";
+	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	    nc_read_3D(ncid, vname, start, count, bound->boundary_u_t );
 
-	vname = "boundary_v";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_v_t );
+	    vname = "boundary_v";
+	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	    nc_read_3D(ncid, vname, start, count, bound->boundary_v_t );
 
-	vname = "boundary_w";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_w_t );
+	    vname = "boundary_w";
+	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	    nc_read_3D(ncid, vname, start, count, bound->boundary_w_t );
 
-	vname = "boundary_T";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_T_t );
+	    vname = "boundary_T";
+	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	    nc_read_3D(ncid, vname, start, count, bound->boundary_T_t );
 
-	vname = "boundary_S";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->boundary_S_t );
+	    vname = "boundary_S";
+	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	    nc_read_3D(ncid, vname, start, count, bound->boundary_S_t );
+	}
+	
+  	// Distribute the data to the other processors
+	sendSize = count[0]*count[1]*count[2];
+	MPI_Bcast(&(bound->boundary_u_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->boundary_v_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->boundary_w_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->boundary_T_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->boundary_S_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
 
     }
 
@@ -4746,30 +4757,46 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc){
 	count[2]=Ntype3;
 	count2[1]=Ntype3;
 
-	vname = "uc";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-        nc_read_3D(ncid, vname, start, count, bound->uc_t );
+        sendSize = count[0]*count[1]*count[2];
 
-	vname = "vc";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->vc_t );
+	//Only read the data on the first processor
+	if(myproc==0){
+	  vname = "uc";
+	  if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+          nc_read_3D(ncid, vname, start, count, bound->uc_t );
 
-	vname = "wc";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->wc_t );
+	  vname = "vc";
+	  if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	  nc_read_3D(ncid, vname, start, count, bound->vc_t );
 
-	vname = "T";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->T_t );
+	  vname = "wc";
+	  if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	  nc_read_3D(ncid, vname, start, count, bound->wc_t );
 
-	vname = "S";
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_3D(ncid, vname, start, count, bound->S_t);
-	//printf("bound->S[1][0][0] = %f\n",bound->S_t[1][0][0]);
+	  vname = "T";
+	  if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	  nc_read_3D(ncid, vname, start, count, bound->T_t );
 
-	vname = "h";//2D array
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_2D(ncid, vname, start2, count2, bound->h_t, myproc );
+	  vname = "S";
+	  if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	  nc_read_3D(ncid, vname, start, count, bound->S_t);
+
+	  vname = "h";//2D array
+	  if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	  nc_read_2D(ncid, vname, start2, count2, bound->h_t, myproc );
+
+	}
+
+  	// Distribute the data to the other processors
+	sendSize = count[0]*count[1]*count[2];
+	MPI_Bcast(&(bound->uc_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->vc_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->wc_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->T_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->S_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	sendSize = count2[0]*count2[1];
+	MPI_Bcast(&(bound->h_t[0][0]),sendSize,MPI_DOUBLE,0,comm);
+
 
      }// End read type-3
 
@@ -4777,9 +4804,13 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc){
      if(bound->hasType2 && bound->hasSeg){
 
 	count2[1]=Nseg;
-	vname = "boundary_Q";//2D array
-	if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
-	nc_read_2D(ncid, vname, start2, count2, bound->boundary_Q_t, myproc);
+	if(myproc==0){
+	    vname = "boundary_Q";//2D array
+	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
+	    nc_read_2D(ncid, vname, start2, count2, bound->boundary_Q_t, myproc);
+	}
+	sendSize = count2[0]*count2[1];
+	MPI_Bcast(&(bound->boundary_Q_t[0][0]),sendSize,MPI_DOUBLE,0,comm);
 
      }//End flux read
  }//End function
@@ -4790,13 +4821,14 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc){
  * Reads the coordinate information from the netcdf file into the boundary structure
  *
  */
-void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc){
+void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 
     int retval, j;
     int varid;
     char *vname;
     //int ncid = prop->netcdfBdyFileID; 
 
+    if(myproc==0){
     vname = "time";
     if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...",vname);
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
@@ -4878,6 +4910,25 @@ void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc){
 	    ERR(retval);
 	if ((retval = nc_get_var_int(ncid, varid,bound->segp))) 
 	  ERR(retval); 
+    }
+    } // End processor 0 read
+
+    //Distribute the arrays
+    MPI_Bcast(&(bound->time[0]),bound->Nt,MPI_DOUBLE,0,comm);
+    MPI_Bcast(&(bound->z[0]),bound->Nk,MPI_DOUBLE,0,comm);
+    if(bound->hasType3>0){
+	MPI_Bcast(&(bound->xv[0]),bound->Ntype3,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->yv[0]),bound->Ntype3,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->cellp[0]),bound->Ntype3,MPI_INT,0,comm);
+    }
+    if(bound->hasType2>0){
+	MPI_Bcast(&(bound->xe[0]),bound->Ntype2,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->ye[0]),bound->Ntype2,MPI_DOUBLE,0,comm);
+	MPI_Bcast(&(bound->edgep[0]),bound->Ntype2,MPI_INT,0,comm);
+    }
+    if(bound->hasSeg>0){
+	MPI_Bcast(&(bound->segedgep[0]),bound->Ntype2,MPI_INT,0,comm);
+	MPI_Bcast(&(bound->segp[0]),bound->Nseg,MPI_INT,0,comm);
     }
 
  }//End function

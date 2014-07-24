@@ -41,8 +41,8 @@ void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phy
 void ReadMetNCcoord(propT *prop, gridT *grid, metinT *metin,int myproc);
 void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc);
 
-void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc);
-void ReadBdyNC(propT *prop, gridT *grid, int myproc);
+void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc, MPI_Comm comm);
+void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 //void UpdateBdyNC(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
 size_t returndimlenBC(int ncid, char *dimname);
 int getTimeRecBnd(REAL nctime, REAL *time, int nt);
