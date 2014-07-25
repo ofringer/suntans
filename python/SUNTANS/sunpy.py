@@ -960,7 +960,6 @@ class Grid(object):
         return x
         
 
-		
 #################################################
 
 class Spatial(Grid):

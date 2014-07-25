@@ -22,6 +22,24 @@ from inpolygon import inpolygon
 import pdb
 
 
+def transform(ct,LL):
+    """
+    Transform the coordinates in vector XY using ct
+    """
+    npt=np.size(LL,0)
+    if npt > 2:
+        xy = ct.TransformPoints(LL)
+        XY=np.zeros((npt,2))
+        for ii,tmp in enumerate(xy):
+            XY[ii,0],XY[ii,1]=tmp[0],tmp[1]  
+    else:
+        XY=np.zeros((1,2))
+        X,Y,z = ct.TransformPoint(LL[0],LL[1])
+        XY[0,0]=X
+        XY[0,1]=Y
+    
+    return XY
+ 
 def ll2utm(LL,zone,CS='WGS84',north=True):
     """ Convert from lat/long coordinates to utm"""
     
@@ -37,25 +55,27 @@ def ll2utm(LL,zone,CS='WGS84',north=True):
     
     srsLatLong = srs.CloneGeogCS()
     ct = osr.CoordinateTransformation(srsLatLong,srs )
+
+    return transform(ct,LL)
     
-    npt=np.size(LL,0)
-    if npt > 2:
-        xy = ct.TransformPoints(LL)
-        XY=np.zeros((npt,2))
-        #[ XY[ii,0],XY[ii,1]=tmp[0],tmp[1] for ii,tmp in enumerate(xy)]
-        for ii,tmp in enumerate(xy):
-            XY[ii,0],XY[ii,1]=tmp[0],tmp[1]  
-        #for ii in range(0,npt):
-        #    X,Y,z =  ct.TransformPoint(LL[ii,0],LL[ii,1])
-        #    XY[ii,0]=X
-        #    XY[ii,1]=Y
-    else:
-        XY=np.zeros((1,2))
-        X,Y,z = ct.TransformPoint(LL[0],LL[1])
-        XY[0,0]=X
-        XY[0,1]=Y
-    
-    return XY
+    #npt=np.size(LL,0)
+    #if npt > 2:
+    #    xy = ct.TransformPoints(LL)
+    #    XY=np.zeros((npt,2))
+    #    #[ XY[ii,0],XY[ii,1]=tmp[0],tmp[1] for ii,tmp in enumerate(xy)]
+    #    for ii,tmp in enumerate(xy):
+    #        XY[ii,0],XY[ii,1]=tmp[0],tmp[1]  
+    #    #for ii in range(0,npt):
+    #    #    X,Y,z =  ct.TransformPoint(LL[ii,0],LL[ii,1])
+    #    #    XY[ii,0]=X
+    #    #    XY[ii,1]=Y
+    #else:
+    #    XY=np.zeros((1,2))
+    #    X,Y,z = ct.TransformPoint(LL[0],LL[1])
+    #    XY[0,0]=X
+    #    XY[0,1]=Y
+    #
+    #return XY
     
 def utm2ll(XY,zone,CS='WGS84',north=True):
     """ Convert from utm coordinates to lat/long"""
@@ -72,22 +92,33 @@ def utm2ll(XY,zone,CS='WGS84',north=True):
     
     srsLatLong = srs.CloneGeogCS()
     ct = osr.CoordinateTransformation(srs,srsLatLong )
+
+    return transform(ct,XY)
     
-    npt=np.size(XY,0)
-    if npt > 2:
-        LL=np.zeros((npt,2))
-        for ii in range(0,npt):
-            X,Y,z =  ct.TransformPoint(XY[ii,0],XY[ii,1])
-            LL[ii,0]=X
-            LL[ii,1]=Y
-    else:
-        LL=np.zeros((1,2))
-        X,Y,z = ct.TransformPoint(XY[0],XY[1])
-        LL[0,0]=X
-        LL[0,1]=Y
-    
-    return LL
-    
+def ll2lcc(XY,bbox=None):
+    """
+    Lat/Lon (WGS84) to Lambert conformal projection
+    """
+    srs = osr.SpatialReference()
+    if bbox == None:
+        bbox = [XY[:,0].min(),XY[:,0].max(),XY[:,1].min(),XY[:,1].max()]
+
+    # set the output coordinate system
+    srs = osr.SpatialReference()
+    srs.SetWellKnownGeogCS( "WGS84" );
+ 
+    projstr = '+proj=lcc +lat_0=%f +lon_0=%f +lon_1=%f +lat_1=%f\
+        +a=6367470.21484375 +b=6367470.21484375\
+        +units=m'%(bbox[2],bbox[0],bbox[1],bbox[3])
+    srsout = osr.SpatialReference()
+    srsout.ImportFromProj4(projstr)
+        
+       
+    # define the transformation object
+    ct = osr.CoordinateTransformation(srs, srsout)
+
+    return transform(ct,XY)
+   
 def readDEM(bathyfile,returnvec=False):
     """ Loads the data from a DEM file"""
     # register all of the drivers

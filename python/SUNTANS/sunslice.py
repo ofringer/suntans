@@ -118,13 +118,19 @@ class Slice(Spatial):
             self.clim=[]
             self.clim.append(np.min(am))
             self.clim.append(np.max(am))
+
+        klayer,Nkmax = self.get_klayer()
         
-        V = np.linspace(self.clim[0],self.clim[1],clevs)
+        if type(clevs)==type(1): # is integer
+            V = np.linspace(self.clim[0],self.clim[1],clevs)
+        else:
+            V = clevs
+         
         if filled:
-            h1 = plt.contourf(self[xaxis],-self.z_r,am,V,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
+            h1 = plt.contourf(self[xaxis],-self.z_r[klayer],am,V,vmin=self.clim[0],vmax=self.clim[1],**kwargs)
         
         if outline:
-            h2 = plt.contour(self[xaxis],-self.z_r,am,V,colors='k')
+            h2 = plt.contour(self[xaxis],-self.z_r[klayer],am,V,**kwargs)
             
         #Overlay the bed
         if bathyoverlay:
@@ -266,6 +272,16 @@ class Slice(Spatial):
         return slicedata
         
         
+    def get_klayer(self):
+        if self.klayer[0]==-99:
+            klayer=range(self.Nkmax)
+            Nkmax = self.Nkmax
+        else:
+            klayer=self.klayer
+            Nkmax=len(klayer)
+        return klayer,Nkmax
+
+
     def _initInterp(self):
         """
         Initialise the interpolant
@@ -278,23 +294,29 @@ class Slice(Spatial):
         self.Tri = TriSearch(self.xp,self.yp,self.cells)
         
         self.cellind = self.Tri(self.xslice,self.yslice)
+
+        klayer,Nkmax = self.get_klayer()
         
         # Construct the 3D coordinate arrays
         self.xslice = np.repeat(self.xslice.reshape((1,self.Npt)),self.Nkmax,axis=0)
         self.yslice = np.repeat(self.yslice.reshape((1,self.Npt)),self.Nkmax,axis=0)
         self.distslice = np.repeat(self.distslice.reshape((1,self.Npt)),self.Nkmax,axis=0)
-        self.zslice = np.repeat(-self.z_r.reshape((self.Nkmax,1)),self.Npt,axis=1)
+        self.zslice = np.repeat(-self.z_r[klayer].reshape((self.Nkmax,1)),self.Npt,axis=1)
         
         # Construct the mask array
+        self._computeMask()
+
+        # Get the bathymetry along the slice
+        self.hslice = -self.dv[self.cellind]
+
+    def _computeMask(self):
+        """ Construct the mask array"""
         self.maskslice = np.zeros((self.Nkmax,self.Npt),dtype=np.bool)
         
         for kk in range(self.Nkmax):
             for ii in range(self.Npt):
                 if kk <= self.Nk[self.cellind[ii]]:
                     self.maskslice[kk,ii]=True
-
-        # Get the bathymetry along the slice
-        self.hslice = -self.dv[self.cellind]
     
     def _getSliceCoords(self,kind=3):
         """
@@ -362,7 +384,7 @@ class Slice(Spatial):
         Pretty bathymetry overlay
         """
         
-        plt.fill_between(xdata,self.hslice,y2=self.hslice.min(),**kwargs)
+        plt.fill_between(xdata,self.hslice,y2=self.hslice.min(),zorder=1e6,**kwargs)
         
         
     def __genTitle(self,tt=None):
@@ -385,11 +407,11 @@ class SliceEdge(Slice):
     Used for e.g. flux calculations along a profile
     """
 
-    def __init__(self,ncfile,xpt=None,ypt=None,Npt=100,**kwargs):
+    def __init__(self,ncfile,xpt=None,ypt=None,Npt=100,klayer=[-99],**kwargs):
         
         self.Npt=Npt
 
-        Spatial.__init__(self,ncfile,klayer=[-99],**kwargs)
+        Spatial.__init__(self,ncfile,klayer=klayer,**kwargs)
 
         # Load the grid as a hybridgrid
         self.grd = GridSearch(self.xp,self.yp,self.cells,nfaces=self.nfaces,\
@@ -436,6 +458,9 @@ class SliceEdge(Slice):
         de = self.get_edgevar(self.dv)
         self.hslice = -de[self.j]
 
+        # Get the mask
+        self._computeMask()
+
     def loadData(self,variable=None,setunits=True):
         """ 
         Load the specified suntans variable data as a vector
@@ -472,21 +497,23 @@ class SliceEdge(Slice):
             ind2 = nc2==-1
             nc2[ind2]=nc1[ind2]
 
+        klayer,Nkmax = self.get_klayer()
+
         def ncload(nc,variable,tt):
             if variable=='agemean':
-                ac = nc.variables['agec'][tt,:,:]
-                aa = nc.variables['agealpha'][tt,:,:]
+                ac = nc.variables['agec'][tt,klayer,:]
+                aa = nc.variables['agealpha'][tt,klayer,:]
                 tmp = aa/ac
                 tmp[ac<1e-12]=0.
                 return tmp/86400.
 
             else:
-                return nc.variables[variable][tt,:,:]
+                return nc.variables[variable][tt,klayer,:]
                 
         # For loop where the data is extracted 
         nt = len(self.tstep)
         ne = len(self.j)
-        self.data = np.zeros((nt,self.Nkmax,ne))
+        self.data = np.zeros((nt,Nkmax,ne))
         for ii,tt in enumerate(self.tstep):
             #tmp=nc.variables[variable][tt,:,:]
             tmp = ncload(nc,variable,tt)
@@ -495,10 +522,12 @@ class SliceEdge(Slice):
                 self.data[ii,:,:] = 0.5*(tmp[...,nc1]+tmp[...,nc2])
             else:
                 self.data[ii,:,:]=tmp[:,self.j]
+            maskval=0
+            self.data[ii,self.maskslice]=maskval
 
-        fillval = 999999.0
-        self.mask = self.data==fillval
-        self.data[self.mask]=0.
+        #fillval = 999999.0
+        #self.mask = self.data==fillval
+        #self.data[self.mask]=0.
         self.data = self.data.squeeze()
         
         return self.data
@@ -592,6 +621,17 @@ class SliceEdge(Slice):
             self.dzf = self.getdzf(eta).squeeze() # Assumes the free-surface is zero
 
         return self.dzf[:,self.j] * self.df[self.j]
+
+    def _computeMask(self):
+        """ Construct the mask array"""
+        klayer,Nkmax=self.get_klayer()
+        self.maskslice = np.zeros((Nkmax,len(self.j)),dtype=np.bool)
+        
+        for k,kk in enumerate(klayer):
+            for ii,j in enumerate(self.j):
+                if kk >= self.Nke[j]:
+                    self.maskslice[k,ii]=True
+ 
 
     def get_edgeindices(self,xpt,ypt):
         """
@@ -743,11 +783,11 @@ class MultiSliceEdge(SliceEdge):
     Used for e.g. flux calculations along a profile
     """
 
-    def __init__(self,ncfile,xpt=None,ypt=None,Npt=100,**kwargs):
+    def __init__(self,ncfile,xpt=None,ypt=None,Npt=100,klayer=[-99],**kwargs):
         
         self.Npt=Npt
 
-        Spatial.__init__(self,ncfile,klayer=[-99],**kwargs)
+        Spatial.__init__(self,ncfile,klayer=klayer,**kwargs)
 
         # Load the grid as a hybridgrid
         self.grd = GridSearch(self.xp,self.yp,self.cells,nfaces=self.nfaces,\

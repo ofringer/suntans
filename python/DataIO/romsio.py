@@ -17,6 +17,9 @@ from scipy import interpolate
 from interpXYZ import interpXYZ
 import othertime
 from timeseries import timeseries
+import operator
+from maptools import ll2lcc
+from mygeometry import MyLine
 
 try:
     from octant.slice import isoslice
@@ -825,6 +828,292 @@ class ROMS(roms_grid):
         else:
             self.__dict__[key]=value
 
+class ROMSLagSlice(ROMS):
+    """ROMS Lagrangian slice class"""
+    def __init__(self,x,y,time,width,nwidth,romsfile,**kwargs):
+        
+        # Load the ROMS file
+        ROMS.__init__(self,romsfile,**kwargs)
+
+        # Clip points outside of the time and domain limits
+        self._clip_points(x,y,time)
+
+        # Create an array with the slice coordinates 
+        self._create_slice_coords(width,nwidth)
+
+        # Reproject coordinates into distance along- and across-track
+        self._project_coords()
+
+    def __call__(self,varname):
+        """
+        Load the variable name and interpolate onto all time steps
+        """
+        # Load the data
+        self.loadData(varname=varname,tstep=range(self.Nt))
+
+        # Interpolate onto the time step
+        self.slicedata=np.zeros((self.Nt,self.ntrack,self.nwidth))
+        print 'Interpolating slice data...'
+        for tt in range(self.Nt):
+            #print 'Interpolating step %d of %d...'%(tt,self.Nt)
+            self.slicedata[tt,...]=\
+                self.interp(self.data[tt,...].squeeze())
+
+    def interp(self,phi):
+        """
+        Interpolate onto the lagrangian grid
+        """
+        if self.xcoord == 'lon_rho':
+            xyout = np.array([self.lonslice.ravel(),self.latslice.ravel()]).T
+            if not self.__dict__.has_key('Frho'):
+                xy = np.array([self.lon_rho.ravel(),self.lat_rho.ravel()]).T
+                Frho = interpXYZ(xy, xyout)
+            F = Frho
+        elif self.xcoord=='lon_psi':
+            xyout = np.array([self.lonslice.ravel(),self.latslice.ravel()]).T
+            if not self.__dict__.has_key('Fpsi'):
+                xy = np.array([self.lon_psi.ravel(),self.lat_psi.ravel()]).T
+                Fpsi = interpXYZ(xy, xyout)
+            F = Fpsi
+
+        data = F(phi.ravel())
+        return data.reshape((self.ntrack,self.nwidth))
+
+    def tinterp(self,dt):
+        """
+        Interpolate from the lagrangian grid to the timestep along the track
+        at t = t0 + dt
+        """
+        # Find the high and low indices
+        tlow = np.zeros((self.ntrack,),np.int16)
+        thigh = np.zeros((self.ntrack,),np.int16)
+        for ii in range(self.ntrack):
+            ind = np.argwhere(self.track_tsec[ii]+dt>=self.tsec)
+            if ind.size>0:
+                tlow[ii]=ind[-1]
+            else:
+                tlow[ii]=0
+            thigh[ii] = min(tlow[ii]+1,self.Nt)
+
+        # Calculate the interpolation weights
+        w1 =\
+            (self.track_tsec+dt-self.tsec[tlow])/(self.tsec[thigh]-self.tsec[tlow])
+        w1 = np.repeat(w1[...,np.newaxis],self.nwidth,axis=-1)
+
+        return (1.-w1)*self.slicedata[tlow,range(self.ntrack),:] +\
+            w1*self.slicedata[thigh,range(self.ntrack),:]
+            
+
+    def project(self,lon,lat):
+        """
+        Projects the coordinates in lon/lat into lagrangian coordinates
+        """
+        xyin = np.array([self.lonslice.ravel(),self.latslice.ravel()]).T
+        xy = np.array([lon,lat]).T
+
+        if len(xy.shape)==1:
+            xy = xy[np.newaxis,...]
+        F = interpXYZ(xyin, xy)
+
+        return F(self.Xalong.ravel()), F(self.Ycross.ravel())
+
+    
+    def pcolor(self,z,**kwargs):
+        
+        scale=0.001
+        X = self.Xalong*scale
+        Y = self.Ycross*scale
+        
+        ax=plt.gca()
+        h=plt.pcolormesh(X,Y,z,**kwargs)
+        ax.set_xlim([X.min(),X.max()])
+        ax.set_ylim([Y.min(),Y.max()])
+        return h
+        
+    def contour(self,z,VV,filled=True,**kwargs):
+        
+        scale=0.001
+        X = self.Xalong*scale
+        Y = self.Ycross*scale
+        
+        ax=plt.gca()
+        if filled:
+            h=plt.contourf(X,Y,z,VV,**kwargs)
+        else:
+            h=plt.contour(X,Y,z,VV,**kwargs)
+        ax.set_xlim([X.min(),X.max()])
+        ax.set_ylim([Y.min(),Y.max()])
+        return h
+ 
+    
+    def _clip_points(self,x,y,time):
+        
+        time = np.array(time)
+        # Convert both times and check it is inside of the time domain 
+        self.tsec = othertime.SecondsSince(self.time,basetime=self.time[0])
+        ttrack = othertime.SecondsSince(time,basetime=self.time[0])
+        indtime = operator.and_(ttrack>=0,ttrack<=self.tsec[-1])
+
+        # Check for points inside of the spatial domain
+        indx = operator.and_(x>=self.X.min(),x<=self.X.max())
+        indy = operator.and_(y>=self.Y.min(),y<=self.Y.max())
+        indxy = operator.and_(indx,indy)
+
+        ind = operator.and_(indtime,indxy)
+        self.track_time=time[ind]
+        self.track_tsec = othertime.SecondsSince(self.track_time,basetime=self.time[0])
+        self.track_x = x[ind]
+        self.track_y = y[ind]
+        self.ntrack = self.track_x.shape[0]
+
+    def _create_slice_coords(self,width,nwidth):
+        """
+        Create the lagrangian coordinates
+
+        These are for interpolation
+        """
+        self.centreline= MyLine([[self.track_x[ii],self.track_y[ii]]\
+            for ii in range(self.ntrack)])
+        
+        # Compute the normalized distance along the line
+        normdist = (self.track_tsec-self.track_tsec[0])\
+            /(self.track_tsec[-1]-self.track_tsec[0]) 
+        #P = line.perpendicular(0.4,1.)
+        perplines = [self.centreline.perpline(normdist[ii],width) \
+            for ii in range(self.ntrack)]
+
+        self.nwidth=nwidth
+        # Initialize the output coordinates
+        self.lonslice = np.zeros((self.ntrack,self.nwidth))
+        self.latslice = np.zeros((self.ntrack,self.nwidth))
+        for ii,ll in enumerate(perplines):
+            points = ll.multipoint(self.nwidth)
+            for jj,pp in enumerate(points):
+                self.lonslice[ii,jj]=pp.x
+                self.latslice[ii,jj]=pp.y
+
+    def _project_coords(self):
+        """
+        Project the slice into along and across track coordinates
+
+        These coordinates are for plotting only
+        """
+        def dist(x,x0,y,y0):
+            return np.sqrt( (x-x0)**2. + (y-y0)**2. )
+            
+
+        # Convert the slice to lambert conformal
+        LL = np.array([self.lonslice.ravel(),self.latslice.ravel()])
+        XY = ll2lcc(LL.T)
+        xslice = XY[:,0].reshape((self.ntrack,self.nwidth))
+        yslice = XY[:,1].reshape((self.ntrack,self.nwidth))
+
+        # Get the mid-point of the line and calculate the along-track distance
+        xmid = xslice[:,self.nwidth//2]
+        ymid = yslice[:,self.nwidth//2]
+
+        along_dist = np.zeros((self.ntrack,))
+        along_dist[1:] = np.cumsum(dist(xmid[1:],xmid[:-1],ymid[1:],ymid[:-1]))
+
+        # Get the across track distance
+        xend = xslice[0,:]
+        yend = yslice[0,:]
+        acrossdist = np.zeros((self.nwidth,))
+        acrossdist[1:] = np.cumsum(dist(xend[1:],xend[:-1],yend[1:],yend[:-1]))
+        acrossdist -= acrossdist.mean()
+
+        self.Ycross,self.Xalong =np.meshgrid(acrossdist,along_dist)
+
+    def interp(self,phi):
+        """
+        Interpolate onto the lagrangian grid
+        """
+        if self.xcoord == 'lon_rho':
+            xyout = np.array([self.lonslice.ravel(),self.latslice.ravel()]).T
+            if not self.__dict__.has_key('Frho'):
+                xy = np.array([self.lon_rho.ravel(),self.lat_rho.ravel()]).T
+                Frho = interpXYZ(xy, xyout)
+            F = Frho
+        elif self.xcoord=='lon_psi':
+            xyout = np.array([self.lonslice.ravel(),self.latslice.ravel()]).T
+            if not self.__dict__.has_key('Fpsi'):
+                xy = np.array([self.lon_psi.ravel(),self.lat_psi.ravel()]).T
+                Fpsi = interpXYZ(xy, xyout)
+            F = Fpsi
+
+        data = F(phi.ravel())
+        return data.reshape((self.ntrack,self.nwidth))
+
+
+
+class ROMSslice(ROMS):
+    """
+    Class for slicing ROMS data 
+    """
+    def __init__(self,ncfile,lon,lat,**kwargs):
+        """
+
+        """ 
+        ROMS.__init__(self,ncfile,**kwargs)
+
+        self.xyout = np.array([lon,lat]).T
+
+        self.nslice = self.xyout.shape[0]
+
+    def __call__(self,varname):
+        
+        # Load the data
+        dataslice = self.loadData(varname=varname)
+
+        ndim = dataslice.ndim
+
+        # Create the interpolation object
+        self.xy = np.array([self.X.ravel(),self.Y.ravel()]).T
+
+        self.F = interpXYZ(self.xy,self.xyout)
+
+        Nt = len(self.tstep)
+        Nk = len(self.K)
+
+        # Interpolate onto the output data
+        data = np.zeros((Nt,Nk,self.nslice))
+        if ndim == 2:
+            return self.F(dataslice.ravel())
+        elif Nt>1 and Nk==1:
+            for tt in range(Nt):
+                data[tt,:,:] = self.F(dataslice[tt,:,:].ravel())
+        elif Nk>1 and Nt==1:
+            for kk in range(Nk):
+                data[:,kk,:] = self.F(dataslice[:,kk,:].ravel())
+        else: # 4D array
+            for kk in range(Nk):
+                for tt in range(Nt):
+                    data[tt,kk,:] = self.F(dataslice[tt,kk,:,:].ravel())
+
+        data[data>1e36]=0.
+        return data.squeeze()
+
+    def lagrangian(self,varname,time):
+        """
+        Lagrangian slice
+
+        Returns all of the data at each point along the slice with the
+        starting point for each slice beginning at time.
+        """
+        self.tstep = range(self.Nt)
+
+        data = self.__call__(varname)
+        
+        # Find the start time index
+        t0 = [self.getTstep(tt,tt)[0] for tt in time]
+        nt = self.Nt - min(t0)
+        sz = (nt,)+data.shape[1::]
+        dataout = np.zeros(sz)
+        for ii in range(self.nslice):
+           t1 = self.Nt-t0[ii]
+           dataout[0:t1,...,ii] = data[t0[ii]::,...,ii] 
+
+        return dataout
             
 class roms_timeseries(ROMS, timeseries):
     """

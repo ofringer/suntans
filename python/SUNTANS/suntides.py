@@ -157,9 +157,15 @@ class suntides(Spatial):
                 self.Mean.update({vv:self.nc.variables[name][:]})
                 
         
-    def plotAmp(self,vname='eta',k=0,con='M2',xlims=None,ylims=None,**kwargs):
+    def plotAmp(self,vname='eta',k=0,con='M2',xlims=None,ylims=None,\
+        barotropic=False,cbarpos=None,**kwargs):
         """
         Plots the amplitude of the constituent on a map
+
+        vname: one of 'eta','ubar','vbar','uc','vc',...
+
+        Set vname = 'ellmaj','ellmin','ellang','ellphs' to plot ellipse
+        properties
         """
         ii = findCon(con,self.frqnames)
         
@@ -171,14 +177,35 @@ class suntides(Spatial):
             xlims=self.xlims 
             ylims=self.ylims
             
-        if len(self.Amp[vname].shape)==2:
+        if vname in ['ellmaj','ellmin','ellang','ellphs']:
+            ell=self.getEllipse(barotropic=barotropic,k=k,con=con)
+            if vname=='ellmaj':
+                zA=ell[0]
+            elif vname=='ellmin':
+                zA=ell[1]
+            elif vname=='ellang':
+                zA=ell[2]
+            elif vname=='ellphs':
+                zA=ell[3]
+
+        elif len(self.Amp[vname].shape)==2:
             zA = self.Amp[vname][ii,:]
         else:
             zA = self.Amp[vname][ii,k,:].ravel()
             
         self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zA,xlim=xlims,ylim=ylims,\
-                clim=self.clim,**kwargs)
+                clim=self.clim,colorbar=False,**kwargs)
         
+        # Add a decent looking colorbar
+        if not cbarpos==None:
+            cbaxes = self.fig.add_axes(cbarpos) 
+            cb = self.fig.colorbar(self.patches,cax = cbaxes,orientation='vertical')  
+            #cb.ax.set_title('[$m s^{-1}$]')
+    
+        plt.sca(self.ax)
+
+        return self.patches
+ 
         #titlestr='%s Amplitude\n%s [%s]'%(self.frqnames[ii],self.long_name,self.units)
         #plt.title(titlestr)
         
@@ -231,6 +258,29 @@ class suntides(Spatial):
         self.fig,self.ax,self.patches,self.cb=unsurf(self.xy,zA,xlim=xlims,ylim=ylims,\
                 clim=self.clim,**kwargs)        
                 
+    def getEllipse(self,barotropic=False,k=0,con='M2'):
+        """
+        Returns the ellipse parameters
+        """
+        iicon = findCon(con,self.frqnames)
+        # Load the data
+        if barotropic:
+            uA = self.Amp['ubar'][iicon,:]
+            uP = self.Phs['ubar'][iicon,:]
+            vA = self.Amp['vbar'][iicon,:]
+            vP = self.Phs['vbar'][iicon,:]
+        else:
+            uA = self.Amp['uc'][iicon,k,:]
+            uP = self.Phs['uc'][iicon,k,:]
+            vA = self.Amp['vc'][iicon,k,:]
+            vP = self.Phs['vc'][iicon,k,:]
+            
+        # Calculate the ellipse parameters
+        ell = ap2ep(uA,uP,vA,vP)
+        # ell = (major, minor, angles, phase)
+        return ell
+ 
+
     def plotEllipse(self,barotropic=False,k=0,con='M2',scale=1e4,subsample=4,\
             xlims=None,ylims=None,cbarpos=[0.15, 0.15, 0.03, 0.3],**kwargs):
         """
@@ -251,21 +301,8 @@ class suntides(Spatial):
         if xlims==None or ylims==None:
             xlims=self.xlims 
             ylims=self.ylims
-            
-        # Load the data
-        if barotropic:
-            uA = self.Amp['ubar'][iicon,:]
-            uP = self.Phs['ubar'][iicon,:]
-            vA = self.Amp['vbar'][iicon,:]
-            vP = self.Phs['vbar'][iicon,:]
-        else:
-            uA = self.Amp['uc'][iicon,k,:]
-            uP = self.Phs['uc'][iicon,k,:]
-            vA = self.Amp['vc'][iicon,k,:]
-            vP = self.Phs['vc'][iicon,k,:]
-            
-        # Calculate the ellipse parameters
-        ell = ap2ep(uA,uP,vA,vP)
+
+        ell = self.getEllipse(barotropic=barotropic,k=k,con=con)
             
         # Create the ellipse collection
         indices = range(0,self.Nc,subsample)

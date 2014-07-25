@@ -428,7 +428,7 @@ class HybridGrid(object):
         ind = nfaces>=minfaces
         
         cells = cells[ind,:]
-        nfaces =  nfaces[ind,:]
+        nfaces =  nfaces[ind]
         xv = xv[ind]
         yv = yv[ind]
 

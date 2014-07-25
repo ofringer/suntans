@@ -92,18 +92,20 @@ class Boundary(object):
         # Cell index of type 3 boundaries
         cellp1 = self.grd.grad[ind3,0]
         cellp2 = self.grd.grad[ind3,1]
-        self.cellp=[]
+        cellp=[]
         for c1,c2 in zip(cellp1,cellp2):
             if c1==-1:
-                self.cellp.append(c2)
+                cellp.append(c2)
             elif c2==-1:
-                self.cellp.append(c1)
+                cellp.append(c1)
         
-        self.N3 = len(self.cellp)
+        self.N3 = len(cellp)
         
         # Store the coordinates of the type 2 and 3 boundaries
         if self.N3>0:
-            self.cellp = np.array(self.cellp)
+            cellp = np.array(cellp)
+            self.cellp = np.unique(cellp)
+            self.N3 = self.cellp.shape[0]
             self.xv = self.grd.xv[self.cellp]
             self.yv = self.grd.yv[self.cellp]
         
@@ -119,7 +121,6 @@ class Boundary(object):
             segID = self.grd.edge_id[indseg]
             self.segp = np.unique(segID)
             self.Nseg = np.size(self.segp)
-
             # This is the pointer for the edge to the segment
             self.segedgep=self.edgep*0
             n=-1            
@@ -129,11 +130,31 @@ class Boundary(object):
                     self.segedgep[n]=self.grd.edge_id[ii]
         else:
             self.Nseg=0
-                     
+             
         # Get the depth info
         self.Nk = self.grd.Nkmax
         self.z = self.grd.z_r
-   
+
+    def setDepth(self,dv):
+        """
+        Sets the depth at the type2 and 3 points
+        """
+        if self.N3>0:
+            self.dv = dv[self.cellp]
+        if self.N2>0:
+            nc1 = self.grd.grad[:,0]
+            nc2 = self.grd.grad[:,1]
+                    
+            # check for edges (use logical indexing)
+            ind1 = nc1==-1
+            nc1[ind1]=nc2[ind1]
+            ind2 = nc2==-1
+            nc2[ind2]=nc1[ind2]
+            
+            de = dv[nc1]
+            self.de = de[self.edgep.ravel()]
+
+
     def getTime(self):
         """
         Load the timeinfo into a list of datetime objects
@@ -512,23 +533,46 @@ class Boundary(object):
         from maptools import utm2ll
         import read_otps
         
-        xy = np.hstack((self.xv,self.yv))
-        ll = utm2ll(xy,self.utmzone,north=self.isnorth)
-        
-        if self.__dict__.has_key('dv'):
-            z=self.dv
-        else:
-            print 'Using OTIS depths to calculate velocity. Set self.dv to change this.'
-            z=None
+        if self.N3>0:
+            print 'Interolating otis onto type 3 bc''s...'
+            xy = np.vstack((self.xv,self.yv)).T
+            ll = utm2ll(xy,self.utmzone,north=self.isnorth)
             
-        h,U,V = read_otps.tide_pred(otisfile,ll[:,0],ll[:,1],np.array(self.time),z=z,conlist=conlist)
-        
-        # Update the arrays - note that the values are added to the existing arrays
-        self.h += h
-        if setUV:
+            if self.__dict__.has_key('dv'):
+                z=self.dv
+            else:
+                print 'Using OTIS depths to calculate velocity. Use setDepth()\
+                to set this.'
+                z=None
+                
+            h,U,V = read_otps.tide_pred(otisfile,ll[:,0],ll[:,1],np.array(self.time),z=z,conlist=conlist)
+            
+            # Update the arrays - note that the values are added to the existing arrays
+            self.h += h
+            if setUV:
+                for k in range(self.Nk):
+                    self.uc[:,k,:] += U
+                    self.vc[:,k,:] += V
+
+        if self.N2>0:
+            print 'Interolating otis onto type 2 bc''s...'
+            xy = np.hstack((self.xe,self.ye))
+            ll = utm2ll(xy,self.utmzone,north=self.isnorth)
+            
+            if self.__dict__.has_key('de'):
+                z=self.de
+            else:
+                print 'Using OTIS depths to calculate velocity. Use setDepth()\
+                to set this .'
+                z=None
+                
+            h,U,V = read_otps.tide_pred(otisfile,ll[:,0],ll[:,1],np.array(self.time),z=z,conlist=conlist)
+            
+            # Update the arrays - note that the values are added to the existing arrays
             for k in range(self.Nk):
-                self.uc[:,k,:] += U
-                self.vc[:,k,:] += V
+                self.boundary_u[:,k,:] += U
+                self.boundary_v[:,k,:] += V
+
             
         print 'Finished interpolating OTIS tidal data onto boundary arrays.'
        
