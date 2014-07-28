@@ -33,8 +33,9 @@
 #define EMPTY 999999
 #define CMAPFILE "cmaps/jet.cmap"
 #define NUMCOLORS 66
-//#define DEFAULT_FONT "-adobe-helvetica-medium-o-normal--20-140-100-100-p-98-iso8859-9"
-#define DEFAULT_FONT "9x15"
+//#define DEFAULT_FONT "9x15"
+//#define DEFAULT_FONT "xterm"
+#define DEFAULT_FONT "fixed"
 #define WINSCALE 0
 #define WINLEFT .2
 #define WINTOP .2
@@ -1933,11 +1934,7 @@ void InitializeGraphics(void) {
   XAllocNamedColor(dis,colormap,"yellow",&temp1,&temp2);
   yellow = temp2.pixel;
   
-  //  fontStruct = XLoadQueryFont(dis,DEFAULT_FONT);
-  int mm, actual;
-  char **fontslist = XListFonts(dis,"*",10,&actual);
-  fontStruct = XLoadQueryFont(dis,fontslist[4]);
-  
+  fontStruct = XLoadQueryFont(dis,DEFAULT_FONT);
   if(!fontStruct) {
     printf("Font \"%s\" does not exist!\n",DEFAULT_FONT);
     exit(0);
