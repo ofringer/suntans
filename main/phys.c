@@ -4153,10 +4153,10 @@ void SetDensity(gridT *grid, physT *phys, propT *prop) {
   for(i=0;i<grid->Nc;i++) {
     z=phys->h[i];
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      z+=0.5*grid->dzz[i][k];
+      z+=0.5*grid->dz[k];
       p=RHO0*prop->grav*z;
       phys->rho[i][k]=StateEquation(prop,phys->s[i][k],phys->T[i][k],p);
-      z+=0.5*grid->dzz[i][k];
+      z+=0.5*grid->dz[k];
     }
   }
 
