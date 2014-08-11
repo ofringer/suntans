@@ -16,6 +16,7 @@
 #include "grid.h"
 #include "phys.h"
 #include "suntans.h"
+#include "sediments.h"
 #include "profiles.h"
 
 /*
@@ -48,7 +49,7 @@ static int ContainsCharacter(char *string, char c);
  * input points on each processor, and then uses this to output the data at the
  * specified intervals in suntans.dat.  The variables in suntans.dat are given by:
  * 
- * ProfileVariables         default, all, none, or one or all of husbTqnk
+ * ProfileVariables         default, all, none, or one or all of husbTqnkC
  *    h = free-surface output to file FreeSurfaceFile.prof
  *    u = u,v,w output to file HorizontalVelocityFile.prof
  *    s = salinity output to file SalinityFile.prof
@@ -57,7 +58,8 @@ static int ContainsCharacter(char *string, char c);
  *    q = nonhydrostatic pressure output to file PressureFile.prof
  *    n = eddy-viscosity output to file EddyViscosityFile.prof
  *    k = scalar-diffusivity output to file ScalarDiffusivityFile.prof
- *    all = husbTqnk
+ *    C = suspended sediment concentration
+ *    all = husbTqnkC
  *    none = no profile output (same as omitting ProfileVariables)
  *    default = husb
  * DataLocations            name of file containing the x-y coordinates of the locations
@@ -329,7 +331,7 @@ static int InPolygon(REAL x, REAL y, REAL *xg, REAL *yg, int N) {
  *
  */
 static void OpenDataFiles(int myproc) {
-  int status;
+  int status, nosize;
   char str[BUFFERLENGTH], filename[BUFFERLENGTH];
 
   if(strlen(ProfileVariables)>0) {
@@ -396,7 +398,20 @@ static void OpenDataFiles(int myproc) {
 	ScalarDiffusivityProfFID = fopen(str,"w");
       }
     }
-    
+
+    if(ContainsCharacter(ProfileVariables,'C')) {
+      SediProfFID = (FILE **)SunMalloc(sediments->Nsize*sizeof(FILE *),
+				       "OpenDataFiles");
+      for(nosize=0;nosize<sediments->Nsize;nosize++) {
+	sprintf(str,"Sediment%dFile",nosize+1);
+	MPI_GetFile(filename,DATAFILE,str,"OpenDataFiles",myproc);
+	if(myproc==0) {
+	  sprintf(str,"%s.prof",filename);
+	  SediProfFID[nosize] = fopen(str,"w");
+	}
+      }
+    }
+
     MPI_GetFile(filename,DATAFILE,"ProfileDataFile","OpenDataFiles",myproc);
     if(myproc==0) ProfileDataFID = fopen(filename,"w");
   }
@@ -411,6 +426,8 @@ static void OpenDataFiles(int myproc) {
  * 
  */
 static void CloseDataFiles(void) {
+  int nosize;
+
   if(ContainsCharacter(ProfileVariables,'h'))
     fclose(FreeSurfaceProfFID);
   if(ContainsCharacter(ProfileVariables,'u'))
@@ -427,6 +444,11 @@ static void CloseDataFiles(void) {
     fclose(EddyViscosityProfFID);
   if(ContainsCharacter(ProfileVariables,'k'))
     fclose(ScalarDiffusivityProfFID);
+  if(ContainsCharacter(ProfileVariables,'C')) {
+    for(nosize=0;nosize<sediments->Nsize;nosize++)
+      fclose(SediProfFID[nosize]);
+    SunFree(SediProfFID,sediments->Nsize*sizeof(FILE *),"CloseDataFiles");
+  }
 }
 
 /*
@@ -535,6 +557,9 @@ static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int 
   }
 
   if(myproc==0)
+    fwrite(&sediments->Nsize,sizeof(int),1,ProfileDataFID);
+
+  if(myproc==0)
     fclose(ProfileDataFID);
 
   SunFree(tmp_real,2*all2d*sizeof(REAL),"AllInitialWriteToFiles");
@@ -556,7 +581,7 @@ static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int 
  *
  */
 static void WriteAllProfileData(gridT *grid, physT *phys, propT *prop, MPI_Comm comm, int numprocs, int myproc) {
-  int i, ni, k, n, iloc, size;
+  int i, ni, k, n, iloc, nosize;
 
   if(myproc==0 && VERBOSE>2)
     printf("Outputting profile data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
@@ -587,6 +612,11 @@ static void WriteAllProfileData(gridT *grid, physT *phys, propT *prop, MPI_Comm 
 
   if(ContainsCharacter(ProfileVariables,'k')) 
     Write3DData(phys->kappa_tv,grid->Nk,NkmaxProfs,merge_tmp,merge_tmp2,ScalarDiffusivityProfFID,comm,numprocs,myproc);
+
+  if(ContainsCharacter(ProfileVariables,'C')) {
+    for(nosize=0;nosize<sediments->Nsize;nosize++)
+      Write3DData(sediments->SediC[nosize],grid->Nk,NkmaxProfs,merge_tmp,merge_tmp2,SediProfFID[nosize],comm,numprocs,myproc);
+  }
 }
 
 /*
