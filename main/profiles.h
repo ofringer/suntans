@@ -15,12 +15,13 @@
 #include "suntans.h"
 
 #define MAXOUTPUTVARIABLES 8
-#define ALLPROFILEVARIABLES "husbTqnk"
+#define ALLPROFILEVARIABLES "husbTqnkC"
 #define DEFAULTPROFILEVARIABLES "husb"
 
 FILE *FreeSurfaceProfFID, *HorizontalVelocityProfFID, *VerticalVelocityProfFID,
   *SalinityProfFID, *BGSalinityProfFID, *TemperatureProfFID, *PressureProfFID, 
-  *EddyViscosityProfFID, *ScalarDiffusivityProfFID, *ProfileDataFID;
+  *EddyViscosityProfFID, *ScalarDiffusivityProfFID, *ProfileDataFID,
+  **SediProfFID;
 
 int existProfs, numInterpPoints, ntoutProfs, NkmaxProfs, numTotalDataPoints, numLocalDataPoints, *dataIndices, *interpIndices;
 int *total2d, all2d, *total3d, *allIndices;
