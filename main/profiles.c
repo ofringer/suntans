@@ -556,7 +556,7 @@ static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int 
     fwrite(tmp_real2,sizeof(REAL),size,ProfileDataFID);
   }
 
-  if(myproc==0)
+  if(myproc==0 && ContainsCharacter(ProfileVariables,'C'))
     fwrite(&sediments->Nsize,sizeof(int),1,ProfileDataFID);
 
   if(myproc==0)
