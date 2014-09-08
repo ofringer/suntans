@@ -42,8 +42,12 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
   if(prop->n==prop->nstart+1) {
     printf("Initializing v Coriolis for a 2.5D simulation\n");
     v_coriolis = (REAL **)SunMalloc(grid->Ne*sizeof(REAL *),"MomentumSource");
-    for(j=0;j<grid->Ne;j++)
+    for(j=0;j<grid->Ne;j++) {
       v_coriolis[j] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"MomentumSource");
+
+      for(k=0;k<grid->Nke[j];k++)
+	v_coriolis[j][k] = 0.0;
+    }
   }
 
   // Hard-code coriolis here so that it can be zero in the main code
