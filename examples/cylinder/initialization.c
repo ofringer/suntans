@@ -61,7 +61,7 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
  *
  */
 REAL ReturnDepth(REAL x, REAL y) {
-  return 1;
+  return 0.25;
 }
 
  /*

@@ -24,7 +24,7 @@
  *
  */
 REAL StateEquation(const propT *prop, const REAL s, const REAL T, const REAL p) {
-  return -prop->gamma*T;
+  return 0;
 }
 
 
