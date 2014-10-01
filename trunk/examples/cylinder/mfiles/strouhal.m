@@ -2,9 +2,9 @@
 % Calculate the Strouhal number from profile data obtained with the
 % cylinder example.  This run gives a Strouhal number of 0.25.
 %
-addpath '../../../../mfiles';
-dt0 = str2num(getvalue('../data/suntans.dat','dt'));
-ntoutProfs = str2num(getvalue('../data/suntans.dat','ntoutProfs'));
+addpath '../../../mfiles';
+dt0 = getvalue('../data/suntans.dat','dt');
+ntoutProfs = getvalue('../data/suntans.dat','ntoutProfs');
 
 dt = ntoutProfs*dt0;
 d = 0.1;
