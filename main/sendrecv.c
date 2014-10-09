@@ -12,6 +12,7 @@
 #include "sendrecv.h"
 #include "timer.h"
 #include "memory.h"
+#include "util.h"
 
 // Private functions (no longer used)
 static void SendRecvCellData2D(REAL *celldata, gridT *grid, int myproc, MPI_Comm comm);

@@ -42,33 +42,37 @@ void MPI_Comm_rank(MPI_Comm comm, int *rank) {
 }
 
 int MPI_Send(void *buf, int count, MPI_Datatype datatype, int dest, 
-	     int tag, MPI_Comm comm ) {}
+	     int tag, MPI_Comm comm ) { return 0; }
   
 int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, 
-	     int tag, MPI_Comm comm, MPI_Status *status ) {}
+	     int tag, MPI_Comm comm, MPI_Status *status ) { return 0; }
 
 int MPI_Bcast (void *buffer, int count, MPI_Datatype datatype, int root, 
-	       MPI_Comm comm ) {}
+	       MPI_Comm comm ) { return 0; }
 
 void MPI_Barrier(MPI_Comm comm) {} 
 
 int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
-	      MPI_Comm comm, MPI_Request *request ) {}
+	      MPI_Comm comm, MPI_Request *request ) { return 0; }
 
 int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag, 
-	      MPI_Comm comm, MPI_Request *request) {}
+	      MPI_Comm comm, MPI_Request *request) { return 0; }
 
-int MPI_Waitall(int count, MPI_Request array_of_requests[], MPI_Status array_of_statuses[]) {}
+int MPI_Waitall(int count, MPI_Request array_of_requests[], MPI_Status array_of_statuses[]) { return 0; }
 
 int MPI_Reduce (void *sendbuf, void *recvbuf, int count, 
 		MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm ) {
   memcpy(recvbuf,sendbuf,datatype);
+
+  return 0;
 }
 
 int MPI_Gather (void *sendbuf, int sendcnt, MPI_Datatype sendtype, 
 		void *recvbuf, int recvcount, MPI_Datatype recvtype, 
 		int root, MPI_Comm comm ) {
   memcpy(recvbuf,sendbuf,sendtype);
+
+  return 0;
 }
 
 double MPI_Wtime(void) {

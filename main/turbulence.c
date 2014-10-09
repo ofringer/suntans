@@ -13,6 +13,7 @@
 #include "phys.h"
 #include "grid.h"
 #include "phys.h"
+#include "sendrecv.h"
 #include "util.h"
 #include "turbulence.h"
 #include "boundaries.h"

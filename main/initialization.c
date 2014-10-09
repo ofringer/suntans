@@ -63,6 +63,8 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
       }
     }
   }
+
+  return -1;
 }
   
 /*

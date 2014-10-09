@@ -314,7 +314,7 @@ static int InPolygon(REAL x, REAL y, REAL *xg, REAL *yg, int N) {
 
   for (i=0; i<N; i++) {
     j++; if (j==N) j=0;
-    if (yg[i]<y && yg[j]>=y || yg[j]<y && yg[i]>=y) 
+    if ((yg[i]<y && yg[j]>=y) || (yg[j]<y && yg[i]>=y)) 
       if (xg[i]+(y-yg[i])/(yg[j]-yg[i])*(xg[j]-xg[i])<x) 
         in=!in;
   }
@@ -801,7 +801,7 @@ static int GetProfileVariables(void) {
     return 0;
 
   if(!strcmp(ProfileVariables,"none")) {
-    sprintf(ProfileVariables,"\0");
+    sprintf(ProfileVariables,"");
     return 0;
   } else if(!strcmp(ProfileVariables,"all")) {
     sprintf(ProfileVariables,"%s",ALLPROFILEVARIABLES);

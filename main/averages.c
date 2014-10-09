@@ -4,8 +4,8 @@
 * All functions to calculate and output average quantities 
 * 
 */ 
-
 #include "averages.h"
+#include "sendrecv.h"
 
 /***********************************************
 * Private functions

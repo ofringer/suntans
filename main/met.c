@@ -2,10 +2,10 @@
  * Routines for parsing meteorological input data into SUNTANS 
  * 
  */
-
 #include "met.h"
 //#include "phys.h"
 #include "mynetcdf.h"
+#include "sendrecv.h"
 
 /* Private functions */
 void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda,int myproc);
@@ -600,6 +600,8 @@ static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL
    }
    return 0.0;
  }  
+
+ return 0.0;
 }
 
 /*
@@ -1192,7 +1194,7 @@ static void cor30a(REAL *y){
   hl_webb=rhoa*wbar*Q*Le;
   
   /**************   compute transfer coeffs relative to ut @meas. ht **********/
-  Cd=tau/rhoa/ut/max(.1,du);
+  Cd=tau/rhoa/ut/Max(0.1,du);
   Ch=-usr*tsr/ut/(dt-dter*jcool);
   Ce=-usr*qsr/(dq-dqer*jcool)/ut;
   

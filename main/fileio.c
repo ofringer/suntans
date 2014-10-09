@@ -9,6 +9,7 @@
  * University. All Rights Reserved.
  *
  */
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,10 +150,10 @@ double getfield(FILE *file, char *str)
       printf("Make sure there are no dangling white spaces or carriage returns at end of input files suntans.dat\n");
       printf("     and dataxy.dat (if used).\n");
     }
-    return;
+    return 0;
   }
 
-  while(c != ' ' & c != '\t' & c != '\n' & c != '\r' & c != EOF) {
+  while((c != ' ') && (c != '\t') && (c != '\n') && (c != '\r') && (c != EOF)) {
     str[i++] = c;
     c = fgetc(file);
   }
@@ -160,7 +161,7 @@ double getfield(FILE *file, char *str)
 
   str[i]='\0';
   for(k=0;k<i;k++) {
-    if(!isdigit(str[k]) & str[k]!='.' & str[k]!='-' & str[k]!='+' & str[k]!='e') {
+    if((!isdigit(str[k])) && (str[k]!='.') && (str[k]!='-') && (str[k]!='+') && (str[k]!='e')) {
       flag = 0;
       break;
     }

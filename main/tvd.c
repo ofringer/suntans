@@ -9,12 +9,13 @@
  * University. All Rights Reserved.
  *
  */
+#include <math.h>
 #include "suntans.h"
 #include "phys.h"
 #include "grid.h"
 #include "tvd.h"
 #include "util.h"
-#include <math.h>
+#include "sendrecv.h"
 
 // To prevent denominators from going to zero.
 #define EPS 1e-12

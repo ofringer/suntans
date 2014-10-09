@@ -12,6 +12,7 @@
 #include "phys.h"
 #include "sources.h"
 #include "memory.h"
+#include "sendrecv.h"
 
 void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
   int j, jptr, nc1, nc2, k;

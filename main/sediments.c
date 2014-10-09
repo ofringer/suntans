@@ -12,6 +12,8 @@
 #include "suntans.h"
 #include "grid.h"
 #include "phys.h"
+#include "sendrecv.h"
+#include "timer.h"
 #include "initialization.h"
 #include "boundaries.h"
 #include "sediments.h"
@@ -61,7 +63,7 @@ void ReadSediProperties(int myproc) {
   
   // condition check
   if(sediments->readSediment==1 && sediments->Nsize>3){
-    printf("Nsize = %d>1, but readSediment==1 which means Nsize==1. You should set readSediment as 0 or Nsize==1.\n",sediments->Nsize,sediments->Nsize);
+    printf("Nsize = %d>1, but readSediment==1 which means Nsize==1. You should set readSediment as 0 or Nsize==1.\n",sediments->Nsize);
     MPI_Finalize();
     exit(EXIT_FAILURE);
   }
