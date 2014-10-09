@@ -2016,7 +2016,7 @@ static void ReOrder(gridT *grid)
     grad1=grid->grad[2*n];
     grad2=grid->grad[2*n+1];
     enei=grad1+grad2-2;
-    for(nf=0;nf=enei;nf++) 
+    for(nf=0;nf<enei;nf++) 
       tmp[2*(grid->maxfaces-1)*n+nf]=grid->eneigh[2*(grid->maxfaces-1)*n+nf];
   for(n=0;n<Ne;n++)
     grad1=grid->grad[2*n];
@@ -2344,6 +2344,7 @@ int IsNodeNeighborProc(int np, gridT *maingrid, gridT *localgrid,
 {
   printf("Header for IsNodeNeighborProc.  Note implemented yet!!!\n");
   
+  return -1;
 }
 
 /*

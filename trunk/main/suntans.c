@@ -21,9 +21,10 @@
 #include "grid.h"
 #include "gridio.h"
 #include "phys.h"
+#include "physio.h"
 #include "report.h"
 
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
   int myproc, numprocs, j;
   MPI_Comm comm;

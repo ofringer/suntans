@@ -17,6 +17,7 @@
 #include<stdlib.h>
 #include<stdio.h>
 #include "memory.h"
+#include "mympi.h"
 #include<string.h>
 
 /*

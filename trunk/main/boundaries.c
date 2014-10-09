@@ -10,6 +10,7 @@
  * University. All Rights Reserved.
  *
  */
+#include "sendrecv.h"
 #include "boundaries.h"
 #include "mynetcdf.h"
 #include "sediments.h"

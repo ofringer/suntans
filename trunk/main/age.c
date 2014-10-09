@@ -3,10 +3,11 @@
  * ----------------------------------------------------
  *  
  */
-
-
-#include "age.h"
+#include "mynetcdf.h"
 #include "memory.h"
+#include "sendrecv.h"
+#include "scalars.h"
+#include "age.h"
 
 /*
  * Private functions

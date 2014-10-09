@@ -28,4 +28,6 @@ int GetTriangulation(gridT **grid, int myproc) {
     MPI_Finalize();
     exit(EXIT_FAILURE);
   }
+
+  return -1;
 }

@@ -12,6 +12,7 @@
 #include "suntans.h"
 #include "phys.h"
 #include "grid.h"
+#include "sendrecv.h"
 #include "util.h"
 #include "initialization.h"
 #include "memory.h"
@@ -79,15 +80,15 @@ static void StoreVariables(gridT *grid, physT *phys);
 static void NewCells(gridT *grid, physT *phys, propT *prop);
 static void WPredictor(gridT *grid, physT *phys, propT *prop,
     int myproc, int numprocs, MPI_Comm comm);
-inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
+void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
 static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid);
-inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc);
+static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc);
 static void ComputeNodalVelocity(physT *phys, gridT *grid, interpolation interp, int myproc);
 static void  ComputeTangentialVelocity(physT *phys, gridT *grid, interpolation ninterp, interpolation tinterp,int myproc);
 static void  ComputeQuadraticInterp(REAL x, REAL y, int ic, int ik, REAL **uc, 
     REAL **vc, physT *phys, gridT *grid, interpolation ninterp, 
     interpolation tinterp, int myproc);
-inline static void ComputeRT0Velocity(REAL* tempu, REAL* tempv, REAL e1n1, REAL e1n2, 
+static void ComputeRT0Velocity(REAL* tempu, REAL* tempv, REAL e1n1, REAL e1n2, 
     REAL e2n1, REAL e2n2, REAL Uj1, REAL Uj2);
 static void BarycentricCoordsFromCartesian(gridT *grid, int cell, 
     REAL x, REAL y, REAL* lambda);
@@ -2489,14 +2490,16 @@ static void CGSolveQ(REAL **q, REAL **src, REAL **c, gridT *grid, physT *phys, p
       break;
   }
 
-  if(myproc==0 && VERBOSE>2) 
+  if(myproc==0 && VERBOSE>2) {
     if(eps==0)
       printf("Warning...Time step %d, norm of pressure source is 0.\n",prop->n);
-    else
+    else {
       if(n==niters)  printf("Warning... Time step %d, Pressure iteration not converging after %d steps! RES=%e > %.2e\n",
           prop->n,n,sqrt(eps/eps0),prop->qepsilon);
       else printf("Time step %d, CGSolve pressure converged after %d iterations, res=%e < %.2e\n",
           prop->n,n,sqrt(eps/eps0),prop->qepsilon);
+    }
+  }
 
   // Rescale the preconditioned solution 
   if(prop->qprecond==1) {
@@ -3164,14 +3167,16 @@ static void CGSolve(gridT *grid, physT *phys, propT *prop, int myproc, int numpr
     if(sqrt(eps/eps0)<prop->epsilon) 
       break;
   }
-  if(myproc==0 && VERBOSE>2) 
-    if(eps==0)
+  if(myproc==0 && VERBOSE>2) {
+    if(eps==0) {
       printf("Warning...Time step %d, norm of free-surface source is 0.\n",prop->n);
-    else
+    } else {
       if(n==niters)  printf("Warning... Time step %d, Free-surface iteration not converging after %d steps! RES=%e > %.2e\n",
           prop->n,n,sqrt(eps/eps0),prop->qepsilon);
       else printf("Time step %d, CGSolve free-surface converged after %d iterations, res=%e < %.2e\n",
           prop->n,n,sqrt(eps/eps0),prop->epsilon);
+    }
+  }
 
   // Send the solution to the neighboring processors
   ISendRecvCellData2D(x,grid,myproc,comm);
@@ -4295,16 +4300,18 @@ void SetFluxHeight(gridT *grid, physT *phys, propT *prop) {
  *
  */
 //inline static void ComputeUC(physT *phys, gridT *grid, int myproc) {
-inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) {
+void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp) {
 
   switch(interp) {
-    case QUAD:
-      // using Wang et al 2011 methods
-      ComputeUCRT(ui, vi, phys,grid, myproc);
-      break;
-    case PEROT:
-      ComputeUCPerot(phys->u,ui,vi,grid);
-      break;
+  case QUAD:
+    // using Wang et al 2011 methods
+    ComputeUCRT(ui, vi, phys,grid, myproc);
+    break;
+  case PEROT:
+    ComputeUCPerot(phys->u,ui,vi,grid);
+    break;
+  default:
+    break;
   }
 
 }
@@ -4318,7 +4325,7 @@ inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc
  * methods outlined in Wang et al, 2011
  *
  */
-inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc) {
+static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc) {
 
   int k, n, ne, nf, iptr;
   REAL sum;
@@ -4638,7 +4645,7 @@ static void ComputeNodalVelocity(physT *phys, gridT *grid, interpolation interp,
  * Compute the nodal velocity using RT0 basis functions (Appendix B, Wang et al 2011)
  *
  */
-inline static void ComputeRT0Velocity(REAL *tempu, REAL *tempv, REAL e1n1, REAL e1n2, 
+static void ComputeRT0Velocity(REAL *tempu, REAL *tempv, REAL e1n1, REAL e1n2, 
     REAL e2n1, REAL e2n2, REAL Uj1, REAL Uj2) 
 {
   const REAL det = e1n1*e2n2 - e1n2*e2n1;
