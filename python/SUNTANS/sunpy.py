@@ -13,13 +13,15 @@ import numpy as np
 from datetime import datetime
 import os, time, getopt, sys
 from scipy import spatial
+from matplotlib import tri
 from scipy import sparse
 import othertime
 from suntans_ugrid import ugrid
 from timeseries import timeseries
 from ufilter import ufilter
 import operator
-from hybridgrid import HybridGrid
+from hybridgrid import HybridGrid, circumcenter
+from gridsearch import GridSearch
 
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection, LineCollection
@@ -75,8 +77,13 @@ class Grid(object):
     """ Class for handling SUNTANS grid data"""
 
     MAXFACES=3 # Default number of faces
+    _FillValue=999999
     gridvars = suntans_gridvars
     griddims = suntans_dimvars
+
+    # Some grid properties
+    DEF = None
+
     def __init__(self,infile ,**kwargs):
                
         self.__dict__.update(kwargs)
@@ -97,7 +104,6 @@ class Grid(object):
             self.ncfile = infile
             self.__loadGrdNc()
         
-        self.maskgrid()
 
         # Find the grid limits
         self.xlims = [self.xp.min(),self.xp.max()]
@@ -162,8 +168,8 @@ class Grid(object):
             nfaces = [ll[0] for ll in celldata]
             self.nfaces=np.array(nfaces,np.int)
             self.maxfaces=self.nfaces.max()
-            self.cells = -999999*np.ones((self.Nc,self.maxfaces),int)
-            self.neigh = -999999*np.ones((self.Nc,self.maxfaces),int)
+            self.cells = self._FillValue*np.ones((self.Nc,self.maxfaces),int)
+            self.neigh = self._FillValue*np.ones((self.Nc,self.maxfaces),int)
             self.xv = np.zeros((self.Nc,))
             self.yv = np.zeros((self.Nc,))
             for ii in range(self.Nc):
@@ -191,6 +197,8 @@ class Grid(object):
             vertspace=0.0
             
         self.setDepth(vertspace)
+
+        self.maskgrid()
 
     def __loadGrdNc(self):
         
@@ -230,31 +238,45 @@ class Grid(object):
         if not self.__dict__.has_key('nfaces'):
             self.MAXFACES = self.cells.shape[1]
             self.nfaces = self.MAXFACES*np.ones((self.Nc,),np.int)
+            self.maxfaces = self.MAXFACES
 
         # If edges, grad or neigh have not been stored then calculate them
         if not self.__dict__.has_key('edges'):
             self.reCalcGrid()
         elif not self.__dict__.has_key('grad'):
             self.reCalcGrid()
-        elif not self.__dict__.has_key('neigh'):
-            self.reCalcGrid()
+        #elif not self.__dict__.has_key('neigh'):
+        #    self.reCalcGrid()
+
+        if type(self.cells) != type(np.ma.MaskedArray()):
+            self.maskgrid()
+        else:
+            self.cellmask=self.cells.mask
+
+        if type(self.DEF) == type(np.ma.MaskedArray()):
+            if np.all(self.DEF.mask):
+                self.calc_def()
        
     def maskgrid(self):
         """
         Mask the cells, face and neigh arrays
         """
-        self.cellmask = self.cells<0
-        for ii in range(self.Nc):
-            self.cellmask[ii,self.nfaces[ii]::]=True
+        self.cellmask = self.cells==int(self._FillValue)
+        #for ii in range(self.Nc):
+        #    self.cellmask[ii,self.nfaces[ii]::]=True
             
         self.cells[self.cellmask]=0
-        self.cells = np.ma.masked_array(self.cells,mask=self.cellmask)
+        self.cells =\
+            np.ma.masked_array(self.cells,mask=self.cellmask,fill_value=0)
         
         if self.__dict__.has_key('face'):
-            self.face = np.ma.masked_array(self.face,mask=self.cellmask)
+            self.face[self.cellmask]=0
+            self.face =\
+                np.ma.masked_array(self.face,mask=self.cellmask,fill_value=0)
             
         if self.__dict__.has_key('neigh'):
-            self.neigh = np.ma.masked_array(self.neigh,mask=self.cellmask)
+            self.neigh =\
+                np.ma.masked_array(self.neigh,mask=self.cellmask,fill_value=0)
         
              
     def reCalcGrid(self):
@@ -273,6 +295,28 @@ class Grid(object):
         self.neigh=grd.neigh
         self.face=grd.face
         self.mark=grd.mark
+
+        self.calc_def()
+
+    def calc_def(self):
+        """
+        Recalculate the edge to face distance
+        """
+        ne = np.array(self.face)
+
+        #try:
+        #    mask = ne.mask.copy()
+        #except:
+        #    mask = np.zeros(self.DEF.shape,np.bool)
+        ne[self.cellmask]=0
+
+        def dist(x0,x1,y0,y1):
+            return np.sqrt( (x0-x1)**2. + (y0-y1)**2.)
+
+        self.DEF = dist(self.xv,self.xe[ne].T,self.yv,self.ye[ne].T).T
+
+        self.DEF = np.ma.masked_array(self.DEF,mask=self.cellmask)
+
 
     def plot(self,**kwargs):
         """
@@ -387,11 +431,33 @@ class Grid(object):
             
         Used by spatial ploting routines 
         """
-#        return [closePoly(self.xp[self.cells[ii,:]],\
-#            self.yp[self.cells[ii,:]]) for ii in range(self.Nc)]
+        xp = np.zeros((self.Nc,self.maxfaces+1))
+        yp = np.zeros((self.Nc,self.maxfaces+1))
+        
+        cells=self.cells.copy()
+        cells[self.cells.mask]=0
 
-        return [closePoly(self.xp[self.cells[ii,0:self.nfaces[ii]]],\
-            self.yp[self.cells[ii,0:self.nfaces[ii]]]) for ii in range(self.Nc)]
+        xp[:,:self.maxfaces]=self.xp[cells]
+        xp[range(self.Nc),self.nfaces]=self.xp[cells[:,0]]
+        yp[:,:self.maxfaces]=self.yp[cells]
+        yp[range(self.Nc),self.nfaces]=self.yp[cells[:,0]]
+
+        xp[self.cells.mask]==0
+        yp[self.cells.mask]==0
+
+        xy = np.zeros((self.maxfaces+1,2))
+        def _closepoly(ii):
+            nf=self.nfaces[ii]+1
+            xy[:nf,0]=xp[ii,:nf]
+            xy[:nf,1]=yp[ii,:nf]
+            return xy[:nf,:].copy()
+
+        return [_closepoly(ii) for ii in range(self.Nc)]
+
+
+        # Old Method
+        #return [closePoly(self.xp[self.cells[ii,0:self.nfaces[ii]]],\
+        #    self.yp[self.cells[ii,0:self.nfaces[ii]]]) for ii in range(self.Nc)]
         
     def saveBathy(self,filename):
         """
@@ -487,7 +553,7 @@ class Grid(object):
 
 
         
-    def findNearest(self,xy,NNear=1):
+    def find_nearest(self,xy,NNear=1):
         """
         Returns the grid indices of the closest points to the nx2 array xy
         
@@ -501,6 +567,20 @@ class Grid(object):
         dist,ind=self.kd.query(xy,k=NNear)
         
         return dist, ind
+
+    def find_cell(self,x,y):
+        """
+        Return the cell index that x and y lie inside of 
+
+        return -1 for out of bounds
+        """
+        if not self.__dict__.has_key('_tsearch'):
+            self._tsearch=GridSearch(self.xp,self.yp,self.cells,nfaces=self.nfaces,\
+                edges=self.edges,mark=self.mark,grad=self.grad,neigh=self.neigh,\
+                xv=self.xv,yv=self.yv)
+        
+        return self._tsearch(x,y)
+
         
     def calc_dg(self):
         """
@@ -665,7 +745,21 @@ class Grid(object):
         
         return cell_scalar[cellind] + dphi_dx*dx + dphi_dy*dy
         
+
     def gradH(self,cell_scalar,k=0,cellind=None):
+        """
+        Compute the horizontal gradient of a cell-centred quantity
+
+        """
+        if self.maxfaces==3:
+            dX,dY=self.gradHplane(cell_scalar,k=k,cellind=cellind)
+        else:
+            dX,dY=self.gradHdiv(cell_scalar,k=k)
+
+        return dX,dY
+ 
+
+    def gradHplane(self,cell_scalar,k=0,cellind=None):
         """
         Compute the horizontal gradient of a cell-centred quantity
         
@@ -830,7 +924,7 @@ class Grid(object):
         
         Based on MATLAB code sungradient.m
         """
-        def _GradientAtFace(self,phi,jj,k):
+        def _GradientAtFace(phi,jj,k):
             
             grad1 = self.grad[:,0]
             grad2 = self.grad[:,1]
@@ -854,14 +948,17 @@ class Grid(object):
             return (phi[nc1]-phi[nc2]) / self.dg[jj]
             
         ne = self.face #edge-indices
+        mask = ne.mask.copy()
+        ne[mask]=0
         
-        Gn_phi = self._GradientAtFace(phi,ne,k)
+        Gn_phi = _GradientAtFace(phi,ne,k)
+        Gn_phi[mask]=0
         
         Gx_phi = Gn_phi * self.n1[ne] * self.DEF * self.df[ne]
         Gy_phi = Gn_phi * self.n2[ne] * self.DEF * self.df[ne]
         dX = np.sum(Gx_phi,axis=1)/self.Ac;
         dY = np.sum(Gy_phi,axis=1)/self.Ac;
-        
+
         return dX, dY
 
     def spatialfilter(self,phi,dx, ftype='low'):
@@ -914,7 +1011,7 @@ class Grid(object):
             nc.variables[name][:] = var
     
         gridvars = ['suntans_mesh','cells','face','nfaces','edges','neigh','grad','xp','yp','xv','yv','xe','ye',\
-            'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke']
+            'normal','n1','n2','df','dg','def','Ac','dv','dz','z_r','z_w','Nk','Nke','mark']
         
         
         self.Nk += 1 # Set to one-base in the file (reset to zero-base after)
@@ -1086,13 +1183,22 @@ class Spatial(Grid):
         else:
             j = self.j
 
-        # Get the indices of the vertical dimension
-        if self.klayer[0] in [-1,-99,'seabed','surface']:
-            klayer = np.arange(0,self.Nkmax)
-        else:
-            klayer = self.klayer
-            
+
         nc = self.nc
+        ndim = nc.variables[variable].ndim
+
+        # Get the indices of the vertical dimension
+        if ndim>2:
+            if self.klayer[0] in [-1,-99,'seabed']:
+                klayer = np.arange(0,self.Nkmax)
+            elif self.klayer[0] == 'surface':
+                #eta = self.loadDataRaw(variable='eta',setunits=False)
+                eta = nc.variables['eta'][self.tstep,j]
+                ctop=self.getctop(eta)
+                klayer = range(0,ctop.max()+1)
+            else:
+                klayer = self.klayer
+            
         # Set the long_name and units attribute
         if setunits:
             try:
@@ -1102,7 +1208,6 @@ class Spatial(Grid):
             self.units= nc.variables[variable].units
 
         #        ndims = len(nc.variables[variable].dimensions)
-        ndim = nc.variables[variable].ndim
         if ndim==1:
             self.data=nc.variables[variable][j]
         elif ndim==2:
@@ -1113,8 +1218,7 @@ class Spatial(Grid):
             if self.klayer[0]==-99:
                 self.data=data
             elif self.klayer[0]=='surface':
-                eta = self.loadDataRaw(variable='eta',setunits=False)
-                self.data = self.get_surfacevar(data.squeeze(),eta)
+                self.data = self.get_surfacevar(data.squeeze(),ctop)
             elif self.klayer[0] in [-1,'seabed']:
                 self.data = self.get_seabedvar(data.squeeze())
             else:
@@ -1172,8 +1276,8 @@ class Spatial(Grid):
         databar = np.zeros((nt,self.Nc))
         
         self.klayer=[-99]
-        
-        tstep = self.tstep.copy()
+
+        tstep = self.tstep
         for ii,t in enumerate(tstep):
             self.tstep=[t]
             data = self.loadData()
@@ -1317,7 +1421,6 @@ class Spatial(Grid):
         """
         Filled contour plot of  unstructured grid data
         """
-        from matplotlib import tri
         
         if not self.__dict__.has_key('data'):
             self.loadData()
@@ -1336,7 +1439,24 @@ class Spatial(Grid):
             ylims=self.ylims
         
         # Create a matplotlib triangulation to contour the data       
-        t =tri.Triangulation(self.xp,self.yp,self.cells)
+        if not self.__dict__.has_key('_tri'):
+            if self.maxfaces==3:
+                self._tri =tri.Triangulation(self.xp,self.yp,self.cells)
+            else:
+
+                # Need to compute a delaunay triangulation for mixed meshes
+                print 'Computing delaunay triangulation and computing mask...'
+                pts = np.vstack([self.xp,self.yp]).T
+                D = spatial.Delaunay(pts)
+                self._tri =tri.Triangulation(self.xp,self.yp,D.simplices)
+
+                # Compute a mask by removing triangles outside of the polygon
+                xy = D.points
+                cells=D.simplices
+                xv,yv = circumcenter(xy[cells[:,0],0],xy[cells[:,0],1],\
+                    xy[cells[:,1],0],xy[cells[:,1],1],xy[cells[:,2],0],xy[cells[:,2],1])
+                mask = self.find_cell(xv,yv)
+                self._tri.set_mask(mask==-1)
         
         # Filled contour of amplitude
         fig = plt.gcf()
@@ -1356,9 +1476,9 @@ class Spatial(Grid):
             V = clevs
             
         if filled:
-            camp = plt.tricontourf(t, zdata, V, **kwargs)
+            camp = plt.tricontourf(self._tri, zdata, V, **kwargs)
         else:
-            camp = plt.tricontour(t, zdata, V, **kwargs)
+            camp = plt.tricontour(self._tri, zdata, V, **kwargs)
                 
         ax.set_aspect('equal')
         ax.set_xlim(xlims)
@@ -2135,23 +2255,24 @@ class Spatial(Grid):
 
         return dzz
 
-    def getdzf(self,eta,U=None,method='max'):
+    def getdzf(self,eta,U=None,method='max',j=None):
         """
         Calculate the edge-centred vertical grid spacing based
         on the free surface height only
         """
 
-        etop,etaedge = self.getetop(eta,U=U,method=method)
+        etop,etaedge = self.getetop(eta,U=U,method=method,j=j)
+        Ne = etop.shape[0]
 
         # Find dzz of the top cell
         dztop = self.dz[etop]+etaedge
 
-        dzf = np.repeat(self.dz[:,np.newaxis],self.Ne,axis=1)
+        dzf = np.repeat(self.dz[:,np.newaxis],Ne,axis=1)
 
-        dzf[etop,range(self.Ne)]=dztop
+        dzf[etop,range(Ne)]=dztop
 
         # Mask the cells
-        for ii in range(self.Ne):
+        for ii in range(Ne):
             dzf[0:etop[ii],ii]=0.0
             dzf[self.Nke[ii]::,ii]=0.0
 
@@ -2168,26 +2289,32 @@ class Spatial(Grid):
         ctop[ctop>0] -= 1
         return ctop
 
-    def getetop(self,eta,method='max',U=None):
+    def getetop(self,eta,method='max',U=None,j=None):
         """
         Return the layer of the top edge
         """
-        eta_edge = self.get_edgevar(eta,U=U,method=method)
+        if j==None:
+            eta_edge = self.get_edgevar(eta,U=U,method=method)
+        else:
+            eta_edge = eta
         
         # Find the layer of the top cell
         etop = np.searchsorted(self.z_w,-eta_edge)
         etop[etop>0] -= 1
         return etop, eta_edge
 
-    def get_surfacevar(self,phi,eta):
+    def get_surfacevar(self,phi,ctop):
         """
         Retrieves the surface layer of a 3d array [Nk,Nc]
         """
-        assert phi.shape==(self.Nkmax,self.Nc),'size mismatch'
-
-        ctop = self.getctop(eta)
-        j = range(self.Nc)
-        return phi[ctop[j],j]
+        #assert phi.shape==(self.Nkmax,self.Nc),'size mismatch'
+        #ctop = self.getctop(eta)
+        if phi.ndim==1: # This happens if the surface is all contained in one
+            #layer
+            return phi
+        else:
+            j = range(self.Nc)
+            return phi[ctop[j],j]
 
     def get_seabedvar(self,phi):
         """
@@ -2211,6 +2338,7 @@ class Spatial(Grid):
         """
         nc1 = self.grad[:,0]
         nc2 = self.grad[:,1]
+        Ne = self.Ne
                 
         # check for edges (use logical indexing)
         ind1 = nc1==-1
@@ -2229,13 +2357,13 @@ class Spatial(Grid):
 
         
         if method=='max':
-            tmp = np.zeros((self.Ne,2),dtype=phi.dtype)
+            tmp = np.zeros((Ne,2),dtype=phi.dtype)
             tmp[:,0]=phi[nc1]
             tmp[:,1]=phi[nc2]
             return tmp.max(axis=-1)
 
         elif method=='min':
-            tmp = np.zeros((self.Ne,2),dtype=phi.dtype)
+            tmp = np.zeros((Ne,2),dtype=phi.dtype)
             tmp[:,0]=phi[nc1]
             tmp[:,1]=phi[nc2]
             return tmp.min(axis=-1)
@@ -2304,7 +2432,7 @@ class TimeSeries(timeseries, Spatial):
     def update(self):
         
         # Update the j position
-        dist, self.j = self.findNearest(self.XY)
+        dist, self.j = self.find_nearest(self.XY)
         
         # Find the klayer
         if isinstance(self.Z,type(np.array(()))):
@@ -2333,7 +2461,7 @@ class TimeSeries(timeseries, Spatial):
         else:
             z = -self.z_r[self.klayer]
 
-        h1=plt.contourf(self.time,z,self.y.T,clevs,**kwargs)
+        h1=plt.contourf(self.time,z,self.y,clevs,**kwargs)
         plt.xticks(rotation=17)        
         return h1
         
@@ -2701,7 +2829,6 @@ class Profile(object):
         if tsteps == None:
             tsteps = np.arange(self.tstep,len(self.time))
             
-        #pdb.set_trace()
         
         
         # Set the tsteps and grab the data

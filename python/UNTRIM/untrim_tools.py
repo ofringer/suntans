@@ -24,7 +24,7 @@ untrim_gridvars = {\
     'edges':'Mesh2_edge_nodes',\
     'grad':'Mesh2_edge_faces',\
     'cells':'Mesh2_face_nodes',\
-    'faces':'Mesh2_face_edges',\
+    'face':'Mesh2_face_edges',\
     'dv':'Mesh2_face_depth',\
     'z_r':'Mesh2_layer_3d',\
     'time':'Mesh2_data_time'\
@@ -371,10 +371,6 @@ untrim_ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dty
 
 
 
-
-
-
-
 class UNTRIMGrid(Grid):
     """
     UnTRIM grid class for loading from a netcdf file
@@ -387,8 +383,15 @@ class UNTRIMSpatial(Spatial):
     """
     Class for handling UnTRIM netcdf hydrodynamic output
     """
+    _FillValue = -9999
     def __init__(self,ncfile,**kwargs):
         Spatial.__init__(self,ncfile,gridvars=untrim_gridvars,griddims=untrim_griddims,**kwargs)
+
+        # Make sure the number of faces array is correct
+        self.nfaces = np.sum(self.cells.mask==False,axis=1)
+
+        self.xy = self.cellxy()
+
 
     
     def loadDataRaw(self,variable=None):
@@ -453,9 +456,8 @@ class UNTRIMSpatial(Spatial):
                     self.data=data
         
         # Mask the data
-        fillval = 999999.0
         
-        self.mask = self.data==fillval
+        self.mask = self.data==self._FillValue
         self.data[self.mask]=0.
         self.data = self.data.squeeze()
         

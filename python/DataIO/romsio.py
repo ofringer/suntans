@@ -1509,9 +1509,10 @@ class roms_interp(roms_grid):
         self.xy_uv = np.vstack((x[self.mask_uv==1],y[self.mask_uv==1])).T
         
         # Step 3) Build the interpolants for rho and uv points
-        self.xy_out = np.hstack((xi,yi))  
+        #self.xy_out = np.hstack((xi,yi))  
+        #self.xy_out = np.hstack((xi[...,np.newaxis],yi[...,np.newaxis]))  
+        self.xy_out = np.vstack((xi.ravel(),yi.ravel())).T
 
-        
         self.Frho = interpXYZ(self.xy_rho,self.xy_out,method=self.interpmethod,NNear=self.NNear,\
             p=self.p,varmodel=self.varmodel,nugget=self.nugget,sill=self.sill,vrange=self.vrange)
         

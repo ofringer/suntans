@@ -123,6 +123,19 @@ def getMonth(timein):
         
     return np.asarray(month)
     
+def getYear(timein):
+    """
+    Converts a list or array of datetime object into an array of years
+    
+    Useful for calculating monthly distributions
+    """
+
+    year=[]
+    for t in timein:
+        year.append(t.year)
+        
+    return np.asarray(year)
+ 
 def findNearest(t,timevec):
     """
     Return the index from timevec the nearest time point to time, t. 

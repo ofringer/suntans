@@ -6,7 +6,8 @@ import os
 import numpy as np
 from datetime import datetime
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+#import matplotlib.animation as animation
+from maptools import readShpPoly
 
 import pdb
 
@@ -176,6 +177,36 @@ class PtmBin(object):
         ax.set_xlim(xlims)
         ax.set_ylim(ylims)
         ax.set_aspect('equal')
+
+def shp2pol(shpfile,outdir):
+    """
+    Converts a polygon shape file to a *.pol file
+
+    Uses the first polygon in the file and the filename as the polygon name
+    """
+    XY, name = readShpPoly(shpfile)
+
+    xy = XY[0]
+    numverts = xy.shape[0]
+    
+    polynameext =   os.path.basename(shpfile)
+    polyname,ext = os.path.splitext(polynameext)
+
+    outfile = '%s/%s.pol'%(outdir,polyname)
+
+    print 'Writing polygon to: %s...'%outfile
+
+    f = open(outfile,'w')
+    f.write('POLYGON_NAME\n')
+    f.write('%s\n'%polyname)
+    f.write('NUMBER_OF_VERTICES\n')
+    f.write('%d\n'%numverts)
+
+    for ii in range(numverts):
+        f.write('%6.10f %6.10f\n'%(xy[ii,0],xy[ii,1]))
+
+    f.close()
+    print 'Done.'
 
 
 #hydrofile = '../InputFiles/untrim_hydro.nc'

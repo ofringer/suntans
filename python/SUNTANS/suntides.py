@@ -75,6 +75,7 @@ class suntides(Spatial):
         
         self.varnames=varnames
         self._prepDict(varnames)
+
         
         for vv in varnames:
             if vv in ['ubar','vbar']:
@@ -333,7 +334,7 @@ class suntides(Spatial):
         if not cbarpos==None:
             cbaxes = fig.add_axes(cbarpos) 
             cb = fig.colorbar(collection,cax = cbaxes,orientation='vertical')  
-            cb.ax.set_title('[$m s^{-1}$]')
+            cb.ax.set_title('[m s$^{-1}$]')
     
         plt.sca(ax)
         

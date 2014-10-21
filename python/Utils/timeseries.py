@@ -234,13 +234,13 @@ class timeseries(object):
             frq,frqnames = getTideFreq(Fin=frqnames)
             
         # Call the uspectra method
-        #U = uspectra(self.tsec,self.y,frq=frq,method='lsqfast')
-        #amp,phs = U.phsamp(phsbase=basetime)
-        #return amp, phs, frq, frqnames, U.invfft()   
-        amp, phs, mean = \
-            harmonic_fit(self.tsec,self.y,frq,phsbase=basetime,axis=axis)
-        
-        return amp, phs, frq, frqnames,# U.invfft()   
+        U = uspectra(self.tsec,self.y,frq=frq,method='lsqfast')
+        amp,phs = U.phsamp(phsbase=basetime)
+        return amp, phs, frq, frqnames, U.invfft()   
+        #amp, phs, mean = \
+        #    harmonic_fit(self.tsec,self.y,frq,phsbase=basetime,axis=axis)
+        #
+        #return amp, phs, frq, frqnames,# U.invfft()   
         
     def running_harmonic(self,omega,windowlength=3*86400.0,overlap=12*3600.0, plot=True):
         """
@@ -438,6 +438,14 @@ class timeseries(object):
         plt.xticks(rotation=angle)
         
         return h1 
+
+    def subset(self,time1,time2):
+        """
+        Returns a subset of the array between time1 and time2
+        """
+        t0 = othertime.findNearest(time1,self.t)
+        t1 = othertime.findNearest(time2,self.t)
+        return timeseries(self.t[t0:t1],self.y[...,t0:t1])
         
     def savetxt(self,txtfile):
         f = open(txtfile,'w')
@@ -604,8 +612,6 @@ class ModVsObs(object):
         """
         Time-series plots of both data sets with labels
         """
-
-
         ax = plt.gca()
 
         h1 = self.TSmod.plot(color=colormod,**kwargs)
@@ -619,15 +625,18 @@ class ModVsObs(object):
         plt.title('StationID: %s'%self.stationid)
 
         if legend:
-            plt.legend(('Model','Observation'),loc=loc)
+            plt.legend(('Model','Observed'),loc=loc)
 
         return h1, h2, ax
         
-    def stackplot(self,colormod='r',colorobs='b',scale=None,ax=None,fig=None,**kwargs):
+    def stackplot(self,colormod='r',colorobs='b',scale=None,ax=None,fig=None,labels=True,**kwargs):
         """
         Stack plot of several time series
         """
-        labels = ['z = %1.1f m'%z for z in self.Z.tolist()]
+        if labels:
+            labels = ['z = %1.1f m'%z for z in self.Z.tolist()]
+        else:
+            labels=None
         
         fig,ax,ll = stackplot(self.TSobs.t,self.TSobs.y,ax=ax,fig=fig,\
             scale=scale,units=self.units,labels=labels,color=colorobs,*kwargs)
@@ -669,6 +678,8 @@ class ModVsObs(object):
         self.meanMod = self.TSmod.y.mean(axis=-1)
         self.stdObs = self.TSobs.y.std(axis=-1)
         self.stdMod = self.TSmod.y.std(axis=-1)
+        self.rmsObs = rms(self.TSobs.y,axis=-1)
+        self.rmsMod = rms(self.TSmod.y,axis=-1)
 
         # RMSE
         self.rmse = rms(self.TSobs.y-self.TSmod.y,axis=-1)
@@ -936,7 +947,7 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
         
     if not filttype==None:
         print '%s-pass filtering output data. Cutoff period = %f [s].'%(filttype,cutoff)
-        yfilt = ts.filt(cutoff,btype=filttype,axis=0)
+        yfilt = ts.filt(cutoff,btype=filttype,axis=-1)
         ts.y = yfilt.copy()
     
     if output_meta:
@@ -1003,14 +1014,15 @@ def stackplot(t,y,scale=None,gap=0.2,ax=None,fig=None,units='',labels=None,**kwa
     for N in range(1,ny+1):
         yoffset = N*(gap*yheight) + 0.5*yheight + (N-1)*yheight     
         # scaling factor
-        vscale = yheight / (scale+yoffset)
+        #vscale = yheight / (scale+yoffset)
+        vscale = yheight / (scale)
         l = ax.plot(t,vscale*y[N-1,:]+yoffset,**kwargs)
         ll.append(l)
         #Adds an axes
         fakeaxes(yoffset,yheight)
         
         if not labels==None:
-            plt.text(0.8,yoffset+0.5*yheight-0.02,labels[N-1],transform=ax.transAxes,fontstyle='italic')
+            plt.text(0.6,yoffset+0.5*yheight-0.02,labels[N-1],transform=ax.transAxes,fontstyle='italic')
               
     # Add a few extra features    
     ax.add_line(Line2D([0,1],[0.01,0.01],linewidth=0.5,color='k',transform=ax.transAxes))
@@ -1349,36 +1361,6 @@ def tidalrmse(Ao,Am,Go,Gm):
     """
     return np.sqrt( 0.5*(Ao**2 + Am**2) - Ao*Am*np.cos(Go-Gm) )
 
-def eofsvd(M):
-    """
-    Compute empirical orthogonal function using singular
-    value decomposition technique
-    
-    Inputs:
-        - M : matrix with time along first axis and observation points along
-          second
-    Returns:
-        - PC : The principal component amplitude
-        - s : the eigenvalues
-        - E : the eigenvectors in each column (EOFs)
-    """
-    # Remove the mean from the columns
-    M = M - M.mean(axis=0)
-
-    # 
-    U,s,V = np.linalg.svd(M,full_matrices=False)
-
-    # The principal components are U*s
-    PC = U*s
-
-    # Each row of V are the eigenvectors (EOFs) so transpose them so that
-    # columns are
-    E = V.T
-
-    # Note that the values of s from the svd are the eigenvalues ^0.5
-
-    return PC,s*s,E
-
 def loadtxt(txtfile):
     """
     Loads a text file with two columns
@@ -1397,146 +1379,5 @@ def loadtxt(txtfile):
         
     f.close()
     return timeseries(np.array(t),np.array(y))
-
-def rotary_spectra(tsec,u,v,K=3,power=2.):
-    """
-    Calculates the rotary spectral kinetic energy from velocity.
-    
-    See Alford and Whitmont, 2007, JPO for details.
-    """
-    
-    M = tsec.shape[0]
-    dt = tsec[1]-tsec[0]
-    t=np.arange(M,dtype=np.double)
-    M_2 = np.floor(M/2)
-    
-    # Put the velocity in rotary form
-    u_r = u+1j*v
-    
-    # Generate the time-domain taper for the FFT
-    h_tk = np.zeros((K,M))
-    for k in range(K):
-        h_tk[k,:] = np.sqrt(2./(M+1.))*np.sin( (k+1)*np.pi*t / (M+1.) ) 
-    
-    # Weight the time-series and perform the fft
-    u_r_t = u_r[...,np.newaxis,:]*h_tk
-    S_k = np.fft.fft(u_r_t,axis=-1)
-    S_k = dt *np.abs(S_k)**power
-    S = np.mean(S_k,axis=-2)
-        
-    omega = np.fft.fftfreq(int(M),d=dt/(2*np.pi))
-    
-    domega = 1/(M*dt)
-    
-    # Extract the clockwise and counter-clockwise component
-    omega_ccw = omega[0:M_2]
-    omega_cw = omega[M_2::] # negative frequencies
-    S_ccw = S[...,0:M_2]
-    S_cw = S[...,M_2::]
-    
-    return omega_cw,omega_ccw,S_cw,S_ccw,domega
-
-def integrate_rotspec(omega_cw,omega_ccw,S_cw,S_ccw,domega,omega_low=None,omega_high=None):
-    """
-    Integrate the kinetic energy of a rotary spectra beween two bands:
-        omega_low and omega_high
-    """
-
-    #find the index limits for the integration range
-    # note that ccw frequencies go from low to high
-    #           cw frequences go from high to low
-    if omega_low==None:
-        t0_ccw=0
-        t0_cw=0
-    else:
-        t0_cw = np.argwhere(omega_cw>=-omega_high)[0]
-        t0_ccw = np.argwhere(omega_ccw>=omega_low)[0]
-    if omega_high==None:
-        t1_cw = omega_cw.shape[0]
-        t1_ccw = omega_ccw.shape[0]
-    else:
-        t1_cw = np.argwhere(omega_cw<=-omega_low)[-1]
-        t1_ccw = np.argwhere(omega_ccw<=omega_high)[-1]
-    
-    # Integrate under the spectrum to get the kinetic energy
-    KE_ccw = 0.5*np.sum(S_ccw[...,t0_ccw:t1_ccw]*domega,axis=-1)
-    KE_cw = 0.5*np.sum(S_cw[...,t0_cw:t1_cw]*domega,axis=-1)
-    
-    return KE_ccw, KE_cw
- 
-def cross_spec(tsec,u,v,K=3):
-    """
-    Calculates the rotary spectral kinetic energy from velocity.
-    
-    See Alford and Whitmont, 2007, JPO for details.
-    """
-    
-    M = tsec.shape[0]
-    dt = (tsec[1]-tsec[0])/(2*np.pi)
-    t=np.arange(M,dtype=np.double)
-    #M_2 = np.floor(M/2)
-    M_2 = M//2
-    
-    # Put the velocity in rotary form
-    #u_r = u+1j*v
-    
-    # Generate the time-domain taper for the FFT
-    h_tk = np.zeros((K,M))
-    for k in range(K):
-        h_tk[k,:] = np.sqrt(2./(M+1.))*np.sin( (k+1)*np.pi*t / (M+1.) ) 
-    
-    # Weight the time-series and perform the fft
-    S_k_u = np.fft.fft(u[...,np.newaxis,:]*h_tk,axis=-1)
-    S_k_v = np.fft.fft(v[...,np.newaxis,:]*h_tk,axis=-1)
-
-    S_k = np.conjugate(S_k_u) * S_k_v
-
-    # Average across tapers
-    S = np.mean(S_k,axis=-2)
-
-    # Return the co-spectra (see Emery & Thompson Eq 5.8.14, p 584)
-    #C = dt*np.real( np.abs(S) * np.exp(1j*np.angle(S)))
-    C = dt*np.real(S)
-    #Q_k = dt*np.imag( np.abs(S_k) * np.exp(1j*np.angle(S_k)))
-        
-    omega = np.fft.fftfreq(int(M),d=dt)
-    
-    # Extract the clockwise and counter-clockwise component
-    omega_ccw = omega[:M_2]
-    omega_cw = omega[M_2:] # negative frequencies
-    C_ccw = C[...,:M_2]
-    C_cw = C[...,M_2:]
-    
-    return omega_cw,omega_ccw,C_cw,C_ccw
-
-
-
-def integrate_spec(omega_cw,omega_ccw,S_cw,S_ccw,\
-        omega_low=None,omega_high=None):
-    """
-    Integrate the energy of a spectra beween two bands:
-        omega_low and omega_high
-    """
-
-    #integration range
-    if omega_low==None:
-        t0_ccw=0
-        t0_cw=0
-    else:
-        t0_cw = np.argwhere(omega_cw>=-omega_high)[0]
-        t0_ccw = np.argwhere(omega_ccw>=omega_low)[0]
-    if omega_high==None:
-        t1_cw = omega_cw.shape[0]
-        t1_ccw = omega_ccw.shape[0]
-    else:
-        t1_cw = np.argwhere(omega_cw<=-omega_low)[-1]
-        t1_ccw = np.argwhere(omega_ccw<=omega_high)[-1]
-    
-    # Integrate under the spectrum to get the kinetic energy
-    # Needs to be scaled by 0.5 to give the kinetic energy
-    KE_ccw = np.trapz(S_ccw[...,t0_ccw:t1_ccw],x=omega_ccw[t0_ccw:t1_ccw])
-    KE_cw = np.trapz(S_cw[...,t0_cw:t1_cw],x=omega_cw[t0_cw:t1_cw])
-    
-    return KE_ccw, KE_cw
 
 

@@ -16,7 +16,7 @@ from maptools import ll2utm, readShpBathy, readraster
 from kriging import kriging
 from netCDF4 import Dataset
 
-from scipy.interpolate import griddata
+from scipy.interpolate import LinearNDInterpolator
 import time
 import matplotlib.pyplot as plt
 
@@ -31,7 +31,7 @@ class interpXYZ(object):
    
     
     # Interpolation options
-    method = 'nn' # One of 'nn', 'idw', 'kriging' 
+    method = 'nn' # One of 'nn', 'idw', 'kriging', 'linear' 
     maxdist=np.inf
     NNear = 3 # Number of points to include in interpolation (only applicable to idw and kriging)
     p = 1.0 # power for inverse distance weighting
@@ -41,6 +41,8 @@ class interpXYZ(object):
     nugget = 0.1
     sill = 0.8
     vrange = 250.0
+
+    fill_value=0.
 
     
     def __init__(self,XY,XYout,**kwargs):
@@ -60,10 +62,10 @@ class interpXYZ(object):
         elif self.method=='kriging':
             #print 'Building DEM with Kriging Interpolation...'
             self._krig()
-            
-        #elif self.method=='griddata':
-            #print 'Building DEM using griddata...'
-            # Do nothing
+
+        elif self.method=='linear':
+            #print 'Building using scipy linear interpolator ..'
+            self._linear()
             
         else:
             print 'Error - Unknown interpolation type: %s.'%self.method
@@ -78,11 +80,12 @@ class interpXYZ(object):
         if self.method in ['nn','idw','kriging']:
             #print 'Building DEM with Nearest Neighbour interpolation...'
             self.Z = self.Finterp(Zin)
+
+        elif self.method=='linear':
+            self.Finterp.values[:]=Zin[:,np.newaxis]
+            self.Z=self.Finterp(self.XYout)
             
-        elif self.method=='griddata':
-            #print 'Building DEM using griddata...'
-            self._griddata()
-            
+
         else:
             print 'Error - Unknown interpolation type: %s.'%self.method
         
@@ -97,12 +100,10 @@ class interpXYZ(object):
         self.Finterp = nn(self.XY,self.XYout,maxdist=self.maxdist)
       
 
-    def _griddata(self):
-        """Wrapper for griddata"""
-        print 'Interpolating %d data points'%self.npt
-        self.Z = griddata((self.XY[:,0],self.XY[:,1]), self.Zin, (self.grd.X, self.grd.Y), method='linear')
-        
-        
+    #def _griddata(self):
+    #    """Wrapper for griddata"""
+    #    print 'Interpolating %d data points'%self.npt
+    #    self.Z = griddata((self.XY[:,0],self.XY[:,1]), self.Zin, (self.grd.X, self.grd.Y), method='linear')
     
     def _invdistweight(self):
         """ Inverse distance weighted interpolation """
@@ -114,6 +115,10 @@ class interpXYZ(object):
         """ Kriging interpolation"""
        
         self.Finterp = kriging(self.XY,self.XYout,maxdist=self.maxdist,NNear=self.NNear)
+
+    def _linear(self):
+        self.Finterp =\
+            LinearNDInterpolator(self.XY,np.zeros((self.XY.shape[0]),),fill_value=self.fill_value)
                 
     
     def clipPoints(self,LL):

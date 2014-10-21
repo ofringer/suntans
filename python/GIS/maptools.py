@@ -253,10 +253,12 @@ def readShpPointLine(shpfile,FIELDNAME=None):
 
             elif field_defn.GetName() == FIELDNAME:
                 geom = feat.GetGeometryRef()
-                ztmp = float(feat.GetField(i))
+                #ztmp = float(feat.GetField(i))
+                ztmp = feat.GetField(i)
                 if geom.GetGeometryType() == ogr.wkbPoint: # point
                     field.append(ztmp)
-                    XY.append([geom.getX(),geom.getY()])
+                    #XY.append([geom.getX(),geom.getY()])
+                    XY.append(geom.GetPoints())
                 elif geom.GetGeometryType() == 2:  # line
                     xyall=geom.GetPoints()
                     XY.append(np.asarray(xyall))
@@ -343,7 +345,7 @@ def readShpPoly(shpfile,FIELDNAME = None):
     shp=None
     return XY,field
 
-def maskShpPoly(X,Y,shpfile,FIELDNAME = 'marker'):
+def maskShpPoly(X,Y,shpfile,FIELDNAME = None):
     """
     Return a mask array of size(X/Y) from polygon in shapefile
     """
@@ -401,7 +403,8 @@ def readraster(infile):
     # Remove missing points
     data[data==-32767]=np.nan
 
-def plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15):
+def plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15,\
+    scale=1.,offset=0.,subset=1):
     """
     Plots a map layer from a polygon or multipolygon shapefile
     
@@ -428,12 +431,16 @@ def plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15):
             ll.append(ll2utm(xytmp,zone,CS='WGS84',north=True))
         xy=ll
         
+    for ii in range(len(xy)):
+        xy[ii] = xy[ii][::subset]*scale+offset
+
     # Add the polygons to the current axis as a series of patches
     fig = plt.gcf()
     ax = fig.gca()
     
     collection = PolyCollection(xy)
     collection.set_facecolor(color)
+    #collection.set_rasterized(True)
     ax.add_collection(collection)
     #ax.axis('equal')
     

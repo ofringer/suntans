@@ -254,7 +254,8 @@ def write2NC(ncfile,coords,output,nctime):
     """ Writes the data to a netcdf file"""
     print 'Writing to netcdf file: %s',ncfile
     # Create an output netcdf file
-    nc = Dataset(ncfile, 'w', format='NETCDF4_CLASSIC')
+    #nc = Dataset(ncfile, 'w', format='NETCDF4_CLASSIC')
+    nc = Dataset(ncfile, 'w', format='NETCDF4')
     
     # Define the dimensions
     nc.createDimension('nt',0)

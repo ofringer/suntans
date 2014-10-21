@@ -51,12 +51,44 @@ class SunTvtk(Spatial):
         else:
             # Initialize the 2D object
             self.data = np.zeros((self.Nc,))
+
             self.returnPoints()
-            self.initTvtk2D()
+            if self.maxfaces==3:
+                self.initTvtk2D()
+            else:
+                self.initMixedTvtk2D()
 
         if self.offscreen:
             print 'Using offscreen rendering.'
             mlab.options.offscreen=True
+
+    def initMixedTvtk2D(self):
+        """
+        Initialise the actual 2 dimensional tvtk object
+
+        This is for a mixed data type
+        """
+
+        poly_type = tvtk.Polygon().cell_type
+        #poly_type = tvtk.Polyhedron().cell_type
+        
+        self.ug = tvtk.UnstructuredGrid(points=self.points)
+
+        cells = np.array(self.cells[self.cells.mask==False])
+        cell_array = tvtk.CellArray()
+        cell_array.set_cells(self.Nc,cells)
+        offsets = np.cumsum(self.nfaces)
+        offsets = offsets - offsets[0]
+
+        poly_types = [poly_type for ii in range(self.Nc)]
+
+        pdb.set_trace()
+        self.ug.set_cells(np.array(poly_types),offsets, cell_array)
+    
+        self.ug.cell_data.scalars = self.data
+        self.ug.cell_data.scalars.name = 'suntans_scalar'
+
+
 
     def initTvtk2D(self):
         """

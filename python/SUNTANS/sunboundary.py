@@ -588,7 +588,7 @@ class Boundary(object):
         from maptools import utm2ll
         import read_otps
         
-        xy = np.hstack((self.xv,self.yv))
+        xy = np.vstack((self.xv.ravel(),self.yv.ravel())).T
         ll = utm2ll(xy,self.utmzone,north=self.isnorth)
         
         if self.__dict__.has_key('dv'):

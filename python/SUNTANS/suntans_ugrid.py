@@ -69,6 +69,13 @@ attributes = {'cf_role':'edge_face_connectivity',\
 dtype = 'i4'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
 
+vname = 'mark'
+dimensions = ('Ne',)
+attributes = {\
+		'long_name':'Edge marker type'}
+dtype = 'i4'		
+ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
+
 vname = 'xv'
 dimensions = ('Nc',)
 attributes = {'standard_name':'Easting',\

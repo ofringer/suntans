@@ -22,8 +22,8 @@ matplotlib.rcParams['axes.edgecolor']='white'
 matplotlib.rcParams['axes.labelcolor']='white'
 matplotlib.rcParams['xtick.color']='white'
 matplotlib.rcParams['ytick.color']='white'
-matplotlib.rcParams['font.family']='serif'
-#matplotlib.rcParams['font.sans-serif']='Arial'
+#matplotlib.rcParams['font.family']='serif'
+#matplotlib.rcParams['font.sans-serif']=['Verdana']
 
 from matplotlib.figure import Figure
 from matplotlib.collections import PolyCollection, LineCollection
@@ -32,29 +32,24 @@ from matplotlib.backends.backend_wxagg import \
     NavigationToolbar2WxAgg as NavigationToolbar
 import matplotlib.animation as animation
 
-from sunpy import Spatial, Grid
-from untrim_tools import untrim_gridvars, untrim_griddims, UNTRIMSpatial
-from ptm_tools import PtmBin
-from suntrack import PtmNC
+from romsio import ROMS
 from datetime import datetime
 import numpy as np
 
 import pdb
 
-class SunPlotPy(wx.Frame, Spatial, Grid ):
+class ROMSPlotPy(wx.Frame, ROMS ):
     """ 
     The main frame of the application
     """
-    title = 'sunplot(py)'
+    title = 'romsplot(py)'
 
     # Plotting options
     autoclim=True
     showedges=False
     bgcolor='k'
     textcolor='w'
-    cmap='jet'
-    particlesize = 0.4
-    particlecolor = 'y'
+    cmap='ocean'
 
     # other flags
     collectiontype='cells'
@@ -83,16 +78,16 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
         self.Bind(wx.EVT_MENU, self.on_open_file, m_expt)
 
         # Load a grid file
-        m_grid = menu_file.Append(-1, "&Load grid\tCtrl-G", "Load SUNTANS grid from folder")
-        self.Bind(wx.EVT_MENU, self.on_load_grid, m_grid)
+        #m_grid = menu_file.Append(-1, "&Load grid\tCtrl-G", "Load SUNTANS grid from folder")
+        #self.Bind(wx.EVT_MENU, self.on_load_grid, m_grid)
 
         # Load a particle file
-        m_part = menu_file.Append(-1, "&Load PTM file\tCtrl-Shift-P", "Load a PTM file")
-        self.Bind(wx.EVT_MENU, self.on_load_ptm, m_part)
+        #m_part = menu_file.Append(-1, "&Load PTM file\tCtrl-Shift-P", "Load a PTM file")
+        #self.Bind(wx.EVT_MENU, self.on_load_ptm, m_part)
 
         # Save current scene as an animation
-        m_anim = menu_file.Append(-1,"&Save animation of current scene\tCtrl-S","Save animation")
-        self.Bind(wx.EVT_MENU, self.on_save_anim, m_anim)
+        #m_anim = menu_file.Append(-1,"&Save animation of current scene\tCtrl-S","Save animation")
+        #self.Bind(wx.EVT_MENU, self.on_save_anim, m_anim)
 
         # Save the current figure
         m_prin = menu_file.Append(-1,"&Print current scene\tCtrl-P","Save figure")
@@ -108,12 +103,10 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
         ###
         # Tools menu
         ###
-        menu_tools = wx.Menu()
-        m_gridstat = menu_tools.Append(-1, "&Plot grid size statistics", "SUNTANS grid size")
-        self.Bind(wx.EVT_MENU, self.on_plot_gridstat, m_gridstat)
+        #menu_tools = wx.Menu()
+        #m_gridstat = menu_tools.Append(-1, "&Plot grid size statistics", "SUNTANS grid size")
+        #self.Bind(wx.EVT_MENU, self.on_plot_gridstat, m_gridstat)
 
-        m_countcells = menu_tools.Append(-1, "&Count # grid cells", "Grid cell count")
-        self.Bind(wx.EVT_MENU, self.on_count_cells, m_countcells)
         
         ###
         # Help Menu
@@ -125,7 +118,7 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
         
         # Add all of the menu bars
         self.menubar.Append(menu_file, "&File")
-        self.menubar.Append(menu_tools, "&Tools")
+        #self.menubar.Append(menu_tools, "&Tools")
         self.menubar.Append(menu_help, "&Help")
         self.SetMenuBar(self.menubar)
 
@@ -182,10 +175,10 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             style=wx.CB_READONLY)
         self.depthlayer_list.Bind(wx.EVT_COMBOBOX, self.on_select_depth)
 
-        self.show_edge_check = wx.CheckBox(self.panel, -1, 
-            "Show Edges",
-            style=wx.ALIGN_RIGHT)
-        self.show_edge_check.Bind(wx.EVT_CHECKBOX, self.on_show_edges)
+        #self.show_edge_check = wx.CheckBox(self.panel, -1, 
+        #    "Show Edges",
+        #    style=wx.ALIGN_RIGHT)
+        #self.show_edge_check.Bind(wx.EVT_CHECKBOX, self.on_show_edges)
 
         cmaps = matplotlib.cm.datad.keys()
         cmaps.sort()
@@ -246,7 +239,7 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
         flags = wx.ALIGN_LEFT | wx.ALL | wx.ALIGN_CENTER_VERTICAL
 
         self.hbox0 = wx.BoxSizer(wx.HORIZONTAL)
-        self.hbox0.Add(self.show_edge_check, 0, border=10, flag=flags)
+        #self.hbox0.Add(self.show_edge_check, 0, border=10, flag=flags)
         self.hbox0.Add(self.colormap_label, 0, border=10, flag=flags)
         self.hbox0.Add(self.colormap_list, 0, border=10, flag=flags)
         self.hbox0.Add(self.clim_check, 0, border=10, flag=flags)
@@ -285,6 +278,9 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             self.clim = [self.data.min(),self.data.max()]
             self.climlow.SetValue('%3.1f'%self.clim[0])
             self.climhigh.SetValue('%3.1f'%self.clim[1])
+        else:
+            self.clim = [float(self.climlow.GetValue()),\
+                float(self.climhigh.GetValue())]
          
         if self.__dict__.has_key('collection'):
             #self.collection.remove()
@@ -296,70 +292,45 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             self.axes.set_ylim(self.ylims)
  
 
-        if self.collectiontype=='cells':
-            self.collection = PolyCollection(self.xy,cmap=self.cmap)
-            self.collection.set_array(np.array(self.data[:]))
-            if not self.showedges:
-                self.collection.set_edgecolors(self.collection.to_rgba(np.array((self.data[:])))) 
-        elif self.collectiontype=='edges':
-            xylines = [self.xp[self.edges],self.yp[self.edges]]
-            linesc = [zip(xylines[0][ii,:],xylines[1][ii,:]) for ii in range(self.Ne)]
-            self.collection = LineCollection(linesc,array=np.array(self.data[:]),cmap=self.cmap)
+        self.collection = self.pcolor(data=self.data,titlestr='',colorbar=False,\
+            ax=self.axes,fig=self.fig,cmap=self.cmap)
+        #self.axes.add_collection(self.collection)
 
-        self.collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
+        self.title=self.axes.set_title(self._genTitle(self.tstep[0]),color=self.textcolor)
+        self.axes.set_xlabel('Longitude [E]')
+        self.axes.set_ylabel('Latitude [N]')
 
-        self.axes.add_collection(self.collection)    
-        self.title=self.axes.set_title(self.genTitle(),color=self.textcolor)
-        self.axes.set_xlabel('Easting [m]')
-        self.axes.set_ylabel('Northing [m]')
 
         # create a colorbar
 
         if not self.__dict__.has_key('cbar'):
             self.cbar = self.fig.colorbar(self.collection)
-            #SetAxColor(self.cbar.ax.axes,self.textcolor,self.bgcolor)
         else:
-            #pass
-            print 'Updating colorbar...'
-            #self.cbar.check_update(self.collection)
+            #print 'Updating colorbar...'
             self.cbar.on_mappable_changed(self.collection)
 
         self.canvas.draw()
    
     def update_figure(self):
-        if self.autoclim:
-            self.clim = [self.data.min(),self.data.max()]
-            self.climlow.SetValue('%3.1f'%self.clim[0])
-            self.climhigh.SetValue('%3.1f'%self.clim[1])
-        else:
-            self.clim = [float(self.climlow.GetValue()),\
-                float(self.climhigh.GetValue())]
+        #if self.autoclim:
+        #    self.clim = [self.data.min(),self.data.max()]
+        #    self.climlow.SetValue('%3.1f'%self.clim[0])
+        #    self.climhigh.SetValue('%3.1f'%self.clim[1])
+        #else:
+        #    self.clim = [float(self.climlow.GetValue()),\
+        #        float(self.climhigh.GetValue())]
  
-        # check whether it is cell or edge type
-        if self.hasDim(self.variable,self.griddims['Ne']):
-            self.collectiontype='edges'
-        elif self.hasDim(self.variable,self.griddims['Nc']):
-            self.collectiontype='cells'
+        #
+        #if self.X.shape == self.collection._coordinates.shape[0:2]:
+        #    self.collection.set_array(np.array(self.data.ravel()))
+        #    self.collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
+        #else:
+        #    self.create_figure()
 
-        # Create a new figure if the variable has gone from cell to edge of vice
-        # versa
-        if not self.collectiontype==self.oldcollectiontype:
-            self.create_figure()
-            self.oldcollectiontype=self.collectiontype
 
-        self.collection.set_array(np.array(self.data[:]))
-        self.collection.set_clim(vmin=self.clim[0],vmax=self.clim[1])
-
-        # Cells only
-        if self.collectiontype=='cells':
-            if not self.showedges:
-                self.collection.set_edgecolors(self.collection.to_rgba(np.array((self.data[:])))) 
-            else:
-                self.collection.set_edgecolors('k')
-                self.collection.set_linewidths(0.2)
-
-        # Update the title
-        self.title=self.axes.set_title(self.genTitle(),color=self.textcolor)
+        ## Update the title
+        #self.title=self.axes.set_title(self._genTitle(self.tstep[0]),color=self.textcolor)
+        self.create_figure()
 
         #Update the colorbar
         self.cbar.update_normal(self.collection)
@@ -390,18 +361,14 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
         vname = event.GetString()
         self.flash_status_message("Selecting variable: %s"%vname)
         # update the spatial object and load the data
-        self.variable = vname
-        self.loadData(variable=self.variable)
+        self.varname = vname
+        self.loadData(varname=self.varname)
 
         # Check if the variable has a depth coordinate
         depthstr = ['']
         # If so populate the vertical layer box
-        if self.hasDim(self.variable,self.griddims['Nk']):
-            depthstr = ['%3.1f'%self.z_r[k] for k in range(self.Nkmax)]
-            depthstr += ['surface','seabed']
-
-        elif self.hasDim(self.variable,'Nkw'):
-            depthstr = ['%3.1f'%self.z_w[k] for k in range(self.Nkmax+1)]
+        if self.ndim==4:
+            depthstr = ['%1.4f'%self[self.zcoord][k] for k in range(self.Nz)]
 
         self.depthlayer_list.SetItems(depthstr)
 
@@ -409,32 +376,25 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
         self.update_figure()
 
 
-
     def on_select_time(self, event):
         self.tindex = event.GetSelection()
         # Update the object time index and reload the data
         if self.plot_type=='hydro':
-            if not self.tstep==self.tindex:
-                self.tstep=self.tindex
-                self.loadData()
+            if not self.tstep[0]==self.tindex:
+                self.tstep=[self.tindex]
+                self.loadData(varname=self.varname,tstep=self.tstep)
                 self.flash_status_message("Selecting variable: %s..."%event.GetString())
 
                 # Update the plot
                 self.update_figure()
-        elif self.plot_type=='particles':
-            self.PTM.plot(self.tindex,ax=self.axes,\
-                xlims=self.axes.get_xlim(),ylims=self.axes.get_ylim())
         
-            self.canvas.draw()
-
-
     def on_select_depth(self, event):
         kindex = event.GetSelection()
-        if not self.klayer[0]==kindex:
+        if not self.K[0]==kindex:
             # Check if its the seabed or surface value
-            if kindex>=self.Nkmax:
+            if kindex>=self.Nz:
                 kindex=event.GetString()
-            self.klayer = [kindex]
+            self.K = [kindex]
             self.loadData()       
             self.flash_status_message("Selecting depth: %s..."%event.GetString())
 
@@ -442,11 +402,11 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             self.update_figure()
 
     def on_open_file(self, event):
-        file_choices = "SUNTANS NetCDF (*.nc)|*.nc*|UnTRIM NetCDF (*.nc)|*.nc*|All Files (*.*)|*.*"
+        file_choices = "ROMS NetCDF (*.nc)|*.nc|All Files (*.*)|*.*"
         
         dlg = wx.FileDialog(
             self, 
-            message="Open SUNTANS file...",
+            message="Open ROMS file...",
             defaultDir=os.getcwd(),
             defaultFile="",
             wildcard=file_choices,
@@ -458,16 +418,10 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             path = dlg.GetPaths()
 
             # Initialise the class
-            if dlg.GetFilterIndex() == 0 or dlg.GetFilterIndex() > 1: #SUNTANS
-                self.flash_status_message("Opening SUNTANS file: %s" % path)
-                Spatial.__init__(self,path)
-                startvar='dv'
-            if dlg.GetFilterIndex()==1: #UnTRIM
-                self.flash_status_message("Opening UnTRIMS file: %s" % path)
-                #Spatial.__init__(self,path,gridvars=untrim_gridvars,griddims=untrim_griddims)
-                UNTRIMSpatial.__init__(self,path)
-                startvar='Mesh2_face_depth'
-            
+            if dlg.GetFilterIndex() == 0: 
+                self.flash_status_message("Opening ROMS file: %s" % path)
+                startvar='h'
+                ROMS.__init__(self,path,varname=startvar)
             # Populate the drop down menus
             vnames = self.listCoordVars()
             self.variable_list.SetItems(vnames)
@@ -483,7 +437,7 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
 
             # Draw the depth
             if startvar in vnames:
-                self.variable=startvar
+                self.varname=startvar
                 self.loadData()
                 self.create_figure()
 
@@ -509,7 +463,7 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             self.canvas.draw()
 
     def on_load_ptm(self, event):
-        file_choices = "PTM Binary (*_bin.out)|*_bin.out|PTM NetCDF (*.nc)|*.nc|All Files (*.*)|*.*"
+        file_choices = "PTM Binary (*_bin.out)|*_bin.out|All Files (*.*)|*.*"
         
         dlg = wx.FileDialog(
             self, 
@@ -524,13 +478,8 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             path = dlg.GetPath()
 
             # Initialise the class
-            if dlg.GetFilterIndex() == 1: #SUNTANS
-                self.flash_status_message("Opening PTM netcdf file: %s" % path)
-                self.PTM = PtmNC(path)
-            elif dlg.GetFilterIndex() == 0: #PTM
-                self.flash_status_message("Opening PTM binary file: %s" % path)
-                self.PTM = PtmBin(path)
-                self.Nt = self.PTM.nt
+            self.flash_status_message("Opening PTM binary file: %s" % path)
+            self.PTM = PtmBin(path)
             
             # Update the time drop down list
             self.timestr = [datetime.strftime(tt,'%d-%b-%Y %H:%M:%S') for tt in self.PTM.time]
@@ -539,11 +488,9 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             # Plot the first time step
             if self.__dict__.has_key('xlims'):
                 self.PTM.plot(self.PTM.nt-1,ax=self.axes,xlims=self.xlims,\
-                ylims=self.ylims,color=self.particlecolor,\
-                fontcolor='w',markersize=self.particlesize)
+                ylims=self.ylims,fontcolor='w')
             else:
-                self.PTM.plot(self.PTM.nt-1,ax=self.axes,fontcolor='w',\
-                    color=self.particlecolor,markersize=self.particlesize)
+                self.PTM.plot(self.PTM.nt-1,ax=self.axes,fontcolor='w')
             # redraw the figure
             self.canvas.draw()
 
@@ -575,9 +522,11 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
     def on_select_cmap(self,event):
         self.cmap=event.GetString()
         self.collection.set_cmap(self.cmap)
+        self.cbar.on_mappable_changed(self.collection)
+        self.canvas.draw()
 
         # Update the figure
-        self.update_figure()
+        #self.update_figure()
 
     def on_save_fig(self,event):
         """
@@ -641,15 +590,10 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             #self.animate(cbar=self.cbar,cmap=self.cmap,\
             #    xlims=self.axes.get_xlim(),ylims=self.axes.get_ylim())
             def updateScalar(i):
-                if not self.plot_type=='particles':
-                    self.tstep=[i]
-                    self.loadData()
-                    self.update_figure()
-                    return (self.title,self.collection)
-                elif self.plot_type=='particles':
-                    self.PTM.plot(i,ax=self.axes,\
-                        xlims=self.axes.get_xlim(),ylims=self.axes.get_ylim())
-                    return (self.PTM.title,self.PTM.p_handle)
+                self.tstep=[i]
+                self.loadData()
+                self.update_figure()
+                return (self.title,self.collection)
 
             self.anim = animation.FuncAnimation(self.fig, updateScalar, frames=self.Nt, interval=50, blit=True)
 
@@ -661,9 +605,8 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
             # Return the figure back to its status
             del self.anim
             self.tstep=self.tindex
-            if not self.plot_type=='particles':
-                self.loadData()
-                self.update_figure()
+            self.loadData()
+            self.update_figure()
 
             # Bring up a dialog box
             dlg2= wx.MessageDialog(self, 'Animation complete.', "Done", wx.OK)
@@ -674,19 +617,13 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
         self.Destroy()
         
     def on_about(self, event):
-        msg = """ SUNTANS NetCDF visualization tool
+        msg = """ ROMS NetCDF visualization tool
         
             *Author: Matt Rayson
             *Institution: Stanford University
-            *Created: October 2013
+            *Created: May 2014
         """
         dlg = wx.MessageDialog(self, msg, "About", wx.OK)
-        dlg.ShowModal()
-        dlg.Destroy()
-
-    def on_count_cells(self,eveny):
-        msg = "Total 3-D grid cells = %d"%(self.count_cells())
-        dlg = wx.MessageDialog(self, msg, "No. cells", wx.OK)
         dlg.ShowModal()
         dlg.Destroy()
    
@@ -731,7 +668,7 @@ def SetAxColor(ax,color,bgcolor):
 
 if __name__ == '__main__':
     app = wx.PySimpleApp()
-    app.frame = SunPlotPy()
+    app.frame = ROMSPlotPy()
     app.frame.Show()
     app.MainLoop()
 

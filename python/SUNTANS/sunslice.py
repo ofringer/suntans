@@ -304,12 +304,12 @@ class Slice(Spatial):
         self.zslice = np.repeat(-self.z_r[klayer].reshape((self.Nkmax,1)),self.Npt,axis=1)
         
         # Construct the mask array
-        self._computeMask()
+        self.calc_mask()
 
         # Get the bathymetry along the slice
         self.hslice = -self.dv[self.cellind]
 
-    def _computeMask(self):
+    def calc_mask(self):
         """ Construct the mask array"""
         self.maskslice = np.zeros((self.Nkmax,self.Npt),dtype=np.bool)
         
@@ -407,6 +407,7 @@ class SliceEdge(Slice):
     Used for e.g. flux calculations along a profile
     """
 
+    edgemethod=1
     def __init__(self,ncfile,xpt=None,ypt=None,Npt=100,klayer=[-99],**kwargs):
         
         self.Npt=Npt
@@ -433,7 +434,10 @@ class SliceEdge(Slice):
 
         self._getSliceCoords(kind='linear')
         # List of the edge indices
-        self.j,self.nodelist = self.get_edgeindices(self.xslice,self.yslice)
+        self.j,self.nodelist =\
+            self.get_edgeindices(self.xslice,self.yslice,method=self.edgemethod)
+
+        self.nslice = len(self.j)
 
         # Update the x and y axis of the slice
         self.xslice=self.xp[self.nodelist]
@@ -448,6 +452,9 @@ class SliceEdge(Slice):
         self.yslice = 0.5*(self.yslice[1:]+self.yslice[0:-1])
         self.distslice = 0.5*(self.distslice[1:]+self.distslice[0:-1])
 
+        # Get the mask
+        self.calc_mask()
+
         # Calculate the area
         self.area = self.calc_area()
 
@@ -458,8 +465,6 @@ class SliceEdge(Slice):
         de = self.get_edgevar(self.dv)
         self.hslice = -de[self.j]
 
-        # Get the mask
-        self._computeMask()
 
     def loadData(self,variable=None,setunits=True):
         """ 
@@ -484,20 +489,27 @@ class SliceEdge(Slice):
                 self.units=''
 
         j=self.j
+        # Check if cell-centered variable
         if self.hasDim(variable,self.griddims['Ne']):
             isCell=False
         elif self.hasDim(variable,self.griddims['Nc']): 
             isCell=True
             nc1 = self.grad[j,0]
             nc2 = self.grad[j,1]
-                
             # check for edges (use logical indexing)
             ind1 = nc1==-1
             nc1[ind1]=nc2[ind1]
             ind2 = nc2==-1
             nc2[ind2]=nc1[ind2]
 
+
         klayer,Nkmax = self.get_klayer()
+
+        # Check if 3D
+        if self.hasDim(variable,self.griddims['Nk']): # 3D
+            is3D=True
+        else:
+            is3D=False
 
         def ncload(nc,variable,tt):
             if variable=='agemean':
@@ -508,26 +520,36 @@ class SliceEdge(Slice):
                 return tmp/86400.
 
             else:
-                return nc.variables[variable][tt,klayer,:]
+                if self.hasDim(variable,self.griddims['Nk']): # 3D
+                    return nc.variables[variable][tt,klayer,:]
+                else:
+                    return nc.variables[variable][tt,:]
                 
         # For loop where the data is extracted 
         nt = len(self.tstep)
         ne = len(self.j)
-        self.data = np.zeros((nt,Nkmax,ne))
+        if is3D==True:
+            self.data = np.zeros((nt,Nkmax,ne))
+        else:
+            self.data = np.zeros((nt,ne))
+
         for ii,tt in enumerate(self.tstep):
             #tmp=nc.variables[variable][tt,:,:]
             tmp = ncload(nc,variable,tt)
             # Return the mean for cell-based variables
             if isCell:
-                self.data[ii,:,:] = 0.5*(tmp[...,nc1]+tmp[...,nc2])
+                self.data[ii,...] = 0.5*(tmp[...,nc1]+tmp[...,nc2])
             else:
-                self.data[ii,:,:]=tmp[:,self.j]
-            maskval=0
-            self.data[ii,self.maskslice]=maskval
+                self.data[ii,...]=tmp[...,self.j]
+            # Mask 3D data
+            if is3D:
+                maskval=0
+                self.data[ii,self.maskslice]=maskval
 
         #fillval = 999999.0
         #self.mask = self.data==fillval
         #self.data[self.mask]=0.
+        self.data[self.data==self._FillValue]=0.
         self.data = self.data.squeeze()
         
         return self.data
@@ -612,17 +634,39 @@ class SliceEdge(Slice):
                 **kwargs)
 
 
-    def calc_area(self):
+    def calc_area(self,eta=None):
         """
         Calculate thee cross-sectional area of each face
         """
-        if not self.__dict__.has_key('dzf'):
-            eta = np.zeros((self.Nc,))
-            self.dzf = self.getdzf(eta).squeeze() # Assumes the free-surface is zero
+        if eta==None:
+            eta = np.zeros((self.nslice,)) # Assumes the free-surface is zero
 
-        return self.dzf[:,self.j] * self.df[self.j]
+        dzf = self.getdzf(eta)
 
-    def _computeMask(self):
+        area = dzf * self.df[self.j]
+
+        area[self.maskslice]=0
+        
+        return area
+
+    def getdzf(self,eta):
+        """ Get the cell thickness along each edge of the slice"""
+        dzf = Spatial.getdzf(self,eta,j=self.j)
+        dzf[self.maskslice]=0
+        return dzf
+
+    def get_width(self):
+        """
+        Calculate the width of each edge as a 2d array
+
+        Missing cells are masked
+        """
+        df = self.df[self.j]
+        width =  np.ones((self.Nkmax,1)) * df[np.newaxis,:]
+        width[self.maskslice]=0
+        return width
+
+    def calc_mask(self):
         """ Construct the mask array"""
         klayer,Nkmax=self.get_klayer()
         self.maskslice = np.zeros((Nkmax,len(self.j)),dtype=np.bool)
@@ -633,9 +677,13 @@ class SliceEdge(Slice):
                     self.maskslice[k,ii]=True
  
 
-    def get_edgeindices(self,xpt,ypt):
+    def get_edgeindices(self,xpt,ypt,method=1):
         """
         Return the indices of the edges (in order) along the line
+
+        method - method for line finding algorithm
+               0 - closest point to line
+               1 - closest point without doing a u-turn  
         """
         # Load the line as a shapely object
         #edgeline = asLineString([self.xslice,self.yslice])
@@ -729,14 +777,6 @@ class SliceEdge(Slice):
 
             angdiff = np.array(angle2) - np.array(angle1)
 
-            #w1 = 0.9 # Weight of the distance
-            #w2 = 1-w1 # Weight of the angle
-            #rank = w1*np.argsort(dist) + w2*np.argsort(angdiff)
-            #rank = w1*np.argsort(dist) + w2*np.argsort(angdiff)
-
-            #ii = np.argwhere(rank == rank.min())[0][0]
-            #return nodes[ii]
-
             # Use the minimum distance unless the point is a u-turn
             rank = np.argsort(dist)
             for nn in range(dist.shape[0]):
@@ -745,20 +785,16 @@ class SliceEdge(Slice):
             # if they all u-turn return the min dist
             return nodes[rank[0]]
 
-
-
-            #for ii,dd in enumerate(dist):
-            #    if dd == min(dist):
-            #        return nodes[ii]
-
-
         # Loop through and find all of the closest points to the line
         MAXITER=10000
         for ii in range(MAXITER):
             cnodes = connecting_nodes(nodelist[-1],nodelist)
-            #newnode = min_dist(cnodes,self.edgeline)
-            #newnode = min_dist_line(nodelist[-1],cnodes,self.edgeline)
-            newnode = min_dist_angle(nodelist[-1],cnodes,self.edgeline)
+            #if method==0:
+            #    newnode = min_dist(cnodes,self.edgeline)
+            if method==0:
+                newnode = min_dist_line(nodelist[-1],cnodes,self.edgeline)
+            elif method==1:
+                newnode = min_dist_angle(nodelist[-1],cnodes,self.edgeline)
             #print 'Found new node: %d...'%newnode
             if newnode==None:
                 break
@@ -807,8 +843,9 @@ class MultiSliceEdge(SliceEdge):
             self.ypt=ypt
             self._getSliceCoords(kind='linear')
             # List of the edge indices
-            j,nodelist = self.get_edgeindices(self.xslice,self.yslice)
+            j,nodelist = self.get_edgeindices(self.xslice,self.yslice,method=self.edgemethod)
             self.j = j # Need this to calculate other quantities
+            self.nslice = len(self.j)
 
             # Update the x and y axis of the slice
             self.xslice=self.xp[nodelist]
@@ -817,14 +854,18 @@ class MultiSliceEdge(SliceEdge):
 
             self._getDistCoords()
 
+            # Get the mask
+            self.calc_mask()
+
             # Get the area and the normal
             area = self.calc_area()
             ne1, ne2, enormal = self.calc_normal(nodelist,j)
+            dx = self.df[j]
 
             # Store all of the info as a dictionary
             self.slices.append({'j':j,'nodelist':nodelist,\
                 'xslice':self.xslice,'yslice':self.yslice, \
-                'distslice':self.distslice,'area':area,'normal':enormal})
+                'distslice':self.distslice,'area':area,'normal':enormal,'dx':dx})
 
         # Find the unique j values and sort them
         j=[]
@@ -852,7 +893,7 @@ class MultiSliceEdge(SliceEdge):
         SliceEdge.loadData(self,**kwargs)
         data=[]
         for ii,ss in enumerate(self.slices):
-            data.append(self.data[:,:,ss['subind']])
+            data.append(self.data[...,ss['subind']])
         return data
 
     def mean(self,phi,axis='area'):

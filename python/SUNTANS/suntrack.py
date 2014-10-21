@@ -21,6 +21,8 @@ from netCDF4 import Dataset, num2date
 from inpolygon import inpolygon
 import operator
 
+import numexpr as ne
+
 from time import clock
 import pdb
 
@@ -86,6 +88,8 @@ class SunTrack(Spatial):
     interp_meshmethod = 'nearest' # 'linear' or 'nearest'
     
     advect_method = 'rk2' # 'euler' or 'rk2'
+
+    is3D = True
     
     # 
     
@@ -96,29 +100,41 @@ class SunTrack(Spatial):
         
         self.__dict__.update(kwargs)
 
-        Spatial.__init__(self,ncfile,klayer=[-99],**kwargs)
+        if self.is3D:
+            Spatial.__init__(self,ncfile,klayer=[-99],**kwargs)
+            # Initialise the 3-D grid
+            self.init3Dgrid()
+        else: # surface layer only
+            print '%s\nRunning in 2D mode...\n%s'%(24*'#',24*'#')
+            Spatial.__init__(self,ncfile,klayer=['surface'],**kwargs)
+            self.nActive = self.Nc
+
+
+            
             
         #self.klayer=np.arange(0,self.Nkmax)
         
-        # Initialise the 3-D grid
-        self.init3Dgrid()
             
         # Step 2) Initialise the interpolation function
-        if self.interp_method in ('idw','nearest'):
-            self.UVWinterp = interp3D(self.xv3d,self.yv3d,self.zv3d,method=self.interp_method)
-            # Interpolation function to find free surface and seabed
-            self.Hinterp = interp3D(self.xv,self.yv,0*self.xv,method='nearest')
-            
-        elif self.interp_method == 'mesh':
-            if self.interp_meshmethod == 'nearest':
-                self.UVWinterp = \
-                    interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,\
-                        self.nfaces,self.mask3D,method='nearest')
-            elif self.interp_meshmethod == 'linear':
-                    self.UVWinterp =\
-                        interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.nfaces,\
-                        self.mask3D,method='linear',grdfile=self.ncfile)
-
+        if self.is3D:
+            if self.interp_method in ('idw','nearest'):
+                self.UVWinterp = interp3D(self.xv3d,self.yv3d,self.zv3d,method=self.interp_method)
+                # Interpolation function to find free surface and seabed
+                self.Hinterp = interp3D(self.xv,self.yv,0*self.xv,method='nearest')
+                
+            elif self.interp_method == 'mesh':
+                if self.interp_meshmethod == 'nearest':
+                    self.UVWinterp = \
+                        interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,\
+                            self.nfaces,self.mask3D,method='nearest')
+                elif self.interp_meshmethod == 'linear':
+                        self.UVWinterp =\
+                            interp3Dmesh(self.xp,self.yp,-self.z_w,self.cells,self.nfaces,\
+                            self.mask3D,method='linear',grdfile=self.ncfile)
+        else:
+            # Surface layer use nearest point only for now
+            self.UVWinterp = interp2Dmesh(self.xp,self.yp,self.cells,\
+                    self.nfaces,method='nearest')
 
 
     def __call__(self,x,y,z, timeinfo,outfile=None,dtout=3600.0,\
@@ -190,9 +206,492 @@ class SunTrack(Spatial):
                         self.time_track_sec[ii],ctr,age=self.particles['age'],\
                         agemax=self.particles['agemax'])
 
-                    tctr=0
+                    tctr=tctr//dtout
                     ctr+=1
     
+   
+    def advectParticles(self,timenow,tsec):
+        """
+        Advect the particles
+        """          
+        t0 = clock()
+        if self.verbose:
+            print '\tTime step: ',timenow
+         
+        # Activate particles for current time step
+        self.activateParticles(tsec)
+
+        # Advection step 
+        if self.advect_method=='euler':
+            self.euler(timenow,tsec)
+            
+        elif self.advect_method=='rk2':
+            self.rk2(timenow,tsec)
+            
+        else:
+            raise Exception, 'unknown advection scheme: %s. Must be "euler" or "rk2"'%self.advect_method
+
+        # Reset inactive particles
+        self.resetInactiveParticles()
+
+        # Call the age calculation
+        if self._calcage:
+           self.CalcAge()
+            
+        
+        t1 = clock()
+        if self.verbose:
+            print '\t\tElapsed time: %s seconds.'%(t1-t0)
+            
+    def euler(self,timenow,tsec):
+        """
+        euler time integration
+        """
+        self.updateCurrents(timenow,tsec)
+        
+        # Interpolate the currents
+        u = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.u)
+        v = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.v,update=False)
+        if self.is3D:
+            w = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.w,update=False)
+        #u,v,w = self.timeInterpUVWxyz(tsec,self.particles['X'],self.particles['Y'],self.particles['Z'])
+        
+        self.particles['X'] += u*self.dt
+        self.particles['Y'] += v*self.dt
+        if self.is3D:
+            self.particles['Z'] += w*self.dt
+            # Check the vertical bounds of a particle 
+            self.particles['Z'] = self.checkVerticalBounds(self.particles['X'],self.particles['Y'],self.particles['Z'])
+            
+    def rk2(self,timenow,tsec):
+        """
+        2nd order Runge-Kutta advection scheme
+        """
+        
+        self.updateCurrents(timenow,tsec)
+        
+        # Interpolate the currents
+        u = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.u)
+        v = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.v,update=False)
+        if self.is3D:
+            w = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.w,update=False)
+        #u,v,w = self.timeInterpUVWxyz(tsec,self.particles['X'],self.particles['Y'],self.particles['Z'])
+
+        x1 = self.particles['X'] + 0.5*self.dt*u
+        y1 = self.particles['Y'] + 0.5*self.dt*v
+        if self.is3D:
+            z1 = self.particles['Z'] + 0.5*self.dt*w
+        
+            # Check the vertical bounds of a particle 
+            z1 = self.checkVerticalBounds(x1,y1,z1)
+        else:
+            z1 = self.particles['Z']
+        
+        # Update the currents again
+        self.updateCurrents(timenow+timedelta(seconds=self.dt*0.5),tsec+self.dt*0.5)
+        
+        u = self.UVWinterp(x1,y1,z1,self.u)
+        v = self.UVWinterp(x1,y1,z1,self.v,update=False)
+        if self.is3D:
+            w = self.UVWinterp(x1,y1,z1,self.w,update=False)
+        #u,v,w = self.timeInterpUVWxyz(tsec,x1,y1,x1)
+        
+        self.particles['X'] += u*self.dt
+        self.particles['Y'] += v*self.dt
+        if self.is3D:
+            self.particles['Z'] += w*self.dt
+            
+            # Check the vertical bounds of a particle again 
+            self.particles['Z'] = self.checkVerticalBounds(self.particles['X'],self.particles['Y'],self.particles['Z'])
+
+	# Check the horizontal coordinates
+	#    This is done by default in the messh interpolation class
+	#self.particles['X'],self.particles['Y'] = self.checkHorizBounds(self.particles['X'],self.particles['Y'])
+        
+    def checkHorizBounds(self,x,y):
+    	"""
+        NOT USED
+        Moves particles outside of the horizontal bounds of the grid back
+        to the closet cell centre.
+        """
+
+        ind = self.UVWinterp.cellind==-1
+        if not self.__dict__.has_key('kd'):
+            self.kd = spatial.cKDTree(np.vstack((self.xv,self.yv)).T)
+
+        xy = np.vstack((x[ind],y[ind])).T
+        dist,cell = self.kd.query(xy)
+        x[ind]=self.xv[cell]
+        y[ind]=self.yv[cell]
+
+        return x, y
+
+    def checkVerticalBounds(self,x,y,z):
+        """
+        Checks that particles are not above the surface or below the seabed
+        
+        (Artificially moves them to the surface or bed if they are).
+        """
+        SMALL = 0.001
+        #zbed = -self.dv
+        zbed = -self.z_w[self.Nk-1] # Set the bottom one layer above the seabed
+            
+            ## find the free surface and seabed at the particle locations
+            #if not self.interp_method == 'mesh':
+            #    eta_P = self.Hinterp(x,y,z,self.eta)
+            #    h_P = self.Hinterp(x,y,z,zbed)
+            #else:
+            #    ind = self.UVWinterp.cellind
+            #    mask=ind==-1
+            #    ind[mask]=0.0
+            #    eta_P = self.eta[ind]
+            #    h_P = zbed[ind]
+            #    eta_P[mask]=0.0
+            #    h_P[mask]=0.0
+            #
+        #pdb.set_trace()
+        #indtop = np.where(z>eta_P)
+        #indbot = np.where(z<h_P)
+        #z[indtop[0]] = eta_P[indtop[0]]-SMALL
+        #z[indbot[0]] = h_P[indbot[0]]+SMALL
+
+        if not self.interp_method == 'mesh':
+            eta_P = self.Hinterp(x,y,z,self.eta)
+            h_P = self.Hinterp(x,y,z,zbed)
+        else:
+            ind = self.UVWinterp.cellind
+            eta_P = self.eta[ind]
+            h_P = zbed[ind]
+            
+        #indtop = np.where( operator.and_(z>eta_P, ind!=-1) )
+        #indbot = np.where( operator.and_(z<h_P, ind!=-1) )
+
+        #z[indtop[0]] = eta_P[indtop[0]]-SMALL
+        #z[indbot[0]] = h_P[indbot[0]]+SMALL
+        indtop = operator.and_(z>eta_P, ind!=-1)
+        indbot = operator.and_(z<h_P, ind!=-1) 
+
+        #if np.any(indbot):
+        #    pdb.set_trace()
+
+        z[indtop] = eta_P[indtop]-SMALL
+        z[indbot] = h_P[indbot]+SMALL
+
+        #np.where(z > eta_P, eta_P-SMALL, z)
+        #np.where(z < h_P, h_P+SMALL, z)
+        
+        return z
+        
+    
+    def initCurrents(self):
+        """
+        Initialise the forward and backward currents and free-surface height
+        """
+        
+        tindex = othertime.findGreater(self.time_track[0],self.time)
+        
+        self.time_index = tindex
+        
+        # Check the time index here
+        if tindex == None:
+            raise Exception, 'start time less than model time: ',self.time[0]
+        elif self.time_index==0:
+            self.time_index=1
+            
+        self.uT = np.zeros((self.nActive,2))
+        self.vT = np.zeros((self.nActive,2))
+        self.wT = np.zeros((self.nActive,2))
+        self.etaT = np.zeros((self.Nc,2))
+        
+        self.uT[:,0], self.vT[:,0], self.wT[:,0], self.etaT[:,0] = self.getUVWh(tindex-1)
+        self.uT[:,1], self.vT[:,1], self.wT[:,1], self.etaT[:,1] = self.getUVWh(tindex)
+        
+        self.timeInterpUVW(self.time_track_sec[0],self.time_index)
+
+        
+    def updateCurrents(self,timenow,tsec):
+        """
+        Checks to see if the currents need updating
+        """
+        
+        tindex = othertime.findGreater(timenow,self.time)
+        
+        if not tindex == self.time_index:
+            if self.verbose:
+                print 'Reading SUNTANS currents at time: ',timenow
+            self.uT[:,0]=self.uT[:,1]
+            self.vT[:,0]=self.vT[:,1]
+            self.wT[:,0]=self.wT[:,1]
+            self.etaT[:,0]=self.etaT[:,1]
+            self.uT[:,1], self.vT[:,1], self.wT[:,1], self.etaT[:,1] = self.getUVWh(tindex)
+            
+            self.time_index = tindex
+        
+        # Temporally interpolate onto the model step
+        self.timeInterpUVW(tsec,self.time_index) 
+        
+    def timeInterpUVW(self,tsec,tindex):
+        """
+        Temporally interpolate the currents  onto the particle time step, tsec.
+        
+        Linear interpolation used.
+        """
+        
+        t0 = self.time_sec[tindex-1]
+        t1 = self.time_sec[tindex]
+        dt = t1 - t0
+        
+        w2 = (tsec-t0)/dt
+        w1 = 1.0-w2
+        
+        #self.u = self.uT[:,0]*w1 + self.uT[:,1]*w2 
+        #self.v = self.vT[:,0]*w1 + self.vT[:,1]*w2 
+        #self.w = self.wT[:,0]*w1 + self.wT[:,1]*w2 
+        #self.eta = self.etaT[:,0]*w1 + self.etaT[:,1]*w2 
+        self.u = ne.evaluate("u0*w1 + u1*w2",\
+            local_dict={'u0':self.uT[:,0],'u1':self.uT[:,1],'w1':w1,'w2':w2})
+        self.v = ne.evaluate("u0*w1 + u1*w2",\
+            local_dict={'u0':self.vT[:,0],'u1':self.vT[:,1],'w1':w1,'w2':w2})
+        self.w = ne.evaluate("u0*w1 + u1*w2",\
+            local_dict={'u0':self.wT[:,0],'u1':self.wT[:,1],'w1':w1,'w2':w2})
+        self.eta = ne.evaluate("u0*w1 + u1*w2",\
+            local_dict={'u0':self.etaT[:,0],'u1':self.etaT[:,1],'w1':w1,'w2':w2})
+        
+        
+    def timeInterpUVWxyz(self,tsec,x,y,z):
+        """
+        NOT USED AT THIS STAGE
+
+        Temporally interpolate the currents  onto the particle time step, tsec.
+        
+        Linear interpolation used.
+        """
+        tindex=self.time_index
+        
+        t0 = self.time_sec[tindex-1]
+        t1 = self.time_sec[tindex]
+        dt = t1 - t0
+        
+        w2 = (tsec-t0)/dt
+        w1 = 1.0-w2
+        
+        uT0 = self.UVWinterp(x,y,z,self.uT[:,0],update=True)
+        vT0 = self.UVWinterp(x,y,z,self.vT[:,0],update=False) # Locations of the particles are not checked for updates
+        wT0 = self.UVWinterp(x,y,z,self.wT[:,0],update=False)
+        
+        uT1 = self.UVWinterp(x,y,z,self.uT[:,1],update=False)
+        vT1 = self.UVWinterp(x,y,z,self.vT[:,1],update=False)
+        wT1 = self.UVWinterp(x,y,z,self.wT[:,1],update=False)
+        
+        u = uT0*w1 + uT1*w2 
+        v = vT0*w1 + vT1*w2 
+        w = wT0*w1 + wT1*w2 
+        
+        return u,v,w
+        
+    def getUVWh(self,tstep):
+        """
+        Load the velocity arrays
+        """
+        self.tstep = tstep
+        
+        u = self.loadData(variable='uc')
+        v = self.loadData(variable='vc')
+        if self.is3D:
+            w = self.loadData(variable='w')
+            eta = self.loadData(variable='eta')
+            return u[self.mask3D], v[self.mask3D], w[self.mask3D], eta    
+        else:
+            return u, v, u, u   
+        
+    def getTime(self,timeinfo):
+        """
+        Get the particle time step info
+        """
+        self.dt = timeinfo[2]
+        
+        self.time_track = othertime.TimeVector(timeinfo[0],timeinfo[1],timeinfo[2],timeformat ='%Y%m%d.%H%M%S')
+        
+        self.time_track_sec = othertime.SecondsSince(self.time_track)
+        self.time_sec = othertime.SecondsSince(self.time)
+        
+        self.time_index = -9999
+
+    def initParticleTime(self,tstart):
+    	"""
+        Initialise the particle start time
+        """
+        if tstart==None:
+            self.particles['tstart'] = self.time_track_sec[0]*np.ones_like(self.particles['X'])
+        else:
+            self.particles['tstart'] = tstart
+
+        # Set all particles as inactive to start
+        self.particles['isActive'] = np.zeros_like(self.particles['X'])
+
+    def activateParticles(self,tsec):
+        """
+        Activate the particles that start past the present time
+
+        Note that inactive particles are still advected - their positions
+        are simply reset after each time step
+        """
+        ind = self.particles['tstart'] <= tsec
+
+        self.particles['isActive'][ind]=True
+        #print '\t%d Active particles'%(np.sum(self.particles['isActive']))
+
+    def resetInactiveParticles(self):
+        """
+        Reset the positions of inactive particles to x0. 
+        """
+        ind = self.particles['isActive']==False
+        self.particles['X'][ind]=self.particles['X0'][ind]
+        self.particles['Y'][ind]=self.particles['Y0'][ind]
+        self.particles['Z'][ind]=self.particles['Z0'][ind]
+
+        
+    def init3Dgrid(self):
+        """
+        Constructs the 3d cell unstructured grid object
+        
+        Includes only active vertical grid layers
+        
+        """
+        nc = self.Nc
+        nz = self.Nkmax+1
+        nv = len(self.xp)
+        
+        self.returnMask3D()
+        self.nActive = np.sum(self.mask3D) # Total number of active cells
+        
+        self.cells3d = np.zeros((self.nActive,6))
+        self.xv3d = np.zeros((self.nActive,))
+        self.yv3d = np.zeros((self.nActive,))
+        self.zv3d = np.zeros((self.nActive,))
+        pt1=0
+        for k in range(1,nz):
+            masklayer = self.mask3D[k-1,:]
+            nc = np.sum(masklayer)
+            pt2 = pt1+nc            
+            self.cells3d[pt1:pt2,0] = self.cells[masklayer,0]+(k-1)*nv
+            self.cells3d[pt1:pt2,1] = self.cells[masklayer,1]+(k-1)*nv
+            self.cells3d[pt1:pt2,2] = self.cells[masklayer,2]+(k-1)*nv
+            self.cells3d[pt1:pt2,3] = self.cells[masklayer,0]+k*nv
+            self.cells3d[pt1:pt2,4] = self.cells[masklayer,1]+k*nv
+            self.cells3d[pt1:pt2,5] = self.cells[masklayer,2]+k*nv
+            
+            self.xv3d[pt1:pt2] = self.xv[masklayer]
+            self.yv3d[pt1:pt2] = self.yv[masklayer]
+            self.zv3d[pt1:pt2] = -self.z_r[k-1]
+            
+            pt1=pt2
+            #print k, nc
+            
+        self.verts = np.zeros((nv*nz,3))
+        pv1 = 0
+        for k in range(0,nz):
+            self.verts[pv1:pv1+nv,0] = self.xp
+            self.verts[pv1:pv1+nv,1] = self.yp
+            self.verts[pv1:pv1+nv,2] = -self.z_w[k]
+            pv1 += nv
+
+    
+    def returnMask3D(self):
+        """
+        Returns the 3D mask [Nk x Nc] True = Active, False = Ghost
+        
+        """
+        self.mask3D = np.ones((self.Nkmax,self.Nc),dtype=bool)
+        
+        for i in range(self.Nc):
+            if self.Nk[i] == self.Nkmax:
+                Nk = self.Nk[i]
+            else:
+                Nk = self.Nk[i]+1
+            self.mask3D[Nk:self.Nkmax,i]=False
+            #self.mask3D[self.Nk[i]::,i]=False
+
+    def CalcAge(self):
+        """     
+        Calculate the age of a particle inside of the age polygon
+        """
+        #print '\t\tCalculating the particle age...'
+        #inpoly = nxutils.points_inside_poly(np.vstack((self.particles['X'],self.particles['Y'])).T,self.agepoly)
+        inpoly = inpolygon(np.vstack((self.particles['X'],self.particles['Y'])).T,self.agepoly)
+
+        self.particles['age'][inpoly] = self.particles['age'][inpoly] + self.dt
+        self.particles['age'][inpoly==False]=0.0
+
+        # Update the agemax attribute
+        self.particles['agemax'] = np.max([self.particles['age'],self.particles['agemax']],axis=0)
+
+
+    def initParticleNC(self,outfile,Np,age=False):
+        """
+        Export the grid variables to a netcdf file
+        """
+        import os
+
+        if self.verbose:
+            print '\nInitialising particle netcdf file: %s...\n'%outfile
+            
+        # Global Attributes
+        nc = Dataset(outfile, 'w', format='NETCDF4_CLASSIC')
+        nc.Description = 'Particle trajectory file'
+        nc.Author = os.getenv('USER')
+        nc.Created = datetime.now().isoformat()
+
+        #tseas = self.time_sec[1] - self.time_sec[0]
+        #nsteps = np.floor(tseas/self.dt)
+        #nc.nsteps = '%f (number of linear interpolation steps in time between model outputs)'%nsteps
+        #nc.tseas = '%d (Time step (seconds) between model outputs'%tseas
+        #nc.dt = '%f (Particle model time steps [seconds])'%self.dt
+        nc.dataset_location = '%s'%self.ncfile
+
+        # Dimensions
+        nc.createDimension('ntrac', Np)
+        nc.createDimension('nt', 0) # Unlimited
+        
+        # Create variables
+        def create_nc_var( name, dimensions, attdict, dtype='f8'):
+            tmp=nc.createVariable(name, dtype, dimensions)
+            for aa in attdict.keys():
+                tmp.setncattr(aa,attdict[aa])
+          
+        create_nc_var('tp',('nt'),{'units':'seconds since 1990-01-01 00:00:00','long_name':"time at drifter locations"},dtype='f8')
+        create_nc_var('xp',('ntrac','nt'),{'units':'m','long_name':"Easting coordinate of drifter",'time':'tp'},dtype='f8')
+        create_nc_var('yp',('ntrac','nt'),{'units':'m','long_name':"Northing coordinate of drifter",'time':'tp'},dtype='f8')
+        create_nc_var('zp',('ntrac','nt'),{'units':'m','long_name':"vertical position of drifter (negative is downward from surface)",'time':'tp'},dtype='f8')
+	if age:
+	    create_nc_var('age',('ntrac','nt'),{'units':'seconds','long_name':"Particle age",'time':'tp'},dtype='f8')
+	    create_nc_var('agemax',('ntrac','nt'),{'units':'seconds','long_name':"Maximum particle age",'time':'tp'},dtype='f8')
+
+        nc.close()
+    
+    def writeParticleNC(self,outfile,x,y,z,t,tstep,age=None,agemax=None):
+        """
+        Writes the particle locations at the output time step, 'tstep'
+        """
+        if self.verbose:
+            print 'Writing netcdf output at tstep: %d...\n'%tstep
+            
+        nc = Dataset(outfile, 'a')
+        
+        nc.variables['tp'][tstep]=t
+        nc.variables['xp'][:,tstep]=x
+        nc.variables['yp'][:,tstep]=y
+        nc.variables['zp'][:,tstep]=z
+
+	if not age==None:
+	    nc.variables['age'][:,tstep]=age
+	if not agemax==None:
+	    nc.variables['agemax'][:,tstep]=agemax
+
+        nc.close()
+#################
+# Animation
+#################
     def animate(self,x,y,z,timeinfo,agepoly=None,agemax=7.0,xlims=None,ylims=None,outfile=None):
         """
         Animate the particles on the fly using matplotlib plotting routines
@@ -341,21 +840,21 @@ class SunTrack(Spatial):
          
         self.fig = plt.figure(figsize=(10,8))
         ax=plt.gca()
-	ax.set_xlim(xlims)
-	ax.set_ylim(ylims)
-	
-	plotage=self._calcage
+        ax.set_xlim(xlims)
+        ax.set_ylim(ylims)
+        
+        plotage=self._calcage
 
         # Plot the particles at the first time step
-	if not plotage:
-	    h1 = plt.plot([],[],'y.',markersize=1.0)
-	    h1 = h1[0]
+        if not plotage:
+            h1 = plt.plot([],[],'y.',markersize=1.0)
+            h1 = h1[0]
 
-	else:
-	    h1 = plt.scatter(self.particles['X'],self.particles['Z'],s=1.0,c=self.particles['age'],vmin=0,vmax=agemax,edgecolors=None)
-	    self.fig.colorbar(h1)
-        
-        title=ax.set_title("")
+        else:
+            h1 = plt.scatter(self.particles['X'],self.particles['Z'],s=1.0,c=self.particles['age'],vmin=0,vmax=agemax,edgecolors=None)
+            self.fig.colorbar(h1)
+            
+            title=ax.set_title("")
         
         def init():
             h1.set_xdata(self.particles['X'])
@@ -484,573 +983,136 @@ class SunTrack(Spatial):
         
     def genTitle(self,ii):
             return 'Particle time step: %s'%datetime.strftime(self.time_track[ii],'%d-%b-%Y %H:%M:%S')
-    
-    def advectParticles(self,timenow,tsec):
-        """
-        Advect the particles
-        """          
-        t0 = clock()
-        if self.verbose:
-            print '\tTime step: ',timenow
-         
-	# Activate particles for current time step
-	self.activateParticles(tsec)
-
-        # Advection step 
-        if self.advect_method=='euler':
-            self.euler(timenow,tsec)
-            
-        elif self.advect_method=='rk2':
-            self.rk2(timenow,tsec)
-            
-        else:
-            raise Exception, 'unknown advection scheme: %s. Must be "euler" or "rk2"'%self.advect_method
-
-	# Reset inactive particles
-	self.resetInactiveParticles()
-
-	# Call the age calculation
-	if self._calcage:
-	   self.CalcAge()
-            
-        
-        t1 = clock()
-        if self.verbose:
-            print '\t\tElapsed time: %s seconds.'%(t1-t0)
-            
-    def euler(self,timenow,tsec):
-        """
-        euler time integration
-        """
-        self.updateCurrents(timenow,tsec)
-        
-        # Interpolate the currents
-        u = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.u)
-        v = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.v,update=False)
-        w = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.w,update=False)
-        #u,v,w = self.timeInterpUVWxyz(tsec,self.particles['X'],self.particles['Y'],self.particles['Z'])
-        
-        self.particles['X'] += u*self.dt
-        self.particles['Y'] += v*self.dt
-        self.particles['Z'] += w*self.dt
-        
-        # Check the vertical bounds of a particle 
-        self.particles['Z'] = self.checkVerticalBounds(self.particles['X'],self.particles['Y'],self.particles['Z'])
-        
-    def rk2(self,timenow,tsec):
-        """
-        2nd order Runge-Kutta advection scheme
-        """
-        
-        self.updateCurrents(timenow,tsec)
-
-        
-        # Interpolate the currents
-        u = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.u)
-        v = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.v,update=False)
-        w = self.UVWinterp(self.particles['X'],self.particles['Y'],self.particles['Z'],self.w,update=False)
-        #u,v,w = self.timeInterpUVWxyz(tsec,self.particles['X'],self.particles['Y'],self.particles['Z'])
-
-        x1 = self.particles['X'] + 0.5*self.dt*u
-        y1 = self.particles['Y'] + 0.5*self.dt*v
-        z1 = self.particles['Z'] + 0.5*self.dt*w
-        
-        # Check the vertical bounds of a particle 
-        z1 = self.checkVerticalBounds(x1,y1,z1)
-        
-        # Update the currents again
-        self.updateCurrents(timenow+timedelta(seconds=self.dt*0.5),tsec+self.dt*0.5)
-        
-        u = self.UVWinterp(x1,y1,z1,self.u)
-        v = self.UVWinterp(x1,y1,z1,self.v,update=False)
-        w = self.UVWinterp(x1,y1,z1,self.w,update=False)
-        #u,v,w = self.timeInterpUVWxyz(tsec,x1,y1,x1)
-        
-        self.particles['X'] += u*self.dt
-        self.particles['Y'] += v*self.dt
-        self.particles['Z'] += w*self.dt
-        
-        # Check the vertical bounds of a particle again 
-        self.particles['Z'] = self.checkVerticalBounds(self.particles['X'],self.particles['Y'],self.particles['Z'])
-
-	# Check the horizontal coordinates
-	#    This is done by default in the messh interpolation class
-	#self.particles['X'],self.particles['Y'] = self.checkHorizBounds(self.particles['X'],self.particles['Y'])
-        
-    def checkHorizBounds(self,x,y):
-    	"""
-	NOT USED
-	Moves particles outside of the horizontal bounds of the grid back
-	to the closet cell centre.
-	"""
-
-	ind = self.UVWinterp.cellind==-1
-	if not self.__dict__.has_key('kd'):
-	    self.kd = spatial.cKDTree(np.vstack((self.xv,self.yv)).T)
-
-	xy = np.vstack((x[ind],y[ind])).T
-	dist,cell = self.kd.query(xy)
-	x[ind]=self.xv[cell]
-	y[ind]=self.yv[cell]
-
-	return x, y
-
-    def checkVerticalBounds(self,x,y,z):
-        """
-        Checks that particles are not above the surface or below the seabed
-        
-	(Artificially moves them to the surface or bed if they are).
-        """
-        SMALL = 0.001
-	zbed = -self.dv
-	#zbed = -self.z_w[self.Nk-1] # Set the bottom one layer above the seabed
-        
-        ## find the free surface and seabed at the particle locations
-        #if not self.interp_method == 'mesh':
-        #    eta_P = self.Hinterp(x,y,z,self.eta)
-        #    h_P = self.Hinterp(x,y,z,zbed)
-        #else:
-        #    ind = self.UVWinterp.cellind
-        #    mask=ind==-1
-        #    ind[mask]=0.0
-        #    eta_P = self.eta[ind]
-        #    h_P = zbed[ind]
-        #    eta_P[mask]=0.0
-        #    h_P[mask]=0.0
-        #
-	#pdb.set_trace()
-	#indtop = np.where(z>eta_P)
-	#indbot = np.where(z<h_P)
-	#z[indtop[0]] = eta_P[indtop[0]]-SMALL
-	#z[indbot[0]] = h_P[indbot[0]]+SMALL
-
-	if not self.interp_method == 'mesh':
-            eta_P = self.Hinterp(x,y,z,self.eta)
-            h_P = self.Hinterp(x,y,z,zbed)
-        else:
-            ind = self.UVWinterp.cellind
-            eta_P = self.eta[ind]
-            h_P = zbed[ind]
-        
-	indtop = np.where( operator.and_(z>eta_P, ind!=-1) )
-	indbot = np.where( operator.and_(z<h_P, ind!=-1) )
-
-	z[indtop[0]] = eta_P[indtop[0]]-SMALL
-	z[indbot[0]] = h_P[indbot[0]]+SMALL
-
-
-        #np.where(z > eta_P, eta_P-SMALL, z)
-        #np.where(z < h_P, h_P+SMALL, z)
-        
-        return z
-        
-    
-    def initCurrents(self):
-        """
-        Initialise the forward and backward currents and free-surface height
-        """
-        
-        tindex = othertime.findGreater(self.time_track[0],self.time)
-        
-        self.time_index = tindex
-        
-        # Check the time index here
-        if tindex == None:
-            raise Exception, 'start time less than model time: ',self.time[0]
-        elif self.time_index==0:
-            self.time_index=1
-            
-        self.uT = np.zeros((self.nActive,2))
-        self.vT = np.zeros((self.nActive,2))
-        self.wT = np.zeros((self.nActive,2))
-        self.etaT = np.zeros((self.Nc,2))
-        
-        self.uT[:,0], self.vT[:,0], self.wT[:,0], self.etaT[:,0] = self.getUVWh(tindex-1)
-        self.uT[:,1], self.vT[:,1], self.wT[:,1], self.etaT[:,1] = self.getUVWh(tindex)
-        
-        self.timeInterpUVW(self.time_track_sec[0],self.time_index)
-        
-    def updateCurrents(self,timenow,tsec):
-        """
-        Checks to see if the currents need updating
-        """
-        
-        tindex = othertime.findGreater(timenow,self.time)
-        
-        if not tindex == self.time_index:
-            if self.verbose:
-                print 'Reading SUNTANS currents at time: ',timenow
-            self.uT[:,0]=self.uT[:,1]
-            self.vT[:,0]=self.vT[:,1]
-            self.wT[:,0]=self.wT[:,1]
-            self.etaT[:,0]=self.etaT[:,1]
-            self.uT[:,1], self.vT[:,1], self.wT[:,1], self.etaT[:,1] = self.getUVWh(tindex)
-            
-            self.time_index = tindex
-        
-        # Temporally interpolate onto the model step
-        self.timeInterpUVW(tsec,self.time_index) 
-        
-    def timeInterpUVW(self,tsec,tindex):
-        """
-        Temporally interpolate the currents  onto the particle time step, tsec.
-        
-        Linear interpolation used.
-        """
-        
-        t0 = self.time_sec[tindex-1]
-        t1 = self.time_sec[tindex]
-        dt = t1 - t0
-        
-        w1 = (tsec-t0)/dt
-        w2 = 1.0-w1
-        
-        self.u = self.uT[:,0]*w1 + self.uT[:,1]*w2 
-        self.v = self.vT[:,0]*w1 + self.vT[:,1]*w2 
-        self.w = self.wT[:,0]*w1 + self.wT[:,1]*w2 
-        self.eta = self.etaT[:,0]*w1 + self.etaT[:,1]*w2 
-        
-    def timeInterpUVWxyz(self,tsec,x,y,z):
-        """
-	NOT USED AT THIS STAGE
-
-        Temporally interpolate the currents  onto the particle time step, tsec.
-        
-        Linear interpolation used.
-        """
-        tindex=self.time_index
-        
-        t0 = self.time_sec[tindex-1]
-        t1 = self.time_sec[tindex]
-        dt = t1 - t0
-        
-        w1 = (tsec-t0)/dt
-        w2 = 1.0-w1
-        
-        uT0 = self.UVWinterp(x,y,z,self.uT[:,0],update=True)
-        vT0 = self.UVWinterp(x,y,z,self.vT[:,0],update=False) # Locations of the particles are not checked for updates
-        wT0 = self.UVWinterp(x,y,z,self.wT[:,0],update=False)
-        
-        uT1 = self.UVWinterp(x,y,z,self.uT[:,1],update=False)
-        vT1 = self.UVWinterp(x,y,z,self.vT[:,1],update=False)
-        wT1 = self.UVWinterp(x,y,z,self.wT[:,1],update=False)
-        
-        u = uT0*w1 + uT1*w2 
-        v = vT0*w1 + vT1*w2 
-        w = wT0*w1 + wT1*w2 
-        
-        return u,v,w
-        
-    def getUVWh(self,tstep):
-        """
-        Load the velocity arrays
-        """
-        self.tstep = tstep
-        
-        u = self.loadData(variable='uc')
-        v = self.loadData(variable='vc')
-        w = self.loadData(variable='w')
-        eta = self.loadData(variable='eta')
-
-        return u[self.mask3D], v[self.mask3D], w[self.mask3D], eta    
-        
-    def getTime(self,timeinfo):
-        """
-        Get the particle time step info
-        """
-        self.dt = timeinfo[2]
-        
-        self.time_track = othertime.TimeVector(timeinfo[0],timeinfo[1],timeinfo[2],timeformat ='%Y%m%d.%H%M%S')
-        
-        self.time_track_sec = othertime.SecondsSince(self.time_track)
-        self.time_sec = othertime.SecondsSince(self.time)
-        
-        self.time_index = -9999
-
-    def initParticleTime(self,tstart):
-    	"""
-	Initialise the particle start time
-	"""
-	if tstart==None:
-	    self.particles['tstart'] = self.time_track_sec[0]*np.ones_like(self.particles['X'])
-	else:
-	    self.particles['tstart'] = tstart
-
-	# Set all particles as inactive to start
-	self.particles['isActive'] = np.zeros_like(self.particles['X'])
-
-    def activateParticles(self,tsec):
-	"""
-	Activate the particles that start past the present time
-
-	Note that inactive particles are still advected - their positions
-	are simply reset after each time step
-	"""
-	ind = self.particles['tstart'] <= tsec
-
-	self.particles['isActive'][ind]=True
-	#print '\t%d Active particles'%(np.sum(self.particles['isActive']))
-
-    def resetInactiveParticles(self):
-	"""
-	Reset the positions of inactive particles to x0. 
-	"""
-	ind = self.particles['isActive']==False
-	self.particles['X'][ind]=self.particles['X0'][ind]
-	self.particles['Y'][ind]=self.particles['Y0'][ind]
-	self.particles['Z'][ind]=self.particles['Z0'][ind]
-
-        
-    def init3Dgrid(self):
-        """
-        Constructs the 3d cell unstructured grid object
-        
-        Includes only active vertical grid layers
-        
-        """
-        nc = self.Nc
-        nz = self.Nkmax+1
-        nv = len(self.xp)
-        
-        self.returnMask3D()
-        self.nActive = np.sum(self.mask3D) # Total number of active cells
-        
-        self.cells3d = np.zeros((self.nActive,6))
-        self.xv3d = np.zeros((self.nActive,))
-        self.yv3d = np.zeros((self.nActive,))
-        self.zv3d = np.zeros((self.nActive,))
-        pt1=0
-        for k in range(1,nz):
-            masklayer = self.mask3D[k-1,:]
-            nc = np.sum(masklayer)
-            pt2 = pt1+nc            
-            self.cells3d[pt1:pt2,0] = self.cells[masklayer,0]+(k-1)*nv
-            self.cells3d[pt1:pt2,1] = self.cells[masklayer,1]+(k-1)*nv
-            self.cells3d[pt1:pt2,2] = self.cells[masklayer,2]+(k-1)*nv
-            self.cells3d[pt1:pt2,3] = self.cells[masklayer,0]+k*nv
-            self.cells3d[pt1:pt2,4] = self.cells[masklayer,1]+k*nv
-            self.cells3d[pt1:pt2,5] = self.cells[masklayer,2]+k*nv
-            
-            self.xv3d[pt1:pt2] = self.xv[masklayer]
-            self.yv3d[pt1:pt2] = self.yv[masklayer]
-            self.zv3d[pt1:pt2] = -self.z_r[k-1]
-            
-            pt1=pt2
-            #print k, nc
-            
-        self.verts = np.zeros((nv*nz,3))
-        pv1 = 0
-        for k in range(0,nz):
-            self.verts[pv1:pv1+nv,0] = self.xp
-            self.verts[pv1:pv1+nv,1] = self.yp
-            self.verts[pv1:pv1+nv,2] = -self.z_w[k]
-            pv1 += nv
-
-    
-    def returnMask3D(self):
-        """
-        Returns the 3D mask [Nk x Nc] True = Active, False = Ghost
-        
-        """
-        self.mask3D = np.ones((self.Nkmax,self.Nc),dtype=bool)
-        
-        for i in range(self.Nc):
-            if self.Nk[i] == self.Nkmax:
-                Nk = self.Nk[i]
-            else:
-                Nk = self.Nk[i]+1
-            self.mask3D[Nk:self.Nkmax,i]=False
-
-    def CalcAge(self):
-        """     
-	Calculate the age of a particle inside of the age polygon
-	"""
-	#print '\t\tCalculating the particle age...'
-	#inpoly = nxutils.points_inside_poly(np.vstack((self.particles['X'],self.particles['Y'])).T,self.agepoly)
-	inpoly = inpolygon(np.vstack((self.particles['X'],self.particles['Y'])).T,self.agepoly)
-
-	self.particles['age'][inpoly] = self.particles['age'][inpoly] + self.dt
-	self.particles['age'][inpoly==False]=0.0
-
-	# Update the agemax attribute
-	self.particles['agemax'] = np.max([self.particles['age'],self.particles['agemax']],axis=0)
-
-
-
-    def initParticleNC(self,outfile,Np,age=False):
-        """
-        Export the grid variables to a netcdf file
-        """
-	import os
-
-        if self.verbose:
-            print '\nInitialising particle netcdf file: %s...\n'%outfile
-            
-	# Global Attributes
-        nc = Dataset(outfile, 'w', format='NETCDF4_CLASSIC')
-        nc.Description = 'Particle trajectory file'
-        nc.Author = os.getenv('USER')
-        nc.Created = datetime.now().isoformat()
-
-	#tseas = self.time_sec[1] - self.time_sec[0]
-	#nsteps = np.floor(tseas/self.dt)
-	#nc.nsteps = '%f (number of linear interpolation steps in time between model outputs)'%nsteps
-	#nc.tseas = '%d (Time step (seconds) between model outputs'%tseas
-	#nc.dt = '%f (Particle model time steps [seconds])'%self.dt
-	nc.dataset_location = '%s'%self.ncfile
-
-	# Dimensions
-        nc.createDimension('ntrac', Np)
-        nc.createDimension('nt', 0) # Unlimited
-        
-        # Create variables
-        def create_nc_var( name, dimensions, attdict, dtype='f8'):
-	    tmp=nc.createVariable(name, dtype, dimensions)
-            for aa in attdict.keys():
-                tmp.setncattr(aa,attdict[aa])
-          
-        create_nc_var('tp',('nt'),{'units':'seconds since 1990-01-01 00:00:00','long_name':"time at drifter locations"},dtype='f8')
-        create_nc_var('xp',('ntrac','nt'),{'units':'m','long_name':"Easting coordinate of drifter",'time':'tp'},dtype='f8')
-        create_nc_var('yp',('ntrac','nt'),{'units':'m','long_name':"Northing coordinate of drifter",'time':'tp'},dtype='f8')
-        create_nc_var('zp',('ntrac','nt'),{'units':'m','long_name':"vertical position of drifter (negative is downward from surface)",'time':'tp'},dtype='f8')
-	if age:
-	    create_nc_var('age',('ntrac','nt'),{'units':'seconds','long_name':"Particle age",'time':'tp'},dtype='f8')
-	    create_nc_var('agemax',('ntrac','nt'),{'units':'seconds','long_name':"Maximum particle age",'time':'tp'},dtype='f8')
-
-        nc.close()
-    
-    def writeParticleNC(self,outfile,x,y,z,t,tstep,age=None,agemax=None):
-        """
-        Writes the particle locations at the output time step, 'tstep'
-        """
-        if self.verbose:
-            print 'Writing netcdf output at tstep: %d...\n'%tstep
-            
-        nc = Dataset(outfile, 'a')
-        
-        nc.variables['tp'][tstep]=t
-        nc.variables['xp'][:,tstep]=x
-        nc.variables['yp'][:,tstep]=y
-        nc.variables['zp'][:,tstep]=z
-
-	if not age==None:
-	    nc.variables['age'][:,tstep]=age
-	if not agemax==None:
-	    nc.variables['agemax'][:,tstep]=agemax
-
-        nc.close()
-#################
-# "Post-processing 
-#################
+ 
+    #################
+    # Post-processing 
+    #################
     def plotTrackNC(self,ncfile,xlims=None,ylims=None,**kwargs):	
-	"""
-	Plots the tracks of all particles from a particle netcdf file
-	"""
-	# Set the xy limits
+        """
+        Plots the tracks of all particles from a particle netcdf file
+        """
+        # Set the xy limits
         if xlims==None or ylims==None:
             xlims=self.xlims 
             ylims=self.ylims
-	
-	# Load all of the data
-	nc = Dataset(ncfile,'r')
-	xp = nc.variables['xp'][:]
-	yp = nc.variables['yp'][:]
-	nc.close()
+        
+        # Load all of the data
+        nc = Dataset(ncfile,'r')
+        xp = nc.variables['xp'][:]
+        yp = nc.variables['yp'][:]
+        nc.close()
 
-	# Plot a map of the bathymetry
+        # Plot a map of the bathymetry
         self.fig = plt.figure(figsize=(10,8))
         ax=plt.gca()
         self.contourf(z=-self.dv,clevs=30,titlestr='',xlims=xlims,ylims=ylims,cmap='bone')
 
-	# plot the tracks
+        # plot the tracks
         plt.plot(xp[:,0],yp[:,0],'o',color='g',markersize=3,label='_nolegend_',alpha=0.4)
-	# Plot tracks
-	plt.plot(xp.T,yp.T,'-',color='grey',linewidth=.2)
+        # Plot tracks
+        plt.plot(xp.T,yp.T,'-',color='grey',linewidth=.2)
 
-	plt.title('Particle Trajectory\n(file name: %s)'%ncfile)
+        plt.title('Particle Trajectory\n(file name: %s)'%ncfile)
 
 
+    def calc_age_max(self,ncfile,dx,dy,xlims=None,ylims=None):
+        # Set the xy limits
+        if xlims==None or ylims==None:
+                xlims=self.xlims 
+                ylims=self.ylims
+
+        scalefac = 1/86400.
+
+        xp,yp,agemax = self.readAgeMax(ncfile)
+        
+        grd = RegGrid(xlims,ylims,dx,dy)
+
+        agegrid = grd.griddata(xp,yp,agemax)*scalefac
+
+        return grd.X,grd.Y,agegrid
+
+
+        
     def plotAgeMax(self,ncfile,dx,dy,vmax=7,xlims=None,ylims=None,**kwargs):
     	"""
-	Filled contour plot of the maximum age of particle based on their initial locations
-	"""
-	scalefac = 1/86400.
-	# Set the xy limits
-	if xlims==None or ylims==None:
-            xlims=self.xlims 
-            ylims=self.ylims
+        Filled contour plot of the maximum age of particle based on their initial locations
+        """
+        # Set the xy limits
+        if xlims==None or ylims==None:
+                xlims=self.xlims 
+                ylims=self.ylims
 
 
-	xp,yp,agemax = self.readAgeMax(ncfile)
-	
-	grd = RegGrid(xlims,ylims,dx,dy)
+        xp,yp,agemax = self.readAgeMax(ncfile)
+        
+        grd = RegGrid(xlims,ylims,dx,dy)
 
-	agegrid = grd.griddata(xp,yp,agemax)*scalefac
+        agegrid = grd.griddata(xp,yp,agemax)*scalefac
 
-	fig=plt.gcf()
-	self.contourf(z=-self.dv,clevs=20,titlestr='',xlims=xlims,ylims=ylims,\
-	    filled=False,colors='k',linestyles='solid',linewidths=0.2)
-	plt.pcolor(grd.X,grd.Y,agegrid,vmax=vmax,**kwargs)
-	plt.colorbar()
-	plt.title('Particle Age [days]\n(file name: %s)'%ncfile)
+        fig=plt.gcf()
+        self.contourf(z=-self.dv,clevs=20,titlestr='',xlims=xlims,ylims=ylims,\
+            filled=False,colors='k',linestyles='solid',linewidths=0.2)
+        plt.pcolor(grd.X,grd.Y,agegrid,vmax=vmax,**kwargs)
+        plt.colorbar()
+        plt.title('Particle Age [days]\n(file name: %s)'%ncfile)
 
     def readAgeMax(self,ncfile):
-	"""
-	Reads the maximum age from the last time step in a netcdf file
-	"""
+        """
+        Reads the maximum age from the last time step in a netcdf file
+        """
 
-	# Load all of the data
-	nc = Dataset(ncfile,'r')
-	xp = nc.variables['xp'][:,0]
-	yp = nc.variables['yp'][:,0]
-	try:
-	    # Load the age from the last time step
-	    agemax = nc.variables['agemax'][:,-1]
-	except:
-	    raise Exception, ' "agemax" variable not present in file: %s'%ncfile
-	nc.close()
-	
-	return xp, yp, agemax
+        # Load all of the data
+        nc = Dataset(ncfile,'r')
+        xp = nc.variables['xp'][:,0]
+        yp = nc.variables['yp'][:,0]
+        try:
+            # Load the age from the last time step
+            agemax = nc.variables['agemax'][:,-1]
+        except:
+            raise Exception, ' "agemax" variable not present in file: %s'%ncfile
+        nc.close()
+        
+        return xp, yp, agemax
 
 
     def calcAgeMaxProb(self,ncfiles,dx,dy,exceedance_thresh,plot=True,xlims=None,ylims=None,**kwargs):
     	"""
-	Calculate the probability of the age exceeding a threshold time from
-	a series of particle tracking runs. 
-	"""
-	scalefac = 1/86400.
-	# Set the xy limits
-	if xlims==None or ylims==None:
-            xlims=self.xlims 
-            ylims=self.ylims
+        Calculate the probability of the age exceeding a threshold time from
+        a series of particle tracking runs. 
+        """
+        scalefac = 1/86400.
+        # Set the xy limits
+        if xlims==None or ylims==None:
+                xlims=self.xlims 
+                ylims=self.ylims
 
-	# Create the probability grid
-	grd = RegGrid(xlims,ylims,dx,dy)
-	nruns = len(ncfiles)
-	prob = np.zeros((grd.ny,grd.nx))
+        # Create the probability grid
+        grd = RegGrid(xlims,ylims,dx,dy)
+        nruns = len(ncfiles)
+        prob = np.zeros((grd.ny,grd.nx))
 
-	# Loop through the files and add one to the probability matrix
-	# where the age exceeds the threshold
-	for ncfile in ncfiles:
-	    print 'Reading file: %s'%ncfile
-	    xp,yp,agemax = self.readAgeMax(ncfile)
-	
-	    agegrid = grd.griddata(xp,yp,agemax)
+        # Loop through the files and add one to the probability matrix
+        # where the age exceeds the threshold
+        for ncfile in ncfiles:
+            print 'Reading file: %s'%ncfile
+            xp,yp,agemax = self.readAgeMax(ncfile)
+        
+            agegrid = grd.griddata(xp,yp,agemax)
 
-	    ind = agegrid >= exceedance_thresh
+            ind = agegrid >= exceedance_thresh
 
-	    prob[ind] = prob[ind]+1
+            prob[ind] = prob[ind]+1
 
-	# Return the probability as a percentage
-	prob = prob/nruns*100.0
+        # Return the probability as a percentage
+        prob = prob/nruns*100.0
 
-	if plot:
-	    fig=plt.gcf()
-	    self.contourf(z=-self.dv,clevs=20,titlestr='',xlims=xlims,ylims=ylims,\
-		filled=False,colors='k',linestyles='solid',linewidths=0.2)
-	    plt.pcolor(grd.X,grd.Y,prob,vmax=100,cmap=plt.cm.Spectral_r)
-	    plt.colorbar()
-	    plt.title('Probability (%%) of particle age exceeding %3.1f days'%(exceedance_thresh*scalefac))
+        if plot:
+            fig=plt.gcf()
+            self.contourf(z=-self.dv,clevs=20,titlestr='',xlims=xlims,ylims=ylims,\
+            filled=False,colors='k',linestyles='solid',linewidths=0.2)
+            plt.pcolor(grd.X,grd.Y,prob,vmax=100,cmap=plt.cm.Spectral_r)
+            plt.colorbar()
+            plt.title('Probability (%%) of particle age exceeding %3.1f days'%(exceedance_thresh*scalefac))
 
 
 class RegGrid(object):
@@ -1142,7 +1204,7 @@ class interp3Dmesh(GridSearch,Grid):
         
         self.method=method
         # Initialise the trisearch array
-        GridSearch.__init__(self,x,y,cells,force_inside=True)
+        GridSearch.__init__(self,x,y,cells,nfaces=nfaces,force_inside=True)
 
         if self.method == 'linear':
             Grid.__init__(self,grdfile)
@@ -1154,7 +1216,7 @@ class interp3Dmesh(GridSearch,Grid):
         
         self.mask3d = mask
         
-        self.maskindex = np.zeros(self.mask3d.shape,dtype=np.int32)
+        self.maskindex = -1*np.ones(self.mask3d.shape,dtype=np.int32)
         rr=0
         for ii in range(self.mask3d.shape[0]):
             for jj in range(self.mask3d.shape[1]):
@@ -1181,39 +1243,82 @@ class interp3Dmesh(GridSearch,Grid):
         kind[kind>=self.Nkmax-1] = self.Nkmax-1
 
         ind = self.maskindex[kind,self.cellind]
-        maskpts = self.mask3d[kind,self.cellind]
-        
-        ind[maskpts == False] = 0
+        #maskpts = self.mask3d[kind,self.cellind]
+        #if np.sum(maskpts==False)>10:
+        #    pdb.set_trace()
+        #
+        #ind[maskpts == False] = 0
         
         # Return the nearest data point (... for now)
-	if self.method == 'nearest':
-	    dataout = data[ind]
-	if self.method == 'linear':
-	    dataout = self.lininterp(X,Y,Z,data,kind)
+        if self.method == 'nearest':
+            dataout = data[ind]
+        if self.method == 'linear':
+            dataout = self.lininterp(X,Y,Z,data,kind)
                 
         # Mask bogey points
-        dataout[maskpts==False]=0.0
+        #dataout[maskpts==False]=0.0
+        dataout[ind==-1]=0 # these are the masked points
         dataout[self.cellind==-1]=0.0
                 
         return dataout
 
     def lininterp(self,X,Y,Z,data,k):
     	"""
-	Wrapper for linear interpolation
+        Wrapper for linear interpolation
 
-	interpLinear method in sunpy needs to be called layer by layer
-	"""
-	# Put the input data back into a 2D array (Nz,Nc)
-	self.datatmp[self.mask3d]=data
+        interpLinear method in sunpy needs to be called layer by layer
+        """
+        # Put the input data back into a 2D array (Nz,Nc)
+        self.datatmp[self.mask3d]=data
 
-	# Loop through layer by layer
-	dataout = np.zeros_like(X)
-	for kk in range(0,self.Nkmax):
-	    ind = operator.and_(k == kk,self.cellind!=-1)
-	    if any(ind):
-		dataout[ind] = self.interpLinear(self.datatmp[kk,:],X[ind],Y[ind],self.cellind[ind],k=kk)
+        # Loop through layer by layer
+        dataout = np.zeros_like(X)
+        for kk in range(0,self.Nkmax):
+            ind = operator.and_(k == kk,self.cellind!=-1)
+            if any(ind):
+                dataout[ind] = self.interpLinear(self.datatmp[kk,:],X[ind],Y[ind],self.cellind[ind],k=kk)
 
-	return dataout
+        return dataout
+
+class interp2Dmesh(GridSearch,Grid):
+    """
+    2D interpolation class for an unstructured grid
+    
+    Uses knowledge of the mesh to efficiently update the velocities based on 
+    the particle location.
+    """
+    def __init__(self,x,y,cells,nfaces,method='nearest',grdfile=None):
+        self.method=method
+        # Initialise the trisearch array
+        GridSearch.__init__(self,x,y,cells,nfaces=nfaces,force_inside=True)
+
+        #if self.method == 'linear':
+        #    #Grid.__init__(self,grdfile)
+	    #self.datatmp = np.zeros(mask.shape,dtype=np.double)
+        
+                 
+    def __call__(self,X,Y,Z,data,update=True):
+        
+        if update:
+            # The Update the cell index using GridSearch class
+            if not self.__dict__.has_key('cellind'):
+                GridSearch.__call__(self,X,Y)
+            else:
+                if np.sum(np.abs(X-self.xpt))>0+1e-8:
+                    self.updatexy(X,Y)
+                        
+       
+        # Return the nearest data point (... for now)
+        if self.method == 'nearest':
+            dataout = data[self.cellind]
+        #if self.method == 'linear':
+        #    dataout = self.lininterp(X,Y,Z,data,kind)
+                
+        # Mask bogey points
+        dataout[self.cellind==-1]=0.0
+                
+        return dataout
+
 
 
 class interp3D(object):
