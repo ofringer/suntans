@@ -61,11 +61,12 @@ void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int
  }
  
  /*  Interpolate the heights of some variables */
- if(VERBOSE>1 && myproc==0) printf("Interpolating height coordinates onto grid...\n");
+ if(VERBOSE>1 && myproc==0) printf("Interpolating height coordinates onto grid...");
  weightInterpField(metin->z_Uwind, metin->WUwind, grid, metin->NUwind, met->z_Uwind);
  weightInterpField(metin->z_Vwind, metin->WVwind, grid, metin->NVwind, met->z_Vwind);
  weightInterpField(metin->z_Tair, metin->WTair, grid, metin->NTair, met->z_Tair);
  weightInterpField(metin->z_RH, metin->WRH, grid, metin->NRH, met->z_RH);
+ if(VERBOSE>1 && myproc==0) printf("Done.\n");
   
 } // End of InitialiseMetFields
 

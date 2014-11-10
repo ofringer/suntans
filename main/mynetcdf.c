@@ -3940,7 +3940,7 @@ void WriteAverageNCmerge(propT *prop, gridT *grid, averageT *average, physT *phy
 
     // Work out if we need to open a new averages file or not
     if(!(prop->avgtimectr%prop->nstepsperncfile) || prop->n==1+prop->nstart){
-	if(prop->avgfilectr>0){
+	if(prop->avgfilectr>average->initialavgfilectr){
 	    // Close the old netcdf file
 	    if(myproc==0){
 	    	printf("Closing opened output netcdf file...\n");
@@ -4719,7 +4719,7 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 	count[2]=Ntype2;
 
 	//Only read the data on the first processor
-	if(myproc==0){
+	//if(myproc==0){
 	    vname = "boundary_u";
 	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
 	    nc_read_3D(ncid, vname, start, count, bound->boundary_u_t );
@@ -4739,8 +4739,9 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 	    vname = "boundary_S";
 	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
 	    nc_read_3D(ncid, vname, start, count, bound->boundary_S_t );
-	}
+	//}
 	
+	/*
   	// Distribute the data to the other processors
 	sendSize = count[0]*count[1]*count[2];
 	MPI_Bcast(&(bound->boundary_u_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
@@ -4748,6 +4749,7 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 	MPI_Bcast(&(bound->boundary_w_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
 	MPI_Bcast(&(bound->boundary_T_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
 	MPI_Bcast(&(bound->boundary_S_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
+	*/
 
     }
 
@@ -4760,7 +4762,7 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
         sendSize = count[0]*count[1]*count[2];
 
 	//Only read the data on the first processor
-	if(myproc==0){
+	//if(myproc==0){
 	  vname = "uc";
 	  if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
           nc_read_3D(ncid, vname, start, count, bound->uc_t );
@@ -4785,8 +4787,9 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 	  if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
 	  nc_read_2D(ncid, vname, start2, count2, bound->h_t, myproc );
 
-	}
+	//}
 
+	/*
   	// Distribute the data to the other processors
 	sendSize = count[0]*count[1]*count[2];
 	MPI_Bcast(&(bound->uc_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
@@ -4796,6 +4799,7 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 	MPI_Bcast(&(bound->S_t[0][0][0]),sendSize,MPI_DOUBLE,0,comm);
 	sendSize = count2[0]*count2[1];
 	MPI_Bcast(&(bound->h_t[0][0]),sendSize,MPI_DOUBLE,0,comm);
+	*/
 
 
      }// End read type-3
@@ -4804,15 +4808,19 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
      if(bound->hasType2 && bound->hasSeg){
 
 	count2[1]=Nseg;
-	if(myproc==0){
+	//if(myproc==0){
 	    vname = "boundary_Q";//2D array
 	    if(VERBOSE>2 && myproc==0) printf("Reading variable: %s from boundry netcdf file...\n",vname);
 	    nc_read_2D(ncid, vname, start2, count2, bound->boundary_Q_t, myproc);
-	}
-	sendSize = count2[0]*count2[1];
-	MPI_Bcast(&(bound->boundary_Q_t[0][0]),sendSize,MPI_DOUBLE,0,comm);
+	//}
+	//sendSize = count2[0]*count2[1];
+	//MPI_Bcast(&(bound->boundary_Q_t[0][0]),sendSize,MPI_DOUBLE,0,comm);
 
      }//End flux read
+
+   // Wait for all processors
+   //MPI_Barrier(comm);
+
  }//End function
 
 /*
@@ -4828,7 +4836,7 @@ void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc, MPI_Comm com
     char *vname;
     //int ncid = prop->netcdfBdyFileID; 
 
-    if(myproc==0){
+    //if(myproc==0){
     vname = "time";
     if(VERBOSE>2 && myproc==0) printf("Reading boundary variable: %s...",vname);
     if ((retval = nc_inq_varid(ncid, vname, &varid)))
@@ -4911,8 +4919,9 @@ void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc, MPI_Comm com
 	if ((retval = nc_get_var_int(ncid, varid,bound->segp))) 
 	  ERR(retval); 
     }
-    } // End processor 0 read
+    //} // End processor 0 read
 
+    /*
     //Distribute the arrays
     MPI_Bcast(&(bound->time[0]),bound->Nt,MPI_DOUBLE,0,comm);
     MPI_Bcast(&(bound->z[0]),bound->Nk,MPI_DOUBLE,0,comm);
@@ -4930,8 +4939,12 @@ void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc, MPI_Comm com
 	MPI_Bcast(&(bound->segedgep[0]),bound->Ntype2,MPI_INT,0,comm);
 	MPI_Bcast(&(bound->segp[0]),bound->Nseg,MPI_INT,0,comm);
     }
+    */
 
- }//End function
+   // Wait for all processors
+   MPI_Barrier(comm);
+
+}//End function
 
 /*
 * Function: returndimlenBC()
@@ -4940,16 +4953,16 @@ void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc, MPI_Comm com
 * Returns a zero if the dimension is not found and does not raise an error
 */
 size_t returndimlenBC(int ncid, char *dimname){
- int retval;
- int dimid;
- size_t dimlen;
- 
- if ((retval =nc_inq_dimid(ncid,dimname,&dimid)))
-    return 0;
- 
- if ((retval = nc_inq_dimlen(ncid,dimid, &dimlen)))
-    ERR(retval);
- return dimlen;
+int retval;
+int dimid;
+size_t dimlen;
+
+if ((retval =nc_inq_dimid(ncid,dimname,&dimid)))
+return 0;
+
+if ((retval = nc_inq_dimlen(ncid,dimid, &dimlen)))
+ERR(retval);
+return dimlen;
 } // End function
 
 /*###############################################################

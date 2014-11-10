@@ -146,6 +146,7 @@ void InitializeMerging(gridT *grid, int mergeedges, int numprocs, int myproc, MP
   //Merge the edges and grid if output netcdf only
   // Now do the edge arrays
   if (mergeedges>0){
+      if(VERBOSE>2 &&myproc==0) printf("Merging edge variables...");
       InitializeMergeEdges(grid,numprocs,myproc,comm);
       // Merge all of the grid variables onto one processor
       MergeGridVariables(grid, numprocs, myproc, comm);
@@ -155,6 +156,7 @@ void InitializeMerging(gridT *grid, int mergeedges, int numprocs, int myproc, MP
 
   SunFree(mnptr_temp,Nc_max*sizeof(int),"InitializeMerging");
   SunFree(Nk_temp,Nc_max*sizeof(int),"InitializeMerging");
+  if(VERBOSE>2 &&myproc==0) printf("Done.\n");
 
 }
 

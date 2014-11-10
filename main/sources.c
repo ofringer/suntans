@@ -387,11 +387,11 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      H0[i] = ( met->Hs[i] + met->Hl[i] + met->Hlw[i] );
      
      // Calculate T+dt array
-    //if(phys->dT[i]<=0.0){
-    //   phys->dT[i]=Min(-1e-4,phys->dT[i]);
-    // }else{
-    //   phys->dT[i]=Max(1e-4,phys->dT[i]);
-    // }
+    if(phys->dT[i]<=0.0){
+       phys->dT[i]=Min(-1e-4,phys->dT[i]);
+     }else{
+       phys->dT[i]=Max(1e-4,phys->dT[i]);
+     }
     //phys->dT[i] = 0.001; //Hard-wire for stability 
     
      phys->Ttmp[i][ktop] = phys->T[i][ktop] + phys->dT[i];
