@@ -193,8 +193,6 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
    // Update the netcdf boundary data
    if(prop->netcdfBdy==1){ 
        UpdateBdyNC(prop,grid,myproc,comm);
-       // Wait for all processors
-       MPI_Barrier(comm);
    }
 
   // Type-2
@@ -702,19 +700,21 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, 
     Nk = (*bound)->Nk;
     */
     // Read in the dimensions
-    if(myproc==0){
+    //if(myproc==0){
 	printf("Reading boundary netcdf dimensions...\n");
 	Ntype3 = returndimlenBC(prop->netcdfBdyFileID,"Ntype3");
 	Ntype2 = returndimlenBC(prop->netcdfBdyFileID,"Ntype2");
 	Nseg = returndimlenBC(prop->netcdfBdyFileID,"Nseg");
 	Nt = returndimlenBC(prop->netcdfBdyFileID,"Nt");
 	Nk = returndimlenBC(prop->netcdfBdyFileID,"Nk");
-    }
+    //}
+    /*
     MPI_Bcast(&(Ntype3),1,MPI_INT,0,comm);
     MPI_Bcast(&(Ntype2),1,MPI_INT,0,comm);
     MPI_Bcast(&(Nseg),1,MPI_INT,0,comm);
     MPI_Bcast(&(Nt),1,MPI_INT,0,comm);
     MPI_Bcast(&(Nk),1,MPI_INT,0,comm);
+    */
 
     (*bound)->Ntype3=Ntype3;
     (*bound)->Nseg=Nseg;

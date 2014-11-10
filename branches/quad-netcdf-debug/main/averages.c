@@ -23,10 +23,13 @@ void AllocateAverageVariables(gridT *grid, averageT **average, propT *prop)
 
   prop->avgctr=0;
   prop->avgtimectr=0;
-  prop->avgfilectr=0;
+  prop->avgfilectr=1*prop->ncfilectr;
 
   // allocate averageical structure
   *average = (averageT *)SunMalloc(sizeof(averageT),"AllocateAverageVariables");
+
+
+  (*average)->initialavgfilectr=1*prop->ncfilectr;
 
   // Allocate 3D arrays
   (*average)->uc = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocateAverageVariables");

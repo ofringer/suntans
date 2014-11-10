@@ -1374,11 +1374,12 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
       break;
 
     //Close all open netcdf file
-    /*
+    /* 
     if(prop->n==prop->nsteps+prop->nstart) {
       if(prop->outputNetcdf==1){
 	//printf("Closing output netcdf file on processor: %d\n",myproc);
-      	MPI_NCClose(prop->outputNetcdfFileID);
+	if(myproc==0)
+	    MPI_NCClose(prop->outputNetcdfFileID);
       }
       if(prop->netcdfBdy==1){
 	//printf("Closing boundary netcdf file on processor: %d\n",myproc);
@@ -1396,10 +1397,11 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     */
   }
 
-  if(prop->mergeArrays) {
-    if(VERBOSE>2 && myproc==0) printf("Freeing merging arrays...\n");
-    FreeMergingArrays(grid,myproc);
-  }
+  // not sure if this is really necessary
+  //if(prop->mergeArrays) {
+  //  if(VERBOSE>2 && myproc==0) printf("Freeing merging arrays...\n");
+  //  FreeMergingArrays(grid,myproc);
+  //}
 }
 
 /*
@@ -4315,10 +4317,10 @@ void SetDensity(gridT *grid, physT *phys, propT *prop) {
   for(i=0;i<grid->Nc;i++) {
     z=phys->h[i];
     for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-      z+=0.5*grid->dzz[i][k];
+      z+=0.5*grid->dz[k];
       p=RHO0*prop->grav*z;
       phys->rho[i][k]=StateEquation(prop,phys->s[i][k],phys->T[i][k],p);
-      z+=0.5*grid->dzz[i][k];
+      z+=0.5*grid->dz[k];
     }
   }
 

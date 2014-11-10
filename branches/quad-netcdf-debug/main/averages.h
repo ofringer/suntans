@@ -67,6 +67,8 @@ typedef struct _averageT {
   REAL *tmpvarW;
   REAL *tmpvarE;
 
+  int initialavgfilectr;
+
 } averageT;
 
 /* *** Public Functions *** */
