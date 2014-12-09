@@ -75,7 +75,6 @@ def rotary_spectra(tsec,u,v,K=3,power=2.):
     
     M = tsec.shape[0]
     dt = tsec[1]-tsec[0]
-    t=np.arange(M,dtype=np.double)
     M_2 = np.floor(M/2)
     
     # Put the velocity in rotary form
@@ -171,6 +170,7 @@ def window2d(M,N,windowfunc=np.hanning,**kwargs):
 def window_sinetaper(M,K=3):
     # Generate the time-domain taper for the FFT
     h_tk = np.zeros((K,M))
+    t=np.arange(M,dtype=np.double)
     for k in range(K):
         h_tk[k,:] = np.sqrt(2./(M+1.))*np.sin( (k+1)*np.pi*t / (M+1.) ) 
 

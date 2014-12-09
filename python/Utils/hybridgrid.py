@@ -52,8 +52,8 @@ class HybridGrid(object):
     def __init__(self,xp,yp,cells,nfaces=None,edges=None,\
         mark=None,grad=None,neigh=None,xv=None,yv=None,**kwargs):
         
-        self.xp = xp
-        self.yp = yp
+        self.xp = np.array(xp)
+        self.yp = np.array(yp)
         
         self.cells = cells
         self.Nc = len(cells)
@@ -92,6 +92,15 @@ class HybridGrid(object):
         else:
             self.xv = xv
             self.yv = yv
+
+        # Calculate distance and other metrics
+        self.calc_dg()
+        self.calc_def()
+        self.calc_dfe()
+        self.calc_df()
+        self.calc_tangent()
+        self.calc_unitnormal()
+        self.calc_normal()
 
         
         # Make sure the BCs are ok
@@ -246,6 +255,135 @@ class HybridGrid(object):
         
         self.xe = 0.5 * (xp[self.edges[:,0]] + xp[self.edges[:,1]])
         self.ye = 0.5 * (yp[self.edges[:,0]] + yp[self.edges[:,1]])
+
+    def calc_dg(self):
+        """
+        Manually calculate the distance between voronoi points, 'dg'
+        """
+        
+        grad = self.grad.copy()
+        Ne = self.Nedges()
+
+        for ii in range(Ne):
+            if grad[ii,0]==-1:
+                grad[ii,0]=grad[ii,1]
+            elif grad[ii,1]==-1:
+                grad[ii,1]=grad[ii,0]
+                
+                
+        x1 = self.xv[grad[:,0]]
+        x2 = self.xv[grad[:,1]]
+        y1 = self.yv[grad[:,0]]
+        y2 = self.yv[grad[:,1]]
+        
+        dx=x1-x2
+        dy=y1-y2
+        
+        self.dg = np.sqrt( dx*dx + dy*dy )
+
+    def calc_def(self):
+        """
+        Calculate the edge to face(cell) distance
+        
+        dimensions: Nc x maxfaces
+        """
+        ne = np.array(self.face)
+
+        cellmask = self.face==-1
+
+        ne[cellmask]=0
+
+
+        self.DEF = dist(self.xv,self.xe[ne].T,self.yv,self.ye[ne].T).T
+
+        self.DEF = np.ma.masked_array(self.DEF,mask=cellmask)
+
+    def calc_dfe(self):
+        """
+        Calculate the face(cell) to edge distance
+
+        dimensions: Ne x 2
+        """
+        grad = self.grad.copy()
+        mask = grad==-1
+        grad[mask]=0
+
+        Ne = self.Nedges()
+
+        self.dfe = np.zeros((Ne,2))
+
+        self.dfe[:,0] = dist(self.xv[grad[:,0]],self.xe,\
+            self.yv[grad[:,0]],self.ye)
+        self.dfe[:,1] = dist(self.xv[grad[:,1]],self.xe,\
+            self.yv[grad[:,1]],self.ye)
+
+        self.dfe[mask] = 0
+
+
+    def calc_df(self):
+        """
+        Calculate the length of each edge segment
+        """
+        x = self.xp[self.edges]
+        y = self.yp[self.edges]
+
+        self.df = dist(x[:,0],x[:,1],y[:,0],y[:,1])
+
+    def calc_tangent(self):
+        """
+        Calculate the tangential vector for the edges of each cell
+        """
+        dx = np.zeros(self.cells.shape)    
+        dy = np.zeros(self.cells.shape)  
+
+        dx[:,0:-1] = self.xp[self.cells[:,1::]] - self.xp[self.cells[:,0:-1]]               
+        dy[:,0:-1] = self.yp[self.cells[:,1::]] - self.yp[self.cells[:,0:-1]]               
+
+        for ii in range(self.Nc):
+            dx[ii,self.nfaces[ii]-1] = self.xp[self.cells[ii,0]] -\
+                self.xp[self.cells[ii,self.nfaces[ii]-1]]  
+            dy[ii,self.nfaces[ii]-1] = self.yp[self.cells[ii,0]] -\
+                self.yp[self.cells[ii,self.nfaces[ii]-1]]  
+
+        mag = np.sqrt(dx*dx + dy*dy)
+        
+        self.tx = dx/mag
+        self.ty = dy/mag
+
+        #self.nx = -self.ty
+        #self.ny = self.tx
+
+        #return self._tx, self._ty, self._mag
+
+    def calc_unitnormal(self):
+        """
+        Calculate the unit normal vector at each edge
+        """
+
+        dx = self.xp[self.edges[:,0]] - self.xp[self.edges[:,1]]
+        dy = self.yp[self.edges[:,0]] - self.yp[self.edges[:,1]]
+
+        mag = np.sqrt(dx*dx + dy*dy)
+        
+        self.nx = -dy/mag
+        self.ny = dx/mag
+
+
+    def calc_normal(self):
+        """
+        Create the normal array
+        """
+        Nc = self.Ncells()
+
+        self.normal=np.zeros((Nc,self.MAXFACES))
+        
+        for ii in range(Nc):
+            for nf in range(self.nfaces[ii]):
+                if self.grad[self.face[ii,nf],1]==ii:
+                    self.normal[ii,nf]=-1
+                else:
+                    self.normal[ii,nf]=1
+
         
     def make_edges_from_cells_sparse(self):
         """
@@ -729,6 +867,10 @@ def intersectvec(A,B,C,D):
 
 def ccwvec(A,B,C):
     return op.gt( (C.y-A.y)*(B.x-A.x),(B.y-A.y)*(C.x-A.x) )
+
+def dist(x0,x1,y0,y1):
+    return np.sqrt( (x0-x1)**2. + (y0-y1)**2.)
+
     
     
 #P1a = Point(0.,0.)

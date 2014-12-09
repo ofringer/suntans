@@ -242,6 +242,8 @@ class ROMS(roms_grid):
     tstep = [0] # - 1 last step, -99 all time steps
     
     clim = None # Plot limits
+
+    gridtype='rho'
     
         
     def __init__(self,romsfile,**kwargs):
@@ -1167,11 +1169,14 @@ class roms_timeseries(ROMS, timeseries):
         # Load the data into a time series object
         timeseries.__init__(self,self.time[self.tstep],self.loadData())
         
-    def contourf(self,clevs=20,**kwargs):
+    def contourf(self,clevs=20,filled=True,**kwargs):
         """
         z-t contour plot of the time series
         """
-        h1 = plt.contourf(self.time[self.tstep],self.Z,self.y.T,clevs,**kwargs)
+        if filled:
+            h1 = plt.contourf(self.time[self.tstep],self.Z,self.y,clevs,**kwargs)
+        else:
+            h1 = plt.contour(self.time[self.tstep],self.Z,self.y,clevs,**kwargs)
         
         #plt.colorbar()
         

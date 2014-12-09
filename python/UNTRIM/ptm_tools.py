@@ -8,6 +8,8 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 #import matplotlib.animation as animation
 from maptools import readShpPoly
+from particles import ParticleAge
+import othertime
 
 import pdb
 
@@ -97,7 +99,7 @@ class PtmBin(object):
     def dt_seconds(self):
         dnum1,data = self.read_timestep(0)
         dnum2,data = self.read_timestep(1)
-        return (dnum2-dnum1)*86400
+        return (dnum2-dnum1)
             
     def read_timestep(self,ts=0):
         """ returns a datenum and the particle array
@@ -208,6 +210,43 @@ def shp2pol(shpfile,outdir):
     f.close()
     print 'Done.'
 
+def calc_agebin(binfile,ncfile,polyfile,ntout):
+    """
+    Calculate the from a binary file and save to netcdf
+    """
+    # Load the polygon from a shapefile
+    xypoly,field = readShpPoly(polyfile)
+
+    # Load the binary file object
+    PTM = PtmBin(binfile)
+
+    # Count the number of particles from the first time step
+    time,pdata = PTM.read_timestep()
+    N = pdata.shape[0]
+    tsec = othertime.SecondsSince(PTM.time)
+    dt = tsec[1] - tsec[0]
+
+    # Initialize the age particle object
+    Age = ParticleAge(xypoly[0],N)
+
+    # Loop through
+    outctr = ntout
+    ncctr=0
+    for tt in range(PTM.nt-1):
+        # Read the current time step
+        time,pdata = PTM.read_timestep(ts=tt) 
+
+        # Update the age variable
+        Age.update_age(pdata['x'][:,0],pdata['x'][:,1],pdata['x'][:,2],dt)
+
+        # Write to netcdf
+        if outctr==ntout:
+            Age.write_nc(time,ncctr,ncfile=ncfile)
+            ncctr+=1
+            outctr=0
+        outctr+=1
+
+    print 'Done.'
 
 #hydrofile = '../InputFiles/untrim_hydro.nc'
 #ptmfile = '../InputFiles/line_specify_bin.out'

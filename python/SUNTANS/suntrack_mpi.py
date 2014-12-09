@@ -22,7 +22,7 @@ comm = MPI.COMM_WORLD
 size=comm.size
 
 
-def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z,agepoly=None,method='nearest'):
+def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z,agepoly=None,method='nearest',is3D=False):
 
     # Generate a list of tuples for the time info
     timevec = othertime.TimeVector(tstart,tend,dtout,timeformat ='%Y%m%d.%H%M%S')
@@ -39,7 +39,7 @@ def runmpi(ncfile,outfile,tstart,tend,dt,dtout,x,y,z,agepoly=None,method='neares
     
     # Initialise the particle tracking object    
     print 'Initialising the particle tracking object on processor: %d...'%(comm.rank)
-    sun = SunTrack(ncfile,interp_method='mesh',interp_meshmethod=method)
+    sun = SunTrack(ncfile,interp_method='mesh',interp_meshmethod=method,is3D=is3D)
     
     # Initialise the age values
     if not agepoly==None:

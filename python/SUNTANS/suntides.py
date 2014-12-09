@@ -366,19 +366,33 @@ class suntides(Spatial):
             zP = self.Phs[vname][ii,k,:].ravel()
         
         # Create a matplotlib triangulation to contour the data       
-        t =tri.Triangulation(self.xp,self.yp,self.cells)
+        #t =tri.Triangulation(self.xp,self.yp,self.cells)
         
         # Filled contour of amplitude
         fig = plt.gcf()
         ax = fig.gca()
+
+        # Need to do this to avoid sending different keys to contourf
+        if kwargs.has_key('titlestr'):
+            titlestr=kwargs.pop('titlestr')
+        else:
+            titlestr=''
+        if kwargs.has_key('colorbar'):
+            colorbar=kwargs.pop('colorbar')
+        else:
+            colorbar=None
         
         # Amplitude plot (note that the data must be on nodes for tricontourf)
         V = np.linspace(self.clim[0],self.clim[1],clevs)
-        camp = plt.tricontourf(t, self.cell2node(zA), V, **kwargs)
+        #camp = plt.tricontourf(t, self.cell2node(zA), V, **kwargs)
+        camp = self.contourf(z=zA,clevs=V,colorbar=colorbar,titlestr=titlestr,**kwargs)
         
         # Phase Plot
         Vphs = np.arange(0,2*np.pi,self.frq[ii]*phsint) # Phase contour lines
-        cphs = plt.tricontour(t, self.cell2node(zP), Vphs,colors='k',linewidths=2.0)
+        #cphs = plt.tricontour(t, self.cell2node(zP), Vphs,colors='k',linewidths=2.0)
+        cphs = self.contourf(z=zP,clevs=Vphs,filled=False,\
+            colorbar=None,titlestr='',
+            colors='k',linewidths=2.0)
                 
         ax.set_aspect('equal')
         ax.set_xlim(xlims)

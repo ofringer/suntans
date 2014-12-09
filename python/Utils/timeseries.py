@@ -53,8 +53,9 @@ class timeseries(object):
         self.ny = np.size(self.y)
 
         # make sure the original data is a masked array
-        mask = ~np.isfinite(self.y)
-        self.y = np.ma.MaskedArray(self.y,mask=mask)
+        if not isinstance(self.y,np.ma.core.MaskedArray):
+            mask = ~np.isfinite(self.y)
+            self.y = np.ma.MaskedArray(self.y,mask=mask)
         
         self._checkDT()
 
@@ -190,6 +191,7 @@ class timeseries(object):
             datetime vector
         
         method - method passed to interp1d
+               - use 'nearest' to preserve masking in gap regions
         """
         
         # Create the time vector
@@ -200,23 +202,34 @@ class timeseries(object):
             tnew = othertime.TimeVector(tstart,tend,dt,timeformat=timeformat)
         except:
             tnew=timein
+            dt = (tnew[1]-tnew[0]).total_seconds()
             
-        t = othertime.SecondsSince(tnew,basetime = self.basetime)
         
-        # Don't include nan points
-        if self.ndim > 1:
-            # Interpolate multidimensional arrays without a mask
-            F = interpolate.interp1d(self.tsec,self.y,kind=method,axis=axis,\
-                bounds_error=False,fill_value=0)
+        if method=='nearest':
+            # Nearest neighbour doesn't use interp1d to preserve mask
+            self._evenly_dist_data(dt)
+            tnew, output = self.subset(tnew[0],tnew[-1])
+
         else:
-            #mask = np.isnan(self.y) == False
-            mask = ~self.y.mask
-            F = interpolate.interp1d(self.tsec[mask],self.y[mask],kind=method,axis=axis,\
-            bounds_error=False,fill_value=0)
-        
-        #F = interpolate.UnivariateSpline(self.tsec,self.y,k=method)
-        
-        return tnew, F(t)
+
+            t = othertime.SecondsSince(tnew,basetime = self.basetime)
+            # Don't include nan points
+            if self.ndim > 1:
+                # Interpolate multidimensional arrays without a mask
+                F = interpolate.interp1d(self.tsec,self.y,kind=method,axis=axis,\
+                    bounds_error=False,fill_value=0)
+
+                output = F(t)
+            else:
+                #mask = np.isnan(self.y) == False
+                mask = ~self.y.mask
+                F = interpolate.interp1d(self.tsec[mask],self.y[mask],kind=method,axis=axis,\
+                bounds_error=False,fill_value=0)
+
+                output = F(t)
+            
+            
+        return tnew, output
         
         
     def tidefit(self,frqnames=None,basetime=None,axis=-1):
@@ -445,7 +458,7 @@ class timeseries(object):
         """
         t0 = othertime.findNearest(time1,self.t)
         t1 = othertime.findNearest(time2,self.t)
-        return timeseries(self.t[t0:t1],self.y[...,t0:t1])
+        return self.t[t0:t1],self.y[...,t0:t1]
         
     def savetxt(self,txtfile):
         f = open(txtfile,'w')
@@ -898,7 +911,7 @@ def phase_offset(frq,start,base):
         
         return np.mod(dx*np.array(frq),2*np.pi)
  
-def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=3600.0,output_meta=False):
+def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=3600.0,output_meta=False,method='linear'):
     """
     Load station data from a database file
     
@@ -941,7 +954,8 @@ def loadDBstation(dbfile,stationID,varname,timeinfo=None,filttype=None,cutoff=36
         
     if not timeinfo==None:
         print 'Interpolating station data between %s and %s\n'%(timeinfo[0],timeinfo[1])
-        tnew,ynew = ts.interp((timeinfo[0],timeinfo[1],timeinfo[2]))
+        tnew,ynew =\
+            ts.interp((timeinfo[0],timeinfo[1],timeinfo[2]),method=method)
         ts = timeseries(tnew,ynew)
         ts.dt = timeinfo[2] # This needs updating
         

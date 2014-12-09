@@ -248,6 +248,10 @@ class Grid(object):
         #elif not self.__dict__.has_key('neigh'):
         #    self.reCalcGrid()
 
+        # Set the mark equal zero if doesn't exist
+        if not self.__dict__.has_key('mark'):
+            self.mark = np.zeros((self.Ne))
+
         if type(self.cells) != type(np.ma.MaskedArray()):
             self.maskgrid()
         else:
@@ -1139,8 +1143,11 @@ class Spatial(Grid):
                 return self.getdzz(eta)
 
         elif variable=='dzf':
-            eta = self.loadDataRaw(variable='eta',setunits=False)
-            return self.getdzf(eta)
+            if self.hasVar('dzf'):
+                return self.loadDataRaw(variable=variable)
+            else:
+                eta = self.loadDataRaw(variable='eta',setunits=False)
+                return self.getdzf(eta)
 
         elif variable=='ctop':
             eta = self.loadDataRaw(variable='eta',setunits=False)
@@ -1422,8 +1429,8 @@ class Spatial(Grid):
         Filled contour plot of  unstructured grid data
         """
         
-        if not self.__dict__.has_key('data'):
-            self.loadData()
+        #if not self.__dict__.has_key('data'):
+        #    self.loadData()
             
         if z==None:
             z=self.data
