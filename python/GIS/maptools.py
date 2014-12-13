@@ -18,6 +18,8 @@ from gdalconst import *
 import numpy as np
 import matplotlib.pyplot as plt
 from inpolygon import inpolygon
+import os
+from shapely import geometry
    
 import pdb
 
@@ -516,7 +518,6 @@ def Polygon2GIS(xynodes,shpfile,zone,CS='WGS84',north=True):
     The projection is assumed to be UTM. 
     """
     import osgeo.ogr, osgeo.osr
-    import os
     
     # Set the projection
     srs = osgeo.osr.SpatialReference()
@@ -571,6 +572,79 @@ def Polygon2GIS(xynodes,shpfile,zone,CS='WGS84',north=True):
     # Close the shape file
     shapeData.Destroy()
     print 'Complete - file written to:\n      %s'%shpfile
+
+def shapely2shp(shapelyobject,outfile,atts=None):
+    """
+    Convert a shapely object to a shapefile
+    """
+    def get_field_type(att):
+        if isinstance(att,int):
+            return ogr.OFTinteger
+        elif isinstance(att,float):
+            return ogr.OFTReal
+        elif isinstance(att,str):   
+            return ogr.OFTString
+        else:
+            raise Exeption, 'incompatible type: %s'%(type(att))
+
+    def get_shape_type(obj):
+        if isinstance(obj,geometry.Polygon):
+            return ogr.wkbPolygon
+        elif isinstance(obj,geometry.LineString):
+            return ogr.wkbLineString
+        elif isinstance(obj,geometry.Point):
+            return ogr.wkbPoint
+        else:
+            raise Exeption, 'incompatible type: %s'%(type(obj))
+
+
+
+    
+    print 'Creating shape file: %s'%outfile
+    checkfile(outfile)
+
+    shptype = get_shape_type(shapelyobject)
+
+    # Now convert it to a shapefile with OGR    
+    driver = ogr.GetDriverByName('Esri Shapefile')
+    ds = driver.CreateDataSource(outfile)
+    layer = ds.CreateLayer('', None, shptype)
+
+    if ds==None:
+        raise Exception, 'Cannot create file: %s'%outfile
+
+    # Add attributes
+    if not atts == None:
+        for vv in atts.keys():
+            ftype = get_field_type(atts[vv])
+            layer.CreateField(ogr.FieldDefn(vv, ftype))
+
+    defn = layer.GetLayerDefn()
+
+    # Create a new feature (attribute and geometry)
+    feat = ogr.Feature(defn)
+
+    if not atts == None:
+        for vv in atts.keys():
+            feat.SetField(vv, atts[vv])
+
+    # Make a geometry, from Shapely object
+    geom = ogr.CreateGeometryFromWkb(shapelyobject.wkb)
+    feat.SetGeometry(geom)
+
+    layer.CreateFeature(feat)
+    feat = geom = None  # destroy these
+
+    # Save and close everything
+    ds = layer = feat = geom = None
+    print 'Done.'
+
+
+def checkfile(shpfile):
+    if os.path.isfile(shpfile):
+        print 'File %s exists. Removing...'%shpfile
+        os.remove(shpfile) 
+
     
 ###Testing###
 #LL=[-94.2,27.0]

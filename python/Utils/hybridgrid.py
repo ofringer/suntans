@@ -29,6 +29,8 @@ DELETED_EDGE = -1
 BOUNDARY = -1 # cell marker for edge of domain
 UNMESHED = -2 # cell marker for edges not yet meshed
 
+FILLVALUE=999999
+
 class TriGridError(Exception):
     pass
 
@@ -85,13 +87,14 @@ class HybridGrid(object):
         # Face->edge connectivity
         self.face = self.cell_edge_map()
         
-        # Calculate the coordintes
-        self.edge_centers()
         if xv==None:
             self.calc_centroids()
         else:
             self.xv = xv
             self.yv = yv
+
+        # Calculate the coordintes
+        self.edge_centers()
 
         # Calculate distance and other metrics
         self.calc_dg()
@@ -101,6 +104,7 @@ class HybridGrid(object):
         self.calc_tangent()
         self.calc_unitnormal()
         self.calc_normal()
+        self.calc_Aj()
 
         
         # Make sure the BCs are ok
@@ -252,9 +256,54 @@ class HybridGrid(object):
         
         xp = np.array(self.xp)
         yp = np.array(self.yp)
+
+        p1 = self.edges[:,0]
+        p2 = self.edges[:,1]
+
+        nc1 = self.grad[:,0].copy()
+        nc2 = self.grad[:,1]
+
+        nc1[nc1<0]=nc2[nc1<0]
+
+        # Edge coordiainte is the intersection of the voronoi edge 
+        # and Delaunay edge
+        tx = self.xp[p2] - self.xp[p1]
+        ty = self.yp[p2] - self.yp[p1]
+        mag = np.sqrt(tx*tx + ty*ty)
+        tx /= mag
+        ty /= mag
+
+        xdott = (self.xv[nc1]-self.xp[p1])*tx +\
+            (self.yv[nc1]-self.yp[p1])*ty
+
+        self.xe = self.xp[p1]+xdott*tx
+        self.ye = self.yp[p1]+xdott*ty
         
-        self.xe = 0.5 * (xp[self.edges[:,0]] + xp[self.edges[:,1]])
-        self.ye = 0.5 * (yp[self.edges[:,0]] + yp[self.edges[:,1]])
+        # Assume edge is at the mid-point
+        #self.xe = 0.5 * (xp[self.edges[:,0]] + xp[self.edges[:,1]])
+        #self.ye = 0.5 * (yp[self.edges[:,0]] + yp[self.edges[:,1]])
+
+    def calc_Aj(self):
+        """
+        Calculate the area of the triangle made up of the lines between 
+        the two edge nodes and the Voronoi point
+
+        Assumes orthogonality
+        """
+        p1 = self.edges[:,0]
+        p2 = self.edges[:,1]
+
+        face = self.face.copy()
+        cellmask = self.face==FILLVALUE
+        face[cellmask]=0
+        
+        de1 = dist(self.xp[p1],self.xe,self.yp[p1],self.ye)
+        de2 = dist(self.xp[p2],self.xe,self.yp[p2],self.ye)
+
+        self.Aj = 0.5*self.DEF*de1[face] + 0.5*self.DEF*de2[face]
+
+        self.Aj[cellmask]=0
+        self.Aj = np.ma.masked_array(self.Aj,mask=cellmask)
 
     def calc_dg(self):
         """
@@ -289,10 +338,9 @@ class HybridGrid(object):
         """
         ne = np.array(self.face)
 
-        cellmask = self.face==-1
+        cellmask = self.face==FILLVALUE
 
         ne[cellmask]=0
-
 
         self.DEF = dist(self.xv,self.xe[ne].T,self.yv,self.ye[ne].T).T
 
