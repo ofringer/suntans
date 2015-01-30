@@ -72,7 +72,9 @@ ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dty
 vname = 'mark'
 dimensions = ('Ne',)
 attributes = {\
-		'long_name':'Edge marker type'}
+		'long_name':'Edge marker type',\
+        'coordinates':'xe ye',\
+        'units':'0 - comp, 1 - boundary, 2, 3'}
 dtype = 'i4'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
 
@@ -126,34 +128,39 @@ ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dty
 
 vname = 'n1'
 dimensions = ('Ne',)
-attributes = {'long_name':'x-component of the edge normal'}
+attributes = {'long_name':'x-component of the edge normal',\
+            'coordinates':'xe ye'}
 dtype = 'f8'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
 
 vname = 'n2'
 dimensions = ('Ne',)
-attributes = {'long_name':'y-component of the edge normal'}
+attributes = {'long_name':'y-component of the edge normal',\
+        'coordinates':'xe ye'}
 dtype = 'f8'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
 
 vname = 'df'
 dimensions = ('Ne',)
 attributes = {'long_name':'edge length',\
-		'units':'m'}
+		'units':'m',\
+        'coordinates':'xe ye'}
 dtype = 'f8'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
 
 vname = 'dg'
 dimensions = ('Ne',)
 attributes = {'long_name':'Distance between faces on either side of edge',\
-		'units':'m'}
+		'units':'m',\
+        'coordinates':'xe ye'}
 dtype = 'f8'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
 
 vname = 'def'
 dimensions = ('Nc','numsides')
 attributes = {'long_name':'Distance between faces and edges',\
-		'units':'m'}
+		'units':'m',\
+        'coordinates':'xe ye'}
 dtype = 'f8'		
 ugrid.update({vname:{'dimensions':dimensions,'attributes':attributes,'dtype':dtype,'zlib':False}})
 

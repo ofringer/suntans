@@ -26,13 +26,16 @@ import sunpy
 from sunpy import Grid,Spatial
 from netCDF4 import Dataset, num2date
 import numpy as np
+from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 #import matplotlib.nxutils as nxutils #inpolygon equivalent lives here
 from inpolygon import inpolygon
 from datetime import datetime, timedelta
 import othertime
 import os
-from maptools import readShpPoly
+from maptools import readShpPoly,ll2utm
+from get_metocean_dap import get_metocean_local
+from interpXYZ import Interp4D
 
 import pdb
 
@@ -51,15 +54,30 @@ class Boundary(object):
     
     utmzone = 15
     isnorth = True
+    loadfromnc = False
+
+    # Interpolation options dictionary
+    interpdict = dict(
+        method='idw', # Interpolation method:  'nn', 'idw', 'kriging', 'griddata'
+        NNear=4, 
+        p = 1.0, #  power for inverse distance weighting (idw only)
+        varmodel = 'spherical', #(kriging only)
+        nugget = 0.1,
+        sill = 0.8,
+        vrange = 10000.0,
+    )
+ 
     
-    def __init__(self,suntanspath,timeinfo):
+    def __init__(self,suntanspath,timeinfo,**kwargs):
         """
         Initialise boundary path.
         
         To load data directly from an existing file:
             Boundary('boundary_ncfile.nc',0)
         """
-        if os.path.isdir(suntanspath):
+        self.__dict__.update(**kwargs)
+
+        if os.path.isdir(suntanspath) or self.loadfromnc:
         
             self.suntanspath = suntanspath
             self.timeinfo = timeinfo
@@ -76,7 +94,24 @@ class Boundary(object):
         else:
             print 'Loading boundary data from a NetCDF file...'
             self.infile = suntanspath
+            print '\t%s'%self.infile
             self._loadBoundaryNC()
+
+            self.tsec = self.ncTime()
+        
+
+    def __call__(self,tsec,varname,method=1):
+        """
+        Interpolates the boundary variable "varname" onto the time step "tsec"
+        """
+        # Check to see if the interpolate class has been set up
+        iclass = '_I_%s'%varname
+        if not self.__dict__.has_key(iclass):
+            setattr( self,iclass,interp1d(self.tsec,self[varname][:],kind=method,\
+                axis=0,bounds_error=False,fill_value=0) )
+
+        # Returns the interpolated array [1,Nk,Nc/Ne]
+        return getattr(self,iclass)(tsec)
         
     def _loadBoundary(self):
         """
@@ -170,6 +205,8 @@ class Boundary(object):
             t0 += timedelta(seconds=self.timeinfo[2])
         
         self.Nt = len(self.time)
+
+        self.tsec = self.ncTime()
                 
     def ncTime(self):
         """
@@ -203,6 +240,7 @@ class Boundary(object):
         """
         
         # Type 2 arrays
+        self.boundary_h = np.zeros((self.Nt,self.N2))
         self.boundary_u = np.zeros((self.Nt,self.Nk,self.N2))
         self.boundary_v = np.zeros((self.Nt,self.Nk,self.N2))
         self.boundary_w = np.zeros((self.Nt,self.Nk,self.N2))
@@ -310,6 +348,11 @@ class Boundary(object):
         ###
         # Type-2 boundaries
         if self.N2>0:    
+            tmpvar=nc.createVariable('boundary_h','f8',('Nt','Ntype2'))
+            tmpvar[:] = self.boundary_h
+            tmpvar.setncattr('long_name','Free-surface elevation at type-2 boundary point')
+            tmpvar.setncattr('units','metre')
+ 
             tmpvar=nc.createVariable('boundary_u','f8',('Nt','Nk','Ntype2'))
             tmpvar[:] = self.boundary_u
             tmpvar.setncattr('long_name','Eastward velocity at type-2 boundary point')
@@ -422,6 +465,7 @@ class Boundary(object):
             self.edgep = nc.variables['edgep'][:]
             self.xe = nc.variables['xe'][:]
             self.ye = nc.variables['ye'][:]
+            self.boundary_h = nc.variables['boundary_h'][:]
             self.boundary_u = nc.variables['boundary_u'][:]
             self.boundary_v = nc.variables['boundary_v'][:]
             self.boundary_w = nc.variables['boundary_w'][:]
@@ -523,6 +567,83 @@ class Boundary(object):
         if setUV:
             self.uc+=uc
             self.vc+=vc
+
+    def oceanmodel2bdy(self,ncfile,convert2utm=True,setUV=True,seth=True,name='HYCOM'):
+        """
+        Interpolate data from a downloaded netcdf file to the open boundaries
+
+        """
+        print 'Loading boundary data from ocean model netcdf file:\n\t%s...'%ncfile
+        # Load the temperature salinity data and coordinate data
+        temp, nc = get_metocean_local(ncfile,'temp',name=name)
+        salt, nc = get_metocean_local(ncfile,'salt')
+        if setUV:
+            u, nc = get_metocean_local(ncfile,'u')
+            v, nc = get_metocean_local(ncfile,'v')
+
+
+        # Convert to utm
+        ll = np.vstack([nc.X.ravel(),nc.Y.ravel()]).T
+        if convert2utm:
+            xy = ll2utm(ll,self.utmzone,north=self.isnorth)
+        else:
+            xy = ll
+
+        # Construct a 3D mask
+        mask3d = temp.mask
+        mask3d = mask3d[0,...]
+        mask3d = mask3d.reshape((nc.nz,xy.shape[0]))
+
+        # Type 3 cells
+        if self.N3>0:
+            # Construct the 4D interp class
+            F4d =\
+                Interp4D(xy[:,0],xy[:,1],nc.Z,nc.time,\
+                    self.xv,self.yv,self.z,self.time,mask=mask3d,**self.interpdict)
+
+            tempnew = F4d(temp)
+            self.T[:] = tempnew
+
+            saltnew = F4d(salt)
+            self.S[:] = saltnew
+
+            # Never do this for type-3
+            #if setUV:
+            #    unew = F4d(u)
+            #    self.u[:] += unew
+            #    vnew = F4d(v)
+            #    self.v[:] += vnew
+
+            if seth:
+                # Construct the 3D interp class for surface height
+                ssh, nc2d = get_metocean_local(ncfile,'ssh')
+                mask2d = ssh.mask
+                mask2d = mask2d[0,...].ravel()
+
+                F3d = Interp4D(xy[:,0],xy[:,1],None,nc2d.time,\
+                    self.xv,self.yv,None,self.time,mask=mask2d,**self.interpdict)
+                sshnew = F3d(ssh)
+                self.h[:] = sshnew
+
+        # Type 2 cells : no free-surface
+        if self.N2>0:
+            # Construct the 4D interp class
+            F4d =\
+             Interp4D(xy[:,0],xy[:,1],nc.Z,nc.time,\
+                 self.xe,self.ye,self.z,self.time,mask=mask3d,**self.interpdict)
+
+            tempnew = F4d(temp)
+            self.boundary_T[:] = tempnew
+
+            saltnew = F4d(salt)
+            self.boundary_S[:] = saltnew
+
+            if setUV:
+                unew = F4d(u)
+                self.boundary_u[:] += unew
+                vnew = F4d(v)
+                self.boundary_v[:] += vnew
+
         
     def otis2boundary(self,otisfile,conlist=None,setUV=False):
         """
@@ -621,8 +742,24 @@ class InitialCond(Grid):
     """
     SUNTANS initial condition class
     """
+    utmzone = 15
+    isnorth = True
+
+    # Interpolation options dictionary
+    interpdict = dict(
+        method='idw', # Interpolation method:  'nn', 'idw', 'kriging', 'griddata'
+        NNear=4, 
+        p = 1.0, #  power for inverse distance weighting (idw only)
+        varmodel = 'spherical', #(kriging only)
+        nugget = 0.1,
+        sill = 0.8,
+        vrange = 10000.0,
+    )
     
-    def __init__(self,suntanspath,timestep):
+   
+    def __init__(self,suntanspath,timestep,**kwargs):
+        
+        self.__dict__.update(**kwargs)
         
         self.suntanspath = suntanspath
         
@@ -706,6 +843,51 @@ class InitialCond(Grid):
             self.agealpha = sunhis.loadData(variable='agealpha').reshape((1,)+self.agealpha.shape)       
 
         print 'Done setting initial condition data from file.'
+
+    def oceanmodel2ic(self,ncfile,convert2utm=True,setUV=False,seth=False,name='HYCOM'):
+        """
+        Interpolate data from a downloaded netcdf file to the initial condition
+
+        """
+        print 'Loading initial condition data from ocean model netcdf file:\n\t%s...'%ncfile
+        # Get the temperature data and coordinate data
+        temp, nc = get_metocean_local(ncfile,'temp',name=name)
+
+        # Convert to utm
+        ll = np.vstack([nc.X.ravel(),nc.Y.ravel()]).T
+        if convert2utm:
+            xy = ll2utm(ll,self.utmzone,north=self.isnorth)
+        else:
+            xy = ll
+
+        # Construct a 3D mask
+        mask3d = temp.mask
+        mask3d = mask3d[0,...]
+        mask3d = mask3d.reshape((nc.nz,xy.shape[0]))
+
+        # Construct the 4D interp class
+        F4d =\
+            Interp4D(xy[:,0],xy[:,1],nc.Z,nc.time,\
+                self.xv,self.yv,self.z_r,self.time,mask=mask3d,**self.interpdict)
+
+        tempnew = F4d(temp)
+        self.T[:] = tempnew
+
+        salt, nc = get_metocean_local(ncfile,'salt')
+        saltnew = F4d(salt)
+        self.S[:] = saltnew
+
+        if seth:
+            # Construct the 3D interp class for surface height
+            ssh, nc = get_metocean_local(ncfile,'ssh')
+            mask2d = ssh.mask
+            mask2d = mask2d[0,...].ravel()
+
+            F3d = Interp4D(xy[:,0],xy[:,1],None,nc.time,\
+                self.xv,self.yv,None,self.time,mask=mask2d,**self.interpdict)
+            sshnew = F3d(ssh)
+            self.h[:] = sshnew
+
 
     def filteric(self,dx):
         """

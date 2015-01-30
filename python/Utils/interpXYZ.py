@@ -15,8 +15,9 @@ import numpy as np
 from maptools import ll2utm, readShpBathy, readraster
 from kriging import kriging
 from netCDF4 import Dataset
+import othertime
 
-from scipy.interpolate import LinearNDInterpolator
+from scipy.interpolate import LinearNDInterpolator,interp1d
 import time
 import matplotlib.pyplot as plt
 
@@ -44,13 +45,23 @@ class interpXYZ(object):
 
     fill_value=0.
 
+    clip=False
+
     
     def __init__(self,XY,XYout,**kwargs):
         
         self.__dict__.update(kwargs)
-        self.XY = XY
+
+        self.bbox = [XYout[:,0].min(),XYout[:,0].max(),XYout[:,1].min(),XYout[:,1].max()]
+
+        if self.clip:
+            print 'Clipping points outside of range'
+            self.XY = self.clipPoints(XY)
+        else:
+            self.XY = XY
+
         self.XYout = XYout
-        
+
         if self.method=='nn':
             #print 'Building DEM with Nearest Neighbour interpolation...'
             self._nearestNeighbour()
@@ -75,7 +86,10 @@ class interpXYZ(object):
         
         """
         
-        self.Zin = Zin
+        if self.clip:
+            self.Zin = Zin[self.clipindex]
+        else:
+            self.Zin = Zin  
         
         if self.method in ['nn','idw','kriging']:
             #print 'Building DEM with Nearest Neighbour interpolation...'
@@ -125,12 +139,14 @@ class interpXYZ(object):
         """ Clips points outside of the bounding box"""
         X = LL[:,0]
         Y = LL[:,1]
-        ind = np.all([X>=self.bbox[0],X<=self.bbox[1],Y>=self.bbox[2],Y<=self.bbox[3]],axis=0)                    
+        self.clipindex = np.all([X>=self.bbox[0],X<=self.bbox[1],Y>=self.bbox[2],Y<=self.bbox[3]],axis=0)                    
+
+        return LL[self.clipindex,:]
         
-        print 'Clipped %d points.'%(self.npt-sum(ind))
-        self.Zin = self.Zin[ind]
-        self.npt = len(self.Zin)
-        return np.concatenate((np.reshape(X[ind],(self.npt,1)),np.reshape(Y[ind],(self.npt,1))),axis=1)
+        #print 'Clipped %d points.'%(self.npt-sum(ind))
+        #self.Zin = self.Zin[ind]
+        #self.npt = len(self.Zin)
+        #return np.concatenate((np.reshape(X[ind],(self.npt,1)),np.reshape(Y[ind],(self.npt,1))),axis=1)
         
     def save(self,outfile='DEM.nc'):
         """ Saves the DEM to a netcdf file"""
@@ -201,6 +217,105 @@ class interpXYZ(object):
         return fig
 
 
+class Interp4D(object):
+    """
+    4-dimensional interpolation class
+    """
+
+    zinterp_method = 'linear'
+    tinterp_method = 'linear'
+
+    def __init__(self,xin,yin,zin,tin,xout,yout,zout,tout,mask=None,**kwargs):
+        """
+        Construct the interpolation components
+
+        **kwargs are passed straight to interpXYZ
+
+        """
+        self.is4D=True
+        if zin == None:
+            self.is4D=False
+            self.nz=1
+        else:
+            self.zin = zin
+            self.zout = zout
+            self.nz = zin.shape[0]
+
+
+        # Create a 3D mask
+        self.szxy = xin.shape
+        if mask==None:
+            self.mask = np.zeros((self.nz,)+self.szxy,np.bool)
+        else:
+            self.mask=mask
+
+        # Horizontal interpolation for each layer
+        self._Fxy = []
+        for kk in range(self.nz):
+            if self.is4D:
+                mask = self.mask[kk,...]
+            else:
+                mask = self.mask
+            xyin = np.vstack([xin[~mask].ravel(),yin[~mask].ravel()]).T
+            xyout = np.vstack([xout.ravel(),yout.ravel()]).T
+            self.nxy = xyout.shape[0]
+
+            self._Fxy.append(interpXYZ(xyin,xyout,**kwargs))
+
+        # Just store the other coordinates for now
+                # Convert time to floats
+        self.tin = othertime.SecondsSince(tin)
+        self.tout = othertime.SecondsSince(tout)
+        self.nt = tin.shape[0]
+
+    def __call__(self,data):
+        """
+        Performs the interpolation in this order:
+            1) Interpolate onto the horizontal
+                coordinates
+            2) Interpolate onto the vertical
+                coordinates
+            3) Interpolate onto
+                the time coordinates
+        """
+
+        # Interpolate horizontally for all time steps and depths
+        if self.is4D:
+            data_xy = np.zeros((self.nt,self.nz,self.nxy))
+            # Reshape data
+            data=data.reshape((self.nt,self.nz,self.szxy[0]))
+        else:
+            data_xy = np.zeros((self.nt,self.nxy))
+            # Reshape data
+            data=data.reshape((self.nt,self.szxy[0]))
+
+        for tt in range(self.nt):
+            if self.is4D:
+                for kk in range(self.nz):
+                    mask = self.mask[kk,...]
+                    tmp = self._Fxy[kk](data[tt,kk,~mask].ravel())
+                    data_xy[tt,kk,:] = tmp
+            else:
+                 data_xy[tt,:] = self._Fxy[0](data[tt,~self.mask].ravel())
+                
+
+        # Now create a z-interpolation class
+        if self.is4D:
+            _Fz = interp1d(self.zin,data_xy,axis=1,kind=self.zinterp_method,\
+                bounds_error=False,fill_value=0.)
+
+            data_xyz = _Fz(self.zout)
+        else:
+            data_xyz = data_xy
+
+        # Time interpolation
+        _Ft = interp1d(self.tin,data_xyz,axis=0,kind=self.tinterp_method,\
+            bounds_error=False,fill_value=0.)
+         
+        return _Ft(self.tout)
+
+
+
 class Inputs(object):
     """
         Class for handling input data from different file formats
@@ -268,13 +383,22 @@ class Inputs(object):
     def loadnc(self):
         """ Load the DEM data from a netcdf file"""        
         nc = Dataset(self.infile, 'r')
+
+        # This could be made more generic...
+        if self.convert2utm:
+            xvar = 'lon'
+            yvar = 'lat'
+        else:
+            xvar = 'x'
+            yvar = 'y'
+        
         try:
-            self.xgrd = nc.variables['X'][:]
-            self.ygrd = nc.variables['Y'][:]
+            self.xgrd = nc.variables[xvar][:]
+            self.ygrd = nc.variables[xvar][:]
             self.Zin = nc.variables['topo'][:]
         except:
-            self.xgrd = nc.variables['x'][:]
-            self.ygrd = nc.variables['x'][:]
+            self.xgrd = nc.variables[xvar][:]
+            self.ygrd = nc.variables[xvar][:]
             self.Zin = nc.variables['z'][:]
                 
         nc.close()

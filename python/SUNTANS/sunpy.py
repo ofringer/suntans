@@ -2343,8 +2343,8 @@ class Spatial(Grid):
             'linear' - linear interpolated value
             'upwind' - upwind value. Requires 'U'. 
         """
-        nc1 = self.grad[:,0]
-        nc2 = self.grad[:,1]
+        nc1 = self.grad[:,0].copy()
+        nc2 = self.grad[:,1].copy()
         Ne = self.Ne
                 
         # check for edges (use logical indexing)

@@ -20,6 +20,7 @@ from timeseries import timeseries
 import operator
 from maptools import ll2lcc
 from mygeometry import MyLine
+from mythredds import MFncdap
 
 try:
     from octant.slice import isoslice
@@ -1697,58 +1698,7 @@ class roms_interp(roms_grid):
         nc.close()
     
     
-class MFncdap(object):
-    """
-    Multi-file class for opendap netcdf files
-    
-    MFDataset module is not compatible with opendap data 
-    """
-    
-    timevar = 'time'
-    
-    def __init__(self,ncfilelist,**kwargs):
-        
-        self.__dict__.update(kwargs)
-        
-        self.timelookup = {}
-        self.time = np.zeros((0,))
-        for f in ncfilelist:
-            print f
-            nc = Dataset(f)
-            t = nc.variables[self.timevar]
-            time = num2date(t[:],t.units)
-            nc.close()
-            
-            self.timelookup.update({f:time})
-            self.time = np.hstack((self.time,np.asarray(time)))
-            
-        self.time = np.asarray(self.time)
-    
-            
-    def __call__(self,time):
-        """
-        Return the filenames and time index of the closest time
-        """
-        
-        fname = []
-        tind =[]
-        for t in time:
-            flag=1
-            for f in self.timelookup.keys():
-
-                if t >= self.timelookup[f][0] and t<=self.timelookup[f][-1]:
-#                    print 'Found tstep %s'%datetime.strptime(t,'%Y-%m-%d %H:%M:%S')
-                    tind.append(othertime.findNearest(t,self.timelookup[f][:]))
-                    fname.append(f)
-                    flag=0
-
-#            if flag:
-#                print 'Warning - could not find matching file for time:%s'%datetime.strptime(t,'%Y-%m-%d %H:%M:%S')
-#                tind.append(-1)
-#                fname.append(-1)
-        
-        return tind, fname
-            
+           
     
 def get_depth(S,C,hc,h,zeta=None, Vtransform=1):
     """

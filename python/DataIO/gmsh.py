@@ -63,11 +63,16 @@ def create_gmsh_geo(shpfile,scalefile,geofile,startpoly=0,ndmin=8,scalefac=1.0,\
     xyscale,scale = readShpPointLine(scalefile,FIELDNAME='scale')
     
     # Load the 'embed' flag to see if the scale layer should be embedded
-    try:
-        xyscale,embed = readShpPointLine(scalefile,FIELDNAME='embed')
-    except:
-        print 'Warning - could not find "embed" field in shapefile. Setting embed = 0.'
+    #try:
+    #    exyscale,embed = readShpPointLine(scalefile,FIELDNAME='embed')
+    #except:
+    #    print 'Warning - could not find "embed" field in shapefile. Setting embed = 0.'
+    #    embed = [ss*0 for ss in scale]
+    
+    exyscale,embed = readShpPointLine(scalefile,FIELDNAME='embed')
+    if embed == []:
         embed = [ss*0 for ss in scale]
+    
         
     
     ## output geo and svg file
@@ -178,20 +183,28 @@ def create_gmsh_geo(shpfile,scalefile,geofile,startpoly=0,ndmin=8,scalefac=1.0,\
     
     # Set Quad options by default
     fgeo.write("Mesh.CharacteristicLengthMax=%.16e;//Max cell size\n"%lcmax)
-    fgeo.write("Mesh.RecombineAll=1;//recombine all defined surfaces\n")
-    fgeo.write("Mesh.Algorithm=8;//delquad mesher\n")
-    fgeo.write("Mesh.Smoothing=1;//10 smoothing steps\n")
+    fgeo.write("Mesh.RecombineAll=0;//recombine all defined surfaces\n")
+    fgeo.write("Mesh.Algorithm=6;//front\n")
+    fgeo.write("Mesh.Smoothing=10;//10 smoothing steps\n")
+    fgeo.write("Mesh.Remove4Triangles = 1;\n")
     fgeo.close()
     
     print 'Complete. GMSH geo file written to:\n\t %s'%geofile
 
-def gmsh2suntans(mshfile,suntanspath):
+def gmsh2suntans(mshfile,suntanspath,dual=False,minfaces=5):
     """
     Convert a gmsh format grid to suntans edges.dat, cells.dat, points.dat
+    
+    Set dual=True to write hex grid
     """
     grd = gmsh2hybridgrid(mshfile)
+    
+    if dual:
+        grd = grd.create_dual_grid(minfaces=minfaces)
 
-    grd2suntans(grd,suntanspath)
+    grd.write2suntans(suntanspath)
+
+    print 'Completed gmsh to suntans conversion.'
     
     
 def grd2suntans(grd,suntanspath):
@@ -230,7 +243,6 @@ def grd2suntans(grd,suntanspath):
         f.write('%10.6f %10.6f  0\n'%(x,y))
 
     f.close()
-    print 'Completed gmsh to suntans conversion.'
     
 def read_msh(mshfile):
     """
@@ -308,7 +320,7 @@ def gmsh2hybridgrid(mshfile):
     for ii in range(Nc):
         cellsin[ii,0:nfaces[ii]]=cells[ii]
 
-    return HybridGrid(x,y,cellsin,nfaces=nfaces)    
+    return HybridGrid(np.array(x),np.array(y),cellsin,nfaces=nfaces)    
 
 
 def get_nnodes_from_line( xy, dx):
