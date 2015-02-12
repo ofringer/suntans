@@ -196,7 +196,7 @@ typedef struct _propT {
   interpolation interp; int prettyplot;
   int metmodel,  varmodel, outputNetcdf,  metncid, netcdfBdy, netcdfBdyFileID, readinitialnc, initialNCfileID, calcage, agemethod, calcaverage;
   int outputNetcdfFileID, averageNetcdfFileID;
-  REAL nctime, toffSet;
+  REAL nctime, toffSet, gmtoffset;
   int nctimectr, avgtimectr, avgctr, avgfilectr, ntaverage, nstepsperncfile, ncfilectr;
   REAL nugget, sill, range, Lsw, Cda, Ce, Ch;
   char  starttime[15], basetime[15]; 

@@ -8,10 +8,11 @@
 #include "mynetcdf.h"
 
 /* Private functions */
-void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda,int myproc);
+void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, int **index, REAL **klambda,int myproc);
 static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL D);
-void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, REAL **Dout);
-void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout);
+void FindNearestMetStations(propT *prop, gridT *grid, metinT **metin, int myproc);
+void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int **index, int nt, REAL **Dout);
+void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, int **index, REAL *Dout);
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair);
 static REAL qsat(REAL Tw, REAL Pair);
 static REAL satvap(REAL Ta, REAL Pair);
@@ -39,15 +40,25 @@ void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int
  /*  Read in the coordinate data*/
  if(VERBOSE>3 && myproc==0) printf("Reading netcdf coordinate data...\n");
  ReadMetNCcoord(prop,grid,metin, myproc);
+
+ /* Find the nearest met points to each grid point */
+ FindNearestMetStations(prop, grid, &metin, myproc);
  
  /* Calculating the interpolation weights for each variable*/
- calcInterpWeights(grid,prop, metin->x_Uwind, metin->y_Uwind, metin->NUwind, metin->WUwind, myproc);
- calcInterpWeights(grid,prop, metin->x_Vwind, metin->y_Vwind, metin->NVwind, metin->WVwind, myproc);
- calcInterpWeights(grid,prop, metin->x_Tair, metin->y_Tair, metin->NTair, metin->WTair, myproc);
- calcInterpWeights(grid,prop, metin->x_Pair, metin->y_Pair, metin->NPair, metin->WPair, myproc);
- calcInterpWeights(grid,prop, metin->x_rain, metin->y_rain, metin->Nrain, metin->Wrain, myproc);
- calcInterpWeights(grid,prop, metin->x_RH, metin->y_RH, metin->NRH, metin->WRH, myproc);
- calcInterpWeights(grid,prop, metin->x_cloud, metin->y_cloud, metin->Ncloud, metin->Wcloud, myproc);
+ calcInterpWeights(grid,prop, metin->x_Uwind, metin->y_Uwind, 
+    metin->max_nearest_Uwind, metin->nearest_Uwind, metin->WUwind, myproc);
+ calcInterpWeights(grid,prop, metin->x_Vwind, metin->y_Vwind,
+     metin->max_nearest_Vwind, metin->nearest_Vwind, metin->WVwind, myproc);
+ calcInterpWeights(grid,prop, metin->x_Tair, metin->y_Tair,
+    metin->max_nearest_Tair, metin->nearest_Tair, metin->WTair, myproc);
+ calcInterpWeights(grid,prop, metin->x_Pair, metin->y_Pair,
+    metin->max_nearest_Pair, metin->nearest_Pair, metin->WPair, myproc);
+ calcInterpWeights(grid,prop, metin->x_rain, metin->y_rain,
+    metin->max_nearest_rain, metin->nearest_rain, metin->Wrain, myproc);
+ calcInterpWeights(grid,prop, metin->x_RH, metin->y_RH,
+    metin->max_nearest_RH, metin->nearest_RH, metin->WRH, myproc);
+ calcInterpWeights(grid,prop, metin->x_cloud, metin->y_cloud,
+    metin->max_nearest_cloud, metin->nearest_cloud, metin->Wcloud, myproc);
  
  if(VERBOSE>3 && myproc==0){
     printf("Uwind weights:\n");
@@ -62,10 +73,14 @@ void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int
  
  /*  Interpolate the heights of some variables */
  if(VERBOSE>1 && myproc==0) printf("Interpolating height coordinates onto grid...");
- weightInterpField(metin->z_Uwind, metin->WUwind, grid, metin->NUwind, met->z_Uwind);
- weightInterpField(metin->z_Vwind, metin->WVwind, grid, metin->NVwind, met->z_Vwind);
- weightInterpField(metin->z_Tair, metin->WTair, grid, metin->NTair, met->z_Tair);
- weightInterpField(metin->z_RH, metin->WRH, grid, metin->NRH, met->z_RH);
+ weightInterpField(metin->z_Uwind, metin->WUwind, grid,
+    metin->max_nearest_Uwind, metin->nearest_Uwind, met->z_Uwind);
+ weightInterpField(metin->z_Vwind, metin->WVwind, grid,
+    metin->max_nearest_Vwind, metin->nearest_Vwind, met->z_Vwind);
+ weightInterpField(metin->z_Tair, metin->WTair, grid,
+    metin->max_nearest_Tair, metin->nearest_Tair, met->z_Tair);
+ weightInterpField(metin->z_RH, metin->WRH, grid,
+    metin->max_nearest_RH, metin->nearest_RH, met->z_RH);
  if(VERBOSE>1 && myproc==0) printf("Done.\n");
   
 } // End of InitialiseMetFields
@@ -94,13 +109,20 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
       metin->t2=t1+1;
       
       /* Interpolate the two time steps onto the grid*/
-      weightInterpArray(metin->Uwind, metin->WUwind, grid, metin->NUwind, NTmet, met->Uwind_t);
-      weightInterpArray(metin->Vwind, metin->WVwind, grid, metin->NVwind, NTmet, met->Vwind_t);
-      weightInterpArray(metin->Tair, metin->WTair, grid, metin->NTair, NTmet, met->Tair_t);
-      weightInterpArray(metin->Pair, metin->WPair, grid, metin->NPair, NTmet, met->Pair_t);
-      weightInterpArray(metin->rain, metin->Wrain, grid, metin->Nrain, NTmet, met->rain_t);
-      weightInterpArray(metin->RH, metin->WRH, grid, metin->NRH, NTmet, met->RH_t);
-      weightInterpArray(metin->cloud, metin->Wcloud, grid, metin->Ncloud, NTmet, met->cloud_t);
+      weightInterpArray(metin->Uwind, metin->WUwind, grid,
+	  metin->max_nearest_Uwind, metin->nearest_Uwind, NTmet, met->Uwind_t);
+      weightInterpArray(metin->Vwind, metin->WVwind, grid,
+	  metin->max_nearest_Vwind, metin->nearest_Vwind, NTmet, met->Vwind_t);
+      weightInterpArray(metin->Tair, metin->WTair, grid,
+	  metin->max_nearest_Tair, metin->nearest_Tair, NTmet, met->Tair_t);
+      weightInterpArray(metin->Pair, metin->WPair, grid,
+      	metin->max_nearest_Pair, metin->nearest_Pair, NTmet, met->Pair_t);
+      weightInterpArray(metin->rain, metin->Wrain, grid,
+	  metin->max_nearest_rain, metin->nearest_rain, NTmet, met->rain_t);
+      weightInterpArray(metin->RH, metin->WRH, grid,
+	  metin->max_nearest_RH, metin->nearest_RH, NTmet, met->RH_t);
+      weightInterpArray(metin->cloud, metin->Wcloud, grid,
+	  metin->max_nearest_cloud, metin->nearest_cloud, NTmet, met->cloud_t);
     }
     
     /* Do a linear temporal interpolation */
@@ -468,10 +490,11 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 * Calculates the interpolation weights for all grid points based on "Ns" interpolants
 * at cooridinates (xo, yo)
 */
-void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda, int myproc){
+void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, int **index, REAL **klambda, int myproc){
     
-    int j, i, jj, ii, iptr;
+    int j, i, jj, ii, iptr, jptr;
     int Nc = grid->Nc;
+    const REAL inversepower = 2.2;
     REAL sumgamma, dist, tmp;
     REAL *gamma;
     REAL **C, **Ctmp;
@@ -495,8 +518,8 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
 	i = grid->cellp[iptr];  
 	sumgamma=0.0;
 	for(j=0;j<Ns;j++){
-	    dist = pow(grid->xv[i]-xo[j],2) + pow(grid->yv[i]-yo[j],2);
-	    gamma[j] = 1.0/dist;
+	    dist = pow(grid->xv[i]-xo[index[i][j]],2) + pow(grid->yv[i]-yo[index[i][j]],2);
+	    gamma[j] = 1.0/pow(dist,inversepower);
 	    sumgamma += gamma[j];
 	    //printf("dist = %f, sum = %f\n",dist,sumgamma);
 	}
@@ -511,38 +534,31 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
     }else{ // kriging
 	if(VERBOSE>1 && myproc==0)  printf("Calculating interpolation weights using kriging...\n");
 	
-	// Construct the LHS Matrix C
-	for(i=0;i<Ns+1;i++){
-	  for(j=0;j<Ns+1;j++){
-	    C[i][j]=1.0;
-	  }
-	}
-	for(i=0;i<Ns;i++){
-	  //C[i][i]=0.0;
-	  C[i][i]=semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, 0.0);
-	  for(j=i+1;j<Ns;j++){
-	    dist = sqrt(  pow(xo[i]-xo[j],2) + pow(yo[i]-yo[j],2) );
-	    C[i][j] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
-	    C[j][i]=C[i][j];
-	  }
-	}
-	C[Ns][Ns]=0.0;
-	
-// 	printf("C[i][j]:\n");
-// 	for(i=0;i<Ns+1;i++){
-// 	  for(j=0;j<Ns+1;j++){
-// 	    printf("%1.6f ",C[i][j]);
-// 	  }
-// 	  printf("\n");
-// 	}
-	
-	// Loop through each model grid point and calculate the  weights
-	//for(i=0;i<Nc;i++){
+	// Loop through each model grid point and
 	for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
 	  i = grid->cellp[iptr];  
-	  for(j=0;j<Ns;j++){
-	    dist = sqrt( pow(grid->xv[i]-xo[j],2) + pow(grid->yv[i]-yo[j],2) );
-	    gamma[j] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
+
+	  // Construct the LHS Matrix C
+	  for(ii=0;ii<Ns+1;ii++){
+	    for(j=0;j<Ns+1;j++){
+	      C[ii][j]=1.0;
+	    }
+	  }
+	  for(ii=0;ii<Ns;ii++){
+	    C[ii][ii]=semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, 0.0);
+	    for(j=ii+1;j<Ns;j++){
+	      dist = sqrt(  pow(xo[index[i][ii]]-xo[index[i][j]],2) + pow(yo[index[i][ii]]-yo[index[i][j]],2) );
+	      C[ii][j] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
+	      C[j][ii]=C[ii][j];
+	    }
+	  }
+	  C[Ns][Ns]=0.0;
+
+
+	  // calculate the  weights
+	  for(jj=0;jj<Ns;jj++){
+	    dist = sqrt( pow(grid->xv[i]-xo[index[i][jj]],2) + pow(grid->yv[i]-yo[index[i][jj]],2) );
+	    gamma[jj] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
 	  }
 	  gamma[Ns]=1.0;
 	  
@@ -609,7 +625,7 @@ static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL
 * Perform weighted interpolation on a field D [2d-array]
 *
 */
-void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, REAL **Dout){
+void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int **index, int nt, REAL **Dout){
   int i,j, k, iptr;
   for(k=0;k<nt;k++){
     //for(i=0;i<Nc;i++){
@@ -617,7 +633,7 @@ void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, RE
         i = grid->cellp[iptr];  
 	Dout[k][i] = 0.0;
 	for(j=0;j<Ns;j++){
-	    Dout[k][i] += klambda[i][j] * D[k][j];
+	    Dout[k][i] += klambda[i][j] * D[k][index[i][j]];
 	}
     }
   }
@@ -629,7 +645,7 @@ void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, RE
 * Perform weighted interpolation on a field D [vector]
 *
 */
-void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout){
+void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, int **index, REAL *Dout){
   int i,j,iptr;
   
 //  for(i=0;i<Nc;i++){
@@ -637,10 +653,73 @@ void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout)
       i = grid->cellp[iptr];  
       Dout[i] = 0.0;
       for(j=0;j<Ns;j++){
-	  Dout[i] += klambda[i][j] * D[j];
+	  Dout[i] += klambda[i][j] * D[index[i][j]];
       }
   }
 }
+
+/* 
+* Function: FindNearestMetStations()
+* -----------------------------
+* Find the N Nearest met stations to each grid cell
+*
+*/
+void FindNearestMetStations(propT *prop, gridT *grid, metinT **metin, int myproc){
+
+    int Nc = grid->Nc;
+    int i,iptr;
+
+    // Determine the maximum points for each variables
+    (int)(*metin)->max_nearest_Uwind = Min((REAL)MAXNEAR, (REAL)(*metin)->NUwind);
+    (int)(*metin)->max_nearest_Vwind = Min((REAL)MAXNEAR, (REAL)(*metin)->NVwind);
+    (int)(*metin)->max_nearest_Tair = Min((REAL)MAXNEAR, (REAL)(*metin)->NTair);
+    (int)(*metin)->max_nearest_Pair = Min((REAL)MAXNEAR, (REAL)(*metin)->NPair);
+    (int)(*metin)->max_nearest_RH = Min((REAL)MAXNEAR, (REAL)(*metin)->NRH);
+    (int)(*metin)->max_nearest_rain = Min((REAL)MAXNEAR, (REAL)(*metin)->Nrain);
+    (int)(*metin)->max_nearest_cloud = Min((REAL)MAXNEAR, (REAL)(*metin)->Ncloud);
+
+    // Allocate the indexing arrays
+    (*metin)->nearest_Uwind = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_Vwind = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_Tair = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_Pair = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_rain = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_RH = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_cloud = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    for(i=0;i<Nc;i++){
+        (*metin)->nearest_Uwind[i] = (int *)SunMalloc((*metin)->max_nearest_Uwind*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_Vwind[i] = (int *)SunMalloc((*metin)->max_nearest_Vwind*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_Tair[i] = (int *)SunMalloc((*metin)->max_nearest_Tair*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_Pair[i] = (int *)SunMalloc((*metin)->max_nearest_Pair*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_rain[i] = (int *)SunMalloc((*metin)->max_nearest_rain*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_RH[i] = (int *)SunMalloc((*metin)->max_nearest_RH*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_cloud[i] = (int *)SunMalloc((*metin)->max_nearest_cloud*sizeof(int),"AllocateMetIn");
+    }
+    
+    // Go through and find the N nearest points for each variable
+    //FindNearest(int *points, REAL *x, REAL *y, int N, int np, REAL xi, REAL yi)
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	i = grid->cellp[iptr];  
+
+	FindNearest((*metin)->nearest_Uwind[i], (*metin)->x_Uwind, (*metin)->y_Uwind,
+		(*metin)->NUwind, (*metin)->max_nearest_Uwind, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_Vwind[i], (*metin)->x_Vwind, (*metin)->y_Vwind,
+		(*metin)->NVwind, (*metin)->max_nearest_Vwind, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_Tair[i], (*metin)->x_Tair, (*metin)->y_Tair,
+		(*metin)->NTair, (*metin)->max_nearest_Tair, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_Pair[i], (*metin)->x_Pair, (*metin)->y_Pair,
+		(*metin)->NPair, (*metin)->max_nearest_Pair, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_RH[i], (*metin)->x_RH, (*metin)->y_RH,
+		(*metin)->NRH, (*metin)->max_nearest_RH, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_rain[i], (*metin)->x_rain, (*metin)->y_rain,
+		(*metin)->Nrain, (*metin)->max_nearest_rain, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_cloud[i], (*metin)->x_cloud, (*metin)->y_cloud,
+		(*metin)->Ncloud, (*metin)->max_nearest_cloud, grid->xv[i], grid->yv[i]);
+    
+    }
+
+
+}// End function
 
 /*
 * Function: updateAirSeaFluxes()
@@ -726,7 +805,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     x[6] = met->Hlw[i];
     
     // Shortwave radiation
-    met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i]);
+    met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i],prop->gmtoffset/24.0);
     x[7] = met->Hsw[i];
     
     //rain [mm/hr] (rain heat flux is not included at the moment)
@@ -970,20 +1049,23 @@ static REAL longwave(REAL Ta, REAL Tw, REAL C_cloud){
 * Compute solar radiation flux using the Gill, 1982 formulae 
 *
 */
-REAL shortwave(REAL time, REAL Lat,REAL C_cloud){
+REAL shortwave(REAL time, REAL Lat,REAL C_cloud, REAL toffset){
   
   const REAL S=1368.0;  //[W m-2]
   const REAL albedo = 0.06;
   const REAL R = 0.76;
   REAL omega1, omega0;
   REAL delta, singamma, Qsc, Hsw;
+  REAL gmttime;
 
   omega1 = 2*PI/1.0; // Diurnal cycle
   omega0 = 2*PI/365.25; // Annual cycle
 
+  // Remove the gmtoffset from the time (assume units are the same)
+  gmttime = time + toffset;
 
-  delta = 23.5*PI/180 * cos(omega0*time - 2.95);
-  singamma = sin(delta)*sin(PI*Lat/180) - cos(delta)*cos(PI*Lat/180)*cos(omega1*time);
+  delta = 23.5*PI/180 * cos(omega0*gmttime - 2.95);
+  singamma = sin(delta)*sin(PI*Lat/180) - cos(delta)*cos(PI*Lat/180)*cos(omega1*gmttime);
 
   // Clear sky radiation
   if(singamma >= 0.0){

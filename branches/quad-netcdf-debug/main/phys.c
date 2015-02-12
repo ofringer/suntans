@@ -2938,7 +2938,7 @@ static void UPredictor(gridT *grid, physT *phys,
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
       if(phys->utmp[j][k]!=phys->utmp[j][k]) {
         printf("Error in function Predictor at j=%d k=%d (U***=nan)\n",j,k);
-        exit(1);
+        exit(EXIT_FAILURE);
       }
 
   // So far we have U*** and D.  Now we need to create h* in htmp.   This
@@ -4168,6 +4168,7 @@ void ReadProperties(propT **prop, gridT *grid, int myproc)
   if ((*prop)->calcaverage)
       (*prop)->ntaverage = (int)MPI_GetValue(DATAFILE,"ntaverage","ReadProperties",myproc);
   (*prop)->latitude = MPI_GetValue(DATAFILE,"latitude","ReadProperties",myproc);
+  (*prop)->gmtoffset = MPI_GetValue(DATAFILE,"gmtoffset","ReadProperties",myproc);
   (*prop)->metmodel = (int)MPI_GetValue(DATAFILE,"metmodel","ReadProperties",myproc);
   (*prop)->varmodel = (int)MPI_GetValue(DATAFILE,"varmodel","ReadProperties",myproc);
   (*prop)->nugget = MPI_GetValue(DATAFILE,"nugget","ReadProperties",myproc);

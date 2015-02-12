@@ -314,8 +314,8 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 
 	    def1 /= dgf;
 	    def2 /= dgf;
-	    phys->tau_T[j] = (met->tau_x[nc1]*def1 + met->tau_x[nc2]*def2)*grid->n1[j] + 
-		(met->tau_y[nc1]*def1 + met->tau_y[nc2]*def2)*grid->n2[j];  
+	    phys->tau_T[j] = (met->tau_x[nc2]*def1 + met->tau_x[nc1]*def2)*grid->n1[j] + 
+		(met->tau_y[nc2]*def1 + met->tau_y[nc1]*def2)*grid->n2[j];  
 
 	   phys->tau_T[j] /= RHO0; 
 	   phys->tau_T[j] *= rampfac;

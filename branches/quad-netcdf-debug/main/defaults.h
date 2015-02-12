@@ -141,6 +141,10 @@ const int metmodel_DEFAULT = 0;
 // Time offset parameter in days
 const REAL toffSet_DEFAULT = 0.0;
 
+// GMT offset parameter in hours used to correct solar radiation term
+const REAL gmtoffset_DEFAULT = 0.0;
+
+
 // Interpolation model. 0 - inverse distance weighting; 1 - kriging with spherical variogram
 const int varmodel_DEFAULT = 1;
 
