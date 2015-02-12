@@ -365,6 +365,10 @@ double GetDefaultValue(char *str, int *status) {
     
    return latitude_DEFAULT;
    
+ } else if(!strcmp(str,"gmtoffset")) {
+    
+   return gmtoffset_DEFAULT;
+ 
  } else if(!strcmp(str,"metmodel")) {
     
    return metmodel_DEFAULT;

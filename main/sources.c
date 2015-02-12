@@ -96,7 +96,10 @@ void SaltSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
 		    A[i][k]=B[i][k]=0.0;
 
 		dztop = Max(dzmin_saltflux,grid->dzz[i][ktop]);
-		EP =   (met->Hl[i]/L_w - met->rain[i])/RHO0; // m/s
+		
+		// -ve latent heat flux = positive salt flux
+		// +ve rain flux = negative salt flux
+		EP =   (met->Hl[i]/L_w + met->rain[i])/RHO0; // m/s
 
 		//B[i][ktop] = EP*RHO0 / (dztop);  
 		//A[i][ktop] = EP*phys->s[i][ktop] / (dztop);  
@@ -209,7 +212,7 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
     M = met->cloud[i];
     Ta = met->Tair[i];
     U2 = sqrt( pow(met->Uwind[i],2.0) + pow(met->Vwind[i],2.0) );
-    met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i]);
+    met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i],prop->gmtoffset/24.0);
     H_SW = met->Hsw[i];
     rh = met->RH[i]/100.0;
     //H_LW = met->Hlw[i];
@@ -387,12 +390,12 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      H0[i] = ( met->Hs[i] + met->Hl[i] + met->Hlw[i] );
      
      // Calculate T+dt array
-    if(phys->dT[i]<=0.0){
-       phys->dT[i]=Min(-1e-4,phys->dT[i]);
-     }else{
-       phys->dT[i]=Max(1e-4,phys->dT[i]);
-     }
-    //phys->dT[i] = 0.001; //Hard-wire for stability 
+    //if(phys->dT[i]<=0.0){
+    //   phys->dT[i]=Min(-1e-4,phys->dT[i]);
+    // }else{
+    //   phys->dT[i]=Max(1e-4,phys->dT[i]);
+    // }
+    phys->dT[i] = 0.001; //Hard-wire for stability 
     
      phys->Ttmp[i][ktop] = phys->T[i][ktop] + phys->dT[i];
    }
@@ -423,6 +426,44 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
      A[i][ktop]/=(rhocp*dztop);
      B[i][ktop]/=(rhocp*dztop);
 
+     /*******************************************************
+     // Evaluate the shortwave radiation terms and put into A
+     ********************************************************/
+     
+     //Calculate the local depth (accounts for free surface) 
+     depth=0;
+     for(k=ktop;k<grid->Nk[i];k++) 
+ 	depth += grid->dzz[i][k]; 
+     
+     // Set the light extinction coefficient - ensure that thhe extinction depth is less than the water depth
+     ksw1 = 1.0 / Min(prop->Lsw, 0.5*depth);
+
+     if(ksw1!=ksw1){
+     	printf("Error NaN computed in shortwave radiation term - too shallow!\n");
+	exit(EXIT_FAILURE);
+     }
+
+     z=0.0; // Reference from the free-surface
+     for(k=ktop;k<grid->Nk[i];k++) {
+       z-=grid->dzz[i][k]/2.0;
+ 
+       topface = z + grid->dzz[i][k]/2.0; //Depth of the top face of a cell from the surface
+       botface = z - grid->dzz[i][k]/2.0; //Depth of the bottom face of a cell from the surface
+ 
+       // Discrete form of dQ_sw/dz
+       wave1 = (exp(topface*ksw1) - exp(botface*ksw1))/(topface - botface);
+ 
+       F_SW = wave1 * met->Hsw[i] / rhocp;
+       
+       B[i][k] += 0.0;
+       A[i][k] += F_SW;
+       
+       z-=grid->dzz[i][k]/2;
+       
+     }
+     /********************************************
+      * 	Original shortwave code
+      ********************************************
      // Evaluate the shortwave radiation terms and put into A
      for(k=ktop;k<grid->Nk[i];k++) //loop for calculating the local depth (accounts for free surface) 
  	depth = depth + grid->dzz[i][k]; 
@@ -458,6 +499,7 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
        //A[i][k] = 0.0;
 
      }
+     */
    }
  }else{ //Set flux terms to zero
   int i,k,iptr;
