@@ -2279,6 +2279,7 @@ class Spatial(Grid):
         dzf[etop,range(Ne)]=dztop
 
         # Mask the cells
+        #mask = self.get_zmask(etop,self.Nke)
         for ii in range(Ne):
             dzf[0:etop[ii],ii]=0.0
             dzf[self.Nke[ii]::,ii]=0.0
@@ -2309,6 +2310,23 @@ class Spatial(Grid):
         etop = np.searchsorted(self.z_w,-eta_edge)
         etop[etop>0] -= 1
         return etop, eta_edge
+
+
+    def get_zmask(self,ktop,nk):
+        """
+        Return a mask array (1/0) that is false (0) for points outside 
+        of ktop and nk
+
+        This is a good candidate for a cython function
+
+        ##TBC##
+        """
+        sz = nk.shape
+        mask = np.zeros(sz)
+
+        nc = ktop.shape[0]
+        cols = [range(ktop[ii],nk[ii]) for ii in range(nc)]
+
 
     def get_surfacevar(self,phi,ctop):
         """

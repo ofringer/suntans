@@ -259,8 +259,11 @@ def getStations():
         lat=alist[0].childNodes[0].nodeValue    
         alist = node.getElementsByTagName('long')
         lon=alist[0].childNodes[0].nodeValue
-        alist = node.getElementsByTagName('date_established')
-        date=alist[0].childNodes[0].nodeValue
+        try:
+            alist = node.getElementsByTagName('date_established')
+            date=alist[0].childNodes[0].nodeValue
+        except:
+            data = ''
         stations.append([{'name':str(name),'ID':int(ID),'lat':float(lat),'lon':float(lon),'date':str(date)}])
     
     return stations

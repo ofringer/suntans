@@ -30,6 +30,8 @@ import os
 import airsea
 import netcdfio
 
+import pdb
+
 
 def noaaish2nc(latlon,yearrange,localdir,ncfile,shpfile):
     
@@ -96,6 +98,7 @@ def readall(latlon,yearrange,localdir):
     
     # Get the names of the stations 
     stations = getFileNames(latlon,yearrange,localdir)
+
     
     # Loop through and check if the files are in the local directory, if not download
     data_all = []
@@ -147,7 +150,7 @@ def readall(latlon,yearrange,localdir):
     return data_all
     
              
-def stationMeta(csvfile = "ish-history.csv"):
+def stationMeta(csvfile = "isd-history.csv"):
     """
     Read the NOAA station metadata csv file
     
@@ -170,23 +173,23 @@ def stationMeta(csvfile = "ish-history.csv"):
             station_id.append(row[0]+'-'+row[1])
             station.append(row[2])
             
-            if len(row[7])>0:
-                lat.append(np.float(row[7])/1000)
+            if len(row[6])>0:
+                lat.append(np.float(row[6]))
             else:
                 lat.append(missingval)
                 
-            if len(row[8])>0:
-                lon.append(np.float(row[8])/1000)
+            if len(row[7])>0:
+                lon.append(np.float(row[7]))
             else:
                 lon.append(missingval)
                 
-            if len(row[9])>0:
-                elevation.append(np.float(row[9])/10)
+            if len(row[8])>0:
+                elevation.append(np.float(row[8])/10)
             else:
                 elevation.append(missingval)
                 
-            startyr.append(row[10][0:4])
-            endyr.append(row[11][0:4])
+            startyr.append(row[9][0:4])
+            endyr.append(row[10][0:4])
         i += 1
         
     stationdata = {'station_id':station_id,'name':station, \
@@ -654,14 +657,14 @@ def getFileNames(latlon,yearrange,localdir):
     Function to retrieve station names to download from the ftp site (see ftplib.retrievefile)
     """  
     # Read the station metadata CSV file
-    csvfile = localdir+'/'+'ish-history.csv'
+    csvfile = localdir+'/'+'isd-history.csv'
     if not os.path.exists(csvfile):
         print 'Cannot find station history csv file, downloading...'
         ftpdir = '/pub/data/noaa/'
         ftpsrvr = 'ftp.ncdc.noaa.gov'
         ftp = FTP(ftpsrvr)
         ftp.login() 
-        hisfile = 'ish-history.csv'
+        hisfile = 'isd-history.csv'
         ftp.cwd(ftpdir)
         try:
             ftp.retrbinary('RETR '+hisfile,open(csvfile, 'wb').write)

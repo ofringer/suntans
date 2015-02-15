@@ -490,26 +490,28 @@ class SliceEdge(Slice):
 
         j=self.j
         # Check if cell-centered variable
-        if self.hasDim(variable,self.griddims['Ne']):
-            isCell=False
-        elif self.hasDim(variable,self.griddims['Nc']): 
-            isCell=True
-            nc1 = self.grad[j,0]
-            nc2 = self.grad[j,1]
-            # check for edges (use logical indexing)
-            ind1 = nc1==-1
-            nc1[ind1]=nc2[ind1]
-            ind2 = nc2==-1
-            nc2[ind2]=nc1[ind2]
+        is3D=True
+        isCell=False
+        if self.hasVar(variable):
+            if self.hasDim(variable,self.griddims['Ne']):
+                isCell=False
+            elif self.hasDim(variable,self.griddims['Nc']): 
+                isCell=True
+                nc1 = self.grad[j,0]
+                nc2 = self.grad[j,1]
+                # check for edges (use logical indexing)
+                ind1 = nc1==-1
+                nc1[ind1]=nc2[ind1]
+                ind2 = nc2==-1
+                nc2[ind2]=nc1[ind2]
 
+            # Check if 3D
+            if self.hasDim(variable,self.griddims['Nk']): # 3D
+                is3D=True
+            else:
+                is3D=False
 
         klayer,Nkmax = self.get_klayer()
-
-        # Check if 3D
-        if self.hasDim(variable,self.griddims['Nk']): # 3D
-            is3D=True
-        else:
-            is3D=False
 
         def ncload(nc,variable,tt):
             if variable=='agemean':
@@ -518,6 +520,13 @@ class SliceEdge(Slice):
                 tmp = aa/ac
                 tmp[ac<1e-12]=0.
                 return tmp/86400.
+
+            if variable=='area':
+                eta = nc.variables['eta'][tt,:]
+                dzf = self.getdzf(eta)
+                dzf = Spatial.getdzf(self,eta)
+
+                return self.df*dzf
 
             else:
                 if self.hasDim(variable,self.griddims['Nk']): # 3D
