@@ -670,13 +670,13 @@ void FindNearestMetStations(propT *prop, gridT *grid, metinT **metin, int myproc
     int i,iptr;
 
     // Determine the maximum points for each variables
-    (int)(*metin)->max_nearest_Uwind = Min((REAL)MAXNEAR, (REAL)(*metin)->NUwind);
-    (int)(*metin)->max_nearest_Vwind = Min((REAL)MAXNEAR, (REAL)(*metin)->NVwind);
-    (int)(*metin)->max_nearest_Tair = Min((REAL)MAXNEAR, (REAL)(*metin)->NTair);
-    (int)(*metin)->max_nearest_Pair = Min((REAL)MAXNEAR, (REAL)(*metin)->NPair);
-    (int)(*metin)->max_nearest_RH = Min((REAL)MAXNEAR, (REAL)(*metin)->NRH);
-    (int)(*metin)->max_nearest_rain = Min((REAL)MAXNEAR, (REAL)(*metin)->Nrain);
-    (int)(*metin)->max_nearest_cloud = Min((REAL)MAXNEAR, (REAL)(*metin)->Ncloud);
+    (*metin)->max_nearest_Uwind =(int)Min((REAL)MAXNEAR, (REAL)(*metin)->NUwind);
+    (*metin)->max_nearest_Vwind =(int)Min((REAL)MAXNEAR, (REAL)(*metin)->NVwind);
+    (*metin)->max_nearest_Tair = (int)Min((REAL)MAXNEAR, (REAL)(*metin)->NTair);
+    (*metin)->max_nearest_Pair = (int)Min((REAL)MAXNEAR, (REAL)(*metin)->NPair);
+    (*metin)->max_nearest_RH = (int)Min((REAL)MAXNEAR, (REAL)(*metin)->NRH);
+    (*metin)->max_nearest_rain = (int)Min((REAL)MAXNEAR, (REAL)(*metin)->Nrain);
+    (*metin)->max_nearest_cloud =(int)Min((REAL)MAXNEAR, (REAL)(*metin)->Ncloud);
 
     // Allocate the indexing arrays
     (*metin)->nearest_Uwind = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
