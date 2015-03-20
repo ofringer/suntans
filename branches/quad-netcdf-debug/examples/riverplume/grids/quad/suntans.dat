@@ -37,7 +37,7 @@ turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
 dt			120	#
 nsteps			2880    #
 Cmax 			1.0	# Maximum permissible Courant number
-ntout			60	#
+ntout			30	#
 ntprog   		1 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
 nonhydrostatic		0	# 0 = hydrostatic, 1 = nonhydrostatic
@@ -73,8 +73,8 @@ readTemperature		0	# Whether or not to read initial temperature profile from fil
 ########################################################################
 outputNetcdf	 	1	  # Output data to netcdf format (0 - binary, 1 - netcdf)
 mergeArrays		1	  # Turn on/off array merging
-outputNetcdfFile	Plume	  # Basename of the output netcdf file
-nstepsperncfile		10	  # Number of time steps to write to each netcdf file
+outputNetcdfFile	Plume	  # Basename of the output netcdf file/s
+nstepsperncfile		30	  # Number of time steps to write to each netcdf file
 metfile			Galveston_NARR_2010.nc # Input meteorological netcdf file
 #metfile		Galveston_Winds_2009_UTM.nc #
 starttime		20100402.000000	#
@@ -90,11 +90,12 @@ Ch			0.0015    # Stanton number / sensible heat flux coefficient (metmodel=3 onl
 Ce			0.0015	  # Dalton number / latent heat flux coefficient (metmodel=3 only)
 netcdfBdy		1	  # 1 - Read the open boundary data from a netcdf file
 netcdfBdyFile		Plume_BC.nc	#
-readinitialnc		0	  # 1 - Read initial conditions from a netcdf file, 0 otherwise
+readinitialnc		1	  # 1 - Read initial conditions from a netcdf file, 0 otherwise
 initialNCfile		Plume_IC.nc	#
 calcage        		1   # Turn on the age calculation
+agemethod		2   # Age calculation method. 1 - type-2 bc source, 2 - internal source	
 calcaverage		1	  # Calculate averages
-ntaverage		720	  # 
+ntaverage		30	  # 
 averageNetcdfFile	Plume_AVG	#
 ########################################################################
 #

@@ -26,7 +26,7 @@ sun = sundriver()
 sun.makebathy=False
 sun.makebnd=True
 sun.makewinds=False
-sun.makeinitial=False
+sun.makeinitial=True
 
 sun.modifyedges = True# Option to modify the boundary edges
 
@@ -106,7 +106,13 @@ sun.useROMSeta=False
 ####
 sun.opt_ic = 'constant' #'constant', 'depth_profile', 'ROMS'
 
-sun.icfile = 'PlumeQuad_IC.nc'
+sun.icfile = 'Plume_IC.nc'
+
+sun.agesourcepoly = 'gis/AgeSourcePolygon.shp'
+
+# Initial temp and salinity
+sun.T0ic = 30
+sun.S0ic = 32
 
 ###
 # Metfile

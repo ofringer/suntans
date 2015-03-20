@@ -1,6 +1,18 @@
+/*
+ * File: initialization.c
+ * Author: Oliver B. Fringer
+ * Institution: Stanford University
+ * --------------------------------
+ * Contains the functions that are used
+ * to initialize the depth, free-surface, and salinity.
+ *
+ * Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
+ * University. All Rights Reserved.
+ *
+ */
 #include "math.h"
-#include "fileio.h"
 #include "suntans.h"
+#include "fileio.h"
 #include "initialization.h"
 
 #define sech 1/cosh
@@ -61,6 +73,8 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
  *
  */
 REAL ReturnDepth(REAL x, REAL y) {
+  REAL length, xmid, shelfdepth, depth;
+
   return 10.0;
 }
 
@@ -85,7 +99,8 @@ REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
  *
  */
 REAL ReturnSalinity(REAL x, REAL y, REAL z) {
-  return 32.0;
+
+ return 32.0;	
 }
 
 /*
@@ -97,7 +112,7 @@ REAL ReturnSalinity(REAL x, REAL y, REAL z) {
  *
  */
 REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
-  return 20.0;
+  return 30.0;
 }
 
 /*
@@ -112,9 +127,31 @@ REAL ReturnTemperature(REAL x, REAL y, REAL z, REAL depth) {
 REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
   return 0;
 }
+
+/*
+ * Function: ReturnSediment
+ * Usage: SediC[Nsize][n][Nk]=ReturnSediment(grid->xv[n],grid->yv[n],z);
+ * ------------------------------------------------------------
+ * Helper function to create an initial sediment concentration field.  Used
+ * in sediment.c IntitalizeSediment function
+ *
+ */
 REAL ReturnSediment(REAL x, REAL y, REAL z, int sizeno) {
+  if(z>-2)
+    return 1;
   return 0;
 }
+
+/*
+ * Function: ReturnBedSedimentRatio
+ * Usage: SediC[Nsize][n][Nk]=ReturnBedSedimentRatio(grid->xv[n],grid->yv[n],z);
+ * ------------------------------------------------------------
+ * Helper function to create an initial bed sediment concentration field.  Used
+ * in sediment.c IntitalizeSediment function
+ * the sum of ratio should be 1
+ */
 REAL ReturnBedSedimentRatio(REAL x, REAL y, int layer, int sizeno,int nsize) {
-   return 0;
+  REAL a;
+  a=1.0/nsize;
+  return a;
 }

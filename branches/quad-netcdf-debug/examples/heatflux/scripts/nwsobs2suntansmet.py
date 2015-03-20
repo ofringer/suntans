@@ -23,7 +23,7 @@ lat0 = 29.29517
 utmzone = 15
 
 # Time period to download
-timestart = '20100101'
+timestart = '20090101'
 timeend = '20120101'
 dt = 1.0/24.0
 
