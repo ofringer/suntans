@@ -271,8 +271,8 @@ class HybridGrid(object):
 
         # Edge coordiainte is the intersection of the voronoi edge 
         # and Delaunay edge
-        tx = self.xp[p1] - self.xp[p2] # Order ensure t is CCW
-        ty = self.yp[p1] - self.yp[p2]
+        tx = self.xp[p2] - self.xp[p1] # Order ensure t is CCW
+        ty = self.yp[p2] - self.yp[p1]
         mag = np.sqrt(tx*tx + ty*ty)
         tx /= mag
         ty /= mag
@@ -285,6 +285,7 @@ class HybridGrid(object):
 
         self.tx = tx
         self.ty = ty
+
         
         # Assume edge is at the mid-point
         #self.xe = 0.5 * (xp[self.edges[:,0]] + xp[self.edges[:,1]])
@@ -849,9 +850,10 @@ class HybridGrid(object):
         # the k-th edge is opposite the k-th point, like in CGAL
         nf = self.nfaces[cell_i]
 
+        edges = [ self.find_edge( (pnts[(i)%nf], pnts[(i+1)%nf]) ) for i in range(nf) ]
         #edges = [ self.find_edge( (pnts[(i+1)%nf], pnts[(i+2)%nf]) ) for i in range(nf) ]
         # This ordering ensures that the 'face' and 'neigh' arrays correspond
-        edges = [ self.find_edge( (pnts[(i+1)%nf], pnts[(i+2)%nf]) ) for i in range(-1,nf-1) ]
+        #edges = [ self.find_edge( (pnts[(i+1)%nf], pnts[(i+2)%nf]) ) for i in range(-1,nf-1) ]
         return edges
 
     _cell_edge_map = None

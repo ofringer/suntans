@@ -466,12 +466,14 @@ class SliceEdge(Slice):
         self.hslice = -de[self.j]
 
 
-    def loadData(self,variable=None,setunits=True):
+    def loadData(self,variable=None,setunits=True,method='mean'):
         """ 
         Load the specified suntans variable data as a vector
 
         Overloaded method for edge slicing - it is quicker to load time step by
         time step in a loop.
+        
+        method: edge interpolation method - 'mean', 'max'
             
         """
 
@@ -492,24 +494,23 @@ class SliceEdge(Slice):
         # Check if cell-centered variable
         is3D=True
         isCell=False
-        if self.hasVar(variable):
-            if self.hasDim(variable,self.griddims['Ne']):
-                isCell=False
-            elif self.hasDim(variable,self.griddims['Nc']): 
-                isCell=True
-                nc1 = self.grad[j,0]
-                nc2 = self.grad[j,1]
-                # check for edges (use logical indexing)
-                ind1 = nc1==-1
-                nc1[ind1]=nc2[ind1]
-                ind2 = nc2==-1
-                nc2[ind2]=nc1[ind2]
+        if self.hasDim(variable,self.griddims['Ne']):
+            isCell=False
+        elif self.hasDim(variable,self.griddims['Nc']): 
+            isCell=True
+            nc1 = self.grad[j,0].copy()
+            nc2 = self.grad[j,1].copy()
+            # check for edges (use logical indexing)
+            ind1 = nc1==-1
+            nc1[ind1]=nc2[ind1]
+            ind2 = nc2==-1
+            nc2[ind2]=nc1[ind2]
 
             # Check if 3D
-            if self.hasDim(variable,self.griddims['Nk']): # 3D
-                is3D=True
-            else:
-                is3D=False
+        if self.hasDim(variable,self.griddims['Nk']): # 3D
+            is3D=True
+        else:
+            is3D=False
 
         klayer,Nkmax = self.get_klayer()
 
@@ -547,7 +548,11 @@ class SliceEdge(Slice):
             tmp = ncload(nc,variable,tt)
             # Return the mean for cell-based variables
             if isCell:
-                self.data[ii,...] = 0.5*(tmp[...,nc1]+tmp[...,nc2])
+                if method == 'mean': 
+                    self.data[ii,...] = 0.5*(tmp[...,nc1]+tmp[...,nc2])
+                elif method == 'max':
+                    tmp2 = np.dstack((tmp[...,nc1], tmp[...,nc2]))
+                    self.data[ii,...]  =tmp2.max(axis=-1)
             else:
                 self.data[ii,...]=tmp[...,self.j]
             # Mask 3D data

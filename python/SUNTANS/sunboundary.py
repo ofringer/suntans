@@ -100,7 +100,7 @@ class Boundary(object):
             self.tsec = self.ncTime()
         
 
-    def __call__(self,tsec,varname,method=1):
+    def __call__(self,tsec,varname,method='quadratic'):
         """
         Interpolates the boundary variable "varname" onto the time step "tsec"
         """

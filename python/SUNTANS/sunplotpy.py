@@ -53,8 +53,8 @@ class SunPlotPy(wx.Frame, Spatial, Grid ):
     bgcolor='k'
     textcolor='w'
     cmap='jet'
-    particlesize = 0.4
-    particlecolor = 'y'
+    particlesize = 1.8
+    particlecolor = 'm'
 
     # other flags
     collectiontype='cells'

@@ -89,8 +89,9 @@ class StreakPlot(object):
         ax.set_ylim(self.ylim)
         ax.set_aspect('equal')
 
-        for lc in self.lcs:
-            ax.add_collection(lc)
+        map(ax.add_collection,self.lcs)
+        #for lc in self.lcs:
+        #    ax.add_collection(lc)
 
         return ax
 

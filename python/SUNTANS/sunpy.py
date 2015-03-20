@@ -283,6 +283,14 @@ class Grid(object):
                 np.ma.masked_array(self.neigh,mask=self.cellmask,fill_value=0)
         
              
+    def convert2hybrid(self):
+        """
+        Converts the suntans grid to a HybridGrid type
+        """
+        return HybridGrid(self.xp,self.yp,self.cells,nfaces=self.nfaces,\
+            xv=self.xv,yv=self.yv)
+
+
     def reCalcGrid(self):
         """
         Recalculate some of the important grid properties manually
@@ -291,8 +299,7 @@ class Grid(object):
         """
         print 'Re-calculating the grid variables...'
 
-        grd = HybridGrid(self.xp,self.yp,self.cells,nfaces=self.nfaces,\
-            xv=self.xv,yv=self.yv)
+        grd = self.convert2hybrid()
 
         self.edges=grd.edges
         self.grad=grd.grad
@@ -300,7 +307,8 @@ class Grid(object):
         self.face=grd.face
         self.mark=grd.mark
 
-        self.calc_def()
+        #self.calc_def()
+        self.DEF = grd.DEF
 
     def calc_def(self):
         """
@@ -565,12 +573,28 @@ class Grid(object):
         """
         
         if not self.__dict__.has_key('kd'):
-            self.kd = spatial.cKDTree(np.vstack((self.xv,self.yv)).T)
+            self._kd = spatial.cKDTree(np.vstack((self.xv,self.yv)).T)
     
         # Perform query on all of the points in the grid
-        dist,ind=self.kd.query(xy,k=NNear)
+        dist,ind=self._kd.query(xy,k=NNear)
         
         return dist, ind
+
+    def find_nearest_boundary(self,markertype=1):
+        """
+        Returns the index 
+        """
+        if not self.__dict__.has_key('xe'):
+            self.calc_edgecoord()
+
+        bdyidx = self.mark==markertype
+        kd = spatial.cKDTree(np.vstack((self.xe[bdyidx],self.ye[bdyidx])).T)
+
+        xy = np.vstack((self.xv,self.yv)).T
+
+        dist,edgeidx=kd.query(xy,k=1)
+
+        return dist, edgeidx
 
     def find_cell(self,x,y):
         """
@@ -1897,7 +1921,7 @@ class Spatial(Grid):
             grad1 = self.grad[:,0]
             grad2 = self.grad[:,1]
             #Apply mask to jj
-            jj[jj.mask]=0
+            jj[self.cellmask]=0
             nc1 = grad1[jj]
             nc2 = grad2[jj]
                     

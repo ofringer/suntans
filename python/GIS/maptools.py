@@ -448,7 +448,7 @@ def plotmap(shpfile,color='0.5',fieldname='FID',convert=None,zone=15,\
     
     return ax, collection
 
-def Contour2Shp(C,outfile):
+def Contour2Shp(C,outfile,projection='WGS84',zone=15,north=True):
     """
     Converts a matplotlib contour object to a shapefile
     
@@ -464,15 +464,42 @@ def Contour2Shp(C,outfile):
     import osgeo.ogr, osgeo.osr
     
     # Create the projection
-    spatialReference = osgeo.osr.SpatialReference()
-    spatialReference.ImportFromProj4('+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+    if projection == 'WGS84':
+        srs = osgeo.osr.SpatialReference()
+        srs.ImportFromProj4('+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs')
+    elif projection == 'UTM':
+        CS='WGS84'
+        # Set the projection
+        srs = osgeo.osr.SpatialReference()
+        if north:
+            proj = "UTM %d (%s) in northern hemisphere."%(zone,CS)
+        else:
+            proj = "UTM %d (%s) in southern hemisphere."%(zone,CS)
+        
+        srs.SetProjCS( proj );
+        srs.SetWellKnownGeogCS( CS );
+        srs.SetUTM( zone, north );
+
     
+    ######
     # Create the shape file
-    driver = osgeo.ogr.GetDriverByName('ESRI Shapefile')
+    ######
+    ext=outfile[-3:]
+    if ext.lower()=='shp':
+        driver = osgeo.ogr.GetDriverByName('ESRI Shapefile')
+    elif ext.lower()=='kml':
+        driver = osgeo.ogr.GetDriverByName('KML')
+    else:
+        print 'Error. Unknown file extension: %s'%ext.lower()
+        return
+    
+    if os.path.exists(outfile):
+        os.unlink(outfile)
+
     shapeData = driver.CreateDataSource(outfile)
     
     # Create the layer
-    layer = shapeData.CreateLayer('Contour', spatialReference, osgeo.ogr.wkbLineString)
+    layer = shapeData.CreateLayer('Contour', srs, osgeo.ogr.wkbLineString)
     
     # Create a field containing the contour level
     field_def = osgeo.ogr.FieldDefn('Contour', osgeo.ogr.OFTReal)
@@ -528,7 +555,7 @@ def Polygon2GIS(xynodes,shpfile,zone,CS='WGS84',north=True):
         
     srs.SetProjCS( proj );
     srs.SetWellKnownGeogCS( CS );
-    srs.SetUTM( zone, True );
+    srs.SetUTM( zone, north );
         
     # Create the shape file
     ext=shpfile[-3:]
@@ -575,7 +602,7 @@ def Polygon2GIS(xynodes,shpfile,zone,CS='WGS84',north=True):
 
 def shapely2shp(shapelyobject,outfile,atts=None):
     """
-    Convert a shapely object to a shapefile
+    Convert a list of shapely objects to a shapefile
     """
     def get_field_type(att):
         if isinstance(att,int):
@@ -585,7 +612,7 @@ def shapely2shp(shapelyobject,outfile,atts=None):
         elif isinstance(att,str):   
             return ogr.OFTString
         else:
-            raise Exeption, 'incompatible type: %s'%(type(att))
+            raise Exception, 'incompatible type: %s'%(type(att))
 
     def get_shape_type(obj):
         if isinstance(obj,geometry.Polygon):
@@ -598,12 +625,14 @@ def shapely2shp(shapelyobject,outfile,atts=None):
             raise Exeption, 'incompatible type: %s'%(type(obj))
 
 
-
-    
     print 'Creating shape file: %s'%outfile
     checkfile(outfile)
 
-    shptype = get_shape_type(shapelyobject)
+    # Make sure the shapelyobject is in a list
+    if not isinstance(shapelyobject,list):
+        shapelyobject = [shapelyobject]
+
+    shptype = get_shape_type(shapelyobject[0])
 
     # Now convert it to a shapefile with OGR    
     driver = ogr.GetDriverByName('Esri Shapefile')
@@ -616,24 +645,26 @@ def shapely2shp(shapelyobject,outfile,atts=None):
     # Add attributes
     if not atts == None:
         for vv in atts.keys():
-            ftype = get_field_type(atts[vv])
+            ftype = get_field_type(atts[vv][0])
             layer.CreateField(ogr.FieldDefn(vv, ftype))
 
     defn = layer.GetLayerDefn()
 
-    # Create a new feature (attribute and geometry)
-    feat = ogr.Feature(defn)
+    # Loop through the list of shapely objects (assume they are all the same)
+    for ii,shpobj in enumerate(shapelyobject):
+        # Create a new feature (attribute and geometry)
+        feat = ogr.Feature(defn)
 
-    if not atts == None:
-        for vv in atts.keys():
-            feat.SetField(vv, atts[vv])
+        if not atts == None:
+            for vv in atts.keys():
+                feat.SetField(vv, atts[vv][ii])
 
-    # Make a geometry, from Shapely object
-    geom = ogr.CreateGeometryFromWkb(shapelyobject.wkb)
-    feat.SetGeometry(geom)
+        # Make a geometry, from Shapely object
+        geom = ogr.CreateGeometryFromWkb(shpobj.wkb)
+        feat.SetGeometry(geom)
 
-    layer.CreateFeature(feat)
-    feat = geom = None  # destroy these
+        layer.CreateFeature(feat)
+        feat = geom = None  # destroy these
 
     # Save and close everything
     ds = layer = feat = geom = None

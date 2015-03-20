@@ -29,7 +29,7 @@ except:
 
 import pdb
 
-class roms_grid(object):
+class ROMSGrid(object):
     """
     Class for ROMS grid
     """
@@ -229,7 +229,7 @@ class roms_grid(object):
         return np.reshape(xy[:,0],(M,N)), np.reshape(xy[:,1],(M,N)) 
         
         
-class ROMS(roms_grid):
+class ROMS(ROMSGrid):
     """
     General class for reading and plotting ROMS model output
     """
@@ -254,7 +254,7 @@ class ROMS(roms_grid):
         self.romsfile = romsfile
         
         # Load the grid        
-        roms_grid.__init__(self,self.romsfile)
+        ROMSGrid.__init__(self,self.romsfile)
         
         # Open the netcdf object
         self._openNC()
@@ -1211,7 +1211,7 @@ class roms_timeseries(ROMS, timeseries):
 
                             
 
-class roms_subset(roms_grid):
+class roms_subset(ROMSGrid):
     """
     Class for subsetting ROMS output
     """
@@ -1245,7 +1245,7 @@ class roms_subset(roms_grid):
         self.Nt = len(self.tind)
         
         # Step 2) Subset the grid variables
-        roms_grid.__init__(self,self.gridfile)
+        ROMSGrid.__init__(self,self.gridfile)
         
         self.SubsetGrid()
         
@@ -1460,7 +1460,7 @@ class roms_subset(roms_grid):
             
         print '##################\nDone!\n##################'
         
-class roms_interp(roms_grid):
+class roms_interp(ROMSGrid):
     """
     Class for intperpolating ROMS output in space and time
     """
@@ -1502,7 +1502,7 @@ class roms_interp(roms_grid):
         self.tind,self.fname = ftime(self.time) # list of time indices and corresponding files
         
         # Step 2) Prepare the grid variables for the interpolation class
-        roms_grid.__init__(self,self.romsfile[0])
+        ROMSGrid.__init__(self,self.romsfile[0])
         
         # rho points
         x,y = self.utmconversion(self.lon_rho,self.lat_rho,self.utmzone,self.isnorth)
@@ -1739,7 +1739,7 @@ def rotateUV(uroms,vroms,ang):
 ## Testing
 ##grdfile = 'http://barataria.tamu.edu:8080/thredds/dodsC/txla_nesting6_grid/txla_grd_v4_new.nc'
 #grdfile = 'C:\\Projects\\GOMGalveston\\MODELLING\\ROMS\\txla_grd_v4_new.nc'
-##grd = roms_grid(grdfile)
+##grd = ROMSGrid(grdfile)
 #
 ##ncfiles = ['http://barataria.tamu.edu:8080/thredds/dodsC/txla_nesting6/ocean_his_%04d.nc'%i for i in range(1,3)]
 ##MF = MFncdap(ncfiles,timevar='ocean_time')
