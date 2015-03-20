@@ -6,7 +6,7 @@ from sunpy import TimeSeries
 import matplotlib.pyplot as plt
 import numpy as np
 
-ncfile = 'data/Heatflux_AVG.nc.0'
+ncfile = 'data/Heatflux_AVG.0'
 XY = np.array([317646., 3240796.])
 
 # Load the suntans time series object
@@ -87,4 +87,14 @@ ax1.set_xticklabels([])
 ax2.set_xticklabels([])
 
 plt.ylim([-1e3,1e3])
+
+# Compare Tair to Hsw to test timing
+plt.figure()
+ax1 = plt.gca()
+TS['variable']='Tair'
+Tair = TS.data.copy()
+ax2 = ax1.twinx()
+ax1.plot(TS.time,Hsw,'r')
+ax2.plot(TS.time,Tair,'b')
+
 plt.show()

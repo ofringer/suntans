@@ -35,9 +35,9 @@ CdB			0.0020	#
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
 dt			120	#
-nsteps			259200  #
+nsteps			43200 259200  #
 Cmax 			1.0	# Maximum permissible Courant number
-ntout			259200	#
+ntout			1000 259200	#
 ntprog   		5 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
 nonhydrostatic		0	# 0 = hydrostatic, 1 = nonhydrostatic
@@ -74,12 +74,16 @@ readTemperature		0	# Whether or not to read initial temperature profile from fil
 #
 ########################################################################
 outputNetcdf	 	1	  # Output data to netcdf format (0 - binary, 1 - netcdf)
-outputNetcdfFile	Heatflux.nc	#
-metfile			Galveston_Met.nc # Input meteorological netcdf file
+outputNetcdfFile	Heatflux	#
+mergeArrays		0	  #
+#metfile			Galveston_Met.nc # Input meteorological netcdf file
+metfile			Galveston_NARR_20072011.nc # Input meteorological netcdf file
 #metfile		Galveston_Winds_2009_UTM.nc #
-starttime		20100102.000000	#
+starttime		20090301.000000	#
+:q
 basetime	 	19900101.000000   #   Base time used for reference in netcdf files
-metmodel  		3  # 0 - no meteorological input; 1 - Wood et al heat flux, 2 - COARE3.0, short and longwave radiation calculated, 3 - constant flux coefficients, 4 - wind only
+gmtoffset		-6	# GMT offset in hours. Only used for shortwave radiation calculation
+metmodel  		2  # 0 - no meteorological input; 1 - Wood et al heat flux, 2 - COARE3.0, short and longwave radiation calculated, 3 - constant flux coefficients, 4 - wind only
 varmodel  		0   	  # Kriging variogram model. 0 - use inverse distance weighting, 1 - spherical model
 range  			50000    # kriging range. Grid units
 nugget  		0.05   	  # kriging nugget parameter
@@ -94,8 +98,9 @@ readinitialnc		0	  # 1 - Read initial conditions from a netcdf file, 0 otherwise
 initialNCfile		suntans_IC.nc	#
 calcage        		0   # Turn on the age calculation
 calcaverage		1	  # Calculate averages
-ntaverage		720	  # 
-averageNetcdfFile	Heatflux_AVG.nc	#
+ntaverage		30	  # 
+nstepsperncfile		2
+averageNetcdfFile	Heatflux_AVG	#
 ########################################################################
 #
 #  Grid Files

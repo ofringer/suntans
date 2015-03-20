@@ -74,7 +74,7 @@ readTemperature		0	# Whether or not to read initial temperature profile from fil
 outputNetcdf	 	1	  # Output data to netcdf format (0 - binary, 1 - netcdf)
 mergeArrays		1	  # Turn on/off array merging
 outputNetcdfFile	Plume	  # Basename of the output netcdf file/s
-nstepsperncfile		10	  # Number of time steps to write to each netcdf file
+nstepsperncfile		30	  # Number of time steps to write to each netcdf file
 metfile			Galveston_NARR_2010.nc # Input meteorological netcdf file
 #metfile		Galveston_Winds_2009_UTM.nc #
 starttime		20100402.000000	#
@@ -94,7 +94,7 @@ readinitialnc		0	  # 1 - Read initial conditions from a netcdf file, 0 otherwise
 initialNCfile		Plume_IC.nc	#
 calcage        		1   # Turn on the age calculation
 calcaverage		1	  # Calculate averages
-ntaverage		720	  # 
+ntaverage		30	  # 
 averageNetcdfFile	Plume_AVG	#
 ########################################################################
 #
