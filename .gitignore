@@ -1,0 +1,14 @@
+# Object files
+*.o
+
+# Executables
+*.exe
+*.out
+main/sun
+main/sunplot
+
+# Data Files
+data/
+*.dat.*
+
+
