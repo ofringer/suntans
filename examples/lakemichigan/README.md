@@ -7,7 +7,7 @@
  - Unpack the gis shoreline data:
 
 ```
-tar -xvf gis.tar gis
+tar -xvf gis.tar 
 ```
 
 ### Step 2)

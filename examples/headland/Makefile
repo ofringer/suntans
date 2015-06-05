@@ -43,18 +43,18 @@ test:	data
 	sh $(EXEC).sh $(NUMPROCS)
 
 quad:	data
-	#python scripts/twod_grid_headland.py
+	python scripts/twod_grid_headland.py
 	cp grids/quad/*.dat rundata/
 	python scripts/suntans_driver_Headland.py
 
 tri:	data
-	#python scripts/run_tom_headland.py
+	python scripts/run_tom_headland.py
 	cp grids/tri/*.dat rundata/
 	python scripts/suntans_driver_Headland.py
 
 hex:	data
-	#python scripts/run_tom_headland.py
-	#python scripts/convert_grid2hex.py
+	python scripts/run_tom_headland.py
+	python scripts/convert_grid2hex.py
 	cp grids/hex/*.dat rundata/
 	python scripts/suntans_driver_Headland.py
 
