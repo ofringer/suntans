@@ -3,7 +3,6 @@
  *
  */
 #include "boundaries.h"
-#include "sediments.h"
 
 static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag);
 

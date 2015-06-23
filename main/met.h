@@ -14,6 +14,7 @@
 //#include "mynetcdf.h"
 
 #define NTmet 3
+#define MAXNEAR 12
 
 /* Structure array for meteorological input data*/
 typedef struct _metinT {
@@ -67,6 +68,24 @@ typedef struct _metinT {
   REAL **Wrain;
   REAL **WRH;
   REAL **Wcloud;
+
+  // Pointers from each cell to the index of the MAXNEAR nearest met points
+  int max_nearest_Uwind;
+  int max_nearest_Vwind;
+  int max_nearest_Tair;
+  int max_nearest_Pair;
+  int max_nearest_rain;
+  int max_nearest_RH;
+  int max_nearest_cloud;
+  int **nearest_Uwind;
+  int **nearest_Vwind;
+  int **nearest_Tair;
+  int **nearest_Pair;
+  int **nearest_rain;
+  int **nearest_RH;
+  int **nearest_cloud;
+  
+
   
   // The actual input data
   REAL **Uwind;
@@ -128,5 +147,5 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
 void AllocateMet(propT *prop, gridT *grid, metT **met, int myproc);
 void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc);
 void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **T);
-REAL shortwave(REAL time, REAL lat,REAL C_cloud);
+REAL shortwave(REAL time, REAL lat,REAL C_cloud, REAL toffset);
 #endif

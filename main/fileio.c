@@ -150,7 +150,7 @@ double getfield(FILE *file, char *str)
       printf("Make sure there are no dangling white spaces or carriage returns at end of input files suntans.dat\n");
       printf("     and dataxy.dat (if used).\n");
     }
-    return 0;
+    return;
   }
 
   while((c != ' ') && (c != '\t') && (c != '\n') && (c != '\r') && (c != EOF)) {
@@ -366,6 +366,10 @@ double GetDefaultValue(char *str, int *status) {
     
    return latitude_DEFAULT;
    
+ } else if(!strcmp(str,"gmtoffset")) {
+    
+   return gmtoffset_DEFAULT;
+ 
  } else if(!strcmp(str,"metmodel")) {
     
    return metmodel_DEFAULT;
@@ -389,6 +393,14 @@ double GetDefaultValue(char *str, int *status) {
 } else if(!strcmp(str,"outputNetcdf")) {
     
    return outputNetcdf_DEFAULT;
+
+} else if(!strcmp(str,"nstepsperncfile")) {
+    
+   return nstepsperncfile_DEFAULT;
+
+} else if(!strcmp(str,"ncfilectr")) {
+    
+   return ncfilectr_DEFAULT;
 
 } else if(!strcmp(str,"Lsw")) {
     
@@ -417,6 +429,10 @@ double GetDefaultValue(char *str, int *status) {
 } else if(!strcmp(str,"calcage")) {
     
    return calcage_DEFAULT;   
+
+} else if(!strcmp(str,"agemethod")) {
+    
+   return agemethod_DEFAULT;   
 
 } else if(!strcmp(str,"calcaverage")) {
     

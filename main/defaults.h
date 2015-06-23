@@ -141,6 +141,9 @@ const int metmodel_DEFAULT = 0;
 // Time offset parameter in days
 const REAL toffSet_DEFAULT = 0.0;
 
+// GMT offset parameter in hours used to correct solar radiation term
+const REAL gmtoffset_DEFAULT = 0.0;
+
 // Interpolation model. 0 - inverse distance weighting; 1 - kriging with spherical variogram
 const int varmodel_DEFAULT = 1;
 
@@ -155,6 +158,12 @@ const REAL range_DEFAULT = 1e5;
 
 //Output data to netcdf format (0 - binary, 1 - netcdf)
 const int outputNetcdf_DEFAULT = 0;
+
+// Number of steps to write to each netcdf file (mergeArray=1 only)
+const int nstepsperncfile_DEFAULT = 999999;
+
+// File number of first netcdf output file (mergeArray=1 only)
+const int ncfilectr_DEFAULT = 0;
 
 //Light extinction depth [m]
 const REAL Lsw_DEFAULT = 2.0;
@@ -176,6 +185,9 @@ const int readinitialnc_DEFAULT = 0;
 
 // Calculate Age variables
 const int calcage_DEFAULT = 0;
+
+// Age calculation method: 1 use river boundaries, 2 - internal source
+const int agemethod_DEFAULT = 1;
 
 // Calculate average quantities
 const int calcaverage_DEFAULT = 0;

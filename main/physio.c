@@ -12,7 +12,6 @@
 #include "physio.h"
 #include "merge.h"
 #include "mynetcdf.h"
-#include "sendrecv.h"
 
 /************************************************************************/
 /*                                                                      */
@@ -49,7 +48,7 @@ void Write2DData(REAL *array, int merge, FILE *fid, char *error_message,
   if(myproc==writeProc) {
     nwritten=fwrite(array2DPointer,sizeof(REAL),arraySize,fid);
     if(nwritten!=arraySize) {
-      printf(error_message,NULL);
+      printf(error_message);
       exit(EXIT_WRITING);
     }
   }
@@ -81,7 +80,7 @@ void Write3DData(REAL **array, REAL *temp_array, int merge, FILE *fid, char *err
 	}
 	nwritten=fwrite(merged2DArray,sizeof(REAL),mergedGrid->Nc,fid);
 	if(nwritten!=mergedGrid->Nc) {
-	  printf(error_message,NULL);
+	  printf(error_message);
 	  exit(EXIT_WRITING);
 	}
       }
@@ -96,7 +95,7 @@ void Write3DData(REAL **array, REAL *temp_array, int merge, FILE *fid, char *err
       }
       nwritten=fwrite(temp_array,sizeof(REAL),grid->Nc,fid);
       if(nwritten!=grid->Nc) {
-	printf(error_message,NULL);
+	printf(error_message);
 	exit(EXIT_WRITING);
       }
     }
@@ -129,14 +128,18 @@ void OpenFiles(propT *prop, int myproc)
   }
   if(prop->netcdfBdy>0){
     MPI_GetFile(filename,DATAFILE,"netcdfBdyFile","OpenFiles",myproc);
-    prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+    //if(myproc==0){
+	prop->netcdfBdyFileID = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
+    //}else{
+    //    prop->netcdfBdyFileID = -1;
+    //}
   }
   if(prop->metmodel>0){
     MPI_GetFile(filename,DATAFILE,"metfile","OpenFiles",myproc);
     prop->metncid = MPI_NCOpen(filename,NC_NOWRITE,"OpenFiles",myproc);
   }
 
-  if(prop->calcaverage){
+  if(prop->calcaverage && prop->mergeArrays==0){
     MPI_GetFile(filename,DATAFILE,"averageNetcdfFile","OpenFiles",myproc);
     sprintf(str,"%s.%d",filename,myproc);
     prop->averageNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
@@ -209,9 +212,11 @@ void OpenFiles(propT *prop, int myproc)
     // No longer writing to verticalgridfile
     
   }else {
-    MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
-    sprintf(str,"%s.%d",filename,myproc);
-    prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+    if(prop->mergeArrays==0){
+	MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
+	sprintf(str,"%s.nc.%d",filename,myproc);
+	prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+    }
   }
 
   if(RESTART) {
@@ -255,12 +260,11 @@ void OutputPhysicalVariables(gridT *grid, physT *phys, propT *prop,int myproc, i
 
   if(!(prop->n%prop->ntout) || prop->n==1+prop->nstart || blowup) {
 
-    if(myproc==0 && VERBOSE>1) {
+    if(myproc==0 && VERBOSE>1) 
       if(!blowup) 
         printf("Outputting data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
       else
         printf("Outputting blowup data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-    }
 
     Write2DData(phys->h,prop->mergeArrays,prop->FreeSurfaceFID,"Error outputting free-surface data!\n",
     		grid,numprocs,myproc,comm);

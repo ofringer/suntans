@@ -1,0 +1,3 @@
+break mynetcdf.c:5089
+run -g --datadir=data
+run -s --datadir=data

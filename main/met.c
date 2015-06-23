@@ -2,19 +2,22 @@
  * Routines for parsing meteorological input data into SUNTANS 
  * 
  */
+
 #include "met.h"
 //#include "phys.h"
 #include "mynetcdf.h"
-#include "sendrecv.h"
 
 /* Private functions */
-void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda,int myproc);
+void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, int **index, REAL **klambda,int myproc);
 static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL D);
-void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, REAL **Dout);
-void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout);
-void linsolve(REAL **A, REAL *b, int N);
+void FindNearestMetStations(propT *prop, gridT *grid, metinT **metin, int myproc);
+void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int **index, int nt, REAL **Dout);
+void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, int **index, REAL *Dout);
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair);
 static REAL qsat(REAL Tw, REAL Pair);
+static REAL satvap(REAL Ta, REAL Pair);
+static REAL vappres(REAL Ta, REAL RH, REAL Pair);
+static REAL longwave_berliand(REAL Ta, REAL Tw, REAL C_cloud, REAL RH, REAL Pair);
 static REAL longwave(REAL Ta, REAL Tw, REAL C_cloud);
 static void cor30a(REAL *y);
 static REAL psiu_30(REAL zet);
@@ -37,15 +40,25 @@ void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int
  /*  Read in the coordinate data*/
  if(VERBOSE>3 && myproc==0) printf("Reading netcdf coordinate data...\n");
  ReadMetNCcoord(prop,grid,metin, myproc);
+
+ /* Find the nearest met points to each grid point */
+ FindNearestMetStations(prop, grid, &metin, myproc);
  
  /* Calculating the interpolation weights for each variable*/
- calcInterpWeights(grid,prop, metin->x_Uwind, metin->y_Uwind, metin->NUwind, metin->WUwind, myproc);
- calcInterpWeights(grid,prop, metin->x_Vwind, metin->y_Vwind, metin->NVwind, metin->WVwind, myproc);
- calcInterpWeights(grid,prop, metin->x_Tair, metin->y_Tair, metin->NTair, metin->WTair, myproc);
- calcInterpWeights(grid,prop, metin->x_Pair, metin->y_Pair, metin->NPair, metin->WPair, myproc);
- calcInterpWeights(grid,prop, metin->x_rain, metin->y_rain, metin->Nrain, metin->Wrain, myproc);
- calcInterpWeights(grid,prop, metin->x_RH, metin->y_RH, metin->NRH, metin->WRH, myproc);
- calcInterpWeights(grid,prop, metin->x_cloud, metin->y_cloud, metin->Ncloud, metin->Wcloud, myproc);
+ calcInterpWeights(grid,prop, metin->x_Uwind, metin->y_Uwind, 
+    metin->max_nearest_Uwind, metin->nearest_Uwind, metin->WUwind, myproc);
+ calcInterpWeights(grid,prop, metin->x_Vwind, metin->y_Vwind,
+     metin->max_nearest_Vwind, metin->nearest_Vwind, metin->WVwind, myproc);
+ calcInterpWeights(grid,prop, metin->x_Tair, metin->y_Tair,
+    metin->max_nearest_Tair, metin->nearest_Tair, metin->WTair, myproc);
+ calcInterpWeights(grid,prop, metin->x_Pair, metin->y_Pair,
+    metin->max_nearest_Pair, metin->nearest_Pair, metin->WPair, myproc);
+ calcInterpWeights(grid,prop, metin->x_rain, metin->y_rain,
+    metin->max_nearest_rain, metin->nearest_rain, metin->Wrain, myproc);
+ calcInterpWeights(grid,prop, metin->x_RH, metin->y_RH,
+    metin->max_nearest_RH, metin->nearest_RH, metin->WRH, myproc);
+ calcInterpWeights(grid,prop, metin->x_cloud, metin->y_cloud,
+    metin->max_nearest_cloud, metin->nearest_cloud, metin->Wcloud, myproc);
  
  if(VERBOSE>3 && myproc==0){
     printf("Uwind weights:\n");
@@ -59,11 +72,16 @@ void InitialiseMetFields(propT *prop, gridT *grid, metinT *metin, metT *met, int
  }
  
  /*  Interpolate the heights of some variables */
- if(VERBOSE>1 && myproc==0) printf("Interpolating height coordinates onto grid...\n");
- weightInterpField(metin->z_Uwind, metin->WUwind, grid, metin->NUwind, met->z_Uwind);
- weightInterpField(metin->z_Vwind, metin->WVwind, grid, metin->NVwind, met->z_Vwind);
- weightInterpField(metin->z_Tair, metin->WTair, grid, metin->NTair, met->z_Tair);
- weightInterpField(metin->z_RH, metin->WRH, grid, metin->NRH, met->z_RH);
+ if(VERBOSE>1 && myproc==0) printf("Interpolating height coordinates onto grid...");
+ weightInterpField(metin->z_Uwind, metin->WUwind, grid,
+    metin->max_nearest_Uwind, metin->nearest_Uwind, met->z_Uwind);
+ weightInterpField(metin->z_Vwind, metin->WVwind, grid,
+    metin->max_nearest_Vwind, metin->nearest_Vwind, met->z_Vwind);
+ weightInterpField(metin->z_Tair, metin->WTair, grid,
+    metin->max_nearest_Tair, metin->nearest_Tair, met->z_Tair);
+ weightInterpField(metin->z_RH, metin->WRH, grid,
+    metin->max_nearest_RH, metin->nearest_RH, met->z_RH);
+ if(VERBOSE>1 && myproc==0) printf("Done.\n");
   
 } // End of InitialiseMetFields
 
@@ -85,21 +103,26 @@ void updateMetData(propT *prop, gridT *grid, metinT *metin, metT *met, int mypro
       if(VERBOSE>3 && myproc==0) printf("Updating netcdf variable at nc timestep: %d\n",t1);
       /* Read in the data two time steps*/
       ReadMetNC(prop, grid, metin, myproc);
-      //Wait for the other processors
-      MPI_Barrier(comm);
 
       metin->t1=t1;
       metin->t0=t1-1;
       metin->t2=t1+1;
       
       /* Interpolate the two time steps onto the grid*/
-      weightInterpArray(metin->Uwind, metin->WUwind, grid, metin->NUwind, NTmet, met->Uwind_t);
-      weightInterpArray(metin->Vwind, metin->WVwind, grid, metin->NVwind, NTmet, met->Vwind_t);
-      weightInterpArray(metin->Tair, metin->WTair, grid, metin->NTair, NTmet, met->Tair_t);
-      weightInterpArray(metin->Pair, metin->WPair, grid, metin->NPair, NTmet, met->Pair_t);
-      weightInterpArray(metin->rain, metin->Wrain, grid, metin->Nrain, NTmet, met->rain_t);
-      weightInterpArray(metin->RH, metin->WRH, grid, metin->NRH, NTmet, met->RH_t);
-      weightInterpArray(metin->cloud, metin->Wcloud, grid, metin->Ncloud, NTmet, met->cloud_t);
+      weightInterpArray(metin->Uwind, metin->WUwind, grid,
+	  metin->max_nearest_Uwind, metin->nearest_Uwind, NTmet, met->Uwind_t);
+      weightInterpArray(metin->Vwind, metin->WVwind, grid,
+	  metin->max_nearest_Vwind, metin->nearest_Vwind, NTmet, met->Vwind_t);
+      weightInterpArray(metin->Tair, metin->WTair, grid,
+	  metin->max_nearest_Tair, metin->nearest_Tair, NTmet, met->Tair_t);
+      weightInterpArray(metin->Pair, metin->WPair, grid,
+      	metin->max_nearest_Pair, metin->nearest_Pair, NTmet, met->Pair_t);
+      weightInterpArray(metin->rain, metin->Wrain, grid,
+	  metin->max_nearest_rain, metin->nearest_rain, NTmet, met->rain_t);
+      weightInterpArray(metin->RH, metin->WRH, grid,
+	  metin->max_nearest_RH, metin->nearest_RH, NTmet, met->RH_t);
+      weightInterpArray(metin->cloud, metin->Wcloud, grid,
+	  metin->max_nearest_cloud, metin->nearest_cloud, NTmet, met->cloud_t);
     }
     
     /* Do a linear temporal interpolation */
@@ -381,7 +404,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
       for(k=0;k<Nc;k++){
 	 (*metin)->WUwind[k][j]=0.0;
       }
-       for(n=0;k<NTmet;n++){
+       for(n=0;n<NTmet;n++){
 	 (*metin)->Uwind[n][j]=0.0;
       }
   }  
@@ -467,10 +490,11 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
 * Calculates the interpolation weights for all grid points based on "Ns" interpolants
 * at cooridinates (xo, yo)
 */
-void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REAL **klambda, int myproc){
+void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, int **index, REAL **klambda, int myproc){
     
-    int j, i, jj, ii, iptr;
+    int j, i, jj, ii, iptr, jptr;
     int Nc = grid->Nc;
+    const REAL inversepower = 2.2;
     REAL sumgamma, dist, tmp;
     REAL *gamma;
     REAL **C, **Ctmp;
@@ -494,8 +518,8 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
 	i = grid->cellp[iptr];  
 	sumgamma=0.0;
 	for(j=0;j<Ns;j++){
-	    dist = pow(grid->xv[i]-xo[j],2) + pow(grid->yv[i]-yo[j],2);
-	    gamma[j] = 1.0/dist;
+	    dist = pow(grid->xv[i]-xo[index[i][j]],2) + pow(grid->yv[i]-yo[index[i][j]],2);
+	    gamma[j] = 1.0/pow(dist,inversepower);
 	    sumgamma += gamma[j];
 	    //printf("dist = %f, sum = %f\n",dist,sumgamma);
 	}
@@ -510,38 +534,31 @@ void calcInterpWeights(gridT *grid, propT *prop, REAL *xo, REAL *yo, int Ns, REA
     }else{ // kriging
 	if(VERBOSE>1 && myproc==0)  printf("Calculating interpolation weights using kriging...\n");
 	
-	// Construct the LHS Matrix C
-	for(i=0;i<Ns+1;i++){
-	  for(j=0;j<Ns+1;j++){
-	    C[i][j]=1.0;
-	  }
-	}
-	for(i=0;i<Ns;i++){
-	  //C[i][i]=0.0;
-	  C[i][i]=semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, 0.0);
-	  for(j=i+1;j<Ns;j++){
-	    dist = sqrt(  pow(xo[i]-xo[j],2) + pow(yo[i]-yo[j],2) );
-	    C[i][j] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
-	    C[j][i]=C[i][j];
-	  }
-	}
-	C[Ns][Ns]=0.0;
-	
-// 	printf("C[i][j]:\n");
-// 	for(i=0;i<Ns+1;i++){
-// 	  for(j=0;j<Ns+1;j++){
-// 	    printf("%1.6f ",C[i][j]);
-// 	  }
-// 	  printf("\n");
-// 	}
-	
-	// Loop through each model grid point and calculate the  weights
-	//for(i=0;i<Nc;i++){
+	// Loop through each model grid point and
 	for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
 	  i = grid->cellp[iptr];  
-	  for(j=0;j<Ns;j++){
-	    dist = sqrt( pow(grid->xv[i]-xo[j],2) + pow(grid->yv[i]-yo[j],2) );
-	    gamma[j] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
+
+	  // Construct the LHS Matrix C
+	  for(ii=0;ii<Ns+1;ii++){
+	    for(j=0;j<Ns+1;j++){
+	      C[ii][j]=1.0;
+	    }
+	  }
+	  for(ii=0;ii<Ns;ii++){
+	    C[ii][ii]=semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, 0.0);
+	    for(j=ii+1;j<Ns;j++){
+	      dist = sqrt(  pow(xo[index[i][ii]]-xo[index[i][j]],2) + pow(yo[index[i][ii]]-yo[index[i][j]],2) );
+	      C[ii][j] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
+	      C[j][ii]=C[ii][j];
+	    }
+	  }
+	  C[Ns][Ns]=0.0;
+
+
+	  // calculate the  weights
+	  for(jj=0;jj<Ns;jj++){
+	    dist = sqrt( pow(grid->xv[i]-xo[index[i][jj]],2) + pow(grid->yv[i]-yo[index[i][jj]],2) );
+	    gamma[jj] = semivariogram(prop->varmodel, prop->nugget, prop->sill, prop->range, dist);
 	  }
 	  gamma[Ns]=1.0;
 	  
@@ -598,9 +615,7 @@ static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL
       tmp = D/range;
       return (nugget + (sill - nugget) * (1.5*tmp - 0.5 * pow(tmp,3))); 
    }
-   return 0.0;
  }  
-
  return 0.0;
 }
 
@@ -610,7 +625,7 @@ static REAL semivariogram(int varmodel, REAL nugget, REAL sill, REAL range, REAL
 * Perform weighted interpolation on a field D [2d-array]
 *
 */
-void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, REAL **Dout){
+void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int **index, int nt, REAL **Dout){
   int i,j, k, iptr;
   for(k=0;k<nt;k++){
     //for(i=0;i<Nc;i++){
@@ -618,7 +633,7 @@ void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, RE
         i = grid->cellp[iptr];  
 	Dout[k][i] = 0.0;
 	for(j=0;j<Ns;j++){
-	    Dout[k][i] += klambda[i][j] * D[k][j];
+	    Dout[k][i] += klambda[i][j] * D[k][index[i][j]];
 	}
     }
   }
@@ -630,7 +645,7 @@ void weightInterpArray(REAL **D, REAL **klambda, gridT *grid, int Ns, int nt, RE
 * Perform weighted interpolation on a field D [vector]
 *
 */
-void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout){
+void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, int **index, REAL *Dout){
   int i,j,iptr;
   
 //  for(i=0;i<Nc;i++){
@@ -638,59 +653,73 @@ void weightInterpField(REAL *D, REAL **klambda, gridT *grid, int Ns, REAL *Dout)
       i = grid->cellp[iptr];  
       Dout[i] = 0.0;
       for(j=0;j<Ns;j++){
-	  Dout[i] += klambda[i][j] * D[j];
+	  Dout[i] += klambda[i][j] * D[index[i][j]];
       }
   }
 }
 
-/*
-* Function: linsolve()
-* --------------------
-* Solves a linear system of equations A.x=b
-* 
-* A is a square matrix and b is a vector.
-* The solution x is returned in vector b
-* 
-* Reference:
-* 	Golub and Van Loan, "Matrix Computations", 1999, Ch 3
+/* 
+* Function: FindNearestMetStations()
+* -----------------------------
+* Find the N Nearest met stations to each grid cell
+*
 */
-void linsolve(REAL **A, REAL *b, int N){
+void FindNearestMetStations(propT *prop, gridT *grid, metinT **metin, int myproc){
 
-  int i,j,k;
-  REAL sumi;
-  
-  // Algorithm to find LU decomp - See page 99
-  for(k=0;k<N-1;k++){
-    for(i=k+1;i<N;i++){
-      A[i][k] = A[i][k]/A[k][k];
-      for(j=k+1;j<N;j++){
-	A[i][j] = A[i][j] - A[k][j]*A[i][k];
-      }
-    }
-  }
+    int Nc = grid->Nc;
+    int i,iptr;
 
-  // Solve L.y=b via forward substitution (Alg 3.1.1);
-  b[0] = b[0];
-  for(i=1;i<N;i++){
-    sumi=0.0;
-    for(j=0;j<i;j++){
-      sumi = sumi + A[i][j]*b[j];
-    }
-    b[i]=b[i]-sumi;
-  }
-  
-  //Solve U.x=y via backward substitution (Alg 3.1.2)
-  
-  b[N-1] = b[N-1]/A[N-1][N-1];
-  for(i=N-2;i>=0;i--){
-    sumi=0.0;
-    for(j=i+1;j<N;j++){
-      sumi = sumi + A[i][j]*b[j];
-    }
-    b[i] = (b[i] - sumi)/A[i][i];
-  }  
-} // End of linsolve
+    // Determine the maximum points for each variables
+    (*metin)->max_nearest_Uwind =(int)Min((REAL)MAXNEAR, (REAL)(*metin)->NUwind);
+    (*metin)->max_nearest_Vwind =(int)Min((REAL)MAXNEAR, (REAL)(*metin)->NVwind);
+    (*metin)->max_nearest_Tair = (int)Min((REAL)MAXNEAR, (REAL)(*metin)->NTair);
+    (*metin)->max_nearest_Pair = (int)Min((REAL)MAXNEAR, (REAL)(*metin)->NPair);
+    (*metin)->max_nearest_RH = (int)Min((REAL)MAXNEAR, (REAL)(*metin)->NRH);
+    (*metin)->max_nearest_rain = (int)Min((REAL)MAXNEAR, (REAL)(*metin)->Nrain);
+    (*metin)->max_nearest_cloud =(int)Min((REAL)MAXNEAR, (REAL)(*metin)->Ncloud);
 
+    // Allocate the indexing arrays
+    (*metin)->nearest_Uwind = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_Vwind = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_Tair = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_Pair = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_rain = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_RH = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    (*metin)->nearest_cloud = (int **)SunMalloc(Nc*sizeof(int *),"AllocateMetIn");
+    for(i=0;i<Nc;i++){
+        (*metin)->nearest_Uwind[i] = (int *)SunMalloc((*metin)->max_nearest_Uwind*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_Vwind[i] = (int *)SunMalloc((*metin)->max_nearest_Vwind*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_Tair[i] = (int *)SunMalloc((*metin)->max_nearest_Tair*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_Pair[i] = (int *)SunMalloc((*metin)->max_nearest_Pair*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_rain[i] = (int *)SunMalloc((*metin)->max_nearest_rain*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_RH[i] = (int *)SunMalloc((*metin)->max_nearest_RH*sizeof(int),"AllocateMetIn");
+        (*metin)->nearest_cloud[i] = (int *)SunMalloc((*metin)->max_nearest_cloud*sizeof(int),"AllocateMetIn");
+    }
+    
+    // Go through and find the N nearest points for each variable
+    //FindNearest(int *points, REAL *x, REAL *y, int N, int np, REAL xi, REAL yi)
+    for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+	i = grid->cellp[iptr];  
+
+	FindNearest((*metin)->nearest_Uwind[i], (*metin)->x_Uwind, (*metin)->y_Uwind,
+		(*metin)->NUwind, (*metin)->max_nearest_Uwind, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_Vwind[i], (*metin)->x_Vwind, (*metin)->y_Vwind,
+		(*metin)->NVwind, (*metin)->max_nearest_Vwind, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_Tair[i], (*metin)->x_Tair, (*metin)->y_Tair,
+		(*metin)->NTair, (*metin)->max_nearest_Tair, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_Pair[i], (*metin)->x_Pair, (*metin)->y_Pair,
+		(*metin)->NPair, (*metin)->max_nearest_Pair, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_RH[i], (*metin)->x_RH, (*metin)->y_RH,
+		(*metin)->NRH, (*metin)->max_nearest_RH, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_rain[i], (*metin)->x_rain, (*metin)->y_rain,
+		(*metin)->Nrain, (*metin)->max_nearest_rain, grid->xv[i], grid->yv[i]);
+	FindNearest((*metin)->nearest_cloud[i], (*metin)->x_cloud, (*metin)->y_cloud,
+		(*metin)->Ncloud, (*metin)->max_nearest_cloud, grid->xv[i], grid->yv[i]);
+    
+    }
+
+
+}// End function
 
 /*
 * Function: updateAirSeaFluxes()
@@ -749,14 +778,14 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     i = grid->cellp[iptr];  
     ktop = grid->ctop[i];
     // Wind speed
-    Umag = sqrt( pow( (met->Uwind[i]-phys->uc[i][ktop]) ,2) + pow( (met->Vwind[i]-phys->vc[i][ktop]),2) );
-    //Umag = sqrt( pow(met->Uwind[i],2) + pow(met->Vwind[i],2) );
+    //Umag = sqrt( pow( (met->Uwind[i]-phys->uc[i][ktop]) ,2) + pow( (met->Vwind[i]-phys->vc[i][ktop]),2) );
+    Umag = sqrt( pow(met->Uwind[i],2) + pow(met->Vwind[i],2) );
     x[0] = Umag;
 
     // Surface current speed in wind direction
     // This is the projection of the water velocity vector onto the wind velocity vector
-    x[1] = 0.0; 
-    //x[1] = fabs(phys->uc[j][ktop]*met->Uwind[j]/Umag + phys->vc[j][ktop]*met->Vwind[j]/Umag); 
+    //x[1] = 0.0; 
+    x[1] = fabs(phys->uc[i][ktop]*met->Uwind[i]/Umag + phys->vc[i][ktop]*met->Vwind[i]/Umag); 
 
     // Water temperature
     x[2] = T[i][ktop];
@@ -772,10 +801,11 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     
     // Longwave radiation
     met->Hlw[i] = longwave(met->Tair[i],T[i][ktop],met->cloud[i]);
+    //met->Hlw[i] = longwave_berliand(met->Tair[i],T[i][ktop],met->cloud[i],met->RH[i],met->Pair[i]);
     x[6] = met->Hlw[i];
     
     // Shortwave radiation
-    met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i]);
+    met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i],prop->gmtoffset/24.0);
     x[7] = met->Hsw[i];
     
     //rain [mm/hr] (rain heat flux is not included at the moment)
@@ -841,8 +871,8 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
       //met->tau_x[j] = x[6] * x[15] * x[14] * (met->Uwind[j] - phys->uc[j][ktop]);
       //met->tau_y[j] = x[6] * x[15] * x[14] * (met->Vwind[j] - phys->vc[j][ktop]);
       // No gust speed in stress term
-      met->tau_x[i] = x[6] * x[15] * Umag * (met->Uwind[i] - phys->uc[i][ktop]);
-      met->tau_y[i] = x[6] * x[15] * Umag * (met->Vwind[i] - phys->vc[i][ktop]);
+      met->tau_x[i] = x[6] * x[10] * Umag * (met->Uwind[i] - phys->uc[i][ktop]);
+      met->tau_y[i] = x[6] * x[10] * Umag * (met->Vwind[i] - phys->vc[i][ktop]);
 
       //No surface current dependence 
       //met->tau_x[j] = x[6] * x[15] * x[14] * met->Uwind[j];
@@ -860,7 +890,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
 
 
     // Check for nans and dump the inputs
-    for(n=0;n<19;n++){
+    for(n=0;n<8;n++){
     	if(x[n]!=x[n]){
 	   printf("Error in COARE3.0 Algorithm at i = %d, x[%d] = nan.\n",i,n);
 	   printf("Uwind[%d] = %6.10f, z_Uwind = %6.10f m\n",i,met->Uwind[i],met->z_Uwind[i]);
@@ -887,18 +917,19 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
 */
 static REAL specifichumidity(REAL RH, REAL Ta, REAL Pair){
  
- REAL cff;
- //REAL eps=1e-8;
- /*
-  * Compute air saturation vapor pressure (mb), using Teten formula.
-  */
-  cff=(1.0007+3.46E-6*Pair)*6.1121*exp(17.502*Ta/(240.97+Ta+SMALL));
-  
-  /*
-  *  Compute specific humidity at Saturation, Qair (kg/kg).
-  */
-  cff=cff*RH/100;                    // Vapor pres (mb)
-  return (0.62197*(cff/(Pair-0.378*cff+SMALL))); // Spec hum (kg/kg)
+ //REAL cff;
+ ////REAL eps=1e-8;
+ ///*
+ // * Compute air saturation vapor pressure (mb), using Teten formula.
+ // */
+ // cff=(1.0007+3.46E-6*Pair)*6.1121*exp(17.502*Ta/(240.97+Ta+SMALL));
+ // 
+ // /*
+ // *  Compute specific humidity at Saturation, Qair (kg/kg).
+ // */
+ // cff=cff*RH/100;                    // Vapor pres (mb)
+ // return (0.62197*(cff/(Pair-0.378*cff+SMALL))); // Spec hum (kg/kg)
+ return RH*0.01*qsat(Ta,Pair);
 } // End specifichumidity
 
 
@@ -918,6 +949,65 @@ static REAL qsat(REAL Tw, REAL Pair){
  
   return (0.62197*(cff/(Pair-0.378*cff+SMALL)));
 } // End qsat
+
+/*
+ * Function: satvap()
+ * --------------------
+ *  Calculate the saturation vapor pressure
+ *
+ *  Taken from the matlab airsea toolbox
+ */
+static REAL satvap(REAL Ta, REAL Pair){
+    REAL ew, fw;
+
+    ew = pow( (0.7859+0.03477*Ta) / (1.+0.00412*Ta),10.);
+    fw = 1.0 + 1e-6*Pair*(4.5+6e-4*pow(Ta,2));
+
+    return fw*ew;
+}
+/*
+ * Function: vappres()
+ * --------------------
+ *  Calculate the  vapor pressure from relative humidity
+ *
+ *  Taken from the matlab airsea toolbox
+ */
+static REAL vappres(REAL Ta, REAL RH, REAL Pair){
+    REAL ew, rw, r;
+    const REAL eps_air = 0.62197; // molecular weight ratio (water/air)
+
+    ew = satvap(Ta,Pair);
+    rw = eps_air*ew / (Pair-ew);
+    r = (RH*0.01) * rw;
+
+    return r*Pair / (eps_air+r);
+
+}
+/*
+* Function: longwave_berliand()()
+* --------------------
+* Calculate net longwave radiation into water
+*
+* Uses the Berliand (1952) bulk formula
+*
+* Taken from the matlab air sea toolbox
+* 
+*/
+static REAL longwave_berliand(REAL Ta, REAL Tw, REAL C_cloud, REAL RH, REAL Pair){
+  
+  // Constants
+  const REAL T_ref = 273.16;             // conversion from C to K
+  const REAL sigma = 5.6697e-8;         // Boltzmann constant (W m^{-2} K^{-4})
+  const REAL epsilon_w = 0.985;           // emissivity of water
+  
+  REAL e_a;
+
+  e_a = vappres(Ta,RH,Pair);
+  
+  return -epsilon_w*sigma*pow(Ta+T_ref,4.) * (0.39 - 0.05*sqrt(e_a)) * C_cloud -
+  	4*epsilon_w*sigma*pow(Ta+T_ref,3.)*(Tw-Ta);
+  
+}
 
 /*
 * Function: longwave()
@@ -959,20 +1049,23 @@ static REAL longwave(REAL Ta, REAL Tw, REAL C_cloud){
 * Compute solar radiation flux using the Gill, 1982 formulae 
 *
 */
-REAL shortwave(REAL time, REAL Lat,REAL C_cloud){
+REAL shortwave(REAL time, REAL Lat,REAL C_cloud, REAL toffset){
   
   const REAL S=1368.0;  //[W m-2]
   const REAL albedo = 0.06;
   const REAL R = 0.76;
   REAL omega1, omega0;
   REAL delta, singamma, Qsc, Hsw;
+  REAL gmttime;
 
   omega1 = 2*PI/1.0; // Diurnal cycle
   omega0 = 2*PI/365.25; // Annual cycle
 
+  // Remove the gmtoffset from the time (assume units are the same)
+  gmttime = time + toffset;
 
-  delta = 23.5*PI/180 * cos(omega0*time - 2.95);
-  singamma = sin(delta)*sin(PI*Lat/180) - cos(delta)*cos(PI*Lat/180)*cos(omega1*time);
+  delta = 23.5*PI/180 * cos(omega0*gmttime - 2.95);
+  singamma = sin(delta)*sin(PI*Lat/180) - cos(delta)*cos(PI*Lat/180)*cos(omega1*gmttime);
 
   // Clear sky radiation
   if(singamma >= 0.0){
@@ -987,6 +1080,27 @@ REAL shortwave(REAL time, REAL Lat,REAL C_cloud){
   
 } // End shortwave
 
+/* Function: bulkflux()
+ * ------------------------
+ * Calculates air-sea fluxes using bulk flux formulation
+ *
+ * Adapted from the matlab air-sea toolbox
+ *
+ */
+
+//static void bulkflux(REAL *y){
+//    // Input variables
+//    REAL ur = y[0]; //wind speed [m/s] measured at height zr [m] 
+//    REAL zr = y[1];
+//    REAL Ta = y[2]; //   = air temperature [C] measured at height zt [m]
+//    REAL zt = y[3];
+//    REAL rh = y[4]; //   = relative humidity [%] measured at height zq [m]
+//    REAL zq = y[5];
+//    REAL Pa = y[6]; //   = air pressure [mb]
+//    REAL Ts = y[7]; //   = sea surface temperature [C]
+//
+//
+//}
 
 /* 
 * Function:  cor30a()
@@ -1069,12 +1183,12 @@ static void cor30a(REAL *y){
    zoq=0.0;
    L=0.0;
    /***************   wave parameters  *********/
-   lwave=grav/2/PI*pow(twave,2);
-   cwave=grav/2/PI*twave;
+   //lwave=grav/2/PI*pow(twave,2);
+   //cwave=grav/2/PI*twave;
    
    /**************  compute aux stuff *******/
-   Rns=Rs*.945;
-   Rnl=0.97*(5.67e-8*pow(ts-0.3*jcool+tdk,4)-Rl);
+   //Rns=Rs*.945;
+   //Rnl=0.97*(5.67e-8*pow(ts-0.3*jcool+tdk,4)-Rl);
    
    /***************   Begin bulk loop *******/
    
@@ -1111,8 +1225,10 @@ static void cor30a(REAL *y){
     nits=1;
    }
    usr=ut*von/(log(zu/zo10) - psiu_30(zu/L10));
-   tsr=-(dt-dter*jcool)*von*fdg/(log(zt/zot10)-psit_30(zt/L10));
-   qsr=-(dq-wetc*dter*jcool)*von*fdg/(log(zq/zot10)-psit_30(zq/L10));
+   tsr=-dt*von*fdg/(log(zt/zot10)-psit_30(zt/L10));
+   qsr=-dq*von*fdg/(log(zq/zot10)-psit_30(zq/L10));
+   //tsr=-(dt-dter*jcool)*von*fdg/(log(zt/zot10)-psit_30(zt/L10));
+   //qsr=-(dq-wetc*dter*jcool)*von*fdg/(log(zq/zot10)-psit_30(zq/L10));
    
    tkt=.001;
    
@@ -1128,25 +1244,27 @@ static void cor30a(REAL *y){
   for(i=0;i<nits;i++){
      zet=von*grav*zu/ta*(tsr*(1+0.61*Q)+.61*ta*qsr)/(usr*usr)/(1+0.61*Q);
      //Hard-wire it without waves
-     zo=charn*usr*usr/grav+0.11*visa/usr;
+     zo=charn*usr*usr/grav+0.11*visa/usr; // Eq. 6
 
-//       if((int)jwave==0){
-//           zo=charn*usr*usr/grav+0.11*visa/usr;
-//       }
-//       if((int)jwave==1){
-//           zo=50.0/2.0/PI*lwave*pow(usr/cwave,4.5)+0.11*visa/usr;
-//       } // Oost et al
-//       if((int)jwave==2){
-//           zo=1200.0*hwave*pow(hwave/lwave,4.5)+0.11*visa/usr;
-//       } // Taylor and Yelland
+     //if((int)jwave==0){
+     //    zo=charn*usr*usr/grav+0.11*visa/usr;
+     //}
+     //if((int)jwave==1){
+     //    zo=50.0/2.0/PI*lwave*pow(usr/cwave,4.5)+0.11*visa/usr;
+     //} // Oost et al
+     //if((int)jwave==2){
+     //    zo=1200.0*hwave*pow(hwave/lwave,4.5)+0.11*visa/usr;
+     //} // Taylor and Yelland
       
-      rr=zo*usr/visa;
+      rr=zo*usr/visa; // Roughness reynolds number (see Eq. 7)
       L=zu/zet;
-      zoq=Min(1.15e-4,5.5e-5/pow(rr,0.6));
+      zoq=Min(1.15e-4,5.5e-5/pow(rr,-0.6));// Eq. 28
       zot=zoq;
       usr=ut*von/(log(zu/zo)-psiu_30(zu/L));
-      tsr=-(dt-dter*jcool)*von*fdg/(log(zt/zot)-psit_30(zt/L));
-      qsr=-(dq-wetc*dter*jcool)*von*fdg/(log(zq/zoq)-psit_30(zq/L));
+      tsr=-dt*von*fdg/(log(zt/zot10)-psit_30(zt/L10));
+      qsr=-dq*von*fdg/(log(zq/zot10)-psit_30(zq/L10));
+      //tsr=-(dt-dter*jcool)*von*fdg/(log(zt/zot)-psit_30(zt/L));
+      //qsr=-(dq-wetc*dter*jcool)*von*fdg/(log(zq/zoq)-psit_30(zq/L));
       Bf=-grav/ta*usr*(tsr+.61*ta*qsr);
       
       if (Bf>0){
@@ -1156,9 +1274,10 @@ static void cor30a(REAL *y){
       }
       
       ut=sqrt(du*du+ug*ug);
-      Rnl=0.97*(5.67e-8*pow(ts-dter*jcool+tdk,4)-Rl);
+      //Rnl=0.97*(5.67e-8*pow(ts-dter*jcool+tdk,4)-Rl);
       hsb=-rhoa*cpa*usr*tsr;
       hlb=-rhoa*Le*usr*qsr;
+      /*
       qout=Rnl+hsb+hlb;
       dels=Rns*(.065+11*tkt-6.6e-5/tkt*(1-exp(-tkt/8.0e-4))); 	// Eq.16 Shortwave
       qcol=qout-dels;
@@ -1175,6 +1294,7 @@ static void cor30a(REAL *y){
      
       dter=qcol*tkt/tcw; //  Eq.12 Cool skin
       dqer=wetc*dter;
+      */
      
   }//bulk iter loop
   
@@ -1183,25 +1303,27 @@ static void cor30a(REAL *y){
   hlb=-rhoa*Le*usr*qsr;
   
   
-  /****************   rain heat flux ********/
-  dwat=2.11e-5*pow((t+tdk)/tdk,1.94); // water vapour diffusivity
-  dtmp=(1.+3.309e-3*t-1.44e-6*t*t)*0.02411/(rhoa*cpa); 	//heat diffusivity
-  alfac= 1/(1+(wetc*Le*dwat)/(cpa*dtmp));      	// wet bulb factor
-  RF= rain*alfac*cpw*((ts-t-dter*jcool)+(Qs-Q-dqer*jcool)*Le/cpa)/3600;
-  
-  /****************   Webb et al. correection  ************/
-  wbar=1.61*hlb/Le/(1+1.61*Q)/rhoa+hsb/rhoa/cpa/ta;//formulation in hlb already includes webb
-  hl_webb=rhoa*wbar*Q*Le;
-  
-  /**************   compute transfer coeffs relative to ut @meas. ht **********/
-  Cd=tau/rhoa/ut/Max(0.1,du);
-  Ch=-usr*tsr/ut/(dt-dter*jcool);
-  Ce=-usr*qsr/(dq-dqer*jcool)/ut;
-  
-  /************  10-m neutral coeff realtive to ut ********/
-  Cdn_10=von*von/log(10/zo)/log(10/zo);
-  Chn_10=von*von*fdg/log(10/zo)/log(10/zot);
-  Cen_10=von*von*fdg/log(10/zo)/log(10/zoq);
+  ///****************   rain heat flux ********/
+  //dwat=2.11e-5*pow((t+tdk)/tdk,1.94); // water vapour diffusivity
+  //dtmp=(1.+3.309e-3*t-1.44e-6*t*t)*0.02411/(rhoa*cpa); 	//heat diffusivity
+  //alfac= 1/(1+(wetc*Le*dwat)/(cpa*dtmp));      	// wet bulb factor
+  //RF= rain*alfac*cpw*((ts-t-dter*jcool)+(Qs-Q-dqer*jcool)*Le/cpa)/3600;
+  //
+  ///****************   Webb et al. correection  ************/
+  //wbar=1.61*hlb/Le/(1+1.61*Q)/rhoa+hsb/rhoa/cpa/ta;//formulation in hlb already includes webb
+  //hl_webb=rhoa*wbar*Q*Le;
+  //
+  ///**************   compute transfer coeffs relative to ut @meas. ht **********/
+  Cd=tau/rhoa/ut/Max(.1,du);
+  Ch=-usr*tsr/ut/(dt);
+  Ce=-usr*qsr/(dq)/ut;
+  //Ch=-usr*tsr/ut/(dt-dter*jcool);
+  //Ce=-usr*qsr/(dq-dqer*jcool)/ut;
+  //
+  ///************  10-m neutral coeff realtive to ut ********/
+  //Cdn_10=von*von/log(10/zo)/log(10/zo);
+  //Chn_10=von*von*fdg/log(10/zo)/log(10/zot);
+  //Cen_10=von*von*fdg/log(10/zo)/log(10/zoq);
   
   /* Output variable back into the input array */
   y[0] = hsb;
@@ -1214,15 +1336,18 @@ static void cor30a(REAL *y){
   y[7] = usr;
   y[8] = tsr;
   y[9] = qsr;
-  y[10] = dter;
-  y[11] = dqer;
-  y[12] = tkt;
-  y[13] = RF;
-  y[14] = ut;
-  y[15] = Cd;
-  y[16] = Ch;
-  y[17] = Ce;
-  y[18] = ug;
+  y[10] = Cd;
+  //y[11] = Ch;
+  //y[12] = Ce;
+  //y[10] = dter;
+  //y[11] = dqer;
+  //y[12] = tkt;
+  //y[13] = RF;
+  //y[14] = ut;
+  //y[15] = Cd;
+  //y[16] = Ch;
+  //y[17] = Ce;
+  //y[18] = ug;
   
   //printf("y[13]:%6.6f, y[14]:%6.6f, y[15]:%6.6f, y[16]:%6.6f, y[17]:%6.6f, y[18]:%6.6f\n",y[13],y[14],y[15],y[16],y[17],y[18]);
   //y=[hsb hlb tau zo zot zoq L usr tsr qsr dter dqer tkt RF wbar Cd Ch Ce Cdn_10 Chn_10 Cen_10 ug ];

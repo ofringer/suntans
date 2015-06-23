@@ -11,6 +11,7 @@
 typedef struct _ageT {
   REAL **agec;
   REAL **agealpha;
+  REAL **agesource;
   REAL **Cn_Ac;
   REAL **Cn_Aa;
 

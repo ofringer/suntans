@@ -17,7 +17,6 @@
 #include<stdlib.h>
 #include<stdio.h>
 #include "memory.h"
-#include "mympi.h"
 #include<string.h>
 
 /*
@@ -32,7 +31,7 @@
 void *SunMalloc(const unsigned bytes, const char *function) {
   void *ptr = malloc(bytes);
 
-  //  VerboseMemory=1;
+    //VerboseMemory=1;
 
   if(ptr==NULL) {
     printf("Error.  Out of memory!\n");

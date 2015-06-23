@@ -18,6 +18,7 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
   REAL Coriolis_f, ubar, depth_face;
 
   /* This is the sponge layer */
+  /* MR Turned off - rSponge variable not initialized correctly!
   if(prop->sponge_distance) {
     for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
       j = grid->edgep[jptr]; 
@@ -37,7 +38,7 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop) {
 	  prop->sponge_decay*(phys->u[j][k]-ubar);
     }
   }
-
+  */
   /* Coriolis for a 2d problem */
   if(prop->n==prop->nstart+1) {
     printf("Initializing v Coriolis for a 2.5D simulation\n");

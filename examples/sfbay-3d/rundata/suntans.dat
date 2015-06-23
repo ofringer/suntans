@@ -3,8 +3,8 @@
 #  Input file for SUNTANS.
 #
 ########################################################################
-mergeArrays		0	# Don't merge
 Nkmax	 		30	# Number of cells in the vertical
+maxFaces		3	# Number of faces
 stairstep		0	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1.3	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
@@ -16,7 +16,7 @@ dzsmall			0.1	# Smallest grid spacing ratio before correction
 fixdzz			1	# Fix vertical grid spacing
 scaledepth 		0 	# Scale the depth by scalefactor
 scaledepthfactor 	0 	# Depth scaling factor (to test deep grids with explicit methods)
-thetaramptime	        0  	# Timescale over which theta is ramped from 1 to theta (fs theta only)
+thetaramptime	        1800  	# Timescale over which theta is ramped from 1 to theta (fs theta only)
 beta			7e-4	# Expansivity of salt
 theta			0.55	# 0: fully explicit, 1: fully implicit
 thetaS			0.55	# For scalar advection
@@ -63,11 +63,40 @@ laxWendroff     	0       # No Lax Wendroff diffusion coefficients
 laxWendroff_Vertical    0       # No Lax Wendroff diffusion coefficients
 newcells		0	#
 wetdry			1       # 1 if wetting and drying, 0 otherwise
+newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 Coriolis_f              8.95e-5	# Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        0 	# Decay distance scale for sponge layer
 sponge_decay	        0	# Decay time scale for sponge layer
 readSalinity		0	# Whether or not to read initial salinity profile from file InitSalinityFile
 readTemperature		0	# Whether or not to read initial temperature profile from file InitTemperatureFile
+########################################################################
+#
+# NetCDF / Meteorological / Boundary parameters
+#
+########################################################################
+outputNetcdf	 	1	  # Output data to netcdf format (0 - binary, 1 - netcdf)
+outputNetcdfFile SFBay3D 	# Name of the output netcdf file
+metfile	windfile.nc # Input meteorological netcdf file
+#metfile		Galveston_Winds_2009_UTM.nc #
+starttime	20130101.120000   # Model start time string format yyyymmdd.HHMMSS
+basetime 	19900101.000000   #   Base time used for reference in netcdf files
+metmodel  		0  # 0 - no meteorological input; 1 - Wood et al heat flux, 2 - COARE3.0, short and longwave radiation calculated, 3 - constant flux coefficients, 4 - wind only
+varmodel  		1   	  # Kriging variogram model. 0 - use inverse distance weighting, 1 - spherical model
+range  			50000    # kriging range. Grid units
+nugget  		0.05   	  # kriging nugget parameter
+sill  			0.95       # kriging sill parameter
+Lsw			0.5	  # Solar radiation extinction depth [m] (the light extinction coefficient, k = 1/Lsw)
+Cda			0.0011    # Wind drag coefficient (metmodel=3 only)
+Ch			0.0011    # Stanton number / sensible heat flux coefficient (metmodel=3 only)
+Ce			0.0011	  # Dalton number / latent heat flux coefficient (metmodel=3 only)
+netcdfBdy		1	  # 1 - Read the open boundary data from a netcdf file
+netcdfBdyFile 		SFBay3D_BC.nc # Name of the boundary netcdf file
+readinitialnc		1	  # 1 - Read initial conditions from a netcdf file, 0 otherwise
+initialNCfile  		SFBay3D_IC.nc  # Initial condition netcdf file name
+calcage        		0   # Turn on the age calculation
+calcaverage		0	  # Calculate averages
+ntaverage		120	  # 
+averageNetcdfFile	cylinder_AVG.nc	#
 ########################################################################
 #
 #  Grid Files

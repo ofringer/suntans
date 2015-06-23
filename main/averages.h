@@ -25,20 +25,25 @@ typedef struct _averageT {
   REAL **T;
   REAL **rho;
   REAL **nu_v;
+  REAL **kappa_tv;
+
+  REAL **counter;
 
   REAL *h;
+  REAL *h_avg;
 
   // Flux variables
   REAL **U_F; // volume flux
   REAL **s_F; //Salt flux @ face
-  REAL ** T_F; // Temperature flux @ faceL
+  REAL **T_F; // Temperature flux @ faceL
 
   // Depth-integrated T/S (for budgets)
   REAL *s_dz;
   REAL *T_dz;
 
   // Age variables
-  REAL **agemean;
+  REAL **agec;
+  REAL **agealpha;
 
   // Atmospheric flux variables
   REAL *Uwind;
@@ -62,12 +67,15 @@ typedef struct _averageT {
   REAL *tmpvarW;
   REAL *tmpvarE;
 
+  int initialavgfilectr;
+
 } averageT;
 
 /* *** Public Functions *** */
 void AllocateAverageVariables(gridT *grid, averageT **average, propT *prop);
 void ZeroAverageVariables(gridT *grid, averageT *average, propT *prop);
 void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *met, propT *prop, MPI_Comm comm, int myproc);
+void UpdateAverageScalars(gridT *grid, averageT *average, physT *phys, metT *met, propT *prop,MPI_Comm comm, int myproc);
 void ComputeAverageVariables(gridT *grid, averageT *average, physT *phys, metT *met, int netaverage, propT *prop);
 void SendRecvAverages(propT *prop, gridT *grid, averageT *average, MPI_Comm comm, int myproc);
 

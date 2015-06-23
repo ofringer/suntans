@@ -167,7 +167,7 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 void CreateCellGraph(gridT *grid);
 void CreateEdgeGraph(gridT *grid);
 void Connectivity(gridT *grid, int myproc);
-int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc);
+inline int IsBoundaryCell(int mgptr, gridT *maingrid, int myproc);
 void AllocateTransferArrays(gridT **grid, int myproc, int numprocs, MPI_Comm comm);
 void FreeTransferArrays(gridT *grid, int myproc, int numprocs, MPI_Comm comm);
 REAL GetArea(REAL *xt, REAL *yt, int Nf);

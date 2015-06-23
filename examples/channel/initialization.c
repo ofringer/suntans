@@ -113,6 +113,9 @@ REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
   return n1;
 }
 
- 
-REAL ReturnSediment(REAL x, REAL y, REAL z, int sizeno) {}
-REAL ReturnBedSedimentRatio(REAL x, REAL y, int layer, int sizeno,int nsize) {}
+REAL ReturnSediment(REAL x, REAL y, REAL z, int sizeno) {
+  return 0;
+}
+REAL ReturnBedSedimentRatio(REAL x, REAL y, int layer, int sizeno,int nsize) {
+   return 0;
+}
