@@ -1111,54 +1111,6 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     InitializeMerging(grid,prop->outputNetcdf,numprocs,myproc,comm);
   }
 
-  
-  // Initialise the meteorological forcing input fields
-    if(prop->metmodel>0){
-      if (prop->gamma==0.0){
-	if(myproc==0) printf("Warning gamma must be > 1 for heat flux model.\n");
-      }else{
-	if(myproc==0) printf("Initial temperature = %f.\n",phys->T[0][0]);
-      }
-      AllocateMetIn(prop,grid,&metin,myproc);
-      AllocateMet(prop,grid,&met,myproc);
-      InitialiseMetFields(prop, grid, metin, met,myproc);
-      
-      // Initialise the heat flux variables
-      updateMetData(prop, grid, metin, met, myproc, comm); 
-     if(prop->metmodel>=2) {      
-	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
-
-	//Communicate across processors
-	ISendRecvCellData2D(met->Hs,grid,myproc,comm);
-	ISendRecvCellData2D(met->Hl,grid,myproc,comm);
-	ISendRecvCellData2D(met->Hsw,grid,myproc,comm);
-	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
-	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
-	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
-    }
-  }
-
-  // Initialise the output netcdf file metadata
-    if(prop->outputNetcdf==1){
-      InitialiseOutputNCugrid(prop, grid, phys, met, myproc);
-    }
-
-  // Initialise the average arrays and netcdf file
-  if(prop->calcaverage>0){
-    AllocateAverageVariables(grid,&average,prop);
-    ZeroAverageVariables(grid,average,prop);
-    InitialiseAverageNCugrid(prop, grid, average, myproc);
-  }
-  
-  // get the windstress (boundaries.c) - this needs to go after met data allocation -MR
-  WindStress(grid,phys,prop,met,myproc);
-
-  // Set up arrays to merge output
-  if(prop->mergeArrays) {
-    if(VERBOSE>2 && myproc==0) printf("Initializing arrays for merging...\n");
-    InitializeMerging(grid, prop->outputNetcdf, numprocs, myproc, comm);
-  }
-
   // main time loop
   for(n=prop->nstart+1;n<=prop->nsteps+prop->nstart;n++) {
 

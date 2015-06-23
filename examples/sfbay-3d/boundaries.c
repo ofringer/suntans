@@ -10,6 +10,7 @@
  * University. All Rights Reserved.
  *
  */
+#include "sendrecv.h"
 #include "boundaries.h"
 #include "mynetcdf.h"
 #include "sediments.h"
@@ -193,8 +194,6 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
    // Update the netcdf boundary data
    if(prop->netcdfBdy==1){ 
        UpdateBdyNC(prop,grid,myproc,comm);
-       // Wait for all processors
-       MPI_Barrier(comm);
    }
 
   // Type-2
@@ -316,8 +315,8 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 
 	    def1 /= dgf;
 	    def2 /= dgf;
-	    phys->tau_T[j] = (met->tau_x[nc1]*def1 + met->tau_x[nc2]*def2)*grid->n1[j] + 
-		(met->tau_y[nc1]*def1 + met->tau_y[nc2]*def2)*grid->n2[j];  
+	    phys->tau_T[j] = (met->tau_x[nc2]*def1 + met->tau_x[nc1]*def2)*grid->n1[j] + 
+		(met->tau_y[nc2]*def1 + met->tau_y[nc1]*def2)*grid->n2[j];  
 
 	   phys->tau_T[j] /= RHO0; 
 	   phys->tau_T[j] *= rampfac;
@@ -702,19 +701,21 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, 
     Nk = (*bound)->Nk;
     */
     // Read in the dimensions
-    if(myproc==0){
+    //if(myproc==0){
 	printf("Reading boundary netcdf dimensions...\n");
 	Ntype3 = returndimlenBC(prop->netcdfBdyFileID,"Ntype3");
 	Ntype2 = returndimlenBC(prop->netcdfBdyFileID,"Ntype2");
 	Nseg = returndimlenBC(prop->netcdfBdyFileID,"Nseg");
 	Nt = returndimlenBC(prop->netcdfBdyFileID,"Nt");
 	Nk = returndimlenBC(prop->netcdfBdyFileID,"Nk");
-    }
+    //}
+    /*
     MPI_Bcast(&(Ntype3),1,MPI_INT,0,comm);
     MPI_Bcast(&(Ntype2),1,MPI_INT,0,comm);
     MPI_Bcast(&(Nseg),1,MPI_INT,0,comm);
     MPI_Bcast(&(Nt),1,MPI_INT,0,comm);
     MPI_Bcast(&(Nk),1,MPI_INT,0,comm);
+    */
 
     (*bound)->Ntype3=Ntype3;
     (*bound)->Nseg=Nseg;
@@ -971,46 +972,6 @@ void BoundarySediment(gridT *grid, physT *phys, propT *prop) {
     for(nosize=0;nosize<sediments->Nsize;nosize++){
       for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
         sediments->boundary_sediC[nosize][jptr-grid->edgedist[2]][k]=0;
-      }
-    }
-  }
-
-  // At the ocean boundary
-  for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
-    i = grid->cellp[iptr];
-    for(nosize=0;nosize<sediments->Nsize;nosize++){
-      for(k=0;k<grid->ctop[i];k++) {
-        sediments->SediC[nosize][i][k]=0;
-      } 
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-        sediments->SediC[nosize][i][k]=0;
-      }
-    }
-  }
-}
-
-void InitBoundaryData(propT *prop, gridT *grid, int myproc){}
-void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){}
-
-/*
- * Function: BoundarySediment
- * Usage: BoundarySediment(boundary_s,boundary_T,grid,phys,prop);
- * -------------------------------------------------------------
- * This will set the values of the suspended sediment concentration
- * at the open boundaries.
- * 
- */
-void BoundarySediment(gridT *grid, physT *phys, propT *prop) {
-  int jptr, j, ib, k,nosize,i,iptr;
-  REAL z;
-
-  // At the upstream boundary
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
-    j=grid->edgep[jptr];
-    ib=grid->grad[2*j];
-    for(nosize=0;nosize<sediments->Nsize;nosize++){
-      for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
-        sediments->boundary_sediC[nosize][jptr-grid->edgedist[2]][k]=200;
       }
     }
   }

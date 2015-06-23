@@ -65,5 +65,4 @@ clean:
 
 clobber: clean
 	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/*~ 
-	cp boundaries-no-nc.c boundaries.c
 

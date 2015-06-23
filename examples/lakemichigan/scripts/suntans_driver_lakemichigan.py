@@ -14,7 +14,7 @@ from sundriver import sundriver, dumpinputs
 starttime = '20120301.000000'
 endtime = '20120401.000000'
 dt = 3600.0
-sunpath = 'rundata'
+sunpath = 'data'
 
 plotdir = 'plots/inputs'
 ###
@@ -23,7 +23,7 @@ plotdir = 'plots/inputs'
 sun = sundriver()
 
 # Switches to generate bathymetry, boundary, meteorology and initial condition input files
-sun.makebathy=True
+sun.makebathy=False
 sun.makebnd=False
 sun.makewinds=False
 sun.makeinitial=True

@@ -4,7 +4,7 @@
 #
 ########################################################################
 Nkmax			10	# Number of vertical grid layers
-maxFaces		3	# Maximum number of horizontal faces
+maxFaces		7	# Maximum number of horizontal faces
 stairstep	        0	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1.0	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points

@@ -28,7 +28,7 @@ LD = $(CC)
 CFLAGS =
 MATHLIB = -lm
 
-EXEC=lakemighigan
+EXEC=lakemichigan
 OBJS = 
 SUN = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC) $(NETCDFINCLUDE) 
