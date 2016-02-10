@@ -20,10 +20,11 @@
 //static void SetUVWH(gridT *grid, physT *phys, propT *prop, int ib, int j, int boundary_index, REAL boundary_flag);
 
 static void MatchBndPoints(propT *prop, gridT *grid, int myproc);
+static void InitRelaxationBC(propT *prop, gridT *grid, int myproc);
 static void FluxtoUV(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
 static void SegmentArea(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 int isGhostEdge(int j, gridT *grid, int myproc);
-int getTimeRecBnd(REAL nctime, REAL *time, int nt);
+//int getTimeRecBnd(REAL nctime, REAL *time, int nt);
 
 /*
  * Function: OpenBoundaryFluxes
@@ -269,6 +270,36 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
   ISendRecvCellData3D(phys->vc,grid,myproc,comm);
   //ISendRecvCellData3D(phys->wc,grid,myproc,comm);
 }
+
+/*
+ * Function: ScalarRelaxationBoundary()
+ * ------------------------------------
+ * Scalar relaxation boundary condition
+ *
+ * This assumes that the interior points are the same
+ * depth or shallower than the open boundary
+ */
+void ScalarRelaxationBoundary(REAL **scalar, REAL **boundary_scalar,
+        gridT *grid, physT *phys, propT *prop) {
+    int k, i, iptr, t2idx;
+    REAL alpha;
+
+    if(bound->hasType2>0){
+        for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+            i = grid->cellp[iptr];  
+            if(bound->rdist_type2[i] < prop->sponge_distance){
+                t2idx = bound->closest_type2[i];
+                alpha = exp(-4.0* bound->rdist_type2[i] / prop->sponge_distance);
+
+                for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+                    scalar[i][k] = (1-alpha)*scalar[i][k] + 
+                            alpha*boundary_scalar[k][t2idx];
+                }
+            }
+        }
+    }
+
+} // End of function: ScalarRelaxationBoundary
 	
 /*
  * Function: WindStress
@@ -382,6 +413,8 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
     // Step 3) Match each boundary point with its local grid point
     if(VERBOSE>1 && myproc==0) printf("Matching boundary points...\n");
     MatchBndPoints(prop, grid, myproc);
+
+    InitRelaxationBC(prop, grid, myproc);
 
     // Step 4) Read in the forward and backward time steps into the boundary arrays
     if(VERBOSE>1 && myproc==0) printf("Reading netcdf boundary initial data...\n");
@@ -591,6 +624,30 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 
 }//End function isGhostEdge
 
+/*
+ * Function: InitRelaxationBC()
+ * -------------------------
+ * Initialise the variables used for the relaxation boundary condition
+ */
+ static void InitRelaxationBC(propT *prop, gridT *grid, int myproc){
+     int iptr, i;
+
+    if(bound->hasType2>0){
+        for(iptr=grid->celldist[0];iptr<grid->celldist[1];iptr++) {
+            i = grid->cellp[iptr];  
+
+            /* Find the index of the closest type-2 boundary */
+            FindNearest(&bound->closest_type2[i], bound->xe, bound->ye,
+		bound->Ntype2, 1, grid->xv[i], grid->yv[i]);
+
+            /*bound->closest_type2 indexes arrays: boundary_u, boundary_v etc.*/
+            /*Find the distance */ 
+	    bound->rdist_type2[i] = 
+                sqrt( pow(grid->xv[i]-bound->xe[bound->closest_type2[i]],2) + 
+                pow(grid->yv[i]-bound->ye[bound->closest_type2[i]],2));
+        }
+    }
+} // End function InitRelaxationBC
 
 /*
  * Function: MatchBndPoints()
@@ -666,7 +723,7 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, MPI_Comm comm){
 
      int Ntype2, Ntype3, Nseg, Nt, Nk;
-     int j, k, i, n;
+     int j, k, i, iptr, n;
      int n3, n2; // Number of type 2 and 3 on a processor's grid
 
     //Allocate memory
@@ -771,6 +828,10 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, 
 	(*bound)->boundary_w_t = (REAL ***)SunMalloc(NT*sizeof(REAL),"AllocateBoundaryData");
 	(*bound)->boundary_T_t = (REAL ***)SunMalloc(NT*sizeof(REAL),"AllocateBoundaryData");
 	(*bound)->boundary_S_t = (REAL ***)SunMalloc(NT*sizeof(REAL),"AllocateBoundaryData");
+
+        /* Relaxation BC variables */
+	(*bound)->closest_type2 = (int *)SunMalloc(grid->Nc*sizeof(int),"AllocateBoundaryData");
+	(*bound)->rdist_type2 = (REAL *)SunMalloc(grid->Nc*sizeof(REAL),"AllocateBoundaryData");
 
 	for(k=0;k<Nk;k++){
 	    (*bound)->boundary_u[k] = (REAL *)SunMalloc(Ntype2*sizeof(REAL),"AllocateBoundaryData");
@@ -918,6 +979,8 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, 
 	}
     }
     if(myproc==0) printf("Finished Zeroing Type2 boundary arrays...\n");
+
+
 
     if((*bound)->hasType3>0){
 	for(j=0;j<Ntype3;j++){

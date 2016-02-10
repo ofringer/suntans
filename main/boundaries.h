@@ -126,6 +126,11 @@ typedef struct _boundT{
   REAL **T;
   REAL **S;
   REAL *h;
+
+  /*Relaxation BC variables*/
+  int *closest_type2;
+  REAL *rdist_type2; 
+
 } boundT;
 
 // Declare the boundary structure global
@@ -136,6 +141,7 @@ FILE *windFID;
 void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phys, propT *prop);
 void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
 void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
+void ScalarRelaxationBoundary(REAL **scalar, REAL **boundary_scalar, gridT *grid, physT *phys, propT *prop);
 void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc);
 void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 void BoundarySediment(gridT *grid, physT *phys, propT *prop);

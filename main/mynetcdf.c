@@ -4686,7 +4686,11 @@ void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
     //Find the time index of the middle time step (t1) 
     if(bound->t0==-1){
        bound->t1 = getTimeRecBnd(prop->nctime,bound->time,(int)bound->Nt); //this is in met.c
-       bound->t0=bound->t1-1;
+       if(bound->t1==0){
+           bound->t0=0;
+       }else{
+           bound->t0=bound->t1-1;
+       }
        bound->t2=bound->t1+1;
        printf("myproc: %d, bound->t0: %d, nctime: %f\n",myproc,bound->t0, prop->nctime);
     }

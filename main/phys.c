@@ -1207,6 +1207,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
         UpdateScalars(grid,phys,prop,phys->wnew,phys->T,phys->boundary_T,phys->Cn_T,
             prop->kappa_T,prop->kappa_TH,phys->kappa_tv,prop->theta,
             phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDtemp);
+
+        // Relaxation boundary condition
+        if(prop->sponge_distance>0)
+            ScalarRelaxationBoundary(phys->T, bound->boundary_T ,grid, phys, prop);
 	
 	getchangeT(grid,phys); // Get the change in surface temp
         ISendRecvCellData3D(phys->T,grid,myproc,comm);
@@ -1246,6 +1250,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 		prop->kappa_s,prop->kappa_sH,phys->kappa_tv,prop->theta,
 		NULL,NULL,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
 	}
+        // Relaxation boundary condition
+        if(prop->sponge_distance>0)
+            ScalarRelaxationBoundary(phys->s, bound->boundary_S ,grid, phys, prop);
+	
 	ISendRecvCellData3D(phys->s,grid,myproc,comm);
 
 	if(prop->metmodel>0){
