@@ -289,10 +289,10 @@ void ScalarRelaxationBoundary(REAL **scalar, REAL **boundary_scalar,
             i = grid->cellp[iptr];  
             if(bound->rdist_type2[i] < prop->sponge_distance){
                 t2idx = bound->closest_type2[i];
-                alpha = exp(-4.0* bound->rdist_type2[i] / prop->sponge_distance);
+                alpha = exp(-8.0* bound->rdist_type2[i] / prop->sponge_distance);
 
                 for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-                    scalar[i][k] = (1-alpha)*scalar[i][k] + 
+                    scalar[i][k] = (1.0-alpha)*scalar[i][k] + 
                             alpha*boundary_scalar[k][t2idx];
                 }
             }
