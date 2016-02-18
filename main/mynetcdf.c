@@ -260,20 +260,7 @@ void nc_write_doublevar(int ncid, char *vname, gridT *grid, REAL *tmparray, int 
 
 
 
-/*
-* Function: getTimeRec()
-* -----------------------------
-*  Retuns the index of the first preceding time step in the vector time
-*/
-int getTimeRec(REAL nctime, REAL *time, int nt){
-   int j;
-   
-   for(j=0;j<nt;j++){
-      if (time[j]>=nctime)
-	return j-1;
-   }
-   return nt;
-}
+
 
 /*
  * Function: nc_write_2D_merge()
@@ -4453,7 +4440,12 @@ void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc){
 
     if(metin->t0==-1){
 	metin->t1 = getTimeRec(prop->nctime,metin->time,(int)metin->nt);
-	metin->t0 = metin->t1-1;
+        if(metin->t1==0){
+           metin->t0=0;
+        }else{
+           metin->t0=metin->t1-1;
+        }
+	//metin->t0 = metin->t1-1;
 	metin->t2 = metin->t1+1;
     }
     t0 = metin->t0;
@@ -5178,7 +5170,21 @@ void ReturnAgeNC(propT *prop, gridT *grid, REAL *htmp, int Nci, int Nki, int T0,
 
 } // End function
 
-
+/*
+* Function: getTimeRec()
+* -----------------------------
+*  Retuns the index of the first preceding time step in the vector time
+*/
+int getTimeRec(REAL nctime, REAL *time, int nt){
+   int j;
+   
+   for(j=0;j<nt;j++){
+      if (time[j]>=nctime)
+	//return j-1;
+	return j;
+   }
+   return nt;
+}
 /*
 * Function: GetTimeRecBnd()
 * ------------------
