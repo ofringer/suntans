@@ -133,7 +133,7 @@ const int computeSediments_DEFAULT = 0;
  *  Heat flux model and meteorological IO netcdf Parameters
  */
 // Latitude - required by solar radiation function
-const int latitude_DEFAULT = 29.0;
+const int latitude_DEFAULT = 0.0;
 
 // 0 - no meteorological input; 1 - COARE3.0, short and longwave radiation calculated
 const int metmodel_DEFAULT = 0; 
