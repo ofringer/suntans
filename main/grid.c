@@ -2070,7 +2070,8 @@ static void ReOrder(gridT *grid)
  *
  */
 // could be written to be more efficient, potentially missing some
-// of the important ideas here
+//of the important ideas here
+/*
 static void EdgeMarkers(gridT *maingrid, gridT **localgrid, int myproc)
 {
   int n, ne, nf;
@@ -2124,6 +2125,36 @@ static void EdgeMarkers(gridT *maingrid, gridT **localgrid, int myproc)
       }
     }
   }
+}
+*/
+// 
+static void EdgeMarkers(gridT *maingrid, gridT **localgrid, int myproc)
+{
+    int n, ne, nf, nc1, nc2;
+
+    // for the cells on the local grid
+    for(n=0;n<(*localgrid)->Nc;n++) {
+        // if the cell is a ghost cell
+        if(IsBoundaryCell((*localgrid)->mnptr[n],maingrid,myproc)==3) {
+            // for each face on the ghost cell
+            for(nf=0;nf<(*localgrid)->nfaces[n];nf++) {
+                // get the edge information
+                ne = (*localgrid)->face[n*(*localgrid)->maxfaces+nf];
+                // if the edge is marked as ghost or computational
+
+                if(!(*localgrid)->mark[ne]){
+                   nc1 = (*localgrid)->grad[2*ne];
+                   nc2 = (*localgrid)->grad[2*ne+1];
+                     if(nc1 == n)
+                        nc1 = nc2;
+                    if(nc1!=-1 && IsBoundaryCell((*localgrid)->mnptr[nc1],maingrid,myproc)!=3) 
+                         (*localgrid)->mark[ne]=5;
+                    else 
+                         (*localgrid)->mark[ne]=6;
+                }
+            }
+        }
+    }
 }
 
 /*
