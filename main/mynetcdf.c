@@ -12,7 +12,7 @@
 * Private functions
 ***********************************************/
 
-const void* FillValue(int empty);
+void FillValue(int *empty);
 static void ravel(REAL **tmparray, REAL *tmpvec, gridT *grid);
 static void ravelW(REAL **tmparray, REAL *tmpvec,gridT *grid);
 static void ravelEdge(REAL **tmparray, REAL *tmpvec, gridT *grid);
@@ -4411,9 +4411,9 @@ static void ravelEdge(REAL **tmparray, REAL *tmpvec,gridT *grid){
     }
   }
 }//End of function
-const void* FillValue(int empty){
+void FillValue(int *empty){
   /* Converts the EMPTY value expression type to match the type expected by nc_def_var_fill*/
-  empty = (REAL)empty;
+  *empty = (REAL)(*empty);
 }
  
 /*###############################################################

@@ -150,7 +150,7 @@ double getfield(FILE *file, char *str)
       printf("Make sure there are no dangling white spaces or carriage returns at end of input files suntans.dat\n");
       printf("     and dataxy.dat (if used).\n");
     }
-    return;
+    return -1;
   }
 
   while((c != ' ') && (c != '\t') && (c != '\n') && (c != '\r') && (c != EOF)) {

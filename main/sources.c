@@ -154,6 +154,12 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
   REAL RSW = 0.0;
  
   REAL Ta , M , U2, rh ,H_SW, H_LW , lap, mslp;
+
+
+  REAL topface, botface, depth=0; //These will be used with the heat conservative scheme of solar radiation
+  REAL ksw1 = 1/prop->Lsw; //These are extinction coefficients. L1 and L2 are in met.h  
+  
+  REAL wave1, wave1term1, wave1term2, wave1term3, wave2, wave2term1, wave2term2, wave2term3; //These are the terms from the infinite reflections formula
   
   sigma = 5.67e-8;        // Boltzmann constant (W m^{-2} K^{-4})
   epsilon_w = 0.97;       // Emissivity of water
@@ -328,10 +334,6 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
     for(k=ktop+1;k<grid->Nk[i];k++) //originally this should be ktop+1 
       A[i][k]=B[i][k]=0;
      
-    REAL topface, botface, depth=0; //These will be used with the heat conservative scheme of solar radiation
-    REAL ksw1 = 1/prop->Lsw; //These are extinction coefficients. L1 and L2 are in met.h  
-    
-    REAL wave1, wave1term1, wave1term2, wave1term3, wave2, wave2term1, wave2term2, wave2term3; //These are the terms from the infinite reflections formula
 
      for(k=ktop;k<grid->Nk[i];k++) //loop for calculating the local depth
 {	depth = depth + grid->dzz[i][k]; 
@@ -350,7 +352,8 @@ void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT 
       wave1term2 = (1/(1-exp(-2*depth*ksw1))) * (exp(-(2*depth - topface)*ksw1) - exp(-(2*depth - botface)*ksw1))/(topface - botface);
       wave1term3 = -(1/(1-exp(-2*depth*ksw1))) * (exp(-(2*depth + topface)*ksw1) - exp(-(2*depth + botface)*ksw1))/(topface - botface);  
 
-      wave2 = wave2term1 + wave2term2 + wave2term3;
+      //wave2 = wave2term1 + wave2term2 + wave2term3;
+      wave1 = wave1term1 + wave1term2 + wave1term3;
 
       F_SW =wave1*H_SW/(RHO0*CP_WATER);
 

@@ -667,14 +667,14 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   // Need to compute the velocity vectors at the cell centers based
   // on the initialized velocities at the faces.
   ComputeUC(phys->uc, phys->vc, phys, grid, myproc, prop->interp);
-  ComputeUC(phys->uold, phys->vold, phys, grid, myproc, prop->interp);
+  //ComputeUC(phys->uold, phys->vold, phys, grid, myproc, prop->interp);
 
 
   // send and receive interprocessor data
   ISendRecvCellData3D(phys->uc,grid,myproc,comm);
   ISendRecvCellData3D(phys->vc,grid,myproc,comm);
-  ISendRecvCellData3D(phys->uold,grid,myproc,comm);
-  ISendRecvCellData3D(phys->vold,grid,myproc,comm);
+  //ISendRecvCellData3D(phys->uold,grid,myproc,comm);
+  //ISendRecvCellData3D(phys->vold,grid,myproc,comm);
 
   // Determine minimum and maximum salinity
   phys->smin=phys->s[0][0];

@@ -511,7 +511,8 @@ void GetDepth(gridT *grid, int myproc, int numprocs, MPI_Comm comm)
   if(Nkmax>1) {
     if(mindepth!=maxdepth) 
       for(n=0;n<grid->Nc;n++) {
-	grid->vwgt[n]=(int)(maxgridweight*(float)GetNk(dz,grid->dv[n],Nkmax)/(float)Nkmax);
+	//grid->vwgt[n]=(int)(maxgridweight*(float)GetNk(dz,grid->dv[n],Nkmax)/(float)Nkmax);
+        grid->vwgt[n]=(int)(maxgridweight*(float)GetNk(dz,grid->dv[n],Nkmax)/(float)Nkmax*(float)grid->nfaces[n]);
 	//	grid->vwgt[n] = (int)(maxgridweight*(grid->dv[n]-mindepth)/(maxdepth-mindepth));
     } else
       for(n=0;n<grid->Nc;n++) 
@@ -968,7 +969,7 @@ static void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int myproc)
     }
   }
 
-  //  printf("Finished computing nodal array information\n");
+  //printf("Finished computing nodal array information\n");
   for(in=0;in<Np;in++) 
     SunFree(tempppneighs[in],maxnodeneighs*sizeof(int),"CreateNodeArray");
   for(in=0;in<Np;in++) 
@@ -979,6 +980,7 @@ static void CreateNodeArray(gridT *grid, int Np, int Ne, int Nc, int myproc)
   SunFree(tempppneighs,Np*sizeof(int *),"CreateNodeArray");
   SunFree(temppeneighs,Np*sizeof(int *),"CreateNodeArray");
   SunFree(temppcneighs,Np*sizeof(int *),"CreateNodeArray");
+  
 }
 
 /*
@@ -1188,6 +1190,7 @@ static int IsBoundaryCellByHalo(int mgptr, gridT *maingrid, int myproc,
       printf("Error in IsBoundaryCellByHalo!!\n");
       break;
   }
+  return -1;
 }
 /*
  * Function: IsBoundaryCellByEdge
@@ -2987,6 +2990,7 @@ static int IsNeighborLocal(int cell, gridT *maingrid, int myproc,
       printf("Error in IsNeighborLocal\n");
       break;
   }
+  return -1;
 }
 
 
@@ -3157,6 +3161,7 @@ static int IsNeighborGlobal(int cell, gridT *maingrid,
       printf("Error in IsNeighborGlobal\n");
       break;
   }
+  return -1;
 }
 
 

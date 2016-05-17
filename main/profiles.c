@@ -562,11 +562,11 @@ static void AllInitialWriteToFiles(gridT *grid, propT *prop, MPI_Comm comm, int 
   if(myproc==0)
     fclose(ProfileDataFID);
 
-  SunFree(tmp_real,2*all2d*sizeof(REAL),"AllInitialWriteToFiles");
-  SunFree(tmp_real2,2*all2d*sizeof(REAL),"AllInitialWriteToFiles");
-  SunFree(tmp_int,2*all2d*sizeof(int),"AllInitialWriteToFiles");
-  SunFree(tmp_int2,2*all2d*sizeof(int),"AllInitialWriteToFiles");
-  SunFree(allN,numprocs*sizeof(int),"AllInitialWriteToFiles");
+  //SunFree(tmp_real,2*all2d*sizeof(REAL),"AllInitialWriteToFiles");
+  //SunFree(tmp_real2,2*all2d*sizeof(REAL),"AllInitialWriteToFiles");
+  //SunFree(tmp_int,2*all2d*sizeof(int),"AllInitialWriteToFiles");
+  //SunFree(tmp_int2,2*all2d*sizeof(int),"AllInitialWriteToFiles");
+  //SunFree(allN,numprocs*sizeof(int),"AllInitialWriteToFiles");
 }
 
 /*

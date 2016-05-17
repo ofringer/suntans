@@ -12,6 +12,7 @@
 #include "physio.h"
 #include "merge.h"
 #include "mynetcdf.h"
+#include "sendrecv.h"
 
 /************************************************************************/
 /*                                                                      */

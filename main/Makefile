@@ -17,14 +17,30 @@ ifneq ($(MPIHOME),)
   CC = $(MPIHOME)/bin/mpicc
   MPIFILE = 
   MPIDEF = 
+#else
+#  CC = gcc
+#  MPIFILE = no-mpi.c
+#  MPIDEF = -DNOMPI
+# Cray options
 else
-  CC = gcc
-  MPIFILE = no-mpi.c
-  MPIDEF = -DNOMPI
+  CC = cc
+  MPIFILE = 
+  MPIDEF = 
+
 endif
-OPTFLAGS = -O2
+#OPTFLAGS = -O3
+OPTFLAGS = -O2 -ipo
 #OPTFLAGS = -O2 -mavx -xHost -ipo -static 
-#OPTFLAGS = -O0 -g
+#OPTFLAGS = -O0 -g -w2 -check=stack
+#OPTFLAGS = -O0 -g -h bounds
+
+#DDTLIB = -L/home/mrayson/scratch/SUNTANS/Debug \
+#-lmap-sampler-pmpi -Wl,--undefined,allinea_init_sampler_now -lmap-sampler \
+#-lstdc++ -lgcc_eh -Wl,--whole-archive -lpthread -Wl,--no-whole-archive \
+#-Wl,--eh-frame-hdr,\
+#-L/opt/cray/ddt/4.2.1.4_37994/lib/64 \
+#-ldmalloc -Wl,--allow-multiple-definition
+
 
 XLDFLAGS=-lX11 -lm
 XINC=/usr/include
@@ -54,8 +70,9 @@ else
   PARMETISINCLUDE =
   PARMETISLIB =
   PARMETISLIBDIR =
-  PARMETISLD =
-  PARMETISSRC = partition-noparmetis.c
+  PARMETISLD = -lparmetis -lmetis 
+  #PARMETISSRC = partition-noparmetis.c
+  PARMETISSRC = partition.c
 endif
 
 ifneq ($(NETCDF4HOME),)
@@ -75,7 +92,7 @@ endif
 # For the Altix
 #LD = $(CC) -lmpi
 LD = $(CC)
-LIBS = $(PARMETISLIB) $(TRIANGLELIB) $(NETCDFLD)
+LIBS = $(PARMETISLIB) $(TRIANGLELIB) $(NETCDFLD) $(DDTLIB)
 LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR) $(NETCDFLIBDIR)
 LDFLAGS = -lm $(LIBDIR) $(LIBS)
 INCLUDES = $(PARMETISINCLUDE) $(TRIANGLEINCLUDE) $(NETCDFINCLUDE) 
@@ -99,7 +116,7 @@ PLOTOBJS = $(PLOTSRCS:.c=.o)
 
 JOINSRCS = sunjoin.c mympi.c grid.c report.c util.c fileio.c phys.c initialization.c memory.c \
 	turbulence.c boundaries.c check.c scalars.c tvd.c timer.c profiles.c state.c tides.c \
-	sources.c diffusion.c met.c averages no-mpi.c $(TRIANGLESRC) $(PARMETISSRC) $(NETCDFSRC)
+	sources.c diffusion.c met.c averages.c no-mpi.c $(TRIANGLESRC) $(PARMETISSRC) $(NETCDFSRC)
 JOINOBJS = $(JOINSRCS:.c=.o)
 
 all:	$(EXEC)
@@ -160,4 +177,4 @@ sunplot.o: suntans.h fileio.h
 fileio.o: fileio.h defaults.h suntans.h
 met.o: met.h suntans.h fileio.h memory.h grid.h phys.h util.h mynetcdf.h
 mynetcdf.o: mynetcdf.h suntans.h phys.h grid.h met.h boundaries.h
-averages.o: averages.h phys.h grid.h met.h
+averages.o: averages.h phys.h grid.h met.h 

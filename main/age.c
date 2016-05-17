@@ -7,6 +7,9 @@
 
 #include "age.h"
 #include "memory.h"
+#include "sendrecv.h"
+#include "scalars.h"
+#include "mynetcdf.h"
 
 /*
  * Private functions
