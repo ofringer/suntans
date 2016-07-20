@@ -476,6 +476,9 @@ void WriteOutputNCmerge(propT *prop, gridT *grid, physT *phys, metT *met, int bl
     if( (prop->gamma>0) || (prop->beta>0) ) 
 	nc_write_3D_merge(ncid,prop->nctimectr,  phys->rho, prop, grid, "rho",0, numprocs, myproc, comm);
 
+    if(prop->nonhydrostatic>0)
+	nc_write_3D_merge(ncid,prop->nctimectr,  phys->q, prop, grid, "q",0, numprocs, myproc, comm);
+
     if(prop->calcage){
 	nc_write_3D_merge(ncid,prop->nctimectr,  age->agec, prop, grid, "agec",0, numprocs, myproc, comm);
 	nc_write_3D_merge(ncid,prop->nctimectr,  age->agealpha, prop, grid, "agealpha",0, numprocs, myproc, comm);
@@ -584,6 +587,15 @@ void WriteOutputNC(propT *prop, gridT *grid, physT *phys, metT *met, int blowup,
 	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
 	  ERR(retval);
      }
+
+     if(prop->nonhydrostatic>0){
+	if ((retval = nc_inq_varid(ncid, "q", &varid)))
+	  ERR(retval);
+	ravel(phys->q, phys->tmpvar, grid);
+	if ((retval = nc_put_vara_double(ncid, varid, startthree, countthree, phys->tmpvar )))
+	  ERR(retval);
+     }
+
       
      if( (prop->gamma>0) || (prop->beta>0) ){ 
 	if ((retval = nc_inq_varid(ncid, "rho", &varid)))
@@ -1215,6 +1227,20 @@ static void InitialiseOutputNCugridMerge(propT *prop, physT *phys, gridT *grid, 
     nc_addattr(ncid, varid,"mesh","suntans_mesh");
     nc_addattr(ncid, varid,"location","face");
     nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+   }
+   //q (nonhydrostatic pressure)
+   if(prop->nonhydrostatic){
+      if ((retval = nc_def_var(ncid,"q",NC_DOUBLE,3,dimidthree,&varid)))
+        ERR(retval);
+      if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+       ERR(retval);
+      if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+        ERR(retval);
+      nc_addattr(ncid, varid,"long_name","Nonhydrostatic pressure");
+      nc_addattr(ncid, varid,"units","N m-2");
+      nc_addattr(ncid, varid,"mesh","suntans_mesh");
+      nc_addattr(ncid, varid,"location","face");
+      nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
    }
    
    //age
@@ -2028,7 +2054,22 @@ void InitialiseOutputNCugrid(propT *prop, gridT *grid, physT *phys, metT *met, i
     nc_addattr(ncid, varid,"location","face");
     nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
    }
-   
+
+   //q (nonhydrostatic pressure)
+   if(prop->nonhydrostatic){
+      if ((retval = nc_def_var(ncid,"q",NC_DOUBLE,3,dimidthree,&varid)))
+        ERR(retval);
+      if ((retval = nc_def_var_fill(ncid,varid,nofill,&FILLVALUE))) // Sets a _FillValue attribute
+       ERR(retval);
+      if ((retval = nc_def_var_deflate(ncid,varid,0,DEFLATE,DEFLATELEVEL))) // Compresses the variable
+        ERR(retval);
+      nc_addattr(ncid, varid,"long_name","Nonhydrostatic pressure");
+      nc_addattr(ncid, varid,"units","N m-2");
+      nc_addattr(ncid, varid,"mesh","suntans_mesh");
+      nc_addattr(ncid, varid,"location","face");
+      nc_addattr(ncid, varid,"coordinates","time z_r yv xv");
+   }
+ 
    //age
    if(prop->calcage>0){
      if ((retval = nc_def_var(ncid,"agec",NC_DOUBLE,3,dimidthree,&varid)))
