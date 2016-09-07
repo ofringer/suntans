@@ -11,4 +11,7 @@ main/sunplot
 data/
 *.dat.*
 
+# Cray only (Makefiles)
+main/Makefile
+main/Makefile.in
 
