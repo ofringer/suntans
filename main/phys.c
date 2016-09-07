@@ -1060,7 +1060,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   if(prop->laxWendroff && prop->nonlinear==2) LaxWendroff(grid,phys,prop,myproc,comm);
 
   // Initialize the Sponge Layer
-  //InitSponge(grid,myproc);
+  InitSponge(grid,myproc);
 
   
   // Initialise the meteorological forcing input fields
@@ -1209,8 +1209,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
             phys->uold,phys->wtmp,NULL,NULL,0,0,comm,myproc,0,prop->TVDtemp);
 
         // Relaxation boundary condition
-        if(prop->sponge_distance>0)
-            ScalarRelaxationBoundary(phys->T, bound->boundary_T ,grid, phys, prop);
+        //if(prop->sponge_distance>0)
+        //    ScalarRelaxationBoundary(phys->T, bound->boundary_T ,grid, phys, prop);
 	
 	getchangeT(grid,phys); // Get the change in surface temp
         ISendRecvCellData3D(phys->T,grid,myproc,comm);
@@ -1251,8 +1251,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 		NULL,NULL,NULL,NULL,0,0,comm,myproc,1,prop->TVDsalt);
 	}
         // Relaxation boundary condition
-        if(prop->sponge_distance>0)
-            ScalarRelaxationBoundary(phys->s, bound->boundary_S ,grid, phys, prop);
+        //if(prop->sponge_distance>0)
+        //    ScalarRelaxationBoundary(phys->s, bound->boundary_S ,grid, phys, prop);
 	
 	ISendRecvCellData3D(phys->s,grid,myproc,comm);
 
