@@ -14,7 +14,7 @@
 #include "memory.h"
 #include "sendrecv.h"
 
-void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop){
+void MomentumSource(REAL **usource, gridT *grid, physT *phys, boundT *bound, propT *prop){
   int j, jptr, nc1, nc2, k;
   REAL Coriolis_f, ubar, depth_face;
 
@@ -34,8 +34,13 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop){
       ubar/=depth_face;
       
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
-	usource[j][k]-=prop->dt*exp(-4.0*rSponge[j]/prop->sponge_distance)/
+	usource[j][k] -= 
+	  prop->dt*exp(-4.0*bound->rdist_type2[j]/prop->sponge_distance)/
 	  prop->sponge_decay*(phys->u[j][k]-ubar);
+	// usource[j][k] -= 
+	//   prop->dt*exp(-4.0*rSponge[j]/prop->sponge_distance)/
+	//   prop->sponge_decay*(phys->u[j][k]-ubar);
+
     }
   }
 
@@ -565,6 +570,7 @@ void InitSponge(gridT *grid, int myproc) {
     if(mark==2 || mark==3) {
       xb[n]=0.5*(xp[p1]+xp[p2]);
       yb[n]=0.5*(yp[p1]+yp[p2]);
+      //printf("xb[%d]=%f, xp[%d]=%f, xp[%d]=%f\n", n, xb[n], p1, xp[p1], p2, xp[p2]);
       n++;
     }
   }
@@ -581,7 +587,7 @@ void InitSponge(gridT *grid, int myproc) {
 	rSponge[j]=r2;
     }
     rSponge[j]=sqrt(rSponge[j]);
-    //    printf("Processor %d: rSponge[%d]=%f\n",myproc,j,rSponge[j]);
+    //printf("Processor %d: rSponge[%d]=%f, xe[j]=%f, Nb=%d\n",myproc,j,rSponge[j], grid->xe[j],Nb);
   }
 }
   

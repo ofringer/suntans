@@ -21,6 +21,7 @@
 
 static void MatchBndPoints(propT *prop, gridT *grid, int myproc);
 static void InitRelaxationBC(propT *prop, gridT *grid, int myproc);
+static void InitSpongeBC(propT *prop, gridT *grid, int myproc);
 static void FluxtoUV(propT *prop, gridT *grid, int myproc,MPI_Comm comm);
 static void SegmentArea(propT *prop, gridT *grid, int myproc, MPI_Comm comm);
 int isGhostEdge(int j, gridT *grid, int myproc);
@@ -276,6 +277,10 @@ void BoundaryVelocities(gridT *grid, physT *phys, propT *prop, int myproc, MPI_C
  * ------------------------------------
  * Scalar relaxation boundary condition
  *
+ * ############
+ * # NOT USED #
+ * ############
+ *
  * This assumes that the interior points are the same
  * depth or shallower than the open boundary
  */
@@ -414,7 +419,8 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
     if(VERBOSE>1 && myproc==0) printf("Matching boundary points...\n");
     MatchBndPoints(prop, grid, myproc);
 
-    InitRelaxationBC(prop, grid, myproc);
+    //InitRelaxationBC(prop, grid, myproc);
+    InitSpongeBC(prop, grid, myproc);
 
     // Step 4) Read in the forward and backward time steps into the boundary arrays
     if(VERBOSE>1 && myproc==0) printf("Reading netcdf boundary initial data...\n");
@@ -650,6 +656,32 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 } // End function InitRelaxationBC
 
 /*
+ * Function: InitSpongeBC()
+ * -------------------------
+ * Initialise the variables used for the sponge boundary condition
+ */
+ static void InitSpongeBC(propT *prop, gridT *grid, int myproc){
+     int jptr, j;
+
+    if(bound->hasType2>0){
+        for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+            j = grid->edgep[jptr];  
+
+            /* Find the index of the closest type-2 boundary */
+            FindNearest(&bound->closest_type2[j], bound->xe, bound->ye,
+		bound->Ntype2, 1, grid->xe[j], grid->ye[j]);
+
+            /*bound->closest_type2 indexes arrays: boundary_u, boundary_v etc.*/
+            /*Find the distance */ 
+	    bound->rdist_type2[j] = 
+                sqrt( pow(grid->xe[j]-bound->xe[bound->closest_type2[j]],2) + 
+                pow(grid->ye[j]-bound->ye[bound->closest_type2[j]],2));
+        }
+    }
+} // End function InitSpongeBC
+
+
+/*
  * Function: MatchBndPoints()
  * -------------------------
  * Checks that the boundary arrays match the grid sizes
@@ -830,8 +862,8 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, 
 	(*bound)->boundary_S_t = (REAL ***)SunMalloc(NT*sizeof(REAL),"AllocateBoundaryData");
 
         /* Relaxation BC variables */
-	(*bound)->closest_type2 = (int *)SunMalloc(grid->Nc*sizeof(int),"AllocateBoundaryData");
-	(*bound)->rdist_type2 = (REAL *)SunMalloc(grid->Nc*sizeof(REAL),"AllocateBoundaryData");
+	(*bound)->closest_type2 = (int *)SunMalloc(grid->Ne*sizeof(int),"AllocateBoundaryData");
+	(*bound)->rdist_type2 = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"AllocateBoundaryData");
 
 	for(k=0;k<Nk;k++){
 	    (*bound)->boundary_u[k] = (REAL *)SunMalloc(Ntype2*sizeof(REAL),"AllocateBoundaryData");

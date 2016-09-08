@@ -15,11 +15,12 @@
 #include "grid.h"
 #include "phys.h"
 #include "met.h"
+#include "boundaries.h"
 
 REAL **v_coriolis;
 REAL *rSponge;
 
-void MomentumSource(REAL **usource, gridT *grid, physT *phys, propT *prop);
+void MomentumSource(REAL **usource, gridT *grid, physT *phys, boundT *bound, propT *prop);
 void HeatSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met, int myproc, MPI_Comm comm);
 void SaltSource(REAL **A, REAL **B, gridT *grid, physT *phys, propT *prop, metT *met);
 void InitSponge(gridT *grid, int myproc);

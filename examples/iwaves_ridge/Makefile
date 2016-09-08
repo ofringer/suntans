@@ -19,19 +19,18 @@ LD = $(CC)
 CFLAGS = 
 MATHLIB = -lm
 
-EXEC = sun
+EXEC = iwaves_ridge
 OBJS = 
 SUN = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
 NUMPROCS = 1
-datadir = rundata
+datadir = data
 
 all:	data
 
 test:	data
-        $(MPIHOME)/bin/mpirun -np $(NUMPROCS) $(SUN) -g -vvv --datadir=$(datadir)  
-	$(MPIHOME)/bin/mpirun -np $(NUMPROCS) $(SUN) -s -vvv --datadir=$(datadir)  
+	sh $(EXEC).sh $(NUMPROCS) 
 
 data:	state.o 
 	cp state.o $(SUNTANSHOME)
@@ -59,3 +58,4 @@ clean:
 
 clobber: clean
 	rm -rf *~ \#*\# PI* $(EXEC) gmon.out data rundata/*~
+

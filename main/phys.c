@@ -1060,7 +1060,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   if(prop->laxWendroff && prop->nonlinear==2) LaxWendroff(grid,phys,prop,myproc,comm);
 
   // Initialize the Sponge Layer
-  InitSponge(grid,myproc);
+  //InitSponge(grid,myproc);
 
   
   // Initialise the meteorological forcing input fields
@@ -1557,7 +1557,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
   // Add on a momentum source to momentum equation
   // currently covers the sponge layer and can be used for Coriolis for the 
   // 2D problem
-  MomentumSource(phys->utmp,grid,phys,prop);
+  MomentumSource(phys->utmp, grid, phys, bound, prop);
 
   // 3D Coriolis terms
   // note that this uses linear interpolation to the faces from the cell centers

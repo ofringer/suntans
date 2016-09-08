@@ -45,13 +45,13 @@ def main(ncfile):
     #varname = 'temp'
     #clim = None
 
-
     cmap = 'RdBu'
 
     t0 = 0
     ######
 
     # Load the slice object
+    print ncfile
     sun = SliceEdge(ncfile, xpt=xpt, ypt=ypt)
     sun.tstep = [t0]
 
@@ -75,7 +75,7 @@ def main(ncfile):
 
     ax = plt.subplot2grid((7,3), (0,0), colspan=3, rowspan=5)
     #sun.contourslice(data,t=0)
-    h1, axcb, title = sun.pcolorslice(cmap = cmap, bathyoverlay=True, interpolation='none' )
+    h1, axcb, title = sun.pcolorslice(data, cmap = cmap, bathyoverlay=True, interpolation='none' )
 
     # Create the time slider
     valstr = ' of %d'%(sun.Nt-1)
@@ -100,4 +100,5 @@ def main(ncfile):
 if __name__=='__main__':
     import sys
     ncfile = sys.argv[1]
+    print ncfile
     main(ncfile)

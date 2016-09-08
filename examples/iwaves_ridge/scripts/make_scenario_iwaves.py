@@ -8,6 +8,7 @@ Created on Mon Nov 18 10:23:26 2013
 """
 
 import os
+from shutil import copyfile
 import numpy as np
 import matplotlib.pyplot as plt
 import operator
@@ -33,7 +34,7 @@ ny = 1
 nx = 100
 nz = 40
 
-suntanspath = 'rundata'
+suntanspath = 'data'
 
 starttime = '20000101.000000'
 endtime = '20000130.000000'
@@ -67,6 +68,7 @@ htopo = 400.
 if not os.path.isdir(suntanspath):
     print 'Creating new directory: %s'%suntanspath
     os.mkdir(suntanspath)
+    copyfile('rundata/suntans.dat','%s/suntans.dat'%suntanspath)
 
 xlims = [0,L]
 ylims = [0,W]
