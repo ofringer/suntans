@@ -34,7 +34,7 @@ def main(ncfile):
     ypt = np.array([100., 100.])
 
     #varname = 'uc'
-    #clim = [-0.08, 0.08]
+    #clim = [-0.16, 0.16]
 
     varname = 'w'
     clim = [-0.001, 0.001]

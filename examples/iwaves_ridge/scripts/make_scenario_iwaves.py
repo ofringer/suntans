@@ -28,11 +28,14 @@ H = 1000.0
 wave_period=12*3600.
 
 phi0 = 0.02      # Internal wave amplitude
+dudz = 0e-4      # Vertical Shear
 
 # Size of domain
 ny = 1
 nx = 100
 nz = 40
+
+htopo = 250.
 
 suntanspath = 'data'
 
@@ -62,7 +65,6 @@ dx = L/nx
 
 W = dx
 
-htopo = 400.
 #####
 # Create the grid
 if not os.path.isdir(suntanspath):
@@ -179,12 +181,14 @@ t = bnd.tsec-bnd.tsec[0]
 # Velocity boundary
 for k in range(bnd.Nk):
    for ii, eptr in enumerate(bnd.edgep.tolist()):
+       # Steady shear flow
+       usteady = dudz * (H - grd.z_r[k])
        if indleft[eptr]:
            #bnd.boundary_u[:,k,ii] = phi0*np.cos(k_z*grd.z_r[k])*np.sin(omega*t)
-           bnd.boundary_u[:,k,ii] = phi0*np.sin(omega*t)
+           bnd.boundary_u[:,k,ii] = phi0*np.sin(omega*t) + usteady
            bnd.boundary_S[:,k,ii] = salt[k]# - phi0*np.sin(k_z*grd.z_r[k])*np.sin(omega*t)
        elif indright[eptr]:
-           bnd.boundary_u[:,k,ii] = phi0*np.sin(omega*t)
+           bnd.boundary_u[:,k,ii] = phi0*np.sin(omega*t) + usteady
            bnd.boundary_S[:,k,ii] = salt[k]
            #bnd.boundary_u[:,k,ii] = u*nx[ii]
            #bnd.boundary_v[:,k,ii] = u*ny[ii]

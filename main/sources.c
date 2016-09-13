@@ -27,16 +27,22 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, boundT *bound, pro
       nc2 = grid->grad[2*j+1];
       
       ubar = 0;
+      // Damp out the baroclinic motions
       for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	ubar += grid->dzf[j][k]*phys->u[j][k];
 	depth_face += grid->dzf[j][k];
       }
       ubar/=depth_face;
-      
+
       for(k=grid->etop[j];k<grid->Nke[j];k++) 
+        // Relax back to the boundary velocity
+        // (This doesn't really work like a sponge...)
+        //ubar=bound->boundary_u[k][bound->closest_type2[j]]*grid->n1[j]+
+	//   bound->boundary_v[k][bound->closest_type2[j]]*grid->n2[j];
+
 	usource[j][k] -= 
 	  prop->dt*exp(-4.0*bound->rdist_type2[j]/prop->sponge_distance)/
-	  prop->sponge_decay*(phys->u[j][k]-ubar);
+              prop->sponge_decay*(phys->u[j][k]-ubar);
 	// usource[j][k] -= 
 	//   prop->dt*exp(-4.0*rSponge[j]/prop->sponge_distance)/
 	//   prop->sponge_decay*(phys->u[j][k]-ubar);

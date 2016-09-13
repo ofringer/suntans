@@ -24,7 +24,7 @@ OBJS =
 SUN = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
-NUMPROCS = 1
+NUMPROCS = 2
 datadir = data
 
 all:	data

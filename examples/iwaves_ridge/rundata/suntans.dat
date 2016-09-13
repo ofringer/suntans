@@ -60,7 +60,7 @@ newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 oth
 wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0.0e-4	# Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        5e4 	# Decay distance scale for sponge layer
-sponge_decay	        30	# Decay time scale for sponge layer
+sponge_decay	        1000	# Decay time scale for sponge layer
 readSalinity		0	# Whether or not to read initial salinity profile from file InitSalinityFile
 readTemperature		0	# Whether or not to read initial temperature profile from file InitTemperatureFile
 fixdzz			0	#
