@@ -106,14 +106,14 @@ void ReadMetNC(propT *prop, gridT *grid, metinT *metin,int myproc){
   exit(EXIT_FAILURE);
 }
 
-void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc){
+void ReadBndNCcoord(int ncid, propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 
   if(myproc==0) printf("Error: NetCDF Libraries required. Set netcdfBdy = 0\n");
   MPI_Finalize();
   exit(EXIT_FAILURE);
 }
 
-void ReadBdyNC(propT *prop, gridT *grid, int myproc){
+void ReadBdyNC(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 
   if(myproc==0) printf("Error: NetCDF Libraries required. Set netcdfBdy = 0\n");
   MPI_Finalize();
