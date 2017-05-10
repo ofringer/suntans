@@ -163,6 +163,10 @@ typedef struct _physT {
   REAL *dT;
   REAL **Ttmp;
 
+  // Variables for beta plane
+  REAL *latv;
+  REAL *coriolis_f;
+
   // Variables for netcdf write
   REAL *tmpvar;
   REAL *tmpvarW;
@@ -187,7 +191,7 @@ typedef struct _propT {
        laxWendroff_Vertical, latitude;
   int ntout, ntoutStore, ntprog, nsteps, nstart, n, ntconserve, nonhydrostatic, cgsolver, maxiters, 
       qmaxiters, hprecond, qprecond, volcheck, masscheck, nonlinear, linearFS, newcells, wetdry, sponge_distance, 
-    sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, 
+    sponge_decay, thetaramptime, readSalinity, readTemperature, turbmodel, betaplane,
     TVD, horiTVD, vertTVD, TVDsalt, TVDtemp, TVDturb, laxWendroff, stairstep, AB, TVDmomentum, conserveMomentum,
     mergeArrays, computeSediments;
   FILE *FreeSurfaceFID, *HorizontalVelocityFID, *VerticalVelocityFID, *SalinityFID, *BGSalinityFID, 

@@ -194,3 +194,6 @@ const int calcaverage_DEFAULT = 0;
 
 // Maximum number of faces 
 const int maxFaces_DEFAULT = DEFAULT_NFACES;
+
+// Beta-plane option
+const int betaplane_DEFAULT = 0;

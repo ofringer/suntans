@@ -143,7 +143,6 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->Cn_U = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables");
   (*phys)->Cn_U2 = (REAL **)SunMalloc(Ne*sizeof(REAL *),"AllocatePhysicalVariables"); //AB3
 
-
   // for each variable in plan consider the number of layers it affects
   for(j=0;j<Ne;j++) {
     // the following line seems somewhat dubious...
@@ -181,6 +180,8 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   (*phys)->hfcoef = (REAL *)SunMalloc(grid->maxfaces*Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->Tsurf = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
   (*phys)->dT = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->latv = (REAL *)SunMalloc(Nc*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->coriolis_f = (REAL *)SunMalloc(Ne*sizeof(REAL),"AllocatePhysicalVariables");
 
   // cell-centered values that are also depth-varying
   (*phys)->w = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocatePhysicalVariables");
@@ -520,10 +521,12 @@ void FreePhysicalVariables(gridT *grid, physT *phys, propT *prop)
  */
 void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm)
 {
-  int i, j, k, ktop, Nc=grid->Nc;
+  int i, j, jptr, k, ktop, Nc=grid->Nc;
   REAL z, *stmp;
   REAL *ncscratch;
   int Nci, Nki, T0;
+  int nc1, nc2;
+  REAL dgf, def1, def2, lat_e;
 
 
   prop->nstart=0;
@@ -571,6 +574,41 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
     }
   }
+
+  // Initialize the cell-centered latitude from netcdf
+  for(i=0;i<Nc;i++) {
+    phys->latv[i]=prop->latitude;
+  }
+  if (prop->readinitialnc){
+     ReturnLatitudeNC(prop,phys,grid,ncscratch,Nci,myproc);
+  }
+
+   // Compute the coriolis term at the edges
+   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+       j = grid->edgep[jptr]; 
+
+       nc1 = grid->grad[2*j];
+       nc2 = grid->grad[2*j+1];
+       if(nc1==-1) nc1=nc2;
+       if(nc2==-1) nc2=nc1;
+
+       // Note that dgf==dg only when the cells are orthogonal!
+       def1 = grid->def[nc1*grid->maxfaces+grid->gradf[2*j]];
+       def2 = grid->def[nc2*grid->maxfaces+grid->gradf[2*j+1]];
+       dgf = def1+def2;
+
+       def1 /= dgf;
+       def2 /= dgf;
+
+       if(prop->betaplane){
+           lat_e = phys->latv[nc2]*def1 + phys->latv[nc1]*def2;
+           phys->coriolis_f[j] = Coriolis(lat_e);
+           //printf("coriolis[%d] = %e\n", j, phys->coriolis_f[j]);
+       }else{
+           phys->coriolis_f[j] = prop->Coriolis_f;
+       }
+   }    
+
 
   // Need to update the vertical grid after updating the free surface.
   // The 1 indicates that this is the first call to UpdateDZ
@@ -651,8 +689,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       z-=grid->dz[k]/2;
     }
   }
+
   
-  // Initialise the heat flux arrays
+  // Initialize the heat flux arrays
   for(i=0;i<Nc;i++) {
     ktop = grid->ctop[i];
     phys->Tsurf[i] = phys->T[i][ktop];
@@ -1567,7 +1606,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
     for(k=grid->etop[j];k<grid->Nke[j];k++) 
-      phys->Cn_U[j][k]+=prop->dt*prop->Coriolis_f*(
+      //phys->Cn_U[j][k]+=prop->dt*prop->Coriolis_f*(
+      phys->Cn_U[j][k]+=prop->dt*phys->coriolis_f[j]*(
           InterpToFace(j,k,phys->vc,phys->u,grid)*grid->n1[j]-
           InterpToFace(j,k,phys->uc,phys->u,grid)*grid->n2[j]);
   }
@@ -4127,6 +4167,7 @@ void ReadProperties(propT **prop, gridT *grid, int myproc)
   (*prop)->nonlinear = MPI_GetValue(DATAFILE,"nonlinear","ReadProperties",myproc);
   (*prop)->wetdry = MPI_GetValue(DATAFILE,"wetdry","ReadProperties",myproc);
   (*prop)->Coriolis_f = MPI_GetValue(DATAFILE,"Coriolis_f","ReadProperties",myproc);
+  (*prop)->betaplane = (int)MPI_GetValue(DATAFILE,"betaplane","ReadProperties",myproc);
   (*prop)->sponge_distance = MPI_GetValue(DATAFILE,"sponge_distance","ReadProperties",myproc);
   (*prop)->sponge_decay = MPI_GetValue(DATAFILE,"sponge_decay","ReadProperties",myproc);
   (*prop)->readSalinity = MPI_GetValue(DATAFILE,"readSalinity","ReadProperties",myproc);

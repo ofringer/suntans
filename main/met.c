@@ -806,7 +806,9 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     x[6] = met->Hlw[i];
     
     // Shortwave radiation
-    met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i],prop->gmtoffset/24.0);
+    //met->Hsw[i] = shortwave(prop->nctime/86400.0,prop->latitude,met->cloud[i],prop->gmtoffset/24.0);
+    met->Hsw[i] = 
+        shortwave(prop->nctime/86400.0,phys->latv[i],met->cloud[i],prop->gmtoffset/24.0);
     x[7] = met->Hsw[i];
     
     //rain [mm/hr] (rain heat flux is not included at the moment)
@@ -815,7 +817,7 @@ void updateAirSeaFluxes(propT *prop, gridT *grid, physT *phys, metT *met,REAL **
     //Air pressure [mb]
     x[10] = met->Pair[i];
     
-    //wind speed height
+    //wind speed height 
     x[11] = met->z_Uwind[i];
     
     //air temp height

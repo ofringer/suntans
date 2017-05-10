@@ -5057,6 +5057,38 @@ int getICtime(propT *prop, int Nt, int myproc){
 } // End function
 
 /*
+ * Function: ReturnLatitudeNC()
+ * -------------------------------
+ * Reads the latitude from the initial condition netcdf array
+ * (##This could be made more generic to read any grid variable##)
+ *
+ */
+void ReturnLatitudeNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int myproc){
+   int i;
+   size_t start[] = {0};
+   size_t count[] = {Nci};
+   //REAL htmp[Nci];
+
+   int varid, retval;
+   int ncid = prop->initialNCfileID;
+
+   if(VERBOSE>1 && myproc==0) printf("Reading latitude from the initial condition from netcdf file...\n");
+   //printf("Initial condition file: T0 = %d, Nci = %d\n",T0,Nci);
+   //nc_read_2D(prop->initialNCfileID, "eta", start, count, htmp , myproc);
+    if ((retval = nc_inq_varid(ncid, "latv", &varid)))
+	ERR(retval);
+    if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+     phys->latv[i]=htmp[grid->mnptr[i]];
+     //printf("latv[%d] = %3.6f\n",i,phys->latv[i]);
+
+  }
+} // End function
+
+
+/*
  * Function: ReturnFreeSurfaceNC()
  * -------------------------------
  * Reads the free surface from the initial condition netcdf array
