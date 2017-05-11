@@ -433,11 +433,13 @@ void linsolve(REAL **A, REAL *b, int N){
 } // End of linsolve
 
 REAL Coriolis(REAL lat){
-   REAL omega, deg2rad;
+   REAL omega, deg2rad, fcor;
    omega = 2*PI/86400.;
    deg2rad = PI/180.;
+   
 
-   return 2*omega*sin(lat*deg2rad);
+   fcor = 2*omega*sin(lat*deg2rad);
+   return fcor;
 }
 
 

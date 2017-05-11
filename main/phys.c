@@ -5016,6 +5016,11 @@ static void GetMomentumFaceValues(REAL **uface, REAL **ui, REAL **boundary_ui, R
 
           nc1 = grid->grad[2*j];
           nc2 = grid->grad[2*j+1];
+          //MDR: nc2 is causing an invalid memory read w/ valgrind so add this...
+          if(nc1==-1) nc1=nc2;
+	  if(nc2==-1) nc2=nc1;
+          //MDR
+
 
           if(grid->ctop[nc1]>grid->ctop[nc2])
             kmin = grid->ctop[nc1];

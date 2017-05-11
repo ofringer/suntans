@@ -15,3 +15,6 @@
  - Reads in the variable "latv" from the initial condition netcdf
  - Requires "readinitialnc"
  - Uses the spatially variable latitude in the heat flux module for shortwave rad (met.c)
+ - Found (and maybe fixed) two bad memory/address lookups
+    1) phys.c->GetMomentumFaceValues (bad lookup for type-3 edges)
+    2) boundaries.c->MatchBndPoints (commented out ind3edge allocation: it was wrong and not used)

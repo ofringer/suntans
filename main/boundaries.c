@@ -724,6 +724,8 @@ int isGhostEdge(int j, gridT *grid, int myproc){
      }
     if(myproc==0) printf("Matching type-2 edges...\n");
      //Type-3 edges
+     // Not presently used
+     /*
      ii=-1;
      for(jptr=grid->edgedist[3];jptr<grid->edgedist[4];jptr++) {
 	 ii+=1;
@@ -732,10 +734,12 @@ int isGhostEdge(int j, gridT *grid, int myproc){
 	 // Match suntans edge cell with the type-3 boundary file point
 	 for(jj=0;jj<bound->Ntype3;jj++){
 	     if(ib==bound->cellp[jj]){
+                printf("bound->ind3edge[%d]=%d, (n3=%d)\n",ii,jj,grid->celldist[2]-grid->celldist[1]);
 		bound->ind3edge[ii]=jj;
 	     }
 	 }	 
      }
+     */
      // Check that ind2 and ind3 do not contain any -1 (non-matching points)
 
      // Check that the number of vertical grid points match
