@@ -584,7 +584,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   }
 
    // Compute the coriolis term at the edges
-   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+   for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
        j = grid->edgep[jptr]; 
 
        nc1 = grid->grad[2*j];

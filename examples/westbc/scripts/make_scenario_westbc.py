@@ -36,7 +36,7 @@ L = 1000e3 # m
 suntanspath = 'data'
 
 starttime = '20000101.000000'
-endtime = '20020101.000000'
+endtime = '20110101.000000'
 dt = 7*86400.
 
 icfile = 'WestBC_IC.nc'
