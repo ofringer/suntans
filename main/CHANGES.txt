@@ -1,0 +1,17 @@
+# Branch: relaxation_bc
+---
+
+ - Added code in boundaries.c for applying a relaxation condition to tracers
+ - Modified the netcdf time to allow a start at t=0
+ - Fixed bug in the met netcdf time; the time step was out by 1
+ - Updated EdgeMarkers() function based on Wenhao Chen's ticket #7 on Sourceforge
+
+# Branch: variable_coriolis
+---
+ 
+ - Beta-plane code
+ - Set parameter "betaplane" in suntans.dat
+ - Calculates a spatially-variable coriolis term based on latitude
+ - Reads in the variable "latv" from the initial condition netcdf
+ - Requires "readinitialnc"
+ - Uses the spatially variable latitude in the heat flux module for shortwave rad (met.c)
