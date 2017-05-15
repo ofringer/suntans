@@ -584,7 +584,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   }
 
    // Compute the coriolis term at the edges
-   for(jptr=grid->edgedist[0];jptr<grid->edgedist[5];jptr++) {
+   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
        j = grid->edgep[jptr]; 
 
        nc1 = grid->grad[2*j];
@@ -1975,6 +1975,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
 
   // Now add on stmp and stmp2 from the boundaries 
   // for type 3 boundary condition
+ 
   for(jptr=grid->edgedist[3];jptr<grid->edgedist[4];jptr++) {
     j = grid->edgep[jptr]; 
 
@@ -1982,7 +1983,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
     k0=grid->ctop[nc1];
 
     for(nf=0;nf<grid->nfaces[nc1];nf++) {
-      if((nc2=grid->neigh[nc1*grid->maxfaces+nf])!=-1) {
+      nc2=grid->neigh[nc1*grid->maxfaces+nf];
+      if(nc2!=-1) {
         ne=grid->face[nc1*grid->maxfaces+nf];
         for(k=k0;k<grid->Nk[nc1];k++) {
           phys->Cn_U[ne][k]-=
@@ -1993,6 +1995,7 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
       }
     }
   }
+  
 
   // note that we now basically have the term dt*F_j,k in Equation 33
 

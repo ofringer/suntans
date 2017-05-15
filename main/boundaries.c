@@ -443,6 +443,10 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
      t0=t1-1;
      t2=t1+1;
 
+     // Check for out of bounds
+     if (t1==0) t0=0; 
+     if (t2>bound->Nt) t2=bound->Nt;
+
      /* Only update the boundary data if need to*/
      if (bound->t1!=t1){
 	if(VERBOSE>3 && myproc==0) printf("Updating netcdf boundary data at nc timestep: %d\n",t1);
@@ -476,6 +480,10 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 //    if (myproc==0) printf("t1: %f, %t2: %f, tnow:%f, ,mu %f, r2: %f, r1: %f\n",bound->time[bound->t0],bound->time[bound->t1], prop->nctime, mu, r2, r1);
     if(bound->hasType2>0){
 	//printf("Updating type-2 boundaries on proc %d\n",myproc);
+
+        //printf("time[%d] = %10.3f, time[%d] = %10.3f, time[%d] = %10.3f\n",
+        //    t0, bound->time[t0], t1, bound->time[t1], t2, bound->time[t2]);
+
 	for (j=0;j<bound->Ntype2;j++){
 	  for (k=0;k<bound->Nk;k++){
 	    //Quadratic temporal interpolation
@@ -986,7 +994,7 @@ void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc, 
 		(*bound)->boundary_w[k][j]=0.0;
 		(*bound)->boundary_T[k][j]=0.0;
 		(*bound)->boundary_S[k][j]=0.0;
-		for(n=0;n>NT;n++){
+		for(n=0;n<NT;n++){
 		    (*bound)->boundary_u_t[n][k][j]=0.0;
 		    (*bound)->boundary_v_t[n][k][j]=0.0;
 		    (*bound)->boundary_w_t[n][k][j]=0.0;

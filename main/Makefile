@@ -24,7 +24,7 @@ else
 endif
 OPTFLAGS = -O2
 #OPTFLAGS = -O2 -mavx -xHost -ipo -static 
-#OPTFLAGS = -O0 -g
+#OPTFLAGS = -O0 -g -fstack-check -fstack-protector-all
 
 XLDFLAGS=-lX11 -lm
 XINC=/usr/include
