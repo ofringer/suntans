@@ -27,7 +27,7 @@ fi
 if [ ! -d $datadir ] ; then
     cp -r $maindatadir $datadir
     echo Creatin input files...
-    $PYTHONEXEC scripts/$makescript
+    $PYTHONEXEC scripts/$makescript $datadir
     echo Creating grid...
     $EXEC -g -vvv --datadir=$datadir
 else
