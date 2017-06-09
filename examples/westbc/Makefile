@@ -32,6 +32,9 @@ all:	data
 test:	data
 	sh $(EXEC).sh $(NUMPROCS) 
 
+restart:    data
+	sh $(EXEC)-restart.sh $(NUMPROCS) 1
+
 data:	state.o 
 	cp state.o $(SUNTANSHOME)
 	make -C $(SUNTANSHOME)

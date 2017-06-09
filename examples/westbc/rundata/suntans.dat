@@ -35,7 +35,7 @@ CdB	                0.00	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		0	# Turbulence model (0 for none, 1 for MY25)
 dt 			600	# Time step
-nsteps			525600  # Number of time steps
+nsteps			4464 525600  # Number of time steps
 Cmax 			1.0	# Maximum permissible Courant number
 ntout   		1008	# How often to output data
 ntprog   		1 	# How often to report progress (in %)
@@ -81,6 +81,7 @@ outputNetcdf	 	1	  # Output data to netcdf format (0 - binary, 1 - netcdf)
 outputNetcdfFile        WestBC 	# Name of the output netcdf file
 mergeArrays		1	# Merge output netcdf arrays
 nstepsperncfile 	1000   # Number of time steps to write into each netcdf output file
+ncfilectr		0	# File number of first netcdf file
 starttime	20000101.000000   # Model start time string format yyyymmdd.HHMMSS
 basetime 	19900101.000000   #   Base time used for reference in netcdf files
 metfile	        WestBC_met.nc 	  # Input meteorological netcdf file

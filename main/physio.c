@@ -333,6 +333,91 @@ void OutputPhysicalVariables(gridT *grid, physT *phys, propT *prop,int myproc, i
   }
 
   // probably should change to make a distinction between blowup and restarts
+  /*
+  if(!(prop->n%prop->ntoutStore) || blowup) {
+    if(VERBOSE>1 && myproc==0) 
+      printf("Outputting restart data at step %d\n",prop->n);
+
+    MPI_GetFile(filename,DATAFILE,"StoreFile","OutputData",myproc);
+    sprintf(str,"%s.%d",filename,myproc);
+    prop->StoreFID = MPI_FOpen(str,"w","OpenFiles",myproc);
+
+    nwritten=fwrite(&(prop->n),sizeof(int),1,prop->StoreFID);
+
+    fwrite(phys->h,sizeof(REAL),grid->Nc,prop->StoreFID);
+    for(j=0;j<grid->Ne;j++) 
+      fwrite(phys->Cn_U[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
+    for(j=0;j<grid->Ne;j++) 
+      fwrite(phys->Cn_U2[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->Cn_W[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->Cn_W2[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->Cn_R[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->Cn_T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
+    if(prop->turbmodel>=1) {
+      for(i=0;i<grid->Nc;i++) 
+        fwrite(phys->Cn_q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+      for(i=0;i<grid->Nc;i++) 
+        fwrite(phys->Cn_l[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
+      for(i=0;i<grid->Nc;i++) 
+        fwrite(phys->qT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+      for(i=0;i<grid->Nc;i++) 
+        fwrite(phys->lT[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    }
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->nu_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->kappa_tv[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
+    for(j=0;j<grid->Ne;j++) 
+      fwrite(phys->u[j],sizeof(REAL),grid->Nke[j],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->w[i],sizeof(REAL),grid->Nk[i]+1,prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->q[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->qc[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->s[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->T[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+    for(i=0;i<grid->Nc;i++) 
+      fwrite(phys->s0[i],sizeof(REAL),grid->Nk[i],prop->StoreFID);
+
+    fclose(prop->StoreFID);
+  }
+  //End of the restart code
+  */ 
+
+  SunFree(tmp,grid->Ne*sizeof(REAL),"OutputData");
+}
+
+/*
+ * Function: OutputRestartVariables
+ * Usage: OutputRestartVariables(grid,phys,prop,myproc,numprocs,blowup,comm);
+ * --------------------------------------------------------------------
+ * Output the restart data every ntout steps as specified in suntans.dat
+ * If this is the last time step or if the run is blowing up (blowup==1),
+ * then output the data to the restart file specified by the file pointer
+ * prop->StoreFID.
+ *
+ * Separated from OutputPhysicalVariables so restart can be used with
+ * the NetCDF IO code
+ *
+ */
+void OutputRestartVariables(gridT *grid, physT *phys, propT *prop,int myproc, int numprocs, int blowup, MPI_Comm comm)
+{
+  int i, j, jptr, k, nwritten, arraySize, writeProc;
+  char str[BUFFERLENGTH], filename[BUFFERLENGTH];
+  REAL *tmp = (REAL *)SunMalloc(grid->Ne*sizeof(REAL),"OutputData");
+    
+
   if(!(prop->n%prop->ntoutStore) || blowup) {
     if(VERBOSE>1 && myproc==0) 
       printf("Outputting restart data at step %d\n",prop->n);
@@ -393,6 +478,8 @@ void OutputPhysicalVariables(gridT *grid, physT *phys, propT *prop,int myproc, i
   }
 
   SunFree(tmp,grid->Ne*sizeof(REAL),"OutputData");
+
+
 }
 
 /*

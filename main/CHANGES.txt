@@ -6,7 +6,7 @@
  - Fixed bug in the met netcdf time; the time step was out by 1
  - Updated EdgeMarkers() function based on Wenhao Chen's ticket #7 on Sourceforge
 
-# Branch: variable_coriolis
+# Branch: variable_coriolis (branched from "relaxation_bc")
 ---
  
  - Beta-plane code

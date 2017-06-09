@@ -532,8 +532,8 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   prop->nstart=0;
   
   // Initialise the netcdf time
-  prop->toffSet = getToffSet(prop->basetime,prop->starttime);
-  prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
+  //prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+  //prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
 
   if (prop->readinitialnc>0){
     ReadInitialNCcoord(prop,grid,&Nci,&Nki,&T0,myproc);
@@ -1072,10 +1072,11 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   prop->rtime=prop->nstart*prop->dt;
  
   // Initialise the netcdf time (moved to InitializePhysicalVariables)
+  // Should be here to be compatible with restart runs
   // Get the toffSet property
   //printf("myproc: %d, starttime: %s\n",prop->starttime);
-  //prop->toffSet = getToffSet(prop->basetime,prop->starttime);
-  //prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
+  prop->toffSet = getToffSet(prop->basetime,prop->starttime);
+  prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
   //printf("myproc: %d, toffSet = %f (%s, %s)\n",myproc,prop->toffSet,&prop->basetime,&prop->starttime);
 
   // Initialise the boundary data from a netcdf file
@@ -1404,6 +1405,10 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	    WriteOutputNC(prop, grid, phys, met, blowup, myproc);
 	}
     }
+
+    // Output the restart data
+    OutputRestartVariables(grid,phys,prop,myproc,numprocs,blowup,comm);
+
     // Output the average arrays
     if(prop->calcaverage){
     	if(prop->mergeArrays){

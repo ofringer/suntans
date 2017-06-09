@@ -23,7 +23,7 @@ void Write3DData(REAL **array, REAL *temp_array, int merge, FILE *fid, char *err
 		 gridT *grid, int numprocs, int myproc, MPI_Comm comm);
 void OpenFiles(propT *prop, int myproc);
 void ReadPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm comm);
-void OutputPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, 
-			     int blowup, MPI_Comm comm);
+void OutputPhysicalVariables(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, int blowup, MPI_Comm comm);
+void OutputRestartVariables(gridT *grid, physT *phys, propT *prop,int myproc, int numprocs, int blowup, MPI_Comm comm);
 
 #endif
