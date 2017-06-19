@@ -18,13 +18,16 @@ ifneq ($(MPIHOME),)
   MPIFILE = 
   MPIDEF = 
 else
-  CC = gcc
-  MPIFILE = no-mpi.c
-  MPIDEF = -DNOMPI
+  CC = cc
+  MPIFILE =
+  MPIDEF = 
 endif
 OPTFLAGS = -O2
 #OPTFLAGS = -O2 -mavx -xHost -ipo -static 
-#OPTFLAGS = -O0 -g -fstack-check -fstack-protector-all
+#OPTFLAGS = -O0 -g
+
+#DDTOPTS =  -L/pawsey/cle52up04/devel/binary/forge/6.0.4/lib/64 -ldmalloc -Wl,--allow-multiple-definition
+DDTOPTS = 
 
 XLDFLAGS=-lX11 -lm
 XINC=/usr/include
@@ -80,7 +83,7 @@ LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR) $(NETCDFLIBDIR)
 LDFLAGS = -lm $(LIBDIR) $(LIBS)
 INCLUDES = $(PARMETISINCLUDE) $(TRIANGLEINCLUDE) $(NETCDFINCLUDE) 
 DEFINES = $(MPIDEF) $(NETCDFDEF)
-CFLAGS = $(OPTFLAGS) $(INCLUDES) $(DEFINES)
+CFLAGS = $(OPTFLAGS) $(INCLUDES) $(DEFINES) $(DDTOPTS)
 
 EXEC = sun
 PEXEC = sunplot

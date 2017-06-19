@@ -16,9 +16,8 @@
 # Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
 # University. All Rights Reserved.
 #
-MPIHOME=/home/suntans/anaconda/envs/suntans/
-PARMETISHOME=/home/suntans/code/cymetis/src/ParMetis-3.1
+MPIHOME=
+PARMETISHOME=/home/mrayson/code/parmetis/intel/ParMetis-3.1
 TRIANGLEHOME=
-NETCDF4HOME=/home/suntans/anaconda/envs/suntans/
-
+NETCDF4HOME=/opt/intel/netcdf/4.3.2
 

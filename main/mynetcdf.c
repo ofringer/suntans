@@ -5185,6 +5185,83 @@ void ReturnTemperatureNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int 
 } // End function
 
 /*
+ * Function: ReturnVelocityNC()
+ * -------------------------------
+ * Reads the u/v from the initial condition netcdf array
+ * Cell-centered velocities are read in (uc, vc) and then interpolated 
+ * onto the cell-edges
+ *
+ */
+void ReturnVelocityNC(propT *prop, physT *phys, gridT *grid, REAL *htmp, int Nci, int Nki, int T0, int myproc){
+   int i,k,ind;
+   int j, jptr, nc1, nc2;
+   REAL def1, def2, dgf;
+   size_t start[] = {T0, 0, 0};
+   size_t count[] = {1, Nki, Nci};
+   //REAL htmp[Nki][Nci];
+
+   int varid, retval;
+   int ncid = prop->initialNCfileID;
+
+   if(VERBOSE>1 && myproc==0) printf("Reading velocity initial condition from netcdf file...\n");
+   //uc
+   if ((retval = nc_inq_varid(ncid, "uc", &varid)))
+	ERR(retval);
+   if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	 ind = k*Nci + grid->mnptr[i]; 
+	 phys->uc[i][k]=htmp[ind];
+	
+      }
+   }
+
+   //vc
+   if ((retval = nc_inq_varid(ncid, "vc", &varid)))
+	ERR(retval);
+   if ((retval = nc_get_vara_double(ncid, varid, start, count, &htmp[0]))) 
+	ERR(retval); 
+
+   for(i=0;i<grid->Nc;i++) {
+      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+	 ind = k*Nci + grid->mnptr[i]; 
+	 phys->vc[i][k]=htmp[ind];
+	
+      }
+   }
+
+   //Loop through edges and find the cell neighbours
+   // computational edges
+   for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
+       j = grid->edgep[jptr]; 
+
+       nc1 = grid->grad[2*j];
+       nc2 = grid->grad[2*j+1];
+       if(nc1==-1) nc1=nc2;
+       if(nc2==-1) nc2=nc1;
+
+       // Note that dgf==dg only when the cells are orthogonal!
+       def1 = grid->def[nc1*grid->maxfaces+grid->gradf[2*j]];
+       def2 = grid->def[nc2*grid->maxfaces+grid->gradf[2*j+1]];
+       dgf = def1+def2;
+
+       def1 /= dgf;
+       def2 /= dgf;
+       for(k=0;k<grid->Nkc[j];k++) {
+           phys->u[j][k]= (phys->uc[nc2][k]*def1 + phys->uc[nc1][k]*def2)
+               *grid->n1[j] + 
+           (phys->vc[nc2][k]*def1 + phys->vc[nc1][k]*def2)
+               *grid->n2[j];  
+       }
+    }
+
+
+} // End function
+
+
+/*
  * Function: ReturnAgeNC()
  * -------------------------------
  * Reads the age variables (agec & agealpha) from the initial condition netcdf array

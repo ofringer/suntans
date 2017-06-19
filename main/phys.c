@@ -680,13 +680,17 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
   }
  
   // Initialize the velocity field 
-  for(j=0;j<grid->Ne;j++) {
-    z = 0;
-    for(k=0;k<grid->Nkc[j];k++) {
-      z-=grid->dz[k]/2;
-      phys->u[j][k]=ReturnHorizontalVelocity(
-          grid->xe[j],grid->ye[j],grid->n1[j],grid->n2[j],z);
-      z-=grid->dz[k]/2;
+  if(prop->readinitialnc){
+    ReturnVelocityNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
+  } else {
+    for(j=0;j<grid->Ne;j++) {
+      z = 0;
+      for(k=0;k<grid->Nkc[j];k++) {
+        z-=grid->dz[k]/2;
+        phys->u[j][k]=ReturnHorizontalVelocity(
+            grid->xe[j],grid->ye[j],grid->n1[j],grid->n2[j],z);
+        z-=grid->dz[k]/2;
+      }
     }
   }
 
