@@ -492,6 +492,34 @@ void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 	    bound->boundary_w[k][j] = QuadInterp(prop->nctime,bound->time[t0],bound->time[t1],bound->time[t2],bound->boundary_w_t[0][k][j],bound->boundary_w_t[1][k][j],bound->boundary_w_t[2][k][j] );
 	    bound->boundary_T[k][j] = QuadInterp(prop->nctime,bound->time[t0],bound->time[t1],bound->time[t2],bound->boundary_T_t[0][k][j],bound->boundary_T_t[1][k][j],bound->boundary_T_t[2][k][j] );
 	    bound->boundary_S[k][j] = QuadInterp(prop->nctime,bound->time[t0],bound->time[t1],bound->time[t2],bound->boundary_S_t[0][k][j],bound->boundary_S_t[1][k][j],bound->boundary_S_t[2][k][j] );
+
+            // Check for NaNs
+            if(bound->boundary_u[k][j]!=bound->boundary_u[k][j]){
+               printf("Error: NaN found in boundary conditions: boundary_u[%d][%d]\n",k,j);
+               MPI_Finalize();
+               exit(EXIT_FAILURE);
+            }
+            if(bound->boundary_v[k][j]!=bound->boundary_v[k][j]){
+               printf("Error: NaN found in boundary conditions: boundary_v[%d][%d]\n",k,j);
+               MPI_Finalize();
+               exit(EXIT_FAILURE);
+            }
+            if(bound->boundary_w[k][j]!=bound->boundary_w[k][j]){
+               printf("Error: NaN found in boundary conditions: boundary_w[%d][%d]\n",k,j);
+               MPI_Finalize();
+               exit(EXIT_FAILURE);
+            }
+            if(bound->boundary_T[k][j]!=bound->boundary_T[k][j]){
+               printf("Error: NaN found in boundary conditions: boundary_T[%d][%d]\n",k,j);
+               MPI_Finalize();
+               exit(EXIT_FAILURE);
+            }
+            if(bound->boundary_S[k][j]!=bound->boundary_S[k][j]){
+               printf("Error: NaN found in boundary conditions: boundary_S[%d][%d]\n",k,j);
+               MPI_Finalize();
+               exit(EXIT_FAILURE);
+            }
+
 	  }
 	}
     }

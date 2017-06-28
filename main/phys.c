@@ -1081,7 +1081,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
   //printf("myproc: %d, starttime: %s\n",prop->starttime);
   prop->toffSet = getToffSet(prop->basetime,prop->starttime);
   prop->nctime = prop->toffSet*86400.0 + prop->nstart*prop->dt;
-  //printf("myproc: %d, toffSet = %f (%s, %s)\n",myproc,prop->toffSet,&prop->basetime,&prop->starttime);
+  printf("myproc: %d, nctime = %f, toffSet = %f (%s, %s)\n",
+        myproc,prop->nctime, prop->toffSet, &prop->basetime, &prop->starttime);
 
   // Initialise the boundary data from a netcdf file
   if(prop->netcdfBdy==1){
@@ -1164,6 +1165,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
     
     // netcdf file time
     prop->nctime = prop->toffSet*86400.0 + n*prop->dt;
+    //if(myproc==0) printf("nctime = %f, rtime = %f\n",prop->nctime, prop->rtime);
+
     //prop->nctime +=  n*prop->dt;
     //prop->nctime += prop->rtime;
 

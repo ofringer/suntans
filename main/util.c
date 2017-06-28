@@ -358,6 +358,11 @@ REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2){
     }
 
     result = y0*L0 + y1*L1 + y2*L2;
+    if(result!=result){
+        printf("Error in Quadratic interpolation (x, x0, x1, x2) = %3.6f, %3.6f, %3.6f, %3.6f\n", x, x0, x1, x2);
+        MPI_Finalize();
+        exit(EXIT_FAILURE);
+    }
     return result;
 
 }//End Function

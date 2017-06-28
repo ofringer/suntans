@@ -35,7 +35,7 @@ CdB	                0.00	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		0	# Turbulence model (0 for none, 1 for MY25)
 dt 			30	# Time step
-nsteps			14400   # Number of time steps
+nsteps			2880   # Number of time steps
 Cmax 			1.0	# Maximum permissible Courant number
 ntout   		180	# How often to output data
 ntprog   		1 	# How often to report progress (in %)
