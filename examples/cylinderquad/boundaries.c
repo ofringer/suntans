@@ -363,7 +363,7 @@ void WindStress(gridT *grid, physT *phys, propT *prop, metT *met, int myproc) {
 *
 * This is called from phys.c
 */
-void InitBoundaryData(propT *prop, gridT *grid, int myproc){
+void InitBoundaryData(propT *prop, gridT *grid, int myproc, MPI_Comm comm){
 
     // Step 1) Allocate the structure array data
 	// Moved to phys.c
@@ -656,7 +656,7 @@ int isGhostEdge(int j, gridT *grid, int myproc){
  * -------------------------------
  * Allocate boundary structure arrays.
  */
-void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc){
+void AllocateBoundaryData(propT *prop, gridT *grid, boundT **bound, int myproc , MPI_Comm comm){
 
      int Ntype2, Ntype3, Nseg, Nt, Nk;
      int j, k, i, n;
