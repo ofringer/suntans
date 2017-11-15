@@ -33,6 +33,7 @@ int GetDZ(REAL *dz, REAL depth, REAL localdepth, int Nkmax, int myproc) {
     } else {
       printf("Error in GetDZ when trying to create vertical grid:\n");
       printf("Absolute value of stretching parameter rstretch must  be in the range (1,1.1).\n");
+
       exit(1);
     }
   } else {
@@ -115,5 +116,10 @@ REAL ReturnHorizontalVelocity(REAL x, REAL y, REAL n1, REAL n2, REAL z) {
   return 0;
 }
 
-REAL ReturnSediment(REAL x, REAL y, REAL z, int sizeno) {}
-REAL ReturnBedSedimentRatio(REAL x, REAL y, int layer, int sizeno,int nsize) {}
+REAL ReturnSediment(REAL x, REAL y, REAL z, int sizeno) {
+  return 0;
+}
+
+REAL ReturnBedSedimentRatio(REAL x, REAL y, int layer, int sizeno,int nsize) {
+  return 0;
+}
