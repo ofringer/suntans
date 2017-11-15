@@ -36,8 +36,6 @@
 #define REAL double
 #define BUFFERSIZE 256
 
-int loadData(void *array, int run, char *file, int size, int numels, int nstep);
-
 int main(void) {
   int i, k, n, nsteps[numruns];
   float dt[numruns];
@@ -194,15 +192,13 @@ int main(void) {
 }
 
 int loadData(void *array, int run, char *file, int size, int numels, int nstep) {
-  int n, count;
+  int n;
   char str[BUFFERSIZE];
   FILE *fid;
 
   sprintf(str,"%s/t%d/%s",DATA,run,file);
   fid = fopen(str,"r");
   fseek(fid,(nstep-1)*size*numels,SEEK_SET);
-  count=fread(array,size,numels,fid);
+  fread(array,size,numels,fid);
   fclose(fid);
-  printf("Read %d elements from %s\n",count,file);
-  return count;
 }
