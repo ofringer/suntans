@@ -5,6 +5,7 @@
 * 
 */ 
 #include "averages.h"
+#include "sendrecv.h"
 
 /***********************************************
 * Private functions

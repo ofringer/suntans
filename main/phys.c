@@ -80,10 +80,10 @@ static void StoreVariables(gridT *grid, physT *phys);
 static void NewCells(gridT *grid, physT *phys, propT *prop);
 static void WPredictor(gridT *grid, physT *phys, propT *prop,
     int myproc, int numprocs, MPI_Comm comm);
-inline void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
+void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, interpolation interp);
 static void ComputeUCPerot(REAL **u, REAL **uc, REAL **vc, gridT *grid);
 static void ComputeUCLSQ(REAL **u, REAL **uc, REAL **vc, gridT *grid, physT *phys);
-inline static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc);
+static void ComputeUCRT(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc);
 static void ComputeNodalVelocity(physT *phys, gridT *grid, interpolation interp, int myproc);
 static void  ComputeTangentialVelocity(physT *phys, gridT *grid, interpolation ninterp, interpolation tinterp,int myproc);
 static void  ComputeQuadraticInterp(REAL x, REAL y, int ic, int ik, REAL **uc, 
@@ -568,7 +568,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     for(i=0;i<Nc;i++) {
       phys->h[i]=ReturnFreeSurface(grid->xv[i],grid->yv[i],grid->dv[i]);
       if(phys->h[i]<-grid->dv[i] + DRYCELLHEIGHT) 
-        phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
+	phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
     }
   }
 
@@ -1293,12 +1293,14 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
         // Send q to the boundary cells now that it has been updated
         ISendRecvCellData3D(phys->q,grid,myproc,comm);
-      }
+      } 
+      /* This code should not be here OBF
       else if(!(prop->interp == PEROT)) {
         // support quadratic interpolation work
         // Send/recv the horizontal velocity data for use with more complex interpolation
         ISendRecvEdgeData3D(phys->u,grid,myproc,comm);
-      }
+	}
+      */
       t_nonhydro+=Timer()-t0;
 
 
@@ -4457,7 +4459,8 @@ void ComputeUC(REAL **ui, REAL **vi, physT *phys, gridT *grid, int myproc, inter
     case LSQ:
       ComputeUCLSQ(phys->u,ui,vi,grid,phys);
       break;
- 
+    default:
+      break;
   }
 
 }

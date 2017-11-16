@@ -279,7 +279,7 @@ void ComputeGradient(REAL **gradient, REAL **phi, gridT *grid, int direction) {
 }
 
 // function that will bring in two lists and return the first shared value it finds
-inline int SharedListValue(int *list1, int *list2, int listsize) {
+int SharedListValue(int *list1, int *list2, int listsize) {
   int i, j, li;
   // iterate over each element of each list and compare with all the values of the other list
   for(i=0; i < listsize; i++) {
@@ -324,7 +324,7 @@ void PrintVectorToFile(enum Type etype, void *Vector, int M, char *filename, int
 }
 
 // inline function definition for max
-inline int max(int a, int b) {
+int max(int a, int b) {
   return a > b ? a : b;
 }
 

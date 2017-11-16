@@ -224,7 +224,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
     // First add on the source term from the previous time step.
     if(grid->ctop[i]<=grid->ctopold[i]) {
       for(k=grid->ctop[i];k<=grid->ctopold[i];k++) 
-        d[0]+=(1-fab)*Cn[i][grid->ctopold[i]]/(1+fabs(grid->ctop[i]-grid->ctopold[i]));
+        d[0]+=(1-fab)*Cn[i][grid->ctopold[i]]/(1+abs(grid->ctop[i]-grid->ctopold[i]));
       for(k=grid->ctopold[i]+1;k<grid->Nk[i];k++) 
         d[k-grid->ctopold[i]]+=(1-fab)*Cn[i][k];
     } else {
@@ -306,7 +306,7 @@ void UpdateScalars(gridT *grid, physT *phys, propT *prop, REAL **wnew, REAL **sc
     for(k=ktop+1;k<grid->Nk[i];k++)
       Cn[i][k]=ap[k];
     for(k=grid->ctop[i];k<=ktop;k++)
-      Cn[i][k]=ap[ktop]/(1+fabs(grid->ctop[i]-ktop));
+      Cn[i][k]=ap[ktop]/(1+abs(grid->ctop[i]-ktop));
 
     if(grid->Nk[i]-ktop>1) 
       TriSolve(a,b,c,d,&(scal[i][ktop]),grid->Nk[i]-ktop);

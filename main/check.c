@@ -349,8 +349,8 @@ void MemoryStats(gridT *grid, int myproc, int numprocs, MPI_Comm comm) {
   for(i=0;i<grid->Nc;i++)
     ncells+=grid->Nk[i];
 
-  MPI_Reduce(&TotSpacekb,&(AllSpace),1,MPI_INT,MPI_SUM,0,comm);
-  MPI_Bcast(&AllSpace,1,MPI_INT,0,comm);
+  MPI_Reduce(&TotSpacekb,&(AllSpace),1,MPI_UNSIGNED,MPI_SUM,0,comm);
+  MPI_Bcast(&AllSpace,1,MPI_UNSIGNED,0,comm);
   MPI_Reduce(&ncells,&(allncells),1,MPI_INT,MPI_SUM,0,comm);
   MPI_Bcast(&allncells,1,MPI_INT,0,comm);
 

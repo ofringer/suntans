@@ -11,6 +11,7 @@
  */
 #include "physio.h"
 #include "merge.h"
+#include "sendrecv.h"
 #include "mynetcdf.h"
 
 /************************************************************************/
@@ -48,7 +49,7 @@ void Write2DData(REAL *array, int merge, FILE *fid, char *error_message,
   if(myproc==writeProc) {
     nwritten=fwrite(array2DPointer,sizeof(REAL),arraySize,fid);
     if(nwritten!=arraySize) {
-      printf(error_message);
+      printf("%s",error_message);
       exit(EXIT_WRITING);
     }
   }
@@ -80,7 +81,7 @@ void Write3DData(REAL **array, REAL *temp_array, int merge, FILE *fid, char *err
 	}
 	nwritten=fwrite(merged2DArray,sizeof(REAL),mergedGrid->Nc,fid);
 	if(nwritten!=mergedGrid->Nc) {
-	  printf(error_message);
+	  printf("%s",error_message);
 	  exit(EXIT_WRITING);
 	}
       }
@@ -95,7 +96,7 @@ void Write3DData(REAL **array, REAL *temp_array, int merge, FILE *fid, char *err
       }
       nwritten=fwrite(temp_array,sizeof(REAL),grid->Nc,fid);
       if(nwritten!=grid->Nc) {
-	printf(error_message);
+	printf("%s",error_message);
 	exit(EXIT_WRITING);
       }
     }
@@ -260,12 +261,13 @@ void OutputPhysicalVariables(gridT *grid, physT *phys, propT *prop,int myproc, i
 
   if(!(prop->n%prop->ntout) || prop->n==1+prop->nstart || blowup) {
 
-    if(myproc==0 && VERBOSE>1) 
-      if(!blowup) 
+    if(myproc==0 && VERBOSE>1) {
+      if(!blowup) {
         printf("Outputting data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-      else
+      } else {
         printf("Outputting blowup data at step %d of %d\n",prop->n,prop->nsteps+prop->nstart);
-
+      }
+    }
     Write2DData(phys->h,prop->mergeArrays,prop->FreeSurfaceFID,"Error outputting free-surface data!\n",
     		grid,numprocs,myproc,comm);
 

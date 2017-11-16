@@ -1429,7 +1429,7 @@ static void VertGrid(gridT *maingrid, gridT **localgrid, MPI_Comm comm)
     for(k=0;k<maingrid->Nkmax;k++)
       dmaxtest+=maingrid->dz[k];
     for(i=0;i<maingrid->Nc;i++)
-      if(fabs(maingrid->dv[i]-dmaxtest>SMALL) && WARNING) {
+      if(fabs(maingrid->dv[i]-dmaxtest)>SMALL && WARNING) {
         printf("Warning...sum of grid spacings dz is less than depth! %e\n",maingrid->dv[i]-dmaxtest);
         break;
       }
@@ -2018,7 +2018,7 @@ static void ReOrder(gridT *grid)
     grad1=grid->grad[2*n];
     grad2=grid->grad[2*n+1];
     enei=grad1+grad2-2;
-    for(nf=0;nf=enei;nf++) 
+    for(nf=0;nf<enei;nf++) 
       tmp[2*(grid->maxfaces-1)*n+nf]=grid->eneigh[2*(grid->maxfaces-1)*n+nf];
   for(n=0;n<Ne;n++)
     grad1=grid->grad[2*n];

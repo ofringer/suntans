@@ -1933,12 +1933,16 @@ void InitializeGraphics(void) {
   green = temp2.pixel;
   XAllocNamedColor(dis,colormap,"yellow",&temp1,&temp2);
   yellow = temp2.pixel;
-  
-  //  fontStruct = XLoadQueryFont(dis,DEFAULT_FONT);
+
+  // For MAC
+  fontStruct = XLoadQueryFont(dis,DEFAULT_FONT);
+  // Otherwise
+  /*
   int mm, actual;
   char **fontslist = XListFonts(dis,"*",10,&actual);
   fontStruct = XLoadQueryFont(dis,fontslist[4]);
-  
+  */
+
   if(!fontStruct) {
     printf("Font \"%s\" does not exist!\n",DEFAULT_FONT);
     exit(0);
