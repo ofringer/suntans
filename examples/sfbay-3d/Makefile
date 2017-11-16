@@ -25,33 +25,29 @@ SUN = $(SUNTANSHOME)/sun
 SUNNC = $(SUNTANSHOME)/sun
 INCLUDES = -I$(SUNTANSHOME) $(MPIINC) $(PARMETISINC)
 DEFS = $(MPIDEF)
-NUMPROCS = 16
+NUMPROCS = 4
 
 all:	$(SUN)
 
-test:
-	@echo Please use \"make test2d\" or \"make test3d\" or \"make netcdf-test2d\" or \"make netcdf-test3d\".
+test:	test2d
 
-test2d:	data
+test2d:	data $(SUN)
 	sh $(EXEC).sh $(NUMPROCS) 2
 
-test3d:	data
+test3d:	data $(SUN)
 	sh $(EXEC).sh $(NUMPROCS) 3
 
-netcdf-test2d:	datanc
+netcdf-test2d:	datanc $(SUN)
 	sh $(EXEC)-netcdf.sh $(NUMPROCS) 2
 
-netcdf-test3d:	datanc
+netcdf-test3d:	datanc $(SUN)
 	sh $(EXEC)-netcdf.sh $(NUMPROCS) 3
 
-
-data:	$(SUN)
+data:
 	cp boundaries-no-nc.c boundaries.c
 
-
-datanc: $(SUN)
+datanc:
 	cp boundaries-nc.c boundaries.c
-
 
 .c.o:	
 	$(LD) -c $(INCLUDES) $(DEFS) $*.c
