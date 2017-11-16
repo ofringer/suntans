@@ -32,7 +32,7 @@ CdT	                0.0 	# Drag coefficient at surface
 CdB	                0.0	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
-dt 			15	# Time step
+dt 			5	# Time step
 Cmax 			500  	# Maximum permissible Courant number
 nsteps 			1500    # Number of steps
 ntout   		150  	# How often to output data
@@ -55,8 +55,8 @@ volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
 nonlinear		2	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
 laxWendroff_Vertical    0       # No Lax Wendroff in vertical
-newcells		1	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
-wetdry			1       # 1 if wetting and drying, 0 otherwise
+newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
+wetdry			0       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0	# Coriolis frequency f=2*Omega*sin(phi)
 sponge_distance	        0 	# Decay distance scale for sponge layer
 sponge_decay	        0	# Decay time scale for sponge layer
