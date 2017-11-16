@@ -36,6 +36,6 @@ else
     cp $maindatadir/suntans.dat $datadir/.
 fi
 
-echo "Running suntans (need to run with -g -s when wetting/drying is employed!)"
-$EXEC -g -s -vv --datadir=$datadir
+echo Running suntans...
+$EXEC -s -vv --datadir=$datadir
 

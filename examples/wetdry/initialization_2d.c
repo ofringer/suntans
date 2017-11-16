@@ -82,7 +82,7 @@ REAL ReturnDepth(REAL x, REAL y) {
   */
 REAL ReturnFreeSurface(REAL x, REAL y, REAL d) {
   if(x>12.5)
-    return -5;
+    return -ReturnDepth(x,y)+0.001;
   return 0;
 }
 

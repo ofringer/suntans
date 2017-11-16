@@ -6,8 +6,8 @@
 Nkmax			20	# Number of cells in the vertical
 stairstep		0	# 1 if stair-stepping, 0 if partial-stepping
 rstretch		1	# Stretching factor for vertical grid (1<=rstretch<1.1)
-CorrectVoronoi		1 0	# Whether or not to correct Voronoi points
-VoronoiRatio		1 0	# Adjust the voronoi points by this amount if 1 then = centroid.
+CorrectVoronoi		-1	# Whether or not to correct Voronoi points
+VoronoiRatio		90	# Adjust the voronoi points by this amount if 1 then = centroid.
 vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
 IntDepth 		0	# 1 if interpdepth, 0 otherwise
 dzsmall			0.1	# Smallest grid spacing ratio before correction
