@@ -6,7 +6,7 @@ ifneq ($(MPIHOME),)
   MPIDEF = 
   MPIINC = -I$(MPIHOME)
 else
-  CC = icc
+  CC = gcc
   MPIDEF = -DNOMPI
   MPIINC = 
 endif
@@ -18,6 +18,9 @@ ifneq ($(NETCDF4HOME),)
   NETCDFINCLUDE=-I$(NETCDF4HOME)/include
   NETCDFDEF = -DUSENETCDF
 else
+  ifeq ($(filter $(MAKECMDGOALS),clean clobber),)
+    $(error Error: This test case will not run if NETCDF4HOME is empty in ../../main/Makefile.in)
+  endif
   NETCDFLIBDIR = 
   NETCDFINCLUDE = 
   NETCDFLD = 

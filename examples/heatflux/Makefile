@@ -14,6 +14,18 @@ endif
 ifneq ($(PARMETISHOME),)
   PARMETISINC = -I$(PARMETISHOME)/ParMETISLib
 endif
+ifneq ($(NETCDF4HOME),)
+  NETCDFINCLUDE=-I$(NETCDF4HOME)/include
+  NETCDFDEF = -DUSENETCDF
+else
+  ifeq ($(filter $(MAKECMDGOALS),clean clobber),)
+    $(error Error: This test case will not run if NETCDF4HOME is empty in ../../main/Makefile.in)
+  endif
+  NETCDFLIBDIR = 
+  NETCDFINCLUDE = 
+  NETCDFLD = 
+  NETCDFSRC=
+endif
 
 LD = $(CC) 
 CFLAGS = 
