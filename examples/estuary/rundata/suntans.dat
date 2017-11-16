@@ -32,10 +32,10 @@ CdT	                0.0 	# Drag coefficient at surface
 CdB	                0.0	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		1	# Turbulence model (0 for none, 1 for MY25)
-dt 			50	# Time step
+dt 			25	# Time step
 Cmax 			500  	# Maximum permissible Courant number
-nsteps 			2000   # Number of steps
-ntout   		40  	# How often to output data
+nsteps 			4000   # Number of steps
+ntout   		80  	# How often to output data
 ntprog   		5 	# How often to report progress (in %)
 ntconserve 		1	# How often to output conserved data
 nonhydrostatic		1	# 0 = hydrostatic, 1 = nonhydrostatic
@@ -53,7 +53,7 @@ flux 			0	# flux
 timescale		0	# timescale for open boundary condition
 volcheck		0	# Check for volume conservation
 masscheck		0	# Check for mass conservation
-nonlinear		0	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
+nonlinear		1	# No momentum advection: 0, first-order upwind: 1, Central-differencing: 2
 newcells		0	# 1 if adjust momentum in surface cells as the volume changes, 0 otherwise
 wetdry			1       # 1 if wetting and drying, 0 otherwise
 Coriolis_f              0	# Coriolis frequency f=2*Omega*sin(phi)
