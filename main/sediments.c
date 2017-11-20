@@ -206,7 +206,7 @@ void AllocateSediment(gridT *grid, int myproc) {
  * here assume Erosion and Deposition initial value is 0, may have error
  */
 void InitializeSediment(gridT *grid, physT *phys, propT *prop,  int myproc) { 
-  int i,j,k;
+  int i,j,k,ne;
   REAL *stmp,z;
   FILE *InitSedimentFID;
   char str[BUFFERLENGTH], filename[BUFFERLENGTH];
