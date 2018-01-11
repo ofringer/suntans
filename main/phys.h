@@ -203,7 +203,7 @@ typedef struct _propT {
   REAL nctime, toffSet, gmtoffset;
   int nctimectr, avgtimectr, avgctr, avgfilectr, ntaverage, nstepsperncfile, ncfilectr;
   REAL nugget, sill, range, Lsw, Cda, Ce, Ch;
-  char  starttime[15], basetime[15]; 
+  char  *starttime, *basetime; 
 } propT;
 
 

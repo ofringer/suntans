@@ -13,7 +13,7 @@
 #include "memory.h"
 #include "grid.h"
 
-//Parmetis 2.0
+//Parmetis 2.0, 3.2
 //#include "parmetis.h"
 //Parmetis 3.1
 #include "parmetislib.h"

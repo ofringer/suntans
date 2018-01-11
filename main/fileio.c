@@ -365,7 +365,7 @@ double GetDefaultValue(char *str, int *status) {
  } else if(!strcmp(str,"latitude")) {
     
    return latitude_DEFAULT;
-   
+
  } else if(!strcmp(str,"gmtoffset")) {
     
    return gmtoffset_DEFAULT;

@@ -40,10 +40,11 @@ void MomentumSource(REAL **usource, gridT *grid, physT *phys, boundT *bound, pro
         //ubar=bound->boundary_u[k][bound->closest_type2[j]]*grid->n1[j]+
 	//   bound->boundary_v[k][bound->closest_type2[j]]*grid->n2[j];
 
+        // Use the boundary radial dist calculated from the boundary types
 	usource[j][k] -= 
-	  prop->dt*exp(-4.0*bound->rdist_type2[j]/prop->sponge_distance)/
-              prop->sponge_decay*(phys->u[j][k]-ubar);
-	// usource[j][k] -= 
+	    prop->dt*exp(-4.0*bound->rdist_type2[j]/prop->sponge_distance)/
+            prop->sponge_decay*(phys->u[j][k]-ubar);
+	//usource[j][k] -= 
 	//   prop->dt*exp(-4.0*rSponge[j]/prop->sponge_distance)/
 	//   prop->sponge_decay*(phys->u[j][k]-ubar);
 

@@ -508,7 +508,7 @@ static void WriteVertSpaceData(char *filename, gridT *grid, int myproc) {
   FILE *ofile = MPI_FOpen(filename,"w","OutputData",myproc);
 
   for(n=0;n<grid->Nkmax;n++)
-    fprintf(ofile,"%e\n",grid->dz[n]);
+    fprintf(ofile,"%lf\n",grid->dz[n]);
   fclose(ofile);
 }
 
@@ -530,7 +530,7 @@ static void WritePointsData(char *filename, gridT *grid, int myproc) {
 
   int j, Np=grid->Np;
   for(j=0;j<Np;j++)
-    fprintf(ofile,"%e %e 0\n",grid->xp[j],grid->yp[j]);
+    fprintf(ofile,"%lf %lf 0\n",grid->xp[j],grid->yp[j]);
 }
 
 static void ReadEdgesData(char *filename, gridT *grid, int myproc) {
@@ -618,7 +618,7 @@ static void WriteCellsData(char *filename, gridT *grid, int myproc, const char *
   for(j=0;j<grid->Nc;j++) {
     if(!strcmp(withfaces,"with nfaces"))
       fprintf(ofile,"%d ",grid->nfaces[j]);
-    fprintf(ofile,"%e %e ",grid->xv[j],grid->yv[j]);
+    fprintf(ofile,"%lf %lf ",grid->xv[j],grid->yv[j]);
     for(nf=0;nf<grid->nfaces[j];nf++)
       fprintf(ofile,"%d ",grid->cells[j*grid->maxfaces+nf]);
     for(nf=0;nf<grid->nfaces[j];nf++)
@@ -666,7 +666,7 @@ static void WriteCellCenteredData(char *filename, gridT *grid, int myproc) {
   FILE *ofile = MPI_FOpen(filename,"w","OutputData",myproc);
 
   for(n=0;n<grid->Nc;n++) {
-    fprintf(ofile,"%d %e %e %e %e %d ",grid->nfaces[n],grid->xv[n],grid->yv[n],grid->Ac[n],grid->dv[n],grid->Nk[n]);
+    fprintf(ofile,"%d %lf %lf %lf %lf %d ",grid->nfaces[n],grid->xv[n],grid->yv[n],grid->Ac[n],grid->dv[n],grid->Nk[n]);
 
     for(nf=0;nf<grid->nfaces[n];nf++)
       fprintf(ofile,"%d ",grid->face[grid->maxfaces*n+nf]);
@@ -675,7 +675,7 @@ static void WriteCellCenteredData(char *filename, gridT *grid, int myproc) {
     for(nf=0;nf<grid->nfaces[n];nf++) 
       fprintf(ofile,"%d ",grid->normal[grid->maxfaces*n+nf]);
     for(nf=0;nf<grid->nfaces[n];nf++) 
-      fprintf(ofile,"%e ",grid->def[grid->maxfaces*n+nf]);
+      fprintf(ofile,"%lf ",grid->def[grid->maxfaces*n+nf]);
     for(nf=0;nf<grid->nfaces[n];nf++) 
       fprintf(ofile,"%d ",grid->cells[grid->maxfaces*n+nf]);
     fprintf(ofile,"%d ",grid->mnptr[n]);
@@ -716,7 +716,7 @@ static void WriteEdgeCenteredData(char *filename, gridT *grid, int myproc) {
   FILE *ofile = MPI_FOpen(filename,"w","OutputData",myproc);
 
   for(n=0;n<Ne;n++) {
-    fprintf(ofile,"%e %e %e %e %e %e %d %d %d %d %d %d %d %d %d %d %d\n",
+    fprintf(ofile,"%lf %lf %lf %lf %lf %lf %d %d %d %d %d %d %d %d %d %d %d\n",
 	    grid->df[n],grid->dg[n],grid->n1[n],grid->n2[n],grid->xe[n],grid->ye[n],
 	    grid->Nke[n],grid->Nkc[n],grid->grad[2*n],grid->grad[2*n+1],
 	    grid->gradf[2*n],grid->gradf[2*n+1],grid->mark[n], 
@@ -792,7 +792,7 @@ static void WriteNodalData(char *filename, gridT *grid, gridT *maingrid, int myp
     // nodal pointer
     
     // print the nodal data structure information (will need conversion pointer)
-    fprintf(ofile,"%d %e %e ", n, maingrid->xp[n], maingrid->yp[n]);
+    fprintf(ofile,"%d %lf %lf ", n, maingrid->xp[n], maingrid->yp[n]);
 
     // print the number of nodal neighbors
     fprintf(ofile,"%d ", grid->numppneighs[n]);
@@ -825,7 +825,7 @@ static void WriteNodalData(char *filename, gridT *grid, gridT *maingrid, int myp
     fprintf(ofile,"%d ", grid->Nkp[n]);
     // now add the total area in each layer to the end
     for(neigh = 0; neigh < grid->Nkp[n]; neigh++){
-      fprintf(ofile,"%e ", grid->Actotal[n][neigh]);
+      fprintf(ofile,"%lf ", grid->Actotal[n][neigh]);
     }
     // now end the line since we've outputed all the data for 
     // nodal neighbor information

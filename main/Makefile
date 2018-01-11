@@ -24,7 +24,7 @@ else
 endif
 OPTFLAGS = -O2
 #OPTFLAGS = -O2 -mavx -xHost -ipo -static 
-#OPTFLAGS = -O0 -g
+#OPTFLAGS = -O0 -g -static
 
 #DDTOPTS =  -L/pawsey/cle52up04/devel/binary/forge/6.0.4/lib/64 -ldmalloc -Wl,--allow-multiple-definition
 DDTOPTS = 

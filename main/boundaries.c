@@ -45,7 +45,7 @@ void OpenBoundaryFluxes(REAL **q, REAL **ub, REAL **ubn, gridT *grid, physT *phy
   REAL **uc = phys->uc, **vc = phys->vc, **ucold = phys->uold, **vcold = phys->vold;
   REAL z, c0, c1, C0, C1, dt=prop->dt, u0, u0new, uc0, vc0, uc0old, vc0old, ub0;
 
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
     j = grid->edgep[jptr];
 
     ib = grid->grad[2*j];
@@ -108,9 +108,10 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm
 	j = grid->edgep[jptr];
 	ib=grid->grad[2*j];
 
-	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
-	  phys->boundary_T[jind][k]=0;
-	  phys->boundary_s[jind][k]=0;
+	//for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+        for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	  phys->boundary_T[jind][k]=phys->T[ib][k];
+	  phys->boundary_s[jind][k]=phys->s[ib][k];
 	}
       }
   }
@@ -133,8 +134,8 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm
       for(iptr=grid->celldist[1];iptr<grid->celldist[2];iptr++) {
 	    i = grid->cellp[iptr];
 	    for(k=grid->ctop[i];k<grid->Nk[i];k++) {
-		 phys->T[i][k] = 0;
-		 phys->s[i][k] = 0;
+		 phys->T[i][k] = phys->T[ib][k];
+		 phys->s[i][k] = phys->s[ib][k];
 	    }
        }
    }

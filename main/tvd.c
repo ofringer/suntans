@@ -72,8 +72,10 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, R
     nc1 = grid->grad[2*j];
     nc2 = grid->grad[2*j+1];
 
-    for(k=0;k<grid->etop[j];k++) 
-      phys->SfHp[j][k] = phys->SfHm[j][k] = 0;
+    for(k=0;k<grid->etop[j];k++){
+      phys->SfHp[j][k] =  0;
+      phys->SfHm[j][k] = 0;
+    }
       
     for(k=grid->etop[j];k<grid->Nke[j];k++) {
 

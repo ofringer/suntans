@@ -18,3 +18,7 @@
  - Found (and maybe fixed) two bad memory/address lookups
     1) phys.c->GetMomentumFaceValues (bad lookup for type-3 edges)
     2) boundaries.c->MatchBndPoints (commented out ind3edge allocation: it was wrong and not used)
+
+ (2018-01-11)
+ - Fixed various initialization issues that were causing memory overflows in some cases
+ - Moved SetDensity from outside of InitalizePhysicalVariables (required boundary scalars to be set first)

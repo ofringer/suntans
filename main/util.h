@@ -41,7 +41,7 @@ int max(int a, int b);
 //inline int SharedListValue(int *list1, int *list2, int listsize);
 int SharedListValue(int *list1, int *list2, int listsize);
 REAL QuadInterp(REAL x, REAL x0, REAL x1, REAL x2, REAL y0, REAL y1, REAL y2);
-REAL getToffSet(char starttime[15], char basetime[15]);
+REAL get_time_offset(char* basetime, char* starttime);
 void linsolve(REAL **A, REAL *b, int N);
 REAL Coriolis(REAL lat);
 #endif
