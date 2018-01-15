@@ -28,7 +28,8 @@ def make_suntans(suntanspath):
     H = 1000.0
     wave_period=12*3600.
 
-    phi0 = 0.02      # Internal wave amplitude
+    phi0 = 0.0      # Internal wave amplitude
+    U0 = 0.1        # Steady flow rate
     dudz = 0e-4      # Vertical Shear
 
     # Size of domain
@@ -36,7 +37,7 @@ def make_suntans(suntanspath):
     nx = 100
     nz = 40
 
-    htopo = 250.
+    htopo = 50.
 
     #suntanspath = 'data'
 
@@ -183,7 +184,7 @@ def make_suntans(suntanspath):
     for k in range(bnd.Nk):
        for ii, eptr in enumerate(bnd.edgep.tolist()):
 	   # Steady shear flow
-	   usteady = dudz * (H - grd.z_r[k])
+	   usteady = U0 + dudz * (H - grd.z_r[k])
 	   if indleft[eptr]:
 	       #bnd.boundary_u[:,k,ii] = phi0*np.cos(k_z*grd.z_r[k])*np.sin(omega*t)
 	       bnd.boundary_u[:,k,ii] = phi0*np.sin(omega*t) + usteady

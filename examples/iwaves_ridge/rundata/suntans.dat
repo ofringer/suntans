@@ -6,7 +6,7 @@
 Nkmax			40	# Number of cells in the vertical
 maxFaces		4	#
 stairstep	        0	# 1 if stair-stepping, 0 if partial-stepping
-rstretch		1.05	# Stretching factor for vertical grid (1<=rstretch<1.1)
+rstretch		1.0	# Stretching factor for vertical grid (1<=rstretch<1.1)
 CorrectVoronoi		0	# Whether or not to correct Voronoi points
 VoronoiRatio		1	# Adjust the voronoi points by this amount if 1 then = centroid.
 vertgridcorrect 	0 	# Correct vertical grid if Nkmax is too small
@@ -35,7 +35,7 @@ CdB	                0.00	# Drag coefficient at bottom
 CdW			0.0	# Drag coefficient at sidewalls
 turbmodel		0	# Turbulence model (0 for none, 1 for MY25)
 dt 			30	# Time step
-nsteps			2880   # Number of time steps
+nsteps			14400   # Number of time steps
 Cmax 			1.0	# Maximum permissible Courant number
 ntout   		180	# How often to output data
 ntprog   		1 	# How often to report progress (in %)
@@ -96,6 +96,9 @@ netcdfBdy		1	  # 1 - Read the open boundary data from a netcdf file
 netcdfBdyFile 	IWave_BC.nc # Name of the boundary netcdf file	
 readinitialnc		1	  # 1 - Read initial conditions from a netcdf file, 0 otherwise
 initialNCfile   IWave_IC.nc  # Initial condition netcdf file name
+calcaverage             1         # Calculate averages
+ntaverage               180      # 
+averageNetcdfFile       IWaveRidge_AVG 
 ########################################################################
 #
 #  Grid Files

@@ -238,7 +238,7 @@ void UpdateAverageVariables(gridT *grid, averageT *average, physT *phys, metT *m
     }
   }
 
-  for(jptr=grid->edgedist[0];jptr<grid->edgedist[4];jptr++) {
+  for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
       j = grid->edgep[jptr]; 
       for(k=grid->etop[j];k<grid->Nke[j];k++){
         
@@ -293,7 +293,7 @@ void UpdateAverageScalars(gridT *grid, averageT *average, physT *phys, metT *met
     if(prop->beta>0){
 	// Compute the scalar on the vertical faces (for horiz. advection)
 	HorizontalFaceScalars(grid,phys,prop,phys->s,phys->boundary_s,prop->TVDsalt,comm,myproc); 
-  	for(jptr=grid->edgedist[0];jptr<grid->edgedist[4];jptr++) {
+  	for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	  j = grid->edgep[jptr]; 
 	  for(k=grid->etop[j];k<grid->Nke[j];k++){
 	      //See equation 85 in SUNTANS paper
@@ -310,7 +310,7 @@ void UpdateAverageScalars(gridT *grid, averageT *average, physT *phys, metT *met
      //Temperature
      if(prop->gamma>0){
 	HorizontalFaceScalars(grid,phys,prop,phys->T,phys->boundary_T,prop->TVDtemp,comm,myproc); 
-  	for(jptr=grid->edgedist[0];jptr<grid->edgedist[4];jptr++) {
+  	for(jptr=grid->edgedist[0];jptr<grid->edgedist[1];jptr++) {
 	  j = grid->edgep[jptr]; 
 	  for(k=grid->etop[j];k<grid->Nke[j];k++){
 	      flx = (theta*phys->u[j][k] + (1.0-theta)*phys->utmp2[j][k])*grid->dzf[j][k]*grid->df[j]; 

@@ -33,11 +33,11 @@ def main(ncfile):
     xpt = np.array([100., 2.8e5])
     ypt = np.array([100., 100.])
 
-    #varname = 'uc'
-    #clim = [-0.16, 0.16]
+    varname = 'uc'
+    clim = [-0.16, 0.16]
 
-    varname = 'w'
-    clim = [-0.001, 0.001]
+    #varname = 'w'
+    #clim = [-0.001, 0.001]
 
     #varname = 'salt'
     #clim = None
