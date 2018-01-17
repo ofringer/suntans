@@ -302,7 +302,7 @@ void Progress(propT *prop, int myproc, int numprocs)
     if(prop->n==prop->nsteps+prop->nstart) {
       t_sim = Timer()-t_start;
       t_rem = t_sim
-        -t_nonhydro-t_predictor-t_source-t_transport-t_turb-t_io-t_check;
+        -t_nonhydro-t_predictor-t_source-t_transport-t_turb-t_io-t_check-t_met;
 
       printf("Total simulation time: %.2f s\n",t_sim);
       printf("Average per time step: %.2e s\n",t_sim/prop->nsteps);
@@ -320,6 +320,10 @@ void Progress(propT *prop, int myproc, int numprocs)
       if(prop->turbmodel)
         printf("  Turbulence: %.2f s (%.2f%%)\n", t_turb,
             100*t_turb/t_sim);
+      if(prop->metmodel)
+        printf("  Air-sea fluxes: %.2f s (%.2f%%)\n", t_met,
+            100*t_met/t_sim);
+
       printf("  Bounds checking: %.2f s (%.2f%%)\n", t_check,
           100*t_check/t_sim);
       printf("  I/O: %.2f s (%.2f%%)\n", t_io,

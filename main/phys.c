@@ -1095,7 +1095,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
   // initialize the timers
   t_start=Timer();
-  t_source=t_predictor=t_nonhydro=t_turb=t_transport=t_io=t_comm=t_check=0;
+  t_source=t_predictor=t_nonhydro=t_turb=t_transport=t_io=t_comm=t_check=t_met=0;
 
   // Set all boundary values at time t=nstart*dt;
   prop->n=prop->nstart;
@@ -1298,6 +1298,7 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 
       // Update the air-sea fluxes --> these are used for the previous time step source term and for the salt flux implicit term (salt tracer solver therefore needs to go next)
       if(prop->metmodel>=2){
+        t0 = Timer();
 	updateAirSeaFluxes(prop, grid, phys, met, phys->T);
 
 	//Communicate across processors
@@ -1308,6 +1309,8 @@ void Solve(gridT *grid, physT *phys, propT *prop, int myproc, int numprocs, MPI_
 	ISendRecvCellData2D(met->Hlw,grid,myproc,comm);
 	ISendRecvCellData2D(met->tau_x,grid,myproc,comm);
 	ISendRecvCellData2D(met->tau_y,grid,myproc,comm);
+
+        t_met+=Timer()-t0;
 
       }
       

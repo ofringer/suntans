@@ -16,7 +16,7 @@
 
 // Global variables for timing
 REAL t_start, t_source, t_predictor, t_nonhydro, t_turb, t_transport, t_io, t_comm,
-  t_check, t_tictoc;
+  t_check, t_tictoc, t_met;
 
 /*
  * Function: Timer
