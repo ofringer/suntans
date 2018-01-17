@@ -283,17 +283,17 @@ void AllocatePhysicalVariables(gridT *grid, physT **phys, propT *prop)
   }
  
   // allocate boundary value memory
-  (*phys)->boundary_u = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->boundary_v = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->boundary_w = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->boundary_T = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->boundary_s = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->boundary_rho = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->boundary_tmp = (REAL **)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
-  (*phys)->boundary_h = (REAL *)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
-  (*phys)->boundary_flag = (REAL *)SunMalloc((grid->edgedist[3]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->boundary_u = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_v = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_w = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_T = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_s = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_rho = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_tmp = (REAL **)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL *),"AllocatePhysicalVariables");
+  (*phys)->boundary_h = (REAL *)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
+  (*phys)->boundary_flag = (REAL *)SunMalloc((grid->edgedist[5]-grid->edgedist[2])*sizeof(REAL),"AllocatePhysicalVariables");
   // allocate over vertical layers
-  for(jptr=grid->edgedist[2];jptr<grid->edgedist[3];jptr++) {
+  for(jptr=grid->edgedist[2];jptr<grid->edgedist[5];jptr++) {
     j=grid->edgep[jptr];
 
     (*phys)->boundary_u[jptr-grid->edgedist[2]] = (REAL *)SunMalloc(grid->Nke[j]*sizeof(REAL),"AllocatePhysicalVariables");
@@ -544,11 +544,12 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     ncscratch = (REAL *)SunMalloc(Nki*Nci*sizeof(REAL),"InitializePhysicalVariables");
 
   }
+
   // Need to update the vertical grid and fix any cells in which
   // dzz is too small when h=0.
    UpdateDZ(grid,phys,prop, -1);
  
-/*  for(i=0;i<Nc;i++) {
+  /*  for(i=0;i<Nc;i++) {
     grid->dv[i]=0;
     for(k=0;k<grid->Nk[i];k++)
       grid->dv[i]+=grid->dzz[i][k];
@@ -574,6 +575,9 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
         phys->h[i]=-grid->dv[i] + DRYCELLHEIGHT;
     }
   }
+
+
+
 
   // Initialize the cell-centered latitude from netcdf
   for(i=0;i<Nc;i++) {
@@ -623,6 +627,7 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       phys->s[i][k]=0;
       phys->T[i][k]=0;
       phys->s0[i][k]=0;
+      phys->rho[i][k]=0;
     }
   }
 
@@ -635,11 +640,13 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       printf("Error reading stmp first\n");
     fclose(prop->InitSalinityFID);
 
-    for(i=0;i<Nc;i++) 
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+    for(i=0;i<Nc;i++) {
+      //for(k=grid->ctop[i];k<grid->Nk[i];k++) {
+      for(k=0;k<grid->Nk[i];k++) {
         phys->s[i][k]=stmp[k];
         phys->s0[i][k]=stmp[k];
       }
+    }
     SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
   } else if(prop->readinitialnc && prop->beta > 0){
      ReturnSalinityNC(prop,phys,grid,ncscratch,Nci,Nki,T0,myproc);
@@ -662,7 +669,8 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
     fclose(prop->InitTemperatureFID);    
 
     for(i=0;i<Nc;i++) 
-      for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+      //for(k=grid->ctop[i];k<grid->Nk[i];k++) 
+      for(k=0;k<grid->Nk[i];k++) 
         phys->T[i][k]=stmp[k];
 
     SunFree(stmp,grid->Nkmax*sizeof(REAL),"InitializePhysicalVariables");
@@ -747,6 +755,16 @@ void InitializePhysicalVariables(gridT *grid, physT *phys, propT *prop, int mypr
       phys->nu_lax[i][k]=0;
     }
   }
+
+  // Initialize TVD variables
+  for(j=0;j<grid->Ne;j++) {
+    for(k=0;k<grid->Nkc[j];k++) {
+      phys->SfHp[j][k]=0;
+      phys->SfHm[j][k]=0;
+    }
+  }
+
+
 
   if(prop->turbmodel) {
     for(i=0;i<grid->Nc;i++) {
@@ -834,7 +852,7 @@ void InitializeVerticalGrid(gridT **grid,int myproc)
 
   // initialize over depth for edge-oriented quantities
   for(j=0;j<Ne;j++){
-    (*grid)->dzf[j]=(REAL *)SunMalloc(((*grid)->Nke[j])*sizeof(REAL),"InitializeVerticalGrid");
+    (*grid)->dzf[j]=(REAL *)SunMalloc(((*grid)->Nkc[j])*sizeof(REAL),"InitializeVerticalGrid");
   }
 
   // initialize over depth for cell-centered quantities
@@ -889,9 +907,10 @@ void UpdateDZ(gridT *grid, physT *phys, propT *prop, int option)
     }
   }
   //fixdzz
-  if(option==-1)
+  if(option==-1){
     for(i=0;i<Nc;i++)
-      phys->h[i]=.0; 
+      phys->h[i]=0.; 
+  }
 
 
 
@@ -1562,7 +1581,8 @@ static void HorizontalSource(gridT *grid, physT *phys, propT *prop,
   // Set utmp and ut to zero since utmp will store the source term of the
   // horizontal momentum equation
   for(j=0;j<grid->Ne;j++) {
-    for(k=0;k<grid->Nke[j];k++) {
+    //for(k=0;k<grid->Nke[j];k++) {
+    for(k=0;k<grid->Nkc[j];k++) {
       phys->utmp[j][k]=0;
       phys->ut[j][k]=0;
     }
@@ -4474,11 +4494,12 @@ void SetFluxHeight(gridT *grid, physT *phys, propT *prop) {
   //        grid->dzf[j][k]=0;
   //  }
   //
-  //// initialize dzf
-  //for(j=0;j<grid->Ne;j++) {
-  //  for(k=0; k<grid->Nke[j];k++)
-  //    grid->dzf[j][k]=0;
-  //}
+  // initialize dzf
+  for(j=0;j<grid->Ne;j++) {
+    //for(k=0; k<grid->Nke[j];k++)
+    for(k=0; k<grid->Nkc[j];k++)
+      grid->dzf[j][k]=0;
+  }
 
   // assuming central differencing
   if(grid->smoothbot)

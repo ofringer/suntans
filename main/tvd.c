@@ -57,8 +57,9 @@ void HorizontalFaceScalars(gridT *grid, physT *phys, propT *prop, REAL **scal, R
 
 	u_nptheta = normal*(prop->theta*phys->u[ne][k]+(1-prop->theta)*phys->utmp2[ne][k]);
 	Qminus = 0.5*grid->dzf[ne][k]*grid->df[ne]*fabs(u_nptheta-fabs(u_nptheta));
-	if(neigh!=-1)
+	if(neigh!=-1){
 	  sumQC[i][k]+=Qminus*(scal[i][k]-scal[neigh][k]);
+         }
 	sumQ[i][k]+=Qminus;
       }
     }

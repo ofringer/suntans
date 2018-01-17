@@ -360,6 +360,7 @@ void AllocateMetIn(propT *prop, gridT *grid, metinT **metin, int myproc){
   (*metin)->time = (REAL *)SunMalloc(nt*sizeof(REAL),"AllocateMetIn");
   
   /* Allocate the 2-D grid based weights */
+  /* These really blow out the memory... need to reconsider this*/
   (*metin)->WUwind = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocateMetIn");
   (*metin)->WVwind = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocateMetIn");
   (*metin)->WTair = (REAL **)SunMalloc(Nc*sizeof(REAL *),"AllocateMetIn");
