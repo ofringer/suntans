@@ -143,7 +143,7 @@ void OpenFiles(propT *prop, int myproc)
   if(prop->calcaverage && prop->mergeArrays==0){
     MPI_GetFile(filename,DATAFILE,"averageNetcdfFile","OpenFiles",myproc);
     sprintf(str,"%s.%d",filename,myproc);
-    prop->averageNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+    prop->averageNetcdfFileID = MPI_NCOpen(str,NC_CLASSIC_MODEL|NC_NETCDF4,"OpenFiles",myproc);
   }
   
   if(prop->outputNetcdf==0) {
@@ -216,7 +216,7 @@ void OpenFiles(propT *prop, int myproc)
     if(prop->mergeArrays==0){
 	MPI_GetFile(filename,DATAFILE,"outputNetcdfFile","OpenFiles",myproc);
 	sprintf(str,"%s.nc.%d",filename,myproc);
-	prop->outputNetcdfFileID = MPI_NCOpen(str,NC_NETCDF4,"OpenFiles",myproc);
+	prop->outputNetcdfFileID = MPI_NCOpen(str,NC_CLASSIC_MODEL|NC_NETCDF4,"OpenFiles",myproc);
     }
   }
 

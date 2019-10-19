@@ -22,11 +22,12 @@ else
   MPIFILE =
   MPIDEF = 
 endif
-OPTFLAGS = -O2
-#OPTFLAGS = -O2 -mavx -xHost -ipo -static 
-#OPTFLAGS = -O0 -g -static
-
-#DDTOPTS =  -L/pawsey/cle52up04/devel/binary/forge/6.0.4/lib/64 -ldmalloc -Wl,--allow-multiple-definition
+OPTFLAGS = -O2 -xCORE-AVX2
+#OPTFLAGS = -O2 -mavx -xHost -static 
+#OPTFLAGS = -O0 -g 
+#
+#DDTOPTS =  -L/pawsey/cle52up04/devel/binary/forge/7.0.4/lib/64 -lmap-sampler-pmpi -lmap-sampler -ldmalloc -Wl,--allow-multiple-definition
+#DDTOPTS =  -L/pawsey/cle52up04/devel/binary/forge/7.0.4/lib/64  -Wl,--undefined=malloc -ldmalloc
 DDTOPTS = 
 
 XLDFLAGS=-lX11 -lm
@@ -80,10 +81,10 @@ endif
 LD = $(CC)
 LIBS = $(PARMETISLIB) $(TRIANGLELIB) $(NETCDFLD)
 LIBDIR = $(PARMETISLIBDIR) $(TRIANGLELIBDIR) $(NETCDFLIBDIR)
-LDFLAGS = -lm $(LIBDIR) $(LIBS)
+LDFLAGS = -lm $(LIBDIR) $(LIBS) $(DDTOPTS)
 INCLUDES = $(PARMETISINCLUDE) $(TRIANGLEINCLUDE) $(NETCDFINCLUDE) 
 DEFINES = $(MPIDEF) $(NETCDFDEF)
-CFLAGS = $(OPTFLAGS) $(INCLUDES) $(DEFINES) $(DDTOPTS)
+CFLAGS = $(OPTFLAGS) $(INCLUDES) $(DEFINES) 
 
 EXEC = sun
 PEXEC = sunplot
