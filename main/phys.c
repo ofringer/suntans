@@ -4414,10 +4414,12 @@ void SetDensity(gridT *grid, physT *phys, propT *prop) {
       if(!prop->gamma)
           phys->T[i][k] = 0;
 
-      z+=0.5*grid->dz[k];
+      //z+=0.5*grid->dz[k];
+      z+=0.5*grid->dzz[i][k];
       p=RHO0*prop->grav*z;
       phys->rho[i][k]=StateEquation(prop,phys->s[i][k],phys->T[i][k],p);
-      z+=0.5*grid->dz[k];
+      //z+=0.5*grid->dz[k];
+      z+=0.5*grid->dzz[i][k];
     }
   }
 
@@ -4433,7 +4435,8 @@ void SetDensity(gridT *grid, physT *phys, propT *prop) {
       if(!prop->gamma)
           phys->boundary_T[jptr-grid->edgedist[2]][k] = 0;
 
-      z+=0.5*grid->dz[k];
+      //z+=0.5*grid->dz[k];
+      z+=0.5*grid->dzz[ib][k];
       p=RHO0*prop->grav*z;
       //printf("j, %d, k: %d, s: %lf, T: %lf, p: %lf\n",
       //    j, k,    phys->boundary_s[jptr-grid->edgedist[2]][k],
@@ -4444,7 +4447,8 @@ void SetDensity(gridT *grid, physT *phys, propT *prop) {
                 phys->boundary_s[jptr-grid->edgedist[2]][k],
                 phys->boundary_T[jptr-grid->edgedist[2]][k],
                 p);
-      z+=0.5*grid->dz[k];
+      //z+=0.5*grid->dz[k];
+      z+=0.5*grid->dzz[ib][k];
     }
   }
 }

@@ -22,7 +22,8 @@ else
   MPIFILE =
   MPIDEF = 
 endif
-OPTFLAGS = -O2 -xCORE-AVX2
+#OPTFLAGS = -O2 -xCORE-AVX2
+OPTFLAGS = -O2 -ipo
 #OPTFLAGS = -O2 -mavx -xHost -static 
 #OPTFLAGS = -O0 -g 
 #
@@ -63,8 +64,8 @@ else
 endif
 
 ifneq ($(NETCDF4HOME),)
-  NETCDFLIBDIR=-L$(NETCDF4HOME)/lib
-  NETCDFINCLUDE=-I$(NETCDF4HOME)/include
+  NETCDFLIBDIR= #-L$(NETCDF4HOME)/lib
+  NETCDFINCLUDE= #-I$(NETCDF4HOME)/include
   NETCDFLD=-lnetcdf
   NETCDFDEF = -DUSENETCDF
   NETCDFSRC= mynetcdf.c
