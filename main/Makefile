@@ -23,7 +23,8 @@ else
   MPIDEF = 
 endif
 #OPTFLAGS = -O2 -xCORE-AVX2
-OPTFLAGS = -O2 -ipo
+#OPTFLAGS = -O2 -ipo
+OPTFLAGS = -O2
 #OPTFLAGS = -O2 -mavx -xHost -static 
 #OPTFLAGS = -O0 -g 
 #
