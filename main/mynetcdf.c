@@ -5022,6 +5022,7 @@ return dimlen;
     // Find the index of the closest time point, T0
     Nt = (int)returndimlenBC(prop->initialNCfileID,"time");
     *T0 = getICtime(prop,Nt, myproc);
+    if (*T0==-1) *T0 = 0;
     if (*T0>=Nt) *T0 = Nt-1;
     //*T0=0;
     return;

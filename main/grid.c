@@ -118,6 +118,8 @@ void GetGrid(gridT **localgrid, int myproc, int numprocs, MPI_Comm comm)
   //  compute the grid with triangle or read it in if in suntans format
   if(!TRIANGULATE) {
     // get the number of points, edges and cells from suntans.dat
+    if(myproc==0 && VERBOSE>0) printf("Calculating Grid Size...\n");
+
     Np = MPI_GetSize(POINTSFILE,"GetGrid",myproc);
     Ne = MPI_GetSize(EDGEFILE,"GetGrid",myproc);
     Nc = MPI_GetSize(CELLSFILE,"GetGrid",myproc);

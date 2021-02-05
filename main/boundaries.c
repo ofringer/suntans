@@ -95,8 +95,8 @@ void BoundaryScalars(gridT *grid, physT *phys, propT *prop, int myproc, MPI_Comm
 	ib=grid->grad[2*j];
 	ii+=1;
 
-	for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
-	//for(k=grid->etop[j];k<grid->Nke[j];k++) {
+	//for(k=grid->ctop[ib];k<grid->Nk[ib];k++) {
+	for(k=grid->etop[j];k<grid->Nke[j];k++) {
 	  phys->boundary_T[jind][k]=bound->boundary_T[k][bound->ind2[ii]];
 	  phys->boundary_s[jind][k]=bound->boundary_S[k][bound->ind2[ii]];
 	  //printf("edge: %d, k : %d, boundary_s = %f\n",jind,k,phys->boundary_s[jind][k]);
