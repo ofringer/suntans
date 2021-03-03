@@ -16,10 +16,8 @@
 # Copyright (C) 2005-2006 The Board of Trustees of the Leland Stanford Junior 
 # University. All Rights Reserved.
 #
-MPIHOME=
-#PARMETISHOME=/home/mrayson/code/parmetis/intel/ParMetis-3.1
-PARMETISHOME=/home/mrayson/code/parmetis/gcc/ParMetis-3.1
+MPIHOME=/usr
+PARMETISHOME=/home/suntans/code/ParMetis-3.2.0
 TRIANGLEHOME=
-# NETCDF4 doesn't matter on Pawsey (just use the -lnetcdf flag)
-NETCDF4HOME=/opt/intel/netcdf/4.3.2
+NETCDF4HOME=/usr
 

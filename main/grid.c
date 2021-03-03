@@ -3380,78 +3380,207 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
   }
 
   
-  ////#######################################################
-  //// Rusty's code
-  //// ######################################################
-  //// elm version
-  //// compute the centers of each edge using the midpoint of the edge
-  //// this is better conditioned, and really most of the time the cells are 
-  //// orthogonal
-  //for(n=0;n<Ne;n++) {
-  //  (*grid)->xe[n] = 0.5*(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
-  //      	       maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
-  //  (*grid)->ye[n] = 0.5*(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
-  //      	       maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
-  //}
+  //#######################################################
+  // Rusty's code
+  // ######################################################
+  // elm version
+  // compute the centers of each edge using the midpoint of the edge
+  // this is better conditioned, and really most of the time the cells are 
+  // orthogonal
+  for(n=0;n<Ne;n++) {
+    (*grid)->xe[n] = 0.5*(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
+        	       maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+    (*grid)->ye[n] = 0.5*(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
+        	       maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+  }
 
+  /* Compute the normal distances between Voronoi points to compute the 
+     gradients and then output the lengths to a data file. Also, compute 
+     n1 and n2 which make up the normal vector components. */
+  if(myproc==0 && VERBOSE>2) printf("Computing n1, n2, and dg..\n");
+  for(n=0;n<Ne;n++) {
+    // calculate the normal based on the edge.  The voronoi centers are bit
+    // "twitchier"
+    // 
+
+    // Find the vector along the edge, then rotate 90 CCW
+    // RCH: not sure if this will properly handle marker 6 edges - is
+    // grid->grad consistent across processors??
+    
+    (*grid)->n1[n] = - (maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]] - 
+                        maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]);
+    (*grid)->n2[n] = (maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]] - 
+        	       maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]);
+    tmp_mag = sqrt( pow( (*grid)->n1[n], 2 )  + pow( (*grid)->n2[n], 2) );
+    (*grid)->n1[n] = (*grid)->n1[n] / tmp_mag;
+    (*grid)->n2[n] = (*grid)->n2[n] / tmp_mag;
+
+
+    // this isn't correct for marker 6 edges, though.
+    if((*grid)->grad[2*n]!=-1 && (*grid)->grad[2*n+1]!=-1) {
+      dx = (*grid)->xv[(*grid)->grad[2*n]]-(*grid)->xv[(*grid)->grad[2*n+1]];
+      dy = (*grid)->yv[(*grid)->grad[2*n]]-(*grid)->yv[(*grid)->grad[2*n+1]];
+      (*grid)->dg[n] = sqrt(dx*dx + dy*dy);
+      if(((*grid)->xv[(*grid)->grad[2*n]]==
+          (*grid)->xv[(*grid)->grad[2*n+1]]) &&
+         ((*grid)->yv[(*grid)->grad[2*n]]==
+          (*grid)->yv[(*grid)->grad[2*n+1]])) {
+        printf("Coincident Voronoi points on edge %d (%d,%d)!\n",n,(*grid)->grad[2*n],(*grid)->grad[2*n+1]);
+      }
+    }
+    else {
+      xc = (*grid)->xe[n];
+      yc = (*grid)->ye[n];
+      if((*grid)->grad[2*n]==-1) {
+        dx = xc-(*grid)->xv[(*grid)->grad[2*n+1]];
+        dy = yc-(*grid)->yv[(*grid)->grad[2*n+1]];
+      } else {
+        dx = (*grid)->xv[(*grid)->grad[2*n]]-xc;
+        dy = (*grid)->yv[(*grid)->grad[2*n]]-yc;
+      }
+      (*grid)->dg[n] = 2 * sqrt(dx*dx + dy*dy);
+    }
+
+  }
+  
+  // elm version
+  /* Compute the distance from the cell circumcenter to the edge center */
+  // Allow for variable cell faces
+  for(n=0;n<Nc;n++) {
+    for(nf=0;nf<(*grid)->nfaces[n];nf++) {
+      ne = (*grid)->face[n*(*grid)->maxfaces+nf];
+      (*grid)->def[n*(*grid)->maxfaces+nf] = 
+        -(((*grid)->xv[n]-maingrid->xp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n1[ne]+
+          ((*grid)->yv[n]-maingrid->yp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n2[ne])*
+        (*grid)->normal[n*(*grid)->maxfaces+nf];
+        //Check for nan
+        if((*grid)->def[n*(*grid)->maxfaces+nf] != (*grid)->def[n*(*grid)->maxfaces+nf])
+             printf("Warning: nan computed for edge distance (def)\n");
+
+      // Distance to the edge midpoint. Not used.
+      /*
+        (*grid)->def[n*NFACES+nf]=sqrt(pow((*grid)->xv[n]-(*grid)->xe[ne],2)+
+        pow((*grid)->yv[n]-(*grid)->ye[ne],2));
+      */
+    }
+  }
+    /*
+    for(nf=0;nf<NFACES;nf++) {
+      xt[nf]=maingrid->xp[(*grid)->cells[n*NFACES+nf]];
+      yt[nf]=maingrid->yp[(*grid)->cells[n*NFACES+nf]];
+    }
+    // Radius of the circumcircle
+    R0 = GetCircumcircleRadius(xt,yt,NFACES);
+    for(nf=0;nf<NFACES;nf++) {
+      (*grid)->def[n*NFACES+nf]=sqrt(R0*R0-pow((*grid)->df[(*grid)->face[n*NFACES+nf]]/2,2));
+      if(IsNan((*grid)->def[n*NFACES+nf]) || (*grid)->def[n*NFACES+nf]==0) {
+        printf("Corrected at x=%f\n",(*grid)->xv[n]);
+        (*grid)->def[n*NFACES+nf]=(*grid)->dg[(*grid)->face[n*NFACES+nf]]/2;
+      }
+  }
+  //########################################################
+  //End of Rusty's code
+  //########################################################
+  
+
+
+  ////########################################################
+  //// Original Code
+  ////########################################################
+  //// Compute the centers of each edge, which are defined by the intersection
+  //// of the Voronoi Edge with the Delaunay Edge.  Note that this point is
+  //// not the midpoint of the edge when one of the neighboring triangles is obtuse 
+  //// and it has been corrected.
+  //for(n=0;n<Ne;n++) {
+  //  p1 = (*grid)->edges[NUMEDGECOLUMNS*n];
+  //  p2 = (*grid)->edges[NUMEDGECOLUMNS*n+1];
+
+  //  tx = maingrid->xp[p2]-maingrid->xp[p1];
+  //  ty = maingrid->yp[p2]-maingrid->yp[p1];
+  //  tmag = sqrt(tx*tx+ty*ty);
+  //  tx = tx/tmag;
+  //  ty = ty/tmag;
+  //  //corrected part to make we can calculate xe and ye when grad[2n]==1
+  //  if((*grid)->grad[2*n]>=0){
+  //  xdott = ((*grid)->xv[(*grid)->grad[2*n]]-maingrid->xp[p1])*tx+
+  //    ((*grid)->yv[(*grid)->grad[2*n]]-maingrid->yp[p1])*ty;
+  //  (*grid)->xe[n] = maingrid->xp[p1]+xdott*tx;
+  //  (*grid)->ye[n] = maingrid->yp[p1]+xdott*ty;
+  //  }
+  //  else{
+  //  xdott = ((*grid)->xv[(*grid)->grad[2*n+1]]-maingrid->xp[p1])*tx+
+  //    ((*grid)->yv[(*grid)->grad[2*n+1]]-maingrid->yp[p1])*ty;
+  //  (*grid)->xe[n] = maingrid->xp[p1]+xdott*tx;
+  //  (*grid)->ye[n] = maingrid->yp[p1]+xdott*ty;
+  //  }
+  //  
+  //  // This is the midpoint of the edge and is not used.
+  //  /*
+  //  (*grid)->xe[n] = 0.5*(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
+  //      		  maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+  //  (*grid)->ye[n] = 0.5*(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
+  //      		  maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
+  //  */
+  //}
+  //
   ///* Compute the normal distances between Voronoi points to compute the 
   //   gradients and then output the lengths to a data file. Also, compute 
   //   n1 and n2 which make up the normal vector components. */
-  //if(myproc==0 && VERBOSE>2) printf("Computing n1, n2, and dg..\n");
+  //if(myproc==0 && VERBOSE>2) printf("\t\tComputing n1, n2, and dg..\n");
+  //// for each edge
   //for(n=0;n<Ne;n++) {
-  //  // calculate the normal based on the edge.  The voronoi centers are bit
-  //  // "twitchier"
-  //  // 
-
-  //  // Find the vector along the edge, then rotate 90 CCW
-  //  // RCH: not sure if this will properly handle marker 6 edges - is
-  //  // grid->grad consistent across processors??
-  //  
-  //  (*grid)->n1[n] = - (maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]] - 
-  //                      maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]);
-  //  (*grid)->n2[n] = (maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]] - 
-  //      	       maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]);
-  //  tmp_mag = sqrt( pow( (*grid)->n1[n], 2 )  + pow( (*grid)->n2[n], 2) );
-  //  (*grid)->n1[n] = (*grid)->n1[n] / tmp_mag;
-  //  (*grid)->n2[n] = (*grid)->n2[n] / tmp_mag;
-
-
-  //  // this isn't correct for marker 6 edges, though.
+  //  // if both cells are not ghost cells 
   //  if((*grid)->grad[2*n]!=-1 && (*grid)->grad[2*n+1]!=-1) {
-  //    dx = (*grid)->xv[(*grid)->grad[2*n]]-(*grid)->xv[(*grid)->grad[2*n+1]];
-  //    dy = (*grid)->yv[(*grid)->grad[2*n]]-(*grid)->yv[(*grid)->grad[2*n+1]];
-  //    (*grid)->dg[n] = sqrt(dx*dx + dy*dy);
+  //    (*grid)->n1[n] = (*grid)->xv[(*grid)->grad[2*n]]-(*grid)->xv[(*grid)->grad[2*n+1]];
+  //    (*grid)->n2[n] = (*grid)->yv[(*grid)->grad[2*n]]-(*grid)->yv[(*grid)->grad[2*n+1]];
+  //    (*grid)->dg[n] = sqrt(pow((*grid)->n1[n],2)+pow((*grid)->n2[n],2));
+  //    (*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
+  //    (*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
   //    if(((*grid)->xv[(*grid)->grad[2*n]]==
-  //        (*grid)->xv[(*grid)->grad[2*n+1]]) &&
-  //       ((*grid)->yv[(*grid)->grad[2*n]]==
-  //        (*grid)->yv[(*grid)->grad[2*n+1]])) {
-  //      printf("Coincident Voronoi points on edge %d (%d,%d)!\n",n,(*grid)->grad[2*n],(*grid)->grad[2*n+1]);
+  //          (*grid)->xv[(*grid)->grad[2*n+1]]) &&
+  //        ((*grid)->yv[(*grid)->grad[2*n]]==
+  //         (*grid)->yv[(*grid)->grad[2*n+1]])) {
+  //      printf("Coincident Voronoi points on edge %d (%d,%d)!\n",n,
+  //          (*grid)->grad[2*n],(*grid)->grad[2*n+1]);
   //    }
   //  }
   //  else {
   //    xc = (*grid)->xe[n];
   //    yc = (*grid)->ye[n];
+  //    // one neighboring cell is a ghost cell
   //    if((*grid)->grad[2*n]==-1) {
-  //      dx = xc-(*grid)->xv[(*grid)->grad[2*n+1]];
-  //      dy = yc-(*grid)->yv[(*grid)->grad[2*n+1]];
-  //    } else {
-  //      dx = (*grid)->xv[(*grid)->grad[2*n]]-xc;
-  //      dy = (*grid)->yv[(*grid)->grad[2*n]]-yc;
+  //      (*grid)->n1[n] = xc-(*grid)->xv[(*grid)->grad[2*n+1]];
+  //      (*grid)->n2[n] = yc-(*grid)->yv[(*grid)->grad[2*n+1]];
+  //      (*grid)->dg[n] = sqrt(pow((*grid)->n1[n],2)+
+  //          pow((*grid)->n2[n],2));
+  //      (*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
+  //      (*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
+  //      (*grid)->dg[n] = 2.0*(*grid)->dg[n];
+  //    } 
+  //    // other cell is ghost cell 
+  //    else {
+  //      (*grid)->n1[n] = (*grid)->xv[(*grid)->grad[2*n]]-xc;
+  //      (*grid)->n2[n] = (*grid)->yv[(*grid)->grad[2*n]]-yc;
+  //      (*grid)->dg[n] = sqrt(pow((*grid)->n1[n],2)+
+  //          pow((*grid)->n2[n],2));
+  //      (*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
+  //      (*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
+  //      (*grid)->dg[n] = 2.0*(*grid)->dg[n];
   //    }
-  //    (*grid)->dg[n] = 2 * sqrt(dx*dx + dy*dy);
   //  }
-
   //}
-  //
-  //// elm version
-  ///* Compute the distance from the cell circumcenter to the edge center */
-  //// Allow for variable cell faces
+
+  //// Compute the length of the perpendicular bisector.  Note that this is not necessarily
+  //// the distance to the edge midpoint unless both triangles have not been corrected.  
+  //// Note that def points outward, so if def<0 then uc and vc will be 
+  //// computed correctly for obtuse triangles and advection of momentum is conservative.  
+  //// However, the method is unstable for obtuse triangles and correction must be used.  
   //for(n=0;n<Nc;n++) {
   //  for(nf=0;nf<(*grid)->nfaces[n];nf++) {
   //    ne = (*grid)->face[n*(*grid)->maxfaces+nf];
   //    (*grid)->def[n*(*grid)->maxfaces+nf] = 
   //      -(((*grid)->xv[n]-maingrid->xp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n1[ne]+
-  //        ((*grid)->yv[n]-maingrid->yp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n2[ne])*
+  //          ((*grid)->yv[n]-maingrid->yp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n2[ne])*
   //      (*grid)->normal[n*(*grid)->maxfaces+nf];
   //      //Check for nan
   //      if((*grid)->def[n*(*grid)->maxfaces+nf] != (*grid)->def[n*(*grid)->maxfaces+nf])
@@ -3477,142 +3606,13 @@ static void Geometry(gridT *maingrid, gridT **grid, int myproc)
   //      printf("Corrected at x=%f\n",(*grid)->xv[n]);
   //      (*grid)->def[n*NFACES+nf]=(*grid)->dg[(*grid)->face[n*NFACES+nf]]/2;
   //    }
+  //  }
   //}
-  ////########################################################
-  ////End of Rusty's code
-  ////########################################################
-  //
+  //  */
 
-
-  //########################################################
-  // Original Code
-  //########################################################
-  // Compute the centers of each edge, which are defined by the intersection
-  // of the Voronoi Edge with the Delaunay Edge.  Note that this point is
-  // not the midpoint of the edge when one of the neighboring triangles is obtuse 
-  // and it has been corrected.
-  for(n=0;n<Ne;n++) {
-    p1 = (*grid)->edges[NUMEDGECOLUMNS*n];
-    p2 = (*grid)->edges[NUMEDGECOLUMNS*n+1];
-
-    tx = maingrid->xp[p2]-maingrid->xp[p1];
-    ty = maingrid->yp[p2]-maingrid->yp[p1];
-    tmag = sqrt(tx*tx+ty*ty);
-    tx = tx/tmag;
-    ty = ty/tmag;
-    //corrected part to make we can calculate xe and ye when grad[2n]==1
-    if((*grid)->grad[2*n]>=0){
-    xdott = ((*grid)->xv[(*grid)->grad[2*n]]-maingrid->xp[p1])*tx+
-      ((*grid)->yv[(*grid)->grad[2*n]]-maingrid->yp[p1])*ty;
-    (*grid)->xe[n] = maingrid->xp[p1]+xdott*tx;
-    (*grid)->ye[n] = maingrid->yp[p1]+xdott*ty;
-    }
-    else{
-    xdott = ((*grid)->xv[(*grid)->grad[2*n+1]]-maingrid->xp[p1])*tx+
-      ((*grid)->yv[(*grid)->grad[2*n+1]]-maingrid->yp[p1])*ty;
-    (*grid)->xe[n] = maingrid->xp[p1]+xdott*tx;
-    (*grid)->ye[n] = maingrid->yp[p1]+xdott*ty;
-    }
-    
-    // This is the midpoint of the edge and is not used.
-    /*
-    (*grid)->xe[n] = 0.5*(maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
-        		  maingrid->xp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
-    (*grid)->ye[n] = 0.5*(maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n]]+
-        		  maingrid->yp[(*grid)->edges[NUMEDGECOLUMNS*n+1]]);
-    */
-  }
-  
-  /* Compute the normal distances between Voronoi points to compute the 
-     gradients and then output the lengths to a data file. Also, compute 
-     n1 and n2 which make up the normal vector components. */
-  if(myproc==0 && VERBOSE>2) printf("\t\tComputing n1, n2, and dg..\n");
-  // for each edge
-  for(n=0;n<Ne;n++) {
-    // if both cells are not ghost cells 
-    if((*grid)->grad[2*n]!=-1 && (*grid)->grad[2*n+1]!=-1) {
-      (*grid)->n1[n] = (*grid)->xv[(*grid)->grad[2*n]]-(*grid)->xv[(*grid)->grad[2*n+1]];
-      (*grid)->n2[n] = (*grid)->yv[(*grid)->grad[2*n]]-(*grid)->yv[(*grid)->grad[2*n+1]];
-      (*grid)->dg[n] = sqrt(pow((*grid)->n1[n],2)+pow((*grid)->n2[n],2));
-      (*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
-      (*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
-      if(((*grid)->xv[(*grid)->grad[2*n]]==
-            (*grid)->xv[(*grid)->grad[2*n+1]]) &&
-          ((*grid)->yv[(*grid)->grad[2*n]]==
-           (*grid)->yv[(*grid)->grad[2*n+1]])) {
-        printf("Coincident Voronoi points on edge %d (%d,%d)!\n",n,
-            (*grid)->grad[2*n],(*grid)->grad[2*n+1]);
-      }
-    }
-    else {
-      xc = (*grid)->xe[n];
-      yc = (*grid)->ye[n];
-      // one neighboring cell is a ghost cell
-      if((*grid)->grad[2*n]==-1) {
-        (*grid)->n1[n] = xc-(*grid)->xv[(*grid)->grad[2*n+1]];
-        (*grid)->n2[n] = yc-(*grid)->yv[(*grid)->grad[2*n+1]];
-        (*grid)->dg[n] = sqrt(pow((*grid)->n1[n],2)+
-            pow((*grid)->n2[n],2));
-        (*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
-        (*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
-        (*grid)->dg[n] = 2.0*(*grid)->dg[n];
-      } 
-      // other cell is ghost cell 
-      else {
-        (*grid)->n1[n] = (*grid)->xv[(*grid)->grad[2*n]]-xc;
-        (*grid)->n2[n] = (*grid)->yv[(*grid)->grad[2*n]]-yc;
-        (*grid)->dg[n] = sqrt(pow((*grid)->n1[n],2)+
-            pow((*grid)->n2[n],2));
-        (*grid)->n1[n] = (*grid)->n1[n]/(*grid)->dg[n];
-        (*grid)->n2[n] = (*grid)->n2[n]/(*grid)->dg[n];
-        (*grid)->dg[n] = 2.0*(*grid)->dg[n];
-      }
-    }
-  }
-
-  // Compute the length of the perpendicular bisector.  Note that this is not necessarily
-  // the distance to the edge midpoint unless both triangles have not been corrected.  
-  // Note that def points outward, so if def<0 then uc and vc will be 
-  // computed correctly for obtuse triangles and advection of momentum is conservative.  
-  // However, the method is unstable for obtuse triangles and correction must be used.  
-  for(n=0;n<Nc;n++) {
-    for(nf=0;nf<(*grid)->nfaces[n];nf++) {
-      ne = (*grid)->face[n*(*grid)->maxfaces+nf];
-      (*grid)->def[n*(*grid)->maxfaces+nf] = 
-        -(((*grid)->xv[n]-maingrid->xp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n1[ne]+
-            ((*grid)->yv[n]-maingrid->yp[(*grid)->edges[ne*NUMEDGECOLUMNS]])*(*grid)->n2[ne])*
-        (*grid)->normal[n*(*grid)->maxfaces+nf];
-        //Check for nan
-        if((*grid)->def[n*(*grid)->maxfaces+nf] != (*grid)->def[n*(*grid)->maxfaces+nf])
-             printf("Warning: nan computed for edge distance (def)\n");
-
-      // Distance to the edge midpoint. Not used.
-      /*
-	(*grid)->def[n*NFACES+nf]=sqrt(pow((*grid)->xv[n]-(*grid)->xe[ne],2)+
-	pow((*grid)->yv[n]-(*grid)->ye[ne],2));
-      */
-    }
-  }
-    /*
-    for(nf=0;nf<NFACES;nf++) {
-      xt[nf]=maingrid->xp[(*grid)->cells[n*NFACES+nf]];
-      yt[nf]=maingrid->yp[(*grid)->cells[n*NFACES+nf]];
-    }
-    // Radius of the circumcircle
-    R0 = GetCircumcircleRadius(xt,yt,NFACES);
-    for(nf=0;nf<NFACES;nf++) {
-      (*grid)->def[n*NFACES+nf]=sqrt(R0*R0-pow((*grid)->df[(*grid)->face[n*NFACES+nf]]/2,2));
-      if(IsNan((*grid)->def[n*NFACES+nf]) || (*grid)->def[n*NFACES+nf]==0) {
-        printf("Corrected at x=%f\n",(*grid)->xv[n]);
-        (*grid)->def[n*NFACES+nf]=(*grid)->dg[(*grid)->face[n*NFACES+nf]]/2;
-      }
-    }
-  }
-    */
-
-  //###########################################################
-  // End of original code
-  // ##########################################################
+  ////###########################################################
+  //// End of original code
+  //// ##########################################################
 
   /* Now compute the coefficients that make up the tangents to compute advection */
   if(myproc==0 && VERBOSE>2) printf("\t\tComputing xi coefficients...\n");
